@@ -1,0 +1,86 @@
+# config/default_config.yaml
+project_name: "tactifoot_vision"
+logging_level: "INFO"
+
+paths:
+  input_video: "../data/videos/sample_video.mp4"
+  output_video: "../output/analyzed_video.mp4"
+  model_dir: "../models"
+
+detection:
+  model_type: "rfdetr"
+  # checkpoint_path: "../models/yolov9-e.pt" # Example for inference/fine-tune
+  checkpoint_path: "../output/checkpoint_best_total.pth" # Example for training from scratch
+  confidence_threshold: 0.3
+  nms_threshold: 0.5
+  classes:
+    ball: 0
+    goalkeeper: 1
+    player: 2
+    referee: 3
+
+training:
+  detection:
+    base_model: "rfdetr_base" # Used if detection.checkpoint_path is null
+    dataset_path: "../data/datasets/football_yolo/data.yaml"
+    # dataset_path: "/home/kuba/uam/doktorat/datasets/football-dataset"
+    ultralytics_assets_tag: "v8.3.0" # Specify GitHub release tag for assets
+    epochs: 3
+    batch_size: 4
+    imgsz: 640
+    learning_rate: 0.001
+    optimizer: "Adam"
+    project_name: "output"
+    run_name: "detect_run_v1"
+    device: null
+    plots: true
+
+  keypoints:
+    dataset_path: "../data/keypoints/data.yaml"
+    base_model: "yolov8n-pose.pt" # Or yolov11 variant if available
+    ultralytics_assets_tag: "v8.3.0" # Specify GitHub release tag for assets
+    # Training Hyperparams
+    epochs: 1000
+    batch_size: 8
+    imgsz: 640
+    learning_rate: 0.001
+    optimizer: "auto"
+    project_name: "tactifoot_kp_training"
+    run_name: "yolo_pose_run1"
+    device: null
+    plots: true
+
+tracking:
+  enabled: true
+  # Corrected ByteTrack params (use supervision defaults if null)
+  track_activation_threshold: 0.25 # Formerly track_activation_threshold
+  lost_track_buffer: 30 # Formerly track_buffer
+  minimum_matching_threshold: 0.8 # Formerly match_thresh
+  frame_rate: null # e.g., 30 or null
+  minimum_consecutive_frames: 1 # Default is 1
+
+keypoints:
+  enabled: true
+  model_type: "yolo_pose"
+  checkpoint_path: "../tactifoot_kp_training/yolo_pose_run16/weights/best.pt"
+  confidence_threshold: 0.8
+
+geometry:
+  min_keypoint_confidence_for_homography: 0.1
+  homography_smoothing_window: 10
+
+visualization:
+  enabled: true
+  pitch_color: "#000000"
+  line_color: "#808080"
+  player_color_default: "#FFFFFF"
+  ball_color: "#FFFF00"
+  team_color_0: "#00BFFF"
+  team_color_1: "#FF1493"
+  overlay: true
+  overlay_width_fraction: 0.25
+  overlay_position: "bottom-center"
+  overlay_padding: 10
+  overlay_alpha: 0.8
+  draw_scale: 0.05
+  draw_padding: 20
