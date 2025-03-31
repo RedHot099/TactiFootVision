@@ -15,7 +15,7 @@ build/
 *.log
 
 # Data and Models 
-data/*
+data/
 models/
 output/
 tactifoot_kp_training/
