@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "tactifoot-vision"
+version = "0.1.0"
+description = ""
+authors = ["Jakub Eichner <redhotdevil996@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+numpy = ">=1.23.0,<=2.1.1"
+ultralytics = "^8.3.98"
+pydantic = "^2.11.0"
+pyyaml = "^6.0.2"
+supervision = "^0.25.1"
+opencv-python-headless = "^4.11.0.86"
+torch = "^2.6.0"
+torchvision = "^0.21.0"
+torchaudio = "^2.6.0"
+loguru = "^0.7.3"
+rfdetr = "^1.0.8"
+pycocotools = "^2.0.8"
+ruff = "^0.11.2"
+tqdm = "^4.67.1"
+scipy = "^1.15.2"
+mplsoccer = "^1.4.0"
+matplotlib = "^3.10.1"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

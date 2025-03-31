@@ -1,0 +1,29 @@
+# .gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+*.log
+
+# Data and Models 
+data/*
+models/
+output/
+tactifoot_kp_training/
+*.sh
+*.txt
+*.pt
+*.pth
+
+# IDE specific
+.idea/
+.vscode/
