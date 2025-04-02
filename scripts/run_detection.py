@@ -16,11 +16,14 @@ from tactifoot_vision.data.video_loader import VideoLoader
 from tactifoot_vision.detection.yolo_handler import YOLOHandler
 from tactifoot_vision.detection.rfdetr_handler import RFDETRHandler
 from tactifoot_vision.tracking.tracker import Tracker
+from tactifoot_vision.tracking.ball_tracker import BallTracker
 from tactifoot_vision.keypoints.yolo_pose_handler import YOLOPoseHandler
 from tactifoot_vision.geometry.view_transformer import ViewTransformer
 from tactifoot_vision.geometry.pitch_definitions import SoccerPitchConfiguration
 from tactifoot_vision.visualization.pitch_visualizer import PitchVisualizer
 from tactifoot_vision.utils.logging_config import setup_logging
+from tactifoot_vision.export.pipeline_exporter import PipelineExporter
+
 
 project_root = Path(__file__).resolve().parents[1]
 
@@ -117,31 +120,41 @@ def main(config_path: Path):
                 f"Tracker frame_rate not set, using video FPS: {video_info.fps:.2f}"
             )
             config.tracking.frame_rate = int(round(video_info.fps))
-        tracker = Tracker(config.tracking)
-        logger.success("Tracker initialized.")
+        player_tracker = Tracker(config.tracking)
+        logger.success("Player Tracker initialized.")
 
         video_loader = VideoLoader(video_path_abs)
         logger.info(
             f"Video Info: {video_info.width}x{video_info.height} @ {video_info.fps:.2f} FPS, Total Frames: {video_info.total_frames or 'Unknown'}"
         )
 
+        ball_tracker = BallTracker()
+        logger.success("Raw Ball Position Collector initialized.")
+
+        id_to_name_map = {v: k for k, v in config.detection.classes.items()}
+        pipeline_exporter = PipelineExporter(class_id_to_name=id_to_name_map)
+
         box_annotator = sv.BoxAnnotator(thickness=2)
         label_annotator = sv.LabelAnnotator(text_thickness=1, text_scale=0.5)
-        # --- Removed pitch line/vertex annotators ---
-        # pitch_line_annotator = sv.EdgeAnnotator(color=sv.Color.WHITE, thickness=2, edges=view_transformer.pitch_config.edges)
-        # pitch_vertex_annotator = sv.VertexAnnotator(color=sv.Color.GREEN, radius=5)
-        # --------------------------------------------
-        id_to_name = {v: k for k, v in config.detection.classes.items()}
+        pitch_vertex_annotator = sv.VertexAnnotator(color=sv.Color.GREEN, radius=3)
         ball_class_id = config.detection.classes.get("ball", -1)
-        pitch_labels = SoccerPitchConfiguration(
+        pitch_config_instance = SoccerPitchConfiguration(
             length=config.geometry.target_pitch_length,
             width=config.geometry.target_pitch_width,
-        ).labels
-        kp_color = sv.Color.RED
+        )
+        pitch_labels = pitch_config_instance.labels
+        main_frame_edges_0_based = pitch_config_instance.edges
+        kp_color_unused = sv.Color.RED
+        kp_color_used = sv.Color.from_hex("#FFA500")
         kp_radius = 4
         kp_label_color = sv.Color.WHITE.as_bgr()
         kp_label_scale = 0.4
         kp_label_thickness = 1
+        proj_label_color = sv.Color.YELLOW.as_bgr()
+        proj_label_scale = 0.35
+        proj_label_thickness = 1
+        proj_line_color = sv.Color.WHITE.as_bgr()
+        proj_line_thickness = 1
 
         output_video_path = (config_path.parent / config.paths.output_video).resolve()
         output_video_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,13 +174,23 @@ def main(config_path: Path):
         frame_count = 0
         frame_generator = video_loader.frame_generator()
         total_frames = video_info.total_frames if video_info.total_frames else None
+        num_expected_vertices = len(view_transformer.pitch_config.vertices)
+        video_fps = video_info.fps if video_info.fps > 0 else 30.0
+        # --- Read period config ---
+        current_period = config.processing.period
+        period_start_time_seconds = config.processing.period_start_time_seconds
+        logger.info(
+            f"Processing period {current_period}, starting time: {period_start_time_seconds:.3f}s"
+        )
+        # --------------------------
+
         with tqdm(total=total_frames, desc="Processing frames", unit="frame") as pbar:
             for frame in frame_generator:
                 detections = detection_handler.detect(frame)
                 ball_detections = detections[detections.class_id == ball_class_id]
                 other_detections = detections[detections.class_id != ball_class_id]
                 if config.tracking.enabled:
-                    tracked_detections = tracker.update(other_detections)
+                    tracked_detections = player_tracker.update(other_detections)
                 else:
                     tracked_detections = other_detections
 
@@ -177,16 +200,11 @@ def main(config_path: Path):
                     kp_result = keypoint_handler.detect(frame)
                     if kp_result:
                         keypoints_sv, pitch_bbox_xyxy = kp_result
-
                 homography_updated = False
                 if view_transformer and keypoints_sv:
                     homography_updated = view_transformer.update_homography(
                         keypoints_sv
                     )
-                    if not homography_updated and frame_count == 0:
-                        logger.warning("Failed to compute initial homography matrix.")
-                    elif homography_updated and frame_count == 0:
-                        logger.info("Initial homography computed successfully.")
 
                 player_pitch_coords, ball_pitch_coords, frame_pitch_vertices_main = (
                     None,
@@ -194,6 +212,8 @@ def main(config_path: Path):
                     None,
                 )
                 player_team_ids_for_vis = None
+                current_ball_pitch_pos = None
+                visible_area_list = None
 
                 if view_transformer.current_homography is not None:
                     if len(tracked_detections) > 0 and tracked_detections.xyxy.size > 0:
@@ -207,10 +227,6 @@ def main(config_path: Path):
                         )
                         if "class_id" in tracked_detections.data:
                             player_team_ids_for_vis = tracked_detections.class_id
-                        if player_pitch_coords is None:
-                            logger.warning(
-                                f"Frame {frame_count}: Player transformation failed."
-                            )
 
                     if len(ball_detections) > 0 and ball_detections.xyxy.size > 0:
                         ball_anchor_frame = ball_detections.get_anchors_coordinates(
@@ -218,33 +234,63 @@ def main(config_path: Path):
                         )
                         if ball_anchor_frame.ndim == 1:
                             ball_anchor_frame = ball_anchor_frame.reshape(1, -1)
-                        ball_pitch_coords = view_transformer.transform_frame_to_pitch(
-                            ball_anchor_frame
-                        )
-                        if ball_pitch_coords is None:
-                            logger.warning(
-                                f"Frame {frame_count}: Ball transformation failed."
+                        if ball_anchor_frame.shape[0] > 0:
+                            ball_pitch_coords = (
+                                view_transformer.transform_frame_to_pitch(
+                                    ball_anchor_frame[0:1]
+                                )
                             )
+                            if (
+                                ball_pitch_coords is not None
+                                and ball_pitch_coords.shape == (1, 2)
+                            ):
+                                current_ball_pitch_pos = ball_pitch_coords
 
-                    # Calculation might still be needed elsewhere, but drawing is removed
-                    # frame_pitch_vertices_main = (
-                    #     view_transformer.transform_pitch_to_frame(
-                    #         view_transformer.pitch_vertices
-                    #     )
-                    # )
-                    # if frame_pitch_vertices_main is None: logger.warning(f"Frame {frame_count}: Pitch vertex inverse transformation failed.") # Optional warning
+                    frame_pitch_vertices_main = (
+                        view_transformer.transform_pitch_to_frame(
+                            view_transformer.pitch_vertices
+                        )
+                    )
+
+                    h, w = frame.shape[:2]
+                    frame_corners = np.array(
+                        [[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32
+                    )
+                    visible_area_pitch = view_transformer.transform_frame_to_pitch(
+                        frame_corners
+                    )
+                    visible_area_list = (
+                        visible_area_pitch.tolist()
+                        if visible_area_pitch is not None
+                        else None
+                    )
+
+                ball_tracker.add_point(current_ball_pitch_pos)
+
+                current_timestamp_seconds = period_start_time_seconds + (
+                    frame_count / video_fps
+                )
+
+                pipeline_exporter.add_frame_data(
+                    frame_id=frame_count,
+                    period=current_period,  # Pass period
+                    tracked_detections=tracked_detections,
+                    pitch_coords=player_pitch_coords,
+                    ball_pitch_coords=current_ball_pitch_pos,
+                    homography=view_transformer.current_homography,
+                    visible_area=visible_area_list,
+                    timestamp_seconds=current_timestamp_seconds,
+                )
 
                 pitch_map_frame = None
                 if pitch_visualizer and config.visualization.enabled:
                     pitch_map_frame = pitch_visualizer.draw_frame(
                         player_coords=player_pitch_coords,
                         player_team_ids=player_team_ids_for_vis,
-                        ball_coords=(
-                            ball_pitch_coords
-                            if ball_pitch_coords is not None
-                            and ball_pitch_coords.size > 0
-                            else None
-                        ),
+                        ball_coords=current_ball_pitch_pos
+                        if current_ball_pitch_pos is not None
+                        and current_ball_pitch_pos.size > 0
+                        else None,
                     )
 
                 annotated_frame = frame.copy()
@@ -258,7 +304,7 @@ def main(config_path: Path):
                             else None
                         )
                         confidence = tracked_detections.confidence[det_idx]
-                        class_name = id_to_name.get(class_id, f"CLS-{class_id}")
+                        class_name = id_to_name_map.get(class_id, f"CLS-{class_id}")
                         label = (
                             f"#{tracker_id} {class_name} {confidence:.2f}"
                             if tracker_id is not None
@@ -272,7 +318,6 @@ def main(config_path: Path):
                         annotated_frame = label_annotator.annotate(
                             annotated_frame, tracked_detections, labels
                         )
-
                 if len(ball_detections) > 0:
                     annotated_frame = box_annotator.annotate(
                         annotated_frame, ball_detections
@@ -290,15 +335,22 @@ def main(config_path: Path):
                 if keypoints_sv is not None and keypoints_sv.xy.size > 0:
                     draw_threshold = config.keypoints.confidence_threshold
                     kpts_xy, kpts_conf = keypoints_sv.xy[0], keypoints_sv.confidence[0]
+                    used_indices_set = (
+                        set(view_transformer.last_used_indices)
+                        if view_transformer.last_used_indices is not None
+                        else set()
+                    )
                     for i, (xy, conf) in enumerate(zip(kpts_xy, kpts_conf)):
                         if conf >= draw_threshold:
                             center = tuple(xy.astype(int))
+                            is_used = i in used_indices_set
+                            draw_color = (
+                                kp_color_used.as_bgr()
+                                if is_used
+                                else kp_color_unused.as_bgr()
+                            )
                             cv2.circle(
-                                annotated_frame,
-                                center,
-                                kp_radius,
-                                kp_color.as_bgr(),
-                                -1,
+                                annotated_frame, center, kp_radius, draw_color, -1
                             )
                             label_text = (
                                 pitch_labels[i] if i < len(pitch_labels) else str(i)
@@ -315,12 +367,58 @@ def main(config_path: Path):
                                 cv2.LINE_AA,
                             )
 
-                # --- Removed drawing of projected pitch lines/vertices ---
-                # if frame_pitch_vertices_main is not None and frame_pitch_vertices_main.size > 0:
-                #     frame_all_key_points_sv = sv.KeyPoints(xy=frame_pitch_vertices_main[np.newaxis, ...])
-                #     # annotated_frame = pitch_vertex_annotator.annotate(annotated_frame, frame_all_key_points_sv) # REMOVED
-                #     # if view_transformer.pitch_config.edges: annotated_frame = pitch_line_annotator.annotate(annotated_frame, frame_all_key_points_sv) # REMOVED
-                # ---------------------------------------------------------
+                if (
+                    frame_pitch_vertices_main is not None
+                    and frame_pitch_vertices_main.shape == (num_expected_vertices, 2)
+                ):
+                    try:
+                        if main_frame_edges_0_based:
+                            for u, v in main_frame_edges_0_based:
+                                if 0 <= u < len(
+                                    frame_pitch_vertices_main
+                                ) and 0 <= v < len(frame_pitch_vertices_main):
+                                    pt1 = tuple(
+                                        frame_pitch_vertices_main[u].astype(int)
+                                    )
+                                    pt2 = tuple(
+                                        frame_pitch_vertices_main[v].astype(int)
+                                    )
+                                    cv2.line(
+                                        annotated_frame,
+                                        pt1,
+                                        pt2,
+                                        proj_line_color,
+                                        proj_line_thickness,
+                                    )
+                        frame_all_key_points_sv = sv.KeyPoints(
+                            xy=frame_pitch_vertices_main[np.newaxis, ...]
+                        )
+                        annotated_frame = pitch_vertex_annotator.annotate(
+                            scene=annotated_frame, key_points=frame_all_key_points_sv
+                        )
+                        for i, xy in enumerate(frame_pitch_vertices_main):
+                            if i < len(pitch_labels):
+                                center = tuple(xy.astype(int))
+                                label_text = pitch_labels[i]
+                                text_org = (center[0] - 4, center[1] + kp_radius + 8)
+                                cv2.putText(
+                                    annotated_frame,
+                                    label_text,
+                                    text_org,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    proj_label_scale,
+                                    proj_label_color,
+                                    proj_label_thickness,
+                                    cv2.LINE_AA,
+                                )
+                    except Exception as vis_err:
+                        logger.warning(
+                            f"Frame {frame_count}: Error drawing projected pitch: {vis_err}"
+                        )
+                elif view_transformer.current_homography is not None:
+                    logger.warning(
+                        f"Frame {frame_count}: Skipping projected pitch drawing due to invalid vertices."
+                    )
 
                 final_frame = annotated_frame
                 if pitch_map_frame is not None and config.visualization.overlay:
@@ -403,6 +501,25 @@ def main(config_path: Path):
         if writer:
             writer.release()
             logger.info(f"Output video saved. Processed {frame_count} frames.")
+
+        abs_threshold = (
+            config.geometry.ball_outlier_threshold_percent / 100.0
+        ) * view_transformer.pitch_config.width
+        cleaned_ball_path = ball_tracker.get_cleaned_path(abs_threshold)
+
+        export_file_path = (
+            output_video_path.parent
+            / f"{output_video_path.stem}_pipelinedata_p{current_period}.csv"
+        )  # Add period to filename
+        pipeline_exporter.save(export_file_path)
+
+        # Optional: Save cleaned path
+        # try:
+        #     path_save_file = output_video_path.parent / f"{output_video_path.stem}_ball_path_cleaned_p{current_period}.npy"
+        #     np.save(path_save_file, cleaned_ball_path, allow_pickle=True)
+        #     logger.info(f"Cleaned ball path saved to: {path_save_file}")
+        # except Exception as save_err: logger.error(f"Failed to save cleaned ball path: {save_err}")
+
         logger.success("Detection script finished.")
 
     except FileNotFoundError as e:

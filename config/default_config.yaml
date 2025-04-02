@@ -3,8 +3,8 @@ project_name: "tactifoot_vision"
 logging_level: "INFO"
 
 paths:
-  input_video: "../data/videos/sample_video.mp4"
-  output_video: "../output/analyzed_video.mp4"
+  input_video: "../data/videos/tac_1.mp4"
+  output_video: "../output/output_tac_1.mp4"
   model_dir: "../models"
 
 detection:
@@ -68,6 +68,9 @@ keypoints:
 geometry:
   min_keypoint_confidence_for_homography: 0.1
   homography_smoothing_window: 10
+  ball_outlier_threshold_percent: 5
+  target_pitch_length: 120
+  target_pitch_width: 80
 
 visualization:
   enabled: true

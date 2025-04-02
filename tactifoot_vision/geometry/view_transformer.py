@@ -1,7 +1,7 @@
 # tactifoot_vision/geometry/view_transformer.py
 import logging
 from collections import deque
-from typing import Optional
+from typing import Optional  # Added Set
 
 import cv2
 import numpy as np
@@ -16,17 +16,18 @@ logger = logging.getLogger(__name__)
 class ViewTransformer:
     def __init__(self, config: GeometryConfig):
         self.config = config
-        # --- Instantiate pitch config with dimensions from GeometryConfig ---
         self.pitch_config = SoccerPitchConfiguration(
             length=config.target_pitch_length, width=config.target_pitch_width
         )
-        # --------------------------------------------------------------------
         self.pitch_vertices = np.array(self.pitch_config.vertices, dtype=np.float32)
         self.min_confidence = config.min_keypoint_confidence_for_homography
         self.smoothing_window_size = config.homography_smoothing_window
         self.homography_matrices = deque(maxlen=self.smoothing_window_size)
         self.current_homography: Optional[np.ndarray] = None
         self.current_inverse_homography: Optional[np.ndarray] = None
+        # --- Store indices used in the last successful calculation ---
+        self.last_used_indices: Optional[np.ndarray] = None
+        # ----------------------------------------------------------
         logger.info(
             f"Initialized ViewTransformer. Smoothing window: {self.smoothing_window_size}"
         )
@@ -45,14 +46,16 @@ class ViewTransformer:
                     self.current_homography
                 )
             except np.linalg.LinAlgError:
-                logger.error(
-                    "Failed to calculate inverse homography (matrix likely singular)."
-                )
+                logger.error("Failed to calculate inverse homography.", exc_info=True)
                 self.current_inverse_homography = None
         else:
             self.current_inverse_homography = None
 
     def update_homography(self, keypoints: sv.KeyPoints) -> bool:
+        # Reset last used indices for this frame attempt
+        # self.last_used_indices = None # Option 1: Reset each time
+        # Option 2: Keep last good ones until a new successful calc happens (current implementation)
+
         if (
             keypoints is None
             or keypoints.xy.size == 0
@@ -61,65 +64,62 @@ class ViewTransformer:
             or keypoints.xy.shape[1] != len(self.pitch_vertices)
         ):
             logger.warning(
-                f"Received invalid or mismatched keypoints for homography update. "
-                f"Expected {len(self.pitch_vertices)} keypoints, got shape {keypoints.xy.shape if keypoints else 'None'}."
+                f"Invalid/mismatched keypoints. Expected {len(self.pitch_vertices)}, got shape {keypoints.xy.shape if keypoints else 'None'}."
             )
-            self._update_inverse_homography()
+            # Don't update inverse or indices if input is bad, reuse existing H if available
             return self.current_homography is not None
 
         frame_xy = keypoints.xy[0]
         confidences = keypoints.confidence[0]
-
         valid_mask = confidences >= self.min_confidence
         frame_points_filtered = frame_xy[valid_mask]
-        valid_indices = np.where(valid_mask)[0]
+        valid_indices = np.where(valid_mask)[0]  # Original indices of confident points
 
         num_valid_points = len(frame_points_filtered)
         if num_valid_points < 4:
             logger.warning(
-                f"Not enough confident keypoints ({num_valid_points} < 4) "
-                f"to calculate homography. Threshold: {self.min_confidence:.2f}. "
-                f"Confident indices: {valid_indices.tolist()}"
+                f"Not enough confident keypoints ({num_valid_points} < 4). Threshold: {self.min_confidence:.2f}."
             )
-            self._update_inverse_homography()
+            # Don't update inverse or indices if not enough points, reuse existing H if available
             return self.current_homography is not None
 
         pitch_points_filtered = self.pitch_vertices[valid_indices]
 
-        logger.debug(
-            f"Calculating homography with {num_valid_points} points. "
-            f"Frame indices: {valid_indices.tolist()}. "
-            f"Frame pts shape: {frame_points_filtered.shape}, "
-            f"Pitch pts shape: {pitch_points_filtered.shape}"
-        )
-
         try:
-            homography_matrix, mask = cv2.findHomography(
+            homography_matrix, ransac_mask = cv2.findHomography(
                 frame_points_filtered, pitch_points_filtered, cv2.RANSAC, 10.0
             )
 
             if homography_matrix is None:
                 logger.warning("cv2.findHomography returned None.")
-                self._update_inverse_homography()
+                # Don't update inverse or indices, reuse existing H if available
                 return self.current_homography is not None
+
+            # --- Store the indices that were confident AND used by RANSAC ---
+            # Note: ransac_mask corresponds to frame_points_filtered/valid_indices
+            # inlier_indices_relative = np.where(ransac_mask.flatten() == 1)[0]
+            # self.last_used_indices = valid_indices[inlier_indices_relative] # Indices of confident points that were RANSAC inliers
+            # --- OR: Simpler - just store indices that were input to findHomography ---
+            self.last_used_indices = (
+                valid_indices  # Store confident indices used as input
+            )
+            # -------------------------------------------------------------------------
 
             self.homography_matrices.append(homography_matrix)
             self.current_homography = np.mean(self.homography_matrices, axis=0)
             self._update_inverse_homography()
-            logger.debug("Homography matrix updated successfully.")
+            logger.debug(
+                f"Homography updated successfully using {len(self.last_used_indices)} confident points."
+            )
             return True
 
-        except cv2.error as cv_err:
-            logger.error(f"OpenCV error during findHomography: {cv_err}", exc_info=True)
-            self._update_inverse_homography()
-            return self.current_homography is not None
         except Exception as e:
-            logger.error(f"Unexpected error calculating homography: {e}", exc_info=True)
-            self._update_inverse_homography()
+            logger.error(f"Error calculating homography: {e}", exc_info=True)
+            # Don't update inverse or indices on error, reuse existing H if available
             return self.current_homography is not None
 
     def transform_points(
-        self, points_frame: np.ndarray, perspective: str = "frame_to_pitch"
+        self, points: np.ndarray, perspective: str = "frame_to_pitch"
     ) -> Optional[np.ndarray]:
         matrix = None
         if perspective == "frame_to_pitch":
@@ -129,51 +129,34 @@ class ViewTransformer:
             matrix = self.current_inverse_homography
             matrix_name = "Inverse Homography"
         else:
-            logger.error(f"Invalid perspective specified: {perspective}")
+            logger.error(f"Invalid perspective: {perspective}")
             return None
 
         if matrix is None:
-            logger.warning(
-                f"{matrix_name} matrix not available for transformation ({perspective})."
-            )
+            logger.warning(f"{matrix_name} not available for {perspective}.")
             return None
-        if not isinstance(points_frame, np.ndarray):
-            logger.error(
-                f"Invalid input type for transform_points: {type(points_frame)}. Expected np.ndarray."
-            )
+        if not isinstance(points, np.ndarray):
+            logger.error(f"Invalid input type: {type(points)}")
             return None
-        if points_frame.ndim != 2 or points_frame.shape[1] != 2:
-            if points_frame.size == 0:
-                return np.empty((0, 2), dtype=np.float32)
-            logger.error(
-                f"Invalid input shape for transform_points: {points_frame.shape}. Expected (N, 2)."
-            )
+        if points.size == 0:
+            return np.empty((0, 2), dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 2:
+            logger.error(f"Invalid input shape: {points.shape}")
             return None
 
-        points_frame_reshaped = points_frame.astype(np.float32).reshape(-1, 1, 2)
+        points_reshaped = points.astype(np.float32).reshape(-1, 1, 2)
         try:
-            transformed_points_reshaped = cv2.perspectiveTransform(
-                points_frame_reshaped, matrix
-            )
-            if np.any(np.isnan(transformed_points_reshaped)) or np.any(
-                np.isinf(transformed_points_reshaped)
+            transformed_reshaped = cv2.perspectiveTransform(points_reshaped, matrix)
+            if np.any(np.isnan(transformed_reshaped)) or np.any(
+                np.isinf(transformed_reshaped)
             ):
                 logger.warning(
-                    f"NaN or Inf detected in transformed points ({perspective}). Homography might be unstable."
+                    f"NaN/Inf detected in transformed points ({perspective})."
                 )
                 return None
-            transformed_points = transformed_points_reshaped.reshape(-1, 2)
-            return transformed_points
-        except cv2.error as cv_err:
-            logger.error(
-                f"OpenCV error during perspectiveTransform ({perspective}): {cv_err}",
-                exc_info=True,
-            )
-            return None
+            return transformed_reshaped.reshape(-1, 2)
         except Exception:
-            logger.exception(
-                f"Unexpected error during point transformation ({perspective})."
-            )
+            logger.exception(f"Error during point transformation ({perspective}).")
             return None
 
     def transform_frame_to_pitch(

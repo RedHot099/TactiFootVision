@@ -80,24 +80,26 @@ class KeypointsConfig(BaseModel):
 class GeometryConfig(BaseModel):
     min_keypoint_confidence_for_homography: float = Field(0.5, ge=0.0, le=1.0)
     homography_smoothing_window: int = Field(5, ge=1)
-    # --- Added target pitch dimensions ---
-    target_pitch_length: float = Field(100.0, gt=0)  # Default 100
-    target_pitch_width: float = Field(100.0, gt=0)  # Default 100
+    target_pitch_length: float = Field(100.0, gt=0)
+    target_pitch_width: float = Field(100.0, gt=0)
+    ball_outlier_threshold_percent: float = Field(5.0, gt=0, le=100)
 
 
 class PitchVisualizerConfig(BaseModel):
     enabled: bool = True
-    pitch_type: str = "wyscout"
-    pitch_color: str = "#6fad6f"
+    pitch_color: str = "#22312b"
     line_color: str = "#ffffff"
-    goal_type: str = "line"
-    linewidth: float = 1.5
-    player_dot_size: int = 200
-    ball_dot_size: int = 150
+    line_thickness: int = 1
+    path_color: str = "#ffff00"
+    path_thickness: int = 1
+    player_dot_radius: int = 5
+    ball_dot_radius: int = 4
     player_color_default: str = "#FFFFFF"
     ball_color: str = "#FFFF00"
     team_color_0: str = "#00BFFF"
     team_color_1: str = "#FF1493"
+    canvas_width_px: int = 400
+    canvas_padding_px: int = 10
     overlay: bool = True
     overlay_width_fraction: float = Field(0.25, ge=0.1, le=0.5)
     overlay_position: Literal[
@@ -110,6 +112,13 @@ class PitchVisualizerConfig(BaseModel):
     ] = "bottom-center"
     overlay_padding: int = 10
     overlay_alpha: float = Field(0.8, ge=0.0, le=1.0)
+
+
+class ProcessingConfig(BaseModel):
+    period: Literal[1, 2] = 1  # Which period to process
+    period_start_time_seconds: float = Field(
+        0.0, ge=0
+    )  # Start time of this period in seconds
 
 
 class TrainingDetectionConfig(BaseModel):
@@ -176,9 +185,7 @@ class TrainingKeypointsConfig(BaseModel):
     def check_yaml_and_kpt_shape(self) -> "TrainingKeypointsConfig":
         yaml_path = self.dataset_path
         if not yaml_path.is_file() or yaml_path.suffix.lower() != ".yaml":
-            raise ValueError(
-                f"dataset_path must be a .yaml file for YOLO-Pose training, got: {yaml_path}"
-            )
+            raise ValueError(f"dataset_path must be a .yaml file, got: {yaml_path}")
         try:
             with open(yaml_path, "r") as f:
                 data = yaml.safe_load(f)
@@ -205,6 +212,9 @@ class Config(BaseModel):
     keypoints: KeypointsConfig = Field(default_factory=KeypointsConfig)
     geometry: GeometryConfig = Field(default_factory=GeometryConfig)
     visualization: PitchVisualizerConfig = Field(default_factory=PitchVisualizerConfig)
+    processing: ProcessingConfig = Field(
+        default_factory=ProcessingConfig
+    )  # Added processing config
     training: Optional[TrainingConfig] = None
 
     class Config:
