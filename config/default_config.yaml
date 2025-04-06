@@ -6,6 +6,9 @@ paths:
   input_video: "../data/videos/tac_1.mp4"
   output_video: "../output/output_tac_1.mp4"
   model_dir: "../models"
+  statsbomb_input_csv: "output/statsbomb_merged.csv"
+  pipeline_input_csv: "output/output_tac_1_pipelinedata_p1.csv"
+  merged_output_csv: "output/merged_output_period1.csv" # Example: Output for period 1
 
 detection:
   model_type: "rfdetr"
@@ -24,7 +27,7 @@ training:
     base_model: "rfdetr_base" # Used if detection.checkpoint_path is null
     dataset_path: "../data/datasets/football_yolo/data.yaml"
     # dataset_path: "/home/kuba/uam/doktorat/datasets/football-dataset"
-    ultralytics_assets_tag: "v8.3.0" # Specify GitHub release tag for assets
+    ultralytics_assets_tag: "v8.3.0"
     epochs: 3
     batch_size: 4
     imgsz: 640
@@ -38,7 +41,7 @@ training:
   keypoints:
     dataset_path: "../data/keypoints/data.yaml"
     base_model: "yolov8n-pose.pt" # Or yolov11 variant if available
-    ultralytics_assets_tag: "v8.3.0" # Specify GitHub release tag for assets
+    ultralytics_assets_tag: "v8.3.0"
     # Training Hyperparams
     epochs: 1000
     batch_size: 8
@@ -87,3 +90,7 @@ visualization:
   overlay_alpha: 0.8
   draw_scale: 0.05
   draw_padding: 20
+
+processing:
+  period: 1 # Set this to the period corresponding to the pipeline_input_csv file
+  period_start_time_seconds: 0.0

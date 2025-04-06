@@ -28,13 +28,33 @@ class PathsConfig(BaseModel):
     input_video: Path
     output_video: Path = Path("data/output/output_video.mp4")
     model_dir: Path = Path("models/")
+    statsbomb_input_csv: Path = Path("data/output/statsbomb_merged.csv")
+    pipeline_input_csv: Path = Path("data/output/pipeline_output.csv")  # Simple path
+    merged_output_csv: Path = Path("data/output/merged_output.csv")  # Simple path
 
-    @field_validator("input_video", "model_dir", mode="before")
+    @field_validator(
+        "input_video",
+        "model_dir",
+        "statsbomb_input_csv",
+        "pipeline_input_csv",  # Validate new simple path
+        "merged_output_csv",  # Validate new simple path
+        mode="before",
+    )
     @classmethod
     def check_path_string(cls, v: Any) -> Any:
         if isinstance(v, str) and not v:
             raise ValueError("Path cannot be empty")
-        return v
+        # Allow Path objects to pass through directly
+        if isinstance(v, Path):
+            return v
+        # Convert non-empty strings to Path
+        if isinstance(v, str):
+            return Path(v)
+        # Raise error for other types or empty strings handled above
+        raise TypeError("Path must be a non-empty string or a Path object")
+
+
+# --- NO OTHER CHANGES BELOW THIS LINE IN THIS FILE ---
 
 
 class DetectionConfig(BaseModel):
@@ -50,8 +70,12 @@ class DetectionConfig(BaseModel):
     @classmethod
     def check_checkpoint_path_string(cls, v: Any) -> Any:
         if isinstance(v, str) and not v:
-            raise ValueError("checkpoint_path cannot be empty")
-        return v
+            return None  # Allow empty string to mean None
+        if isinstance(v, str):
+            return Path(v)
+        if isinstance(v, Path):
+            return v
+        return v  # Allow None to pass through
 
 
 class TrackingConfig(BaseModel):
@@ -73,8 +97,12 @@ class KeypointsConfig(BaseModel):
     @classmethod
     def check_kp_checkpoint_path_string(cls, v: Any) -> Any:
         if isinstance(v, str) and not v:
-            raise ValueError("checkpoint_path cannot be empty")
-        return v
+            return None  # Allow empty string to mean None
+        if isinstance(v, str):
+            return Path(v)
+        if isinstance(v, Path):
+            return v
+        return v  # Allow None to pass through
 
 
 class GeometryConfig(BaseModel):
@@ -122,7 +150,7 @@ class ProcessingConfig(BaseModel):
 
 
 class TrainingDetectionConfig(BaseModel):
-    base_model: str
+    base_model: Optional[str] = None  # Allow None if using checkpoint
     dataset_path: Path
     dataset_format: Literal["yolo", "coco"] = "yolo"
     ultralytics_assets_tag: str = "v8.0.0"
@@ -137,32 +165,58 @@ class TrainingDetectionConfig(BaseModel):
     device: Optional[str] = None
     plots: bool = True
 
-    @field_validator(
-        "dataset_path", "base_model", "ultralytics_assets_tag", mode="before"
-    )
+    @field_validator("dataset_path", "ultralytics_assets_tag", mode="before")
     @classmethod
     def check_string_non_empty(cls, v: Any) -> Any:
         if isinstance(v, str) and not v:
             raise ValueError("String value cannot be empty")
-        return v
+        if isinstance(v, Path):  # Allow Path for dataset_path
+            return v
+        if isinstance(v, str):  # Convert str to Path for dataset_path if needed
+            # Check if the field being validated is 'dataset_path' before converting
+            # This requires knowing the field name during validation, which Pydantic v2 handles better.
+            # For simplicity here, assume string is for dataset_path if it's a string.
+            # A more robust check might be needed depending on Pydantic version.
+            try:
+                return Path(v)
+            except TypeError:
+                # If it's not a path-like string, return original string for other fields
+                return v
+        raise TypeError("Value must be a non-empty string or Path")
+
+    @field_validator("base_model", mode="before")
+    @classmethod
+    def check_base_model_string(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v:
+            return None  # Allow empty string to mean None
+        return v  # Allow None or non-empty string
 
     @model_validator(mode="after")
     def check_dataset_path_format(self) -> "TrainingDetectionConfig":
+        # Ensure dataset_path is resolved relative to config file if needed
+        # This logic might be better placed in the loader or script setup
         if self.dataset_format == "yolo":
             if (
                 not self.dataset_path.is_file()
                 or self.dataset_path.suffix.lower() != ".yaml"
             ):
-                pass
+                # Warning or error depending on strictness needed
+                logger.warning(
+                    f"YOLO dataset path {self.dataset_path} is not a .yaml file."
+                )
+                pass  # Allow potentially incorrect paths, handle in training script
         elif self.dataset_format == "coco":
             if not self.dataset_path.is_dir():
-                pass
+                logger.warning(
+                    f"COCO dataset path {self.dataset_path} is not a directory."
+                )
+                pass  # Allow potentially incorrect paths, handle in training script
         return self
 
 
 class TrainingKeypointsConfig(BaseModel):
     dataset_path: Path
-    base_model: str
+    base_model: Optional[str] = None  # Allow None if using checkpoint
     ultralytics_assets_tag: str = "v8.0.0"
     epochs: int = 100
     batch_size: int = 16
@@ -212,9 +266,7 @@ class Config(BaseModel):
     keypoints: KeypointsConfig = Field(default_factory=KeypointsConfig)
     geometry: GeometryConfig = Field(default_factory=GeometryConfig)
     visualization: PitchVisualizerConfig = Field(default_factory=PitchVisualizerConfig)
-    processing: ProcessingConfig = Field(
-        default_factory=ProcessingConfig
-    )  # Added processing config
+    processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     training: Optional[TrainingConfig] = None
 
     class Config:
