@@ -24,12 +24,24 @@ def main(config_path: Path):
         logger.info(f"Starting training script: {config.project_name}")
         logger.debug(f"Config loaded from: {config_path}")
 
+        # *** Check if training.detection config exists ***
         if not config.training or not config.training.detection:
-            logger.error("Training config ('training.detection') not found.")
+            logger.error(
+                "Training config ('training.detection') not found in config file."
+            )
             sys.exit(1)
         train_cfg = config.training.detection
 
-        if config.detection.checkpoint_path is None:
+        # *** Check if top-level detection config exists ***
+        if config.detection is None:
+            logger.error(
+                "Top-level 'detection' section not found in config file, but required for training."
+            )
+            sys.exit(1)
+        detect_cfg = config.detection  # Use a shorter name
+
+        # Check for base model vs checkpoint consistency
+        if detect_cfg.checkpoint_path is None:
             if not train_cfg.base_model:
                 logger.error(
                     "Config error: detection.checkpoint_path is null, but training.detection.base_model is missing."
@@ -40,36 +52,29 @@ def main(config_path: Path):
             )
         else:
             logger.info(
-                f"Configuring handler for fine-tuning from checkpoint: {config.detection.checkpoint_path}"
+                f"Configuring handler for fine-tuning from checkpoint: {detect_cfg.checkpoint_path}"
             )
-            # Resolve path relative to config file if needed before passing to handler
-            if not Path(config.detection.checkpoint_path).is_absolute():
-                config.detection.checkpoint_path = (
-                    config_path.parent / config.detection.checkpoint_path
-                ).resolve()
+            # Path resolution is handled by the loader now
 
-        logger.info(
-            f"Initializing handler for training: {config.detection.model_type.value}"
-        )
-        model_dir_abs = (config_path.parent / config.paths.model_dir).resolve()
+        logger.info(f"Initializing handler for training: {detect_cfg.model_type.value}")
+        # Path resolution for model_dir is handled by the loader
+        model_dir_abs = config.paths.model_dir
 
         try:
-            if config.detection.model_type == DetectionModelType.YOLO:
+            if detect_cfg.model_type == DetectionModelType.YOLO:
                 handler = YOLOHandler(
-                    detection_config=config.detection,
+                    detection_config=detect_cfg,  # Pass the validated sub-config
                     training_config=train_cfg,
                     model_dir=model_dir_abs,
                 )
-            elif config.detection.model_type == DetectionModelType.RFDETR:
+            elif detect_cfg.model_type == DetectionModelType.RFDETR:
                 handler = RFDETRHandler(
-                    detection_config=config.detection,
+                    detection_config=detect_cfg,  # Pass the validated sub-config
                     training_config=train_cfg,
                     model_dir=model_dir_abs,
                 )
             else:
-                raise ValueError(
-                    f"Unsupported model type: {config.detection.model_type}"
-                )
+                raise ValueError(f"Unsupported model type: {detect_cfg.model_type}")
 
             if handler.model is None:
                 logger.error(
@@ -79,6 +84,7 @@ def main(config_path: Path):
             logger.success("Detection handler initialized for training.")
 
         except (FileNotFoundError, ValueError, RuntimeError, ImportError) as e:
+            # *** Fix logging ***
             logger.error(
                 f"Failed to initialize handler for training: {e}", exc_info=True
             )
@@ -95,19 +101,24 @@ def main(config_path: Path):
             RuntimeError,
             ImportError,
         ) as e:
+            # *** Fix logging ***
             logger.error(f"Training failed: {e}", exc_info=True)
             sys.exit(1)
         except Exception:
+            # *** Fix logging ***
             logger.exception("An unexpected error occurred during training.")
             sys.exit(1)
 
     except FileNotFoundError as e:
+        # *** Fix logging ***
         logger.error(f"File not found error during setup: {e}", exc_info=True)
         sys.exit(1)
     except ValueError as e:
+        # *** Fix logging ***
         logger.error(f"Configuration or value error during setup: {e}", exc_info=True)
         sys.exit(1)
     except Exception:
+        # *** Fix logging ***
         logger.exception("An unexpected error occurred during training script setup.")
         sys.exit(1)
 
@@ -117,7 +128,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=Path,
-        default=project_root / "config" / "default_config.yaml",
+        default=project_root
+        / "run_config"
+        / "default_config.yaml",  # Point to default if needed
         help="Path to the configuration YAML file.",
     )
     args = parser.parse_args()

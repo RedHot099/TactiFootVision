@@ -72,8 +72,10 @@ def convert_yolo_to_coco(yolo_yaml_path: Path, force_reconvert: bool = False) ->
             )
             continue
 
+        yolo_img_dir_rel = yolo_img_dir_rel.replace("../", "")
         yolo_img_dir = (yolo_root_dir / yolo_img_dir_rel).resolve()
         yolo_label_dir_rel = yolo_img_dir_rel.replace("images", "labels")
+        yolo_label_dir_rel = yolo_label_dir_rel.replace("../", "")
         yolo_label_dir = (yolo_root_dir / yolo_label_dir_rel).resolve()
         if not yolo_label_dir.exists():
             yolo_label_dir = yolo_img_dir.parent / "labels"

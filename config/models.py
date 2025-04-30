@@ -1,16 +1,9 @@
-# config/models.py
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional, Any, Literal
-import yaml
 import logging
 
-from pydantic import (
-    BaseModel,
-    Field,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -29,32 +22,24 @@ class PathsConfig(BaseModel):
     output_video: Path = Path("data/output/output_video.mp4")
     model_dir: Path = Path("models/")
     statsbomb_input_csv: Path = Path("data/output/statsbomb_merged.csv")
-    pipeline_input_csv: Path = Path("data/output/pipeline_output.csv")  # Simple path
-    merged_output_csv: Path = Path("data/output/merged_output.csv")  # Simple path
+    pipeline_input_csv: Path = Path("data/output/pipeline_output.csv")
+    merged_output_csv: Path = Path("data/output/merged_output.csv")
 
     @field_validator(
         "input_video",
         "model_dir",
         "statsbomb_input_csv",
-        "pipeline_input_csv",  # Validate new simple path
-        "merged_output_csv",  # Validate new simple path
+        "pipeline_input_csv",
+        "merged_output_csv",
         mode="before",
     )
     @classmethod
-    def check_path_string(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            raise ValueError("Path cannot be empty")
-        # Allow Path objects to pass through directly
+    def check_path_string(cls, v: Any) -> Path:
         if isinstance(v, Path):
             return v
-        # Convert non-empty strings to Path
-        if isinstance(v, str):
+        if isinstance(v, str) and v:
             return Path(v)
-        # Raise error for other types or empty strings handled above
-        raise TypeError("Path must be a non-empty string or a Path object")
-
-
-# --- NO OTHER CHANGES BELOW THIS LINE IN THIS FILE ---
+        raise ValueError("Path must be a non-empty string or a Path object")
 
 
 class DetectionConfig(BaseModel):
@@ -68,14 +53,14 @@ class DetectionConfig(BaseModel):
 
     @field_validator("checkpoint_path", mode="before")
     @classmethod
-    def check_checkpoint_path_string(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            return None  # Allow empty string to mean None
-        if isinstance(v, str):
-            return Path(v)
+    def check_checkpoint_path_string(cls, v: Any) -> Optional[Path]:
         if isinstance(v, Path):
             return v
-        return v  # Allow None to pass through
+        if isinstance(v, str) and v:
+            return Path(v)
+        if v is None or (isinstance(v, str) and not v):
+            return None
+        raise TypeError("checkpoint_path must be a string, Path, or None")
 
 
 class TrackingConfig(BaseModel):
@@ -95,14 +80,14 @@ class KeypointsConfig(BaseModel):
 
     @field_validator("checkpoint_path", mode="before")
     @classmethod
-    def check_kp_checkpoint_path_string(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            return None  # Allow empty string to mean None
-        if isinstance(v, str):
-            return Path(v)
+    def check_kp_checkpoint_path_string(cls, v: Any) -> Optional[Path]:
         if isinstance(v, Path):
             return v
-        return v  # Allow None to pass through
+        if isinstance(v, str) and v:
+            return Path(v)
+        if v is None or (isinstance(v, str) and not v):
+            return None
+        raise TypeError("checkpoint_path must be a string, Path, or None")
 
 
 class GeometryConfig(BaseModel):
@@ -143,113 +128,90 @@ class PitchVisualizerConfig(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    period: Literal[1, 2] = 1  # Which period to process
-    period_start_time_seconds: float = Field(
-        0.0, ge=0
-    )  # Start time of this period in seconds
+    period: Literal[1, 2] = 1
+    period_start_time_seconds: float = Field(0.0, ge=0)
 
 
-class TrainingDetectionConfig(BaseModel):
-    base_model: Optional[str] = None  # Allow None if using checkpoint
+# Shared training parameters moved to a common base
+class TrainingSharedSettings(BaseModel):
+    ultralytics_assets_tag: str = "v8.0.0"
+    imgsz: int = 640
+    learning_rate: float = 0.001
+    optimizer: str = "auto"
+    device: Optional[str] = None
+    plots: bool = True
+
+
+class TrainingDetectionConfig(TrainingSharedSettings):
+    base_model: Optional[str] = None
     dataset_path: Path
     dataset_format: Literal["yolo", "coco"] = "yolo"
-    ultralytics_assets_tag: str = "v8.0.0"
     epochs: int = 50
     batch_size: int = 8
     grad_accum_steps: int = 2
-    imgsz: int = 640
-    learning_rate: float = 0.001
-    optimizer: str = "auto"
-    project_name: str = "tactifoot_training"
-    run_name: str = "detect_run"
-    device: Optional[str] = None
-    plots: bool = True
-
-    @field_validator("dataset_path", "ultralytics_assets_tag", mode="before")
-    @classmethod
-    def check_string_non_empty(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            raise ValueError("String value cannot be empty")
-        if isinstance(v, Path):  # Allow Path for dataset_path
-            return v
-        if isinstance(v, str):  # Convert str to Path for dataset_path if needed
-            # Check if the field being validated is 'dataset_path' before converting
-            # This requires knowing the field name during validation, which Pydantic v2 handles better.
-            # For simplicity here, assume string is for dataset_path if it's a string.
-            # A more robust check might be needed depending on Pydantic version.
-            try:
-                return Path(v)
-            except TypeError:
-                # If it's not a path-like string, return original string for other fields
-                return v
-        raise TypeError("Value must be a non-empty string or Path")
-
-    @field_validator("base_model", mode="before")
-    @classmethod
-    def check_base_model_string(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            return None  # Allow empty string to mean None
-        return v  # Allow None or non-empty string
-
-    @model_validator(mode="after")
-    def check_dataset_path_format(self) -> "TrainingDetectionConfig":
-        # Ensure dataset_path is resolved relative to config file if needed
-        # This logic might be better placed in the loader or script setup
-        if self.dataset_format == "yolo":
-            if (
-                not self.dataset_path.is_file()
-                or self.dataset_path.suffix.lower() != ".yaml"
-            ):
-                # Warning or error depending on strictness needed
-                logger.warning(
-                    f"YOLO dataset path {self.dataset_path} is not a .yaml file."
-                )
-                pass  # Allow potentially incorrect paths, handle in training script
-        elif self.dataset_format == "coco":
-            if not self.dataset_path.is_dir():
-                logger.warning(
-                    f"COCO dataset path {self.dataset_path} is not a directory."
-                )
-                pass  # Allow potentially incorrect paths, handle in training script
-        return self
-
-
-class TrainingKeypointsConfig(BaseModel):
-    dataset_path: Path
-    base_model: Optional[str] = None  # Allow None if using checkpoint
-    ultralytics_assets_tag: str = "v8.0.0"
-    epochs: int = 100
-    batch_size: int = 16
-    imgsz: int = 640
-    learning_rate: float = 0.001
-    optimizer: str = "auto"
-    project_name: str = "tactifoot_kp_training"
-    run_name: str = "yolo_pose_run"
-    device: Optional[str] = None
-    plots: bool = True
 
     @field_validator("dataset_path", mode="before")
     @classmethod
-    def check_kp_dataset_path_string(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v:
-            raise ValueError("dataset_path cannot be empty")
-        return Path(v) if isinstance(v, str) else v
+    def check_dataset_path(cls, v: Any) -> Path:
+        if isinstance(v, Path):
+            return v
+        if isinstance(v, str) and v:
+            return Path(v)
+        raise ValueError("dataset_path must be a non-empty string or a Path object")
 
-    @model_validator(mode="after")
-    def check_yaml_and_kpt_shape(self) -> "TrainingKeypointsConfig":
-        yaml_path = self.dataset_path
-        if not yaml_path.is_file() or yaml_path.suffix.lower() != ".yaml":
-            raise ValueError(f"dataset_path must be a .yaml file, got: {yaml_path}")
-        try:
-            with open(yaml_path, "r") as f:
-                data = yaml.safe_load(f)
-            if "kpt_shape" not in data:
-                pass
-        except FileNotFoundError:
-            raise ValueError(f"data.yaml file not found at: {yaml_path}")
-        except Exception as e:
-            raise ValueError(f"Could not process data.yaml file: {yaml_path}") from e
-        return self
+    @field_validator("ultralytics_assets_tag", mode="before")
+    @classmethod
+    def check_assets_tag_string(cls, v: Any) -> str:
+        if isinstance(v, str) and v:
+            return v
+        if v is None or (isinstance(v, str) and not v):
+            raise ValueError("ultralytics_assets_tag cannot be empty if provided")
+        raise TypeError("ultralytics_assets_tag must be a non-empty string")
+
+    @field_validator("base_model", mode="before")
+    @classmethod
+    def check_base_model_string(cls, v: Any) -> Optional[str]:
+        if isinstance(v, str) and not v:
+            return None
+        if v is None or isinstance(v, str):
+            return v
+        raise TypeError("base_model must be a string or None")
+
+
+class TrainingKeypointsConfig(TrainingSharedSettings):
+    dataset_path: Path
+    base_model: Optional[str] = None
+    epochs: int = 100
+    batch_size: int = 16
+
+    @field_validator("dataset_path", mode="before")
+    @classmethod
+    def check_kp_dataset_path(cls, v: Any) -> Path:
+        if isinstance(v, Path):
+            return v
+        if isinstance(v, str) and v:
+            return Path(v)
+        raise ValueError(
+            "dataset_path cannot be empty and must be a valid path string or Path object"
+        )
+
+    @field_validator("ultralytics_assets_tag", mode="before")
+    @classmethod
+    def check_kp_assets_tag_string(cls, v: Any) -> str:
+        if isinstance(v, str) and v:
+            return v
+        if v is None or (isinstance(v, str) and not v):
+            raise ValueError("ultralytics_assets_tag cannot be empty if provided")
+        raise TypeError("ultralytics_assets_tag must be a non-empty string")
+
+    @field_validator("base_model", mode="before")
+    @classmethod
+    def check_kp_base_model_string(cls, v: Any) -> Optional[str]:
+        if isinstance(v, str) and not v:
+            return None
+        if v is None or isinstance(v, str):
+            return v
+        raise TypeError("base_model must be a string or None")
 
 
 class TrainingConfig(BaseModel):
@@ -258,16 +220,20 @@ class TrainingConfig(BaseModel):
 
 
 class Config(BaseModel):
-    project_name: str = "tactifoot_vision"
     logging_level: str = "INFO"
     paths: PathsConfig
-    detection: DetectionConfig
+    detection: Optional[DetectionConfig] = None
+    keypoints: Optional[KeypointsConfig] = None
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
-    keypoints: KeypointsConfig = Field(default_factory=KeypointsConfig)
     geometry: GeometryConfig = Field(default_factory=GeometryConfig)
     visualization: PitchVisualizerConfig = Field(default_factory=PitchVisualizerConfig)
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     training: Optional[TrainingConfig] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_paths_in_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        return values
 
     class Config:
         extra = "forbid"

@@ -72,7 +72,7 @@ class YOLOHandler(BaseHandler):
 
         try:
             logger.info(f"Initializing YOLO model using weights file: {target_path}")
-            model = YOLO(target_path)
+            model = YOLO(target_path, task="detect")
             logger.info(
                 f"Successfully initialized YOLO model with weights from {target_path}"
             )
@@ -86,7 +86,6 @@ class YOLOHandler(BaseHandler):
             ) from e
 
     def detect(self, frame: np.ndarray) -> sv.Detections:
-        super().detect(frame)
         try:
             results = self.model.predict(
                 frame,

@@ -11,7 +11,6 @@ from ultralytics import YOLO
 from ultralytics.utils.downloads import download
 
 from config.models import KeypointsConfig, TrainingKeypointsConfig
-from tactifoot_vision.data.dataset_parsers import convert_coco_to_yolo_pose
 
 logger = logging.getLogger(__name__)
 
@@ -25,22 +24,36 @@ class YOLOPoseHandler:
     ):
         self.config = config
         self.training_config = training_config
-        self.model_dir = (model_dir or Path("models")).resolve()
+        # Ensure model_dir is resolved correctly relative to where config is loaded/script run
+        # Assuming loader handles resolution or script passes absolute path
+        self.model_dir = model_dir if model_dir else Path("models").resolve()
         self.device = self._get_device()
         self.model: Optional[YOLO] = None
 
         try:
-            if config.checkpoint_path:
-                resolved_path = self._resolve_path(config.checkpoint_path)
+            # Use kp_config (main config) for checkpoint loading preference
+            kp_config = config
+            if kp_config.checkpoint_path:
+                # Loader should resolve this path relative to the config file
+                resolved_path = kp_config.checkpoint_path
                 logger.info(
                     f"Initializing YOLO-Pose model from checkpoint: {resolved_path}"
                 )
                 if not resolved_path.is_file():
-                    raise FileNotFoundError(
-                        f"YOLO-Pose checkpoint file not found: {resolved_path}"
-                    )
+                    # Try resolving relative to model_dir as a fallback if loader didn't fully resolve
+                    resolved_path_fallback = (self.model_dir / resolved_path).resolve()
+                    if resolved_path_fallback.is_file():
+                        resolved_path = resolved_path_fallback
+                        logger.info(
+                            f"Resolved checkpoint relative to model_dir: {resolved_path}"
+                        )
+                    else:
+                        raise FileNotFoundError(
+                            f"YOLO-Pose checkpoint file not found: {kp_config.checkpoint_path} (tried {resolved_path} and {resolved_path_fallback})"
+                        )
                 self.model = YOLO(resolved_path, task="pose")
                 logger.info(f"YOLO-Pose model loaded successfully from {resolved_path}")
+            # Use training_config for base_model if no checkpoint specified
             elif training_config and training_config.base_model:
                 logger.info(
                     f"Initializing YOLO-Pose model from base name: {training_config.base_model}"
@@ -60,18 +73,11 @@ class YOLOPoseHandler:
     def _get_device(self) -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
 
-    def _resolve_path(self, path_str_or_obj: str | Path) -> Path:
-        path = Path(path_str_or_obj)
-        if not path.is_absolute():
-            resolved_path = (self.model_dir / path).resolve()
-            logger.debug(
-                f"YOLO-Pose Handler resolved relative path {path} to {resolved_path}"
-            )
-            return resolved_path
-        return path
+    # Removed _resolve_path method - assuming loader handles this primarily
 
     def _init_model_from_name(self, model_name: str) -> YOLO:
         logger.debug(f"YOLO-Pose: Initializing from name {model_name}")
+        # Use the resolved model_dir passed during initialization
         target_path = self.model_dir / model_name
         logger.info(f"Target path for model weights: {target_path}")
         if not target_path.exists():
@@ -81,14 +87,18 @@ class YOLOPoseHandler:
             assets_tag = (
                 self.training_config.ultralytics_assets_tag
                 if self.training_config
-                else "v8.0.0"
+                else "v8.0.0"  # Fallback tag
             )
-            base_url = (
-                f"https://github.com/ultralytics/assets/releases/download/{assets_tag}/"
+            # Ensure assets_tag is treated as string
+            assets_tag_str = (
+                str(assets_tag) if isinstance(assets_tag, Path) else assets_tag
             )
+
+            base_url = f"https://github.com/ultralytics/assets/releases/download/{assets_tag_str}/"
             model_url = base_url + model_name
             logger.info(f"Constructed download URL: {model_url}")
             try:
+                # Download to the specified model_dir
                 download(model_url, dir=self.model_dir, unzip=False)
                 logger.info(
                     f"Successfully downloaded '{model_name}' to {self.model_dir}"
@@ -135,18 +145,15 @@ class YOLOPoseHandler:
                 frame, conf=self.config.confidence_threshold, verbose=False
             )
 
-            # Check if results, boxes, and keypoints are present and valid
             if (
                 not results
                 or results[0].boxes is None
                 or results[0].keypoints is None
                 or len(results[0].boxes) == 0
-                or results[0].keypoints.shape[1]
-                == 0  # Check if keypoints tensor is empty
+                or results[0].keypoints.shape[1] == 0
             ):
-                return None  # No pitch or keypoints detected
+                return None
 
-            # Assume the first detection is the pitch object
             pitch_bbox_xyxy = results[0].boxes.xyxy[0].cpu().numpy()
             kpts_data = results[0].keypoints.data.cpu().numpy()
 
@@ -180,7 +187,7 @@ class YOLOPoseHandler:
                 confidence = np.repeat(confidence[:, np.newaxis], xy.shape[1], axis=1)
 
             keypoints_sv = sv.KeyPoints(xy=xy, confidence=confidence)
-            return keypoints_sv, pitch_bbox_xyxy  # Return both
+            return keypoints_sv, pitch_bbox_xyxy
 
         except Exception:
             logger.exception("Error during YOLO-Pose keypoint detection")
@@ -195,32 +202,28 @@ class YOLOPoseHandler:
         train_cfg = self.training_config
         logger.info("Starting YOLO-Pose training/fine-tuning...")
 
-        yolo_pose_yaml_path = None
-        source_coco_path = Path(train_cfg.source_coco_dataset_path)
-        if not source_coco_path.is_dir():
+        # --- Corrected Logic ---
+        # Directly use the dataset_path which should point to the data.yaml
+        yolo_pose_yaml_path = train_cfg.dataset_path
+        if (
+            not yolo_pose_yaml_path.is_file()
+            or yolo_pose_yaml_path.suffix.lower() != ".yaml"
+        ):
+            # Loader should have resolved the path, check if it's valid
             raise FileNotFoundError(
-                f"Source COCO dataset directory not found: {source_coco_path}"
+                f"YOLO-Pose dataset YAML file not found or invalid: {yolo_pose_yaml_path}"
             )
-        try:
-            yolo_pose_yaml_path = convert_coco_to_yolo_pose(source_coco_path)
-            logger.info(
-                f"Using converted YOLO-Pose dataset from: {yolo_pose_yaml_path.parent}"
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to convert COCO dataset to YOLO-Pose format: {e}",
-                exc_info=True,
-            )
-            raise RuntimeError("Dataset conversion failed.") from e
+        logger.info(f"Using YOLO-Pose dataset definition from: {yolo_pose_yaml_path}")
+        # --- End Corrected Logic ---
 
         try:
             train_args = {
-                "data": str(yolo_pose_yaml_path),
+                "data": str(yolo_pose_yaml_path),  # Use the direct path to data.yaml
                 "epochs": train_cfg.epochs,
                 "batch": train_cfg.batch_size,
                 "imgsz": train_cfg.imgsz,
                 "optimizer": train_cfg.optimizer,
-                "project": train_cfg.project_name,
+                "project": str(train_cfg.project_name),  # Ensure project path is string
                 "name": train_cfg.run_name,
                 "device": train_cfg.device,
                 "plots": train_cfg.plots,
@@ -232,9 +235,14 @@ class YOLOPoseHandler:
             results = self.model.train(**train_args)
             logger.success("YOLO-Pose training completed.")
             try:
-                save_dir = results.save_dir
-                best_weights_path = Path(save_dir) / "weights" / "best.pt"
-                logger.info(f"Best weights saved at: {best_weights_path}")
+                # Ensure save_dir is treated as Path if it exists
+                save_dir_val = getattr(results, "save_dir", None)
+                if save_dir_val:
+                    save_dir = Path(save_dir_val)
+                    best_weights_path = save_dir / "weights" / "best.pt"
+                    logger.info(f"Best weights saved at: {best_weights_path}")
+                else:
+                    logger.info("Could not determine save_dir from training results.")
             except AttributeError:
                 logger.info(
                     "Could not determine exact path of best weights from results."

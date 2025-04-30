@@ -11,9 +11,9 @@ paths:
   merged_output_csv: "output/merged_output_period1.csv" # Example: Output for period 1
 
 detection:
-  model_type: "rfdetr"
+  model_type: "yolo"
   # checkpoint_path: "../models/yolov9-e.pt" # Example for inference/fine-tune
-  checkpoint_path: "../output/checkpoint_best_total.pth" # Example for training from scratch
+  # checkpoint_path: "../output/checkpoint_best_total.pth" # Example for training from scratch
   confidence_threshold: 0.3
   nms_threshold: 0.5
   classes:
@@ -24,7 +24,7 @@ detection:
 
 training:
   detection:
-    base_model: "rfdetr_base" # Used if detection.checkpoint_path is null
+    base_model: "yolov12x.pt" # Used if detection.checkpoint_path is null
     dataset_path: "../data/datasets/football_yolo/data.yaml"
     # dataset_path: "/home/kuba/uam/doktorat/datasets/football-dataset"
     ultralytics_assets_tag: "v8.3.0"

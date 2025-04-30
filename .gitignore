@@ -19,6 +19,7 @@ data/
 models/
 output/
 tactifoot_kp_training/
+results/
 *.sh
 *.txt
 *.pt

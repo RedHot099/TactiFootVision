@@ -3,6 +3,7 @@ import argparse
 import sys
 import json
 from pathlib import Path
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -51,6 +52,47 @@ def calculate_distance(loc1, loc2):
     except Exception as e:
         logger.trace(f"Error calculating distance between {loc1} and {loc2}: {e}")
         return np.inf
+
+def plot_distance_histogram(
+    distances: list[float],
+    output_path: Path,
+    title: str = "Distribution of Euclidean Distances",
+    xlabel: str = "Euclidean Distance",
+    ylabel: str = "Frequency",
+    bins: int = 50,
+):
+    """
+    Generates and saves a histogram of the provided distances.
+
+    Args:
+        distances: A list of float values representing the distances.
+        output_path: The Path object where the histogram image will be saved.
+        title: The title for the histogram plot.
+        xlabel: The label for the x-axis.
+        ylabel: The label for the y-axis.
+        bins: The number of bins to use in the histogram.
+    """
+    if not distances:
+        logger.warning("No distances provided to plot_distance_histogram. Skipping.")
+        return
+
+    logger.info(f"Generating distance histogram with {len(distances)} values...")
+    try:
+        plt.figure(figsize=(10, 6))  # Create a new figure
+        plt.hist(distances, bins=bins, color="skyblue", edgecolor="black")
+        plt.title(title)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.grid(axis="y", alpha=0.75)
+
+        # Ensure output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, bbox_inches="tight")
+        plt.close()  # Close the figure to free memory
+        logger.success(f"Histogram saved successfully to: {output_path}")
+
+    except Exception as e:
+        logger.error(f"Failed to generate or save histogram: {e}", exc_info=True)
 
 
 def main(config_path: Path):
@@ -259,8 +301,29 @@ def main(config_path: Path):
             mean_distance = np.mean(distances)
             logger.success(f"Successfully matched {match_count} StatsBomb rows.")
             logger.success(f"Mean Euclidean distance for matches: {mean_distance:.4f}")
+
+            # --- Generate and save histogram ---
+            try:
+                # Define path for the histogram image (same dir as CSV, different extension)
+                histogram_output_path = output_csv_path.with_suffix(".png")
+                plot_distance_histogram(
+                    distances=distances,  # Pass the collected distances
+                    output_path=histogram_output_path,
+                    title=f"Distribution of Positional Errors (Period {target_period})",
+                    xlabel="Euclidean Distance (Pitch Units)",  # Adjust label if units are known (e.g., meters, cm)
+                    ylabel="Frequency (Number of Matches)",
+                    bins=50,  # Adjust number of bins if needed
+                )
+            except Exception as hist_err:
+                # Log error but don't stop the script from saving the CSV
+                logger.error(f"Could not generate histogram: {hist_err}", exc_info=True)
+            # ------------------------------------
+
         else:
             logger.warning("No matches found between the two datasets for the period.")
+            logger.warning(
+                "Skipping histogram generation as there are no distances."
+            )  # Added warning
 
         # Drop the temporary parsed location column before saving
         df_statsbomb_filtered.drop(columns=["parsed_location"], inplace=True)

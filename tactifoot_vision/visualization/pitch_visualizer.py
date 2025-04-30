@@ -64,61 +64,56 @@ class PitchVisualizer:
                 "Canvas padding is too large for the specified canvas width/height."
             )
 
-        self.scale_x = draw_width / self.logical_length if self.logical_length else 1.0
-        self.scale_y = draw_height / self.logical_width if self.logical_width else 1.0
+        self.scale_x_logical = (
+            draw_width / self.logical_length if self.logical_length else 1.0
+        )
+        self.scale_y_logical = (
+            draw_height / self.logical_width if self.logical_width else 1.0
+        )
+
+        self.scale_x_standard = (
+            draw_width / STANDARD_PITCH_LENGTH if STANDARD_PITCH_LENGTH else 1.0
+        )
+        self.scale_y_standard = (
+            draw_height / STANDARD_PITCH_WIDTH if STANDARD_PITCH_WIDTH else 1.0
+        )
 
         logger.info(
             f"OpenCV PitchVisualizer initialized. Canvas: {self.canvas_width_px}x{self.canvas_height_px}px. "
-            f"Logical Input Dims: {self.logical_length}x{self.logical_width}. Scale: ({self.scale_x:.2f}, {self.scale_y:.2f})"
+            f"Logical Input Dims: {self.logical_length}x{self.logical_width}. Scale Logical: ({self.scale_x_logical:.2f}, {self.scale_y_logical:.2f}). Scale Standard: ({self.scale_x_standard:.2f}, {self.scale_y_standard:.2f})"
         )
 
     def _scale_point(self, logical_point: np.ndarray) -> Optional[Tuple[int, int]]:
         if logical_point is None or logical_point.shape != (1, 2):
             return None
         x_logic, y_logic = logical_point[0]
-        px = int(x_logic * self.scale_x) + self.padding_px
-        py = int(y_logic * self.scale_y) + self.padding_px
+        px = int(x_logic * self.scale_x_logical) + self.padding_px
+        py = int(y_logic * self.scale_y_logical) + self.padding_px
         return px, py
 
     def _scale_standard_point(
         self, standard_point: Tuple[float, float]
     ) -> Optional[Tuple[int, int]]:
-        x_logic = (standard_point[0] / STANDARD_PITCH_LENGTH) * self.logical_length
-        y_logic = (
-            (STANDARD_PITCH_WIDTH - standard_point[1]) / STANDARD_PITCH_WIDTH
-        ) * self.logical_width
-        return self._scale_point(np.array([[x_logic, y_logic]]))
-
-    def _calculate_arc_angles(
-        self, penalty_spot_x: float, box_line_x: float, radius: float, center_y: float
-    ) -> Optional[Tuple[float, float]]:
-        delta_x = box_line_x - penalty_spot_x
-        delta_x_sq = delta_x * delta_x
-        radius_sq = radius * radius
-        if radius_sq < delta_x_sq:
-            return None
-        delta_y = math.sqrt(radius_sq - delta_x_sq)
-        y_intersect1_std = center_y - delta_y
-        y_intersect2_std = center_y + delta_y
-        angle1_rad = math.atan2(
-            y_intersect1_std - center_y, box_line_x - penalty_spot_x
+        x_std, y_std = standard_point
+        px = int(x_std * self.scale_x_standard) + self.padding_px
+        py = (
+            int((STANDARD_PITCH_WIDTH - y_std) * self.scale_y_standard)
+            + self.padding_px
         )
-        angle2_rad = math.atan2(
-            y_intersect2_std - center_y, box_line_x - penalty_spot_x
-        )
-        angle1_deg = math.degrees(angle1_rad)
-        angle2_deg = math.degrees(angle2_rad)
-        return min(angle1_deg, angle2_deg), max(angle1_deg, angle2_deg)
+        px = max(self.padding_px, min(self.canvas_width_px - self.padding_px - 1, px))
+        py = max(self.padding_px, min(self.canvas_height_px - self.padding_px - 1, py))
+        return px, py
 
     def _draw_base_pitch(self, canvas: np.ndarray):
         line_thick = self.config.line_thickness
-        # Uses the corrected edges from self.pitch_def_standard
+
         for edge_indices in self.pitch_def_standard.edges:
             idx1, idx2 = edge_indices
             if not (
                 0 <= idx1 < len(self.pitch_def_standard.vertices)
                 and 0 <= idx2 < len(self.pitch_def_standard.vertices)
             ):
+                logger.warning(f"Invalid edge index found: ({idx1}, {idx2})")
                 continue
             pt1_std = self.pitch_def_standard.vertices[idx1]
             pt2_std = self.pitch_def_standard.vertices[idx2]
@@ -133,9 +128,7 @@ class PitchVisualizer:
         center_scaled = self._scale_standard_point(center_std)
         if center_scaled:
             radius_px = int(
-                self.pitch_def_standard.centre_circle_radius
-                * self.scale_y
-                * (self.logical_width / STANDARD_PITCH_WIDTH)
+                self.pitch_def_standard.centre_circle_radius * self.scale_y_standard
             )
             cv2.circle(
                 canvas, center_scaled, radius_px, self.line_color_bgr, line_thick
@@ -161,54 +154,50 @@ class PitchVisualizer:
             cv2.circle(canvas, spot2_scaled, spot_radius_px, self.line_color_bgr, -1)
 
         arc_radius_std = self.pitch_def_standard.centre_circle_radius
-        arc_radius_px_x = int(
-            arc_radius_std
-            * self.scale_x
-            * (self.logical_length / STANDARD_PITCH_LENGTH)
+        delta_x_std = abs(
+            self.pitch_def_standard.penalty_box_length
+            - self.pitch_def_standard.penalty_spot_distance
         )
-        arc_radius_px_y = int(
-            arc_radius_std * self.scale_y * (self.logical_width / STANDARD_PITCH_WIDTH)
-        )
+        start_angle_deg = 0.0
+        end_angle_deg = 0.0
+        if arc_radius_std > delta_x_std:
+            alpha_rad = math.acos(delta_x_std / arc_radius_std)
+            start_angle_deg = -math.degrees(alpha_rad)
+            end_angle_deg = math.degrees(alpha_rad)
+        else:
+            logger.warning(
+                "Penalty arc radius is not larger than distance to box line - cannot draw arcs."
+            )
+
+        arc_radius_px_x = int(arc_radius_std * self.scale_x_standard)
+        arc_radius_px_y = int(arc_radius_std * self.scale_y_standard)
         axes = (arc_radius_px_x, arc_radius_px_y)
 
-        if spot1_scaled:  # Left Arc
-            angles_left = self._calculate_arc_angles(
-                self.pitch_def_standard.penalty_spot_distance,
-                self.pitch_def_standard.penalty_box_length,
-                arc_radius_std,
-                STANDARD_PITCH_WIDTH / 2.0,
+        if spot1_scaled and arc_radius_std > delta_x_std:
+            cv2.ellipse(
+                canvas,
+                center=spot1_scaled,
+                axes=axes,
+                angle=0,
+                startAngle=start_angle_deg,
+                endAngle=end_angle_deg,
+                color=self.line_color_bgr,
+                thickness=line_thick,
             )
-            if angles_left:
-                start_angle_deg, end_angle_deg = angles_left
-                cv2.ellipse(
-                    canvas,
-                    center=spot1_scaled,
-                    axes=axes,
-                    angle=0,
-                    startAngle=start_angle_deg,
-                    endAngle=end_angle_deg,
-                    color=self.line_color_bgr,
-                    thickness=line_thick,
-                )
-        if spot2_scaled:  # Right Arc
-            angles_right = self._calculate_arc_angles(
-                STANDARD_PITCH_LENGTH - self.pitch_def_standard.penalty_spot_distance,
-                STANDARD_PITCH_LENGTH - self.pitch_def_standard.penalty_box_length,
-                arc_radius_std,
-                STANDARD_PITCH_WIDTH / 2.0,
+
+        if spot2_scaled and arc_radius_std > delta_x_std:
+            right_start_angle = 180.0 - end_angle_deg
+            right_end_angle = 180.0 - start_angle_deg
+            cv2.ellipse(
+                canvas,
+                center=spot2_scaled,
+                axes=axes,
+                angle=0,
+                startAngle=right_start_angle,
+                endAngle=right_end_angle,
+                color=self.line_color_bgr,
+                thickness=line_thick,
             )
-            if angles_right:
-                start_angle_deg, end_angle_deg = angles_right
-                cv2.ellipse(
-                    canvas,
-                    center=spot2_scaled,
-                    axes=axes,
-                    angle=0,
-                    startAngle=start_angle_deg,
-                    endAngle=end_angle_deg,
-                    color=self.line_color_bgr,
-                    thickness=line_thick,
-                )
 
     def _draw_points(
         self,
@@ -223,7 +212,9 @@ class PitchVisualizer:
         if logical_coords.ndim == 1:
             logical_coords = logical_coords.reshape(1, -1)
         if logical_coords.shape[1] != 2:
+            logger.warning(f"Invalid shape for logical_coords: {logical_coords.shape}")
             return
+
         use_team_colors = team_ids is not None and len(team_ids) == len(logical_coords)
         for i, point_logic_arr in enumerate(logical_coords):
             point_logic = point_logic_arr.reshape(1, 2)
@@ -232,20 +223,18 @@ class PitchVisualizer:
                 color = default_color
                 if use_team_colors:
                     team_id = team_ids[i]
-                    if team_id == 0:
-                        color = self.team_color_0_bgr
-                    elif team_id == 1:
-                        color = self.team_color_1_bgr
+                    # Example team coloring - adjust logic if needed
+                    # if team_id == config.detection.classes.get("player_team_0", -1): # Hypothetical class names
+                    #     color = self.team_color_0_bgr
+                    # elif team_id == config.detection.classes.get("player_team_1", -2):
+                    #     color = self.team_color_1_bgr
                 cv2.circle(canvas, scaled_point, radius, color, -1)
-
-    # Removed _draw_path method
 
     def draw_frame(
         self,
         player_coords: Optional[np.ndarray] = None,
         player_team_ids: Optional[np.ndarray] = None,
         ball_coords: Optional[np.ndarray] = None,
-        # Removed ball_path argument
     ) -> Optional[np.ndarray]:
         if not self.config.enabled:
             return None
@@ -255,7 +244,6 @@ class PitchVisualizer:
             dtype=np.uint8,
         )
         self._draw_base_pitch(canvas)
-        # Removed call to _draw_path
         self._draw_points(
             canvas,
             player_coords,
