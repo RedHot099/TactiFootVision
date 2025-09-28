@@ -66,6 +66,8 @@ tracking:
     checkpoint_path: null   # e.g., ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_large.pt
     config_path: null       # e.g., ../external/segment-anything-2-real-time/configs/sam2.1/sam2.1_hiera_l.yaml
     mask_filter_distance: 300.0
+    reseed_interval: null
+    reseed_iou_threshold: 0.3
 
 keypoints:
   enabled: true

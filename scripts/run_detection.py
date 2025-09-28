@@ -209,6 +209,12 @@ def main(config_path: Path):
         )
         # --------------------------
 
+        reseed_interval = None
+        reseed_iou_threshold = 0.3
+        if backend == "sam2" and config.tracking.sam2 is not None:
+            reseed_interval = config.tracking.sam2.reseed_interval
+            reseed_iou_threshold = config.tracking.sam2.reseed_iou_threshold
+
         with tqdm(total=total_frames, desc="Processing frames", unit="frame") as pbar:
             for frame in frame_generator:
                 detections = detection_handler.detect(frame)
@@ -252,6 +258,82 @@ def main(config_path: Path):
                             tracked_detections = player_tracker.update(other_detections)
                         case _:
                             tracked_detections = other_detections
+
+                refresh_due = (
+                    backend == "sam2"
+                    and sam2_tracker is not None
+                    and reseed_interval is not None
+                    and reseed_interval > 0
+                    and frame_count > 0
+                    and frame_count % reseed_interval == 0
+                )
+                if refresh_due:
+                    tracked_boxes = (
+                        tracked_detections.xyxy.astype(np.float32)
+                        if len(tracked_detections) > 0
+                        else np.empty((0, 4), dtype=np.float32)
+                    )
+                    tracked_ids = (
+                        tracked_detections.tracker_id.astype(int)
+                        if tracked_detections.tracker_id is not None
+                        else np.empty((0,), dtype=int)
+                    )
+                    tracked_classes = (
+                        tracked_detections.class_id.astype(int)
+                        if tracked_detections.class_id is not None
+                        else np.full(len(tracked_boxes), -1, dtype=int)
+                    )
+
+                    det_boxes = (
+                        other_detections.xyxy.astype(np.float32)
+                        if len(other_detections) > 0
+                        else np.empty((0, 4), dtype=np.float32)
+                    )
+                    det_classes = (
+                        other_detections.class_id.astype(int)
+                        if other_detections.class_id is not None
+                        else np.full(len(det_boxes), -1, dtype=int)
+                    )
+
+                    new_mask = np.ones(len(det_boxes), dtype=bool)
+                    if tracked_boxes.size > 0 and det_boxes.size > 0:
+                        iou_matrix = sv.box_iou_batch(det_boxes, tracked_boxes)
+                        max_iou = iou_matrix.max(axis=1)
+                        new_mask = max_iou < reseed_iou_threshold
+
+                    new_boxes = det_boxes[new_mask]
+                    new_classes = det_classes[new_mask]
+                    new_ids = sam2_tracker.allocate_ids(len(new_boxes)) if len(new_boxes) > 0 else np.empty((0,), dtype=int)
+
+                    if tracked_boxes.size > 0:
+                        combined_boxes = tracked_boxes
+                        combined_classes = tracked_classes
+                        combined_ids = tracked_ids
+                        if len(new_boxes) > 0:
+                            combined_boxes = np.concatenate([combined_boxes, new_boxes], axis=0)
+                            combined_classes = np.concatenate([combined_classes, new_classes], axis=0)
+                            combined_ids = np.concatenate([combined_ids, new_ids], axis=0)
+                    else:
+                        combined_boxes = new_boxes
+                        combined_classes = new_classes
+                        combined_ids = new_ids
+
+                    if combined_boxes.size > 0:
+                        refresh_result = sam2_tracker.refresh_prompts(
+                            frame,
+                            combined_boxes,
+                            combined_classes,
+                            combined_ids,
+                        )
+                        tracked_detections = refresh_result
+                    else:
+                        sam2_tracker.refresh_prompts(
+                            frame,
+                            combined_boxes,
+                            combined_classes,
+                            combined_ids,
+                        )
+                        tracked_detections = sv.Detections.empty()
 
                 keypoints_sv: Optional[sv.KeyPoints] = None
                 pitch_bbox_xyxy: Optional[np.ndarray] = None

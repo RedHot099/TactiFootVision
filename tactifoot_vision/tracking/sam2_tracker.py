@@ -4,7 +4,6 @@ import torch
 import cv2
 import sys
 from pathlib import Path
-
 from typing import Optional
 
 from config.models import TrackingConfig
@@ -79,28 +78,79 @@ class SAM2Tracker:
         self._frame_index: int = 0
 
     def initialize(self, frame: np.ndarray, boxes_xyxy: np.ndarray, class_ids: Optional[np.ndarray] = None):
-        if boxes_xyxy is None or len(boxes_xyxy) == 0:
-            self._predictor.load_first_frame(frame)
+        boxes = boxes_xyxy.astype(np.float32) if boxes_xyxy is not None else np.empty((0, 4), dtype=np.float32)
+        classes = (
+            class_ids.astype(int)
+            if class_ids is not None and len(class_ids) == len(boxes)
+            else np.full(len(boxes), -1, dtype=int)
+        )
+        if len(boxes) == 0:
+            self._reset_predictor(frame)
             self._initialized = True
+            self._last_boxes = {}
+            self._next_id = 1
+            self._frame_index = 0
             return
-
-        self._predictor.load_first_frame(frame)
-        tracker_ids = np.arange(1, len(boxes_xyxy) + 1, dtype=int)
-        if class_ids is not None and len(class_ids) == len(tracker_ids):
-            for tid, cls in zip(tracker_ids, class_ids):
-                self._id_to_class[int(tid)] = int(cls)
-        for xyxy, tid in zip(boxes_xyxy, tracker_ids):
-            xyxy_ = np.array([xyxy], dtype=np.float32)
-            _ = self._predictor.add_new_prompt(frame_idx=0, obj_id=int(tid), bbox=xyxy_)
-        self._initialized = True
-        self._next_id = int(tracker_ids[-1]) + 1 if len(tracker_ids) > 0 else 1
-        self._last_boxes = {int(t): np.array(b, dtype=np.float32) for t, b in zip(tracker_ids, boxes_xyxy)}
-        self._frame_index = 0
+        tracker_ids = np.arange(1, len(boxes) + 1, dtype=int)
+        self.refresh_prompts(frame, boxes, classes, tracker_ids)
 
     def track(self, frame: np.ndarray) -> sv.Detections:
         if not self._initialized:
             raise RuntimeError("SAM2Tracker not initialized. Call initialize() with first frame and boxes.")
+        return self._run_raw_track(frame)
 
+    def allocate_ids(self, count: int) -> np.ndarray:
+        if count <= 0:
+            return np.empty((0,), dtype=int)
+        ids = np.arange(self._next_id, self._next_id + count, dtype=int)
+        self._next_id += count
+        return ids
+
+    def refresh_prompts(
+        self,
+        frame: np.ndarray,
+        boxes: np.ndarray,
+        class_ids: np.ndarray,
+        tracker_ids: np.ndarray,
+    ) -> sv.Detections:
+        boxes = boxes.astype(np.float32)
+        class_ids = (
+            class_ids.astype(int)
+            if len(class_ids) == len(boxes)
+            else np.full(len(boxes), -1, dtype=int)
+        )
+        tracker_ids = (
+            tracker_ids.astype(int)
+            if len(tracker_ids) == len(boxes)
+            else np.arange(self._next_id, self._next_id + len(boxes), dtype=int)
+        )
+
+        self._reset_predictor(frame)
+        self._id_to_class.clear()
+        for box, tid, cls in zip(boxes, tracker_ids, class_ids):
+            bbox = np.array([box], dtype=np.float32)
+            _ = self._predictor.add_new_prompt(
+                frame_idx=0,
+                obj_id=int(tid),
+                bbox=bbox,
+            )
+            self._id_to_class[int(tid)] = int(cls)
+
+        if len(boxes) == 0:
+            self._last_boxes = {}
+            self._next_id = 1
+            self._frame_index = 0
+            self._initialized = True
+            return sv.Detections.empty()
+
+        detections = self._run_raw_track(frame)
+        if detections.tracker_id is not None and len(detections.tracker_id) > 0:
+            self._next_id = max(self._next_id, int(detections.tracker_id.max()) + 1)
+        self._frame_index = 1
+        self._initialized = True
+        return detections
+
+    def _run_raw_track(self, frame: np.ndarray) -> sv.Detections:
         use_cuda = torch.cuda.is_available()
         with torch.inference_mode():
             if use_cuda:
@@ -131,5 +181,9 @@ class SAM2Tracker:
         self._frame_index += 1
         return sv.Detections(xyxy=xyxy, mask=masks, confidence=conf, class_id=class_ids, tracker_id=ids)
 
-    def set_class_for_id(self, tracker_id: int, class_id: int):
-        self._id_to_class[int(tracker_id)] = int(class_id)
+    def _reset_predictor(self, frame: np.ndarray):
+        try:
+            self._predictor.reset_state()
+        except Exception:
+            pass
+        self._predictor.load_first_frame(frame)

@@ -78,6 +78,8 @@ class SAM2Config(BaseModel):
     checkpoint_path: Optional[Path] = None
     config_path: Optional[Path] = None
     mask_filter_distance: float = Field(300.0, ge=0.0)
+    reseed_interval: Optional[int] = Field(None, ge=1)
+    reseed_iou_threshold: float = Field(0.3, ge=0.0, le=1.0)
 
     @field_validator("checkpoint_path", "config_path", mode="before")
     @classmethod
