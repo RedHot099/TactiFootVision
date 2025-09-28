@@ -16,6 +16,7 @@ from tactifoot_vision.data.video_loader import VideoLoader
 from tactifoot_vision.detection.yolo_handler import YOLOHandler
 from tactifoot_vision.detection.rfdetr_handler import RFDETRHandler
 from tactifoot_vision.tracking.tracker import Tracker
+from tactifoot_vision.tracking.sam2_tracker import SAM2Tracker
 from tactifoot_vision.tracking.ball_tracker import BallTracker
 from tactifoot_vision.keypoints.yolo_pose_handler import YOLOPoseHandler
 from tactifoot_vision.geometry.view_transformer import ViewTransformer
@@ -120,8 +121,25 @@ def main(config_path: Path):
                 f"Tracker frame_rate not set, using video FPS: {video_info.fps:.2f}"
             )
             config.tracking.frame_rate = int(round(video_info.fps))
-        player_tracker = Tracker(config.tracking)
-        logger.success("Player Tracker initialized.")
+        backend = getattr(config.tracking, "backend", "bytetrack")
+        player_tracker = None
+        sam2_tracker = None
+        match backend:
+            case "sam2":
+                try:
+                    sam2_tracker = SAM2Tracker(config.tracking)
+                    logger.success("SAM2 Tracker initialized.")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to initialize SAM2 tracker: {e}", exc_info=True
+                    )
+                    sys.exit(1)
+            case "bytetrack":
+                player_tracker = Tracker(config.tracking)
+                logger.success("ByteTrack Tracker initialized.")
+            case other:
+                logger.error(f"Unsupported tracking backend: {other}")
+                sys.exit(1)
 
         video_loader = VideoLoader(video_path_abs)
         logger.info(
@@ -137,6 +155,13 @@ def main(config_path: Path):
         box_annotator = sv.BoxAnnotator(thickness=2)
         label_annotator = sv.LabelAnnotator(text_thickness=1, text_scale=0.5)
         pitch_vertex_annotator = sv.VertexAnnotator(color=sv.Color.GREEN, radius=3)
+        mask_annotator = None
+        if config.visualization.draw_segmentation_masks:
+            mask_annotator = sv.MaskAnnotator(
+                color=sv.Color.WHITE,
+                opacity=0.45,
+                color_lookup=sv.ColorLookup.TRACK,
+            )
         ball_class_id = config.detection.classes.get("ball", -1)
         pitch_config_instance = SoccerPitchConfiguration(
             length=config.geometry.target_pitch_length,
@@ -189,10 +214,44 @@ def main(config_path: Path):
                 detections = detection_handler.detect(frame)
                 ball_detections = detections[detections.class_id == ball_class_id]
                 other_detections = detections[detections.class_id != ball_class_id]
-                if config.tracking.enabled:
-                    tracked_detections = player_tracker.update(other_detections)
-                else:
+
+                if not config.tracking.enabled:
                     tracked_detections = other_detections
+                else:
+                    match backend:
+                        case "sam2":
+                            if frame_count == 0:
+                                try:
+                                    prompt_boxes = (
+                                        other_detections.xyxy
+                                        if len(other_detections) > 0
+                                        else None
+                                    )
+                                    prompt_cls = (
+                                        other_detections.class_id
+                                        if len(other_detections) > 0
+                                        else None
+                                    )
+                                    sam2_tracker.initialize(
+                                        frame, prompt_boxes, prompt_cls
+                                    )
+                                except Exception as init_e:
+                                    logger.error(
+                                        f"SAM2 initialize failed: {init_e}",
+                                        exc_info=True,
+                                    )
+                                    sys.exit(1)
+                            try:
+                                tracked_detections = sam2_tracker.track(frame)
+                            except Exception as track_e:
+                                logger.error(
+                                    f"SAM2 track failed: {track_e}", exc_info=True
+                                )
+                                tracked_detections = sv.Detections.empty()
+                        case "bytetrack":
+                            tracked_detections = player_tracker.update(other_detections)
+                        case _:
+                            tracked_detections = other_detections
 
                 keypoints_sv: Optional[sv.KeyPoints] = None
                 pitch_bbox_xyxy: Optional[np.ndarray] = None
@@ -294,31 +353,54 @@ def main(config_path: Path):
                     )
 
                 annotated_frame = frame.copy()
-                labels = []
-                if len(tracked_detections) > 0:
+                if (
+                    mask_annotator
+                    and tracked_detections.mask is not None
+                    and tracked_detections.mask.size > 0
+                ):
+                    try:
+                        annotated_frame = mask_annotator.annotate(
+                            scene=annotated_frame, detections=tracked_detections
+                        )
+                    except Exception as mask_err:
+                        logger.warning(
+                            f"Frame {frame_count}: Failed to draw segmentation masks: {mask_err}"
+                        )
+                pipeline_exporter.add_frame_data(
+                    frame_id=frame_count,
+                    period=current_period,
+                    tracked_detections=tracked_detections,
+                    pitch_coords=player_pitch_coords,
+                    ball_pitch_coords=current_ball_pitch_pos,
+                    homography=view_transformer.current_homography,
+                    visible_area=visible_area_list,
+                    timestamp_seconds=current_timestamp_seconds,
+                )
+
+                if (
+                    config.visualization.draw_bounding_boxes
+                    and len(tracked_detections) > 0
+                ):
+                    labels: list[str] = []
                     for det_idx in range(len(tracked_detections)):
-                        class_id = tracked_detections.class_id[det_idx]
                         tracker_id = (
                             tracked_detections.tracker_id[det_idx]
                             if tracked_detections.tracker_id is not None
                             else None
                         )
-                        confidence = tracked_detections.confidence[det_idx]
-                        class_name = id_to_name_map.get(class_id, f"CLS-{class_id}")
-                        label = (
-                            f"#{tracker_id} {class_name} {confidence:.2f}"
-                            if tracker_id is not None
-                            else f"{class_name} {confidence:.2f}"
-                        )
+                        label = f"#{tracker_id}" if tracker_id is not None else ""
                         labels.append(label)
                     annotated_frame = box_annotator.annotate(
                         annotated_frame, tracked_detections
                     )
-                    if labels:
+                    if any(labels):
                         annotated_frame = label_annotator.annotate(
                             annotated_frame, tracked_detections, labels
                         )
-                if len(ball_detections) > 0:
+                if (
+                    config.visualization.draw_bounding_boxes
+                    and len(ball_detections) > 0
+                ):
                     annotated_frame = box_annotator.annotate(
                         annotated_frame, ball_detections
                     )
@@ -372,45 +454,54 @@ def main(config_path: Path):
                     and frame_pitch_vertices_main.shape == (num_expected_vertices, 2)
                 ):
                     try:
-                        if main_frame_edges_0_based:
-                            for u, v in main_frame_edges_0_based:
-                                if 0 <= u < len(
-                                    frame_pitch_vertices_main
-                                ) and 0 <= v < len(frame_pitch_vertices_main):
-                                    pt1 = tuple(
-                                        frame_pitch_vertices_main[u].astype(int)
+                        if config.visualization.draw_projected_pitch:
+                            if main_frame_edges_0_based:
+                                for u, v in main_frame_edges_0_based:
+                                    if 0 <= u < len(
+                                        frame_pitch_vertices_main
+                                    ) and 0 <= v < len(frame_pitch_vertices_main):
+                                        pt1 = tuple(
+                                            frame_pitch_vertices_main[u].astype(int)
+                                        )
+                                        pt2 = tuple(
+                                            frame_pitch_vertices_main[v].astype(int)
+                                        )
+                                        cv2.line(
+                                            annotated_frame,
+                                            pt1,
+                                            pt2,
+                                            proj_line_color,
+                                            proj_line_thickness,
+                                        )
+                            frame_all_key_points_sv = sv.KeyPoints(
+                                xy=frame_pitch_vertices_main[np.newaxis, ...]
+                            )
+                            annotated_frame = pitch_vertex_annotator.annotate(
+                                scene=annotated_frame,
+                                key_points=frame_all_key_points_sv,
+                            )
+                            for i, xy in enumerate(frame_pitch_vertices_main):
+                                if i < len(pitch_labels):
+                                    center = tuple(xy.astype(int))
+                                    label_text = pitch_labels[i]
+                                    text_org = (
+                                        center[0] - 4,
+                                        center[1] + kp_radius + 8,
                                     )
-                                    pt2 = tuple(
-                                        frame_pitch_vertices_main[v].astype(int)
-                                    )
-                                    cv2.line(
+                                    cv2.putText(
                                         annotated_frame,
-                                        pt1,
-                                        pt2,
-                                        proj_line_color,
-                                        proj_line_thickness,
+                                        label_text,
+                                        text_org,
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        proj_label_scale,
+                                        proj_label_color,
+                                        proj_label_thickness,
+                                        cv2.LINE_AA,
                                     )
-                        frame_all_key_points_sv = sv.KeyPoints(
-                            xy=frame_pitch_vertices_main[np.newaxis, ...]
-                        )
-                        annotated_frame = pitch_vertex_annotator.annotate(
-                            scene=annotated_frame, key_points=frame_all_key_points_sv
-                        )
-                        for i, xy in enumerate(frame_pitch_vertices_main):
-                            if i < len(pitch_labels):
-                                center = tuple(xy.astype(int))
-                                label_text = pitch_labels[i]
-                                text_org = (center[0] - 4, center[1] + kp_radius + 8)
-                                cv2.putText(
-                                    annotated_frame,
-                                    label_text,
-                                    text_org,
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    proj_label_scale,
-                                    proj_label_color,
-                                    proj_label_thickness,
-                                    cv2.LINE_AA,
-                                )
+                        else:
+                            logger.debug(
+                                "Projected pitch drawing disabled; vertices computed but not rendered."
+                            )
                     except Exception as vis_err:
                         logger.warning(
                             f"Frame {frame_count}: Error drawing projected pitch: {vis_err}"

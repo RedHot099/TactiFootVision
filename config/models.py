@@ -65,11 +65,30 @@ class DetectionConfig(BaseModel):
 
 class TrackingConfig(BaseModel):
     enabled: bool = True
+    backend: Literal["bytetrack", "sam2"] = "bytetrack"
     track_activation_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     lost_track_buffer: Optional[int] = Field(None, ge=1)
     minimum_matching_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     frame_rate: Optional[int] = Field(None, ge=1)
     minimum_consecutive_frames: Optional[int] = Field(None, ge=1)
+    sam2: Optional["SAM2Config"] = None
+
+
+class SAM2Config(BaseModel):
+    checkpoint_path: Optional[Path] = None
+    config_path: Optional[Path] = None
+    mask_filter_distance: float = Field(300.0, ge=0.0)
+
+    @field_validator("checkpoint_path", "config_path", mode="before")
+    @classmethod
+    def _pathify(cls, v: Any) -> Optional[Path]:
+        if isinstance(v, Path):
+            return v
+        if isinstance(v, str) and v:
+            return Path(v)
+        if v is None or (isinstance(v, str) and not v):
+            return None
+        raise TypeError("Value must be a string, Path, or None")
 
 
 class KeypointsConfig(BaseModel):
@@ -125,6 +144,9 @@ class PitchVisualizerConfig(BaseModel):
     ] = "bottom-center"
     overlay_padding: int = 10
     overlay_alpha: float = Field(0.8, ge=0.0, le=1.0)
+    draw_projected_pitch: bool = True
+    draw_segmentation_masks: bool = False
+    draw_bounding_boxes: bool = True
 
 
 class ProcessingConfig(BaseModel):
@@ -220,6 +242,7 @@ class TrainingConfig(BaseModel):
 
 
 class Config(BaseModel):
+    project_name: str = "tactifoot_vision"
     logging_level: str = "INFO"
     paths: PathsConfig
     detection: Optional[DetectionConfig] = None

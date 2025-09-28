@@ -20,10 +20,13 @@ models/
 output/
 tactifoot_kp_training/
 results/
+external/
+runs/
 *.sh
 *.txt
 *.pt
 *.pth
+*.yaml
 
 # IDE specific
 .idea/

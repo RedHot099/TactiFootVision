@@ -24,7 +24,7 @@ detection:
 
 training:
   detection:
-    base_model: "yolov12x.pt" # Used if detection.checkpoint_path is null
+    base_model: "yolov12x.pt" 
     dataset_path: "../data/datasets/football_yolo/data.yaml"
     # dataset_path: "/home/kuba/uam/doktorat/datasets/football-dataset"
     ultralytics_assets_tag: "v8.3.0"
@@ -55,12 +55,17 @@ training:
 
 tracking:
   enabled: true
+  backend: "bytetrack"  # one of: bytetrack, sam2
   # Corrected ByteTrack params (use supervision defaults if null)
   track_activation_threshold: 0.25 # Formerly track_activation_threshold
   lost_track_buffer: 30 # Formerly track_buffer
   minimum_matching_threshold: 0.8 # Formerly match_thresh
   frame_rate: null # e.g., 30 or null
   minimum_consecutive_frames: 1 # Default is 1
+  sam2:
+    checkpoint_path: null   # e.g., ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_large.pt
+    config_path: null       # e.g., ../external/segment-anything-2-real-time/configs/sam2.1/sam2.1_hiera_l.yaml
+    mask_filter_distance: 300.0
 
 keypoints:
   enabled: true
@@ -88,6 +93,9 @@ visualization:
   overlay_position: "bottom-center"
   overlay_padding: 10
   overlay_alpha: 0.8
+  draw_projected_pitch: true
+  draw_segmentation_masks: false
+  draw_bounding_boxes: true
   draw_scale: 0.05
   draw_padding: 20
 
