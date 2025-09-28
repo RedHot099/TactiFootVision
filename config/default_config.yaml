@@ -101,6 +101,16 @@ visualization:
   draw_scale: 0.05
   draw_padding: 20
 
+team_classification:
+  enabled: false
+  warmup_frames: 150
+  sample_stride: 5
+  max_samples: 200
+  crop_scale: 0.6
+  consecutive_frames: 3
+  embedding_model: "resnet18"
+  device: null
+
 processing:
   period: 1 # Set this to the period corresponding to the pipeline_input_csv file
   period_start_time_seconds: 0.0

@@ -81,6 +81,10 @@ class PipelineExporter:
                 )
                 class_id = int(tracked_detections.class_id[i])
                 class_name = self.class_id_to_name.get(class_id, f"unknown_{class_id}")
+                team_id = None
+                if "team_id" in tracked_detections.data:
+                    raw_team = tracked_detections.data["team_id"][i]
+                    team_id = int(raw_team) if raw_team is not None else None
                 location = (
                     pitch_coords[i].tolist() if pitch_coords[i].size == 2 else None
                 )
@@ -110,6 +114,7 @@ class PipelineExporter:
                         "confidence": conf,
                         "keeper": class_id in self.keeper_class_ids,
                         "teammate": None,
+                        "team_id": team_id,
                         "actor": False,
                     }
                 )

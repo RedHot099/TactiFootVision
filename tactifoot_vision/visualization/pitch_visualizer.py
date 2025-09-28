@@ -222,12 +222,11 @@ class PitchVisualizer:
             if scaled_point:
                 color = default_color
                 if use_team_colors:
-                    team_id = team_ids[i]
-                    # Example team coloring - adjust logic if needed
-                    # if team_id == config.detection.classes.get("player_team_0", -1): # Hypothetical class names
-                    #     color = self.team_color_0_bgr
-                    # elif team_id == config.detection.classes.get("player_team_1", -2):
-                    #     color = self.team_color_1_bgr
+                    team_id = int(team_ids[i]) if team_ids[i] is not None else -1
+                    if team_id == 0:
+                        color = self.team_color_0_bgr
+                    elif team_id == 1:
+                        color = self.team_color_1_bgr
                 cv2.circle(canvas, scaled_point, radius, color, -1)
 
     def draw_frame(

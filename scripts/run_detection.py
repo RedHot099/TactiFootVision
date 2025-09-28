@@ -6,7 +6,7 @@ import cv2
 import supervision as sv
 from tqdm import tqdm
 import numpy as np
-from typing import Optional
+from typing import Dict, List, Optional
 
 from loguru import logger
 
@@ -24,9 +24,40 @@ from tactifoot_vision.geometry.pitch_definitions import SoccerPitchConfiguration
 from tactifoot_vision.visualization.pitch_visualizer import PitchVisualizer
 from tactifoot_vision.utils.logging_config import setup_logging
 from tactifoot_vision.export.pipeline_exporter import PipelineExporter
+from tactifoot_vision.team.classifier import TeamAssignmentManager, TeamClassifier
 
 
 project_root = Path(__file__).resolve().parents[1]
+
+
+def _shrink_box(box: np.ndarray, scale: float, frame_shape: tuple[int, int, int]) -> Optional[np.ndarray]:
+    x1, y1, x2, y2 = box.astype(float)
+    w = x2 - x1
+    h = y2 - y1
+    if w <= 1 or h <= 1:
+        return None
+    cx = x1 + w / 2.0
+    cy = y1 + h / 2.0
+    new_w = w * scale
+    new_h = h * scale
+    half_w = new_w / 2.0
+    half_h = new_h / 2.0
+    frame_h, frame_w = frame_shape[0], frame_shape[1]
+    new_x1 = max(0.0, cx - half_w)
+    new_y1 = max(0.0, cy - half_h)
+    new_x2 = min(frame_w - 1.0, cx + half_w)
+    new_y2 = min(frame_h - 1.0, cy + half_h)
+    if new_x2 <= new_x1 or new_y2 <= new_y1:
+        return None
+    return np.array([new_x1, new_y1, new_x2, new_y2], dtype=float)
+
+
+def _extract_crop(frame: np.ndarray, box: np.ndarray, scale: float) -> Optional[np.ndarray]:
+    shrunk = _shrink_box(box, scale, frame.shape)
+    if shrunk is None:
+        return None
+    x1, y1, x2, y2 = shrunk.astype(int)
+    return frame[y1:y2, x1:x2].copy() if x2 > x1 and y2 > y1 else None
 
 
 def main(config_path: Path):
@@ -151,17 +182,48 @@ def main(config_path: Path):
 
         id_to_name_map = {v: k for k, v in config.detection.classes.items()}
         pipeline_exporter = PipelineExporter(class_id_to_name=id_to_name_map)
+        team_clf_cfg = getattr(config, "team_classification", None)
+        team_classifier = None
+        team_validator = None
+        team_samples: List[np.ndarray] = []
+        team_assignments: Dict[int, int] = {}
+        sample_stride = 1
+        max_samples = 0
+        warmup_frames = 0
+        crop_scale = 0.6
+        consecutive_frames = 3
+        if team_clf_cfg and team_clf_cfg.enabled:
+            team_classifier = TeamClassifier(
+                device=team_clf_cfg.device,
+                model_name=team_clf_cfg.embedding_model,
+            )
+            team_validator = TeamAssignmentManager(team_clf_cfg.consecutive_frames)
+            sample_stride = max(1, team_clf_cfg.sample_stride)
+            max_samples = team_clf_cfg.max_samples
+            warmup_frames = team_clf_cfg.warmup_frames
+            crop_scale = team_clf_cfg.crop_scale
+            consecutive_frames = team_clf_cfg.consecutive_frames
 
-        box_annotator = sv.BoxAnnotator(thickness=2)
-        label_annotator = sv.LabelAnnotator(text_thickness=1, text_scale=0.5)
+        team_colors = [
+            sv.Color.from_hex(config.visualization.team_color_0),
+            sv.Color.from_hex(config.visualization.team_color_1),
+            sv.Color.from_hex(config.visualization.player_color_default),
+        ]
+        TEAM_DEFAULT_COLOR_IDX = len(team_colors) - 1
+        team_palette = sv.ColorPalette(team_colors)
+
+        box_annotator = sv.BoxAnnotator(thickness=2, color=team_palette)
+        label_annotator = sv.LabelAnnotator(
+            text_thickness=1, text_scale=0.5, color=team_palette
+        )
         pitch_vertex_annotator = sv.VertexAnnotator(color=sv.Color.GREEN, radius=3)
         mask_annotator = None
         if config.visualization.draw_segmentation_masks:
-            mask_annotator = sv.MaskAnnotator(
-                color=sv.Color.WHITE,
-                opacity=0.45,
-                color_lookup=sv.ColorLookup.TRACK,
-            )
+            mask_annotator = sv.MaskAnnotator(color=team_palette, opacity=0.45)
+        ball_box_annotator = sv.BoxAnnotator(
+            thickness=2,
+            color=sv.Color.from_hex(config.visualization.ball_color),
+        )
         ball_class_id = config.detection.classes.get("ball", -1)
         pitch_config_instance = SoccerPitchConfiguration(
             length=config.geometry.target_pitch_length,
@@ -258,6 +320,40 @@ def main(config_path: Path):
                             tracked_detections = player_tracker.update(other_detections)
                         case _:
                             tracked_detections = other_detections
+
+                if team_classifier and not team_classifier.is_fitted:
+                    if frame_count <= warmup_frames and frame_count % sample_stride == 0:
+                        candidate_boxes = (
+                            other_detections.xyxy.astype(np.float32)
+                            if len(other_detections) > 0
+                            else np.empty((0, 4), dtype=np.float32)
+                        )
+                        candidate_classes = (
+                            other_detections.class_id.astype(int)
+                            if other_detections.class_id is not None
+                            else np.full(len(candidate_boxes), -1, dtype=int)
+                        )
+                        if candidate_boxes.size > 0:
+                            for box, cls in zip(candidate_boxes, candidate_classes):
+                                class_name = id_to_name_map.get(int(cls), "")
+                                if class_name not in {"player", "goalkeeper"}:
+                                    continue
+                                crop = _extract_crop(frame, box, crop_scale)
+                                if crop is not None:
+                                    team_samples.append(crop)
+                                    if max_samples and len(team_samples) > max_samples:
+                                        team_samples = team_samples[-max_samples:]
+                    if (
+                        len(team_samples) >= 2
+                        and (frame_count >= warmup_frames or (max_samples and len(team_samples) >= max_samples))
+                    ):
+                        try:
+                            team_classifier.fit(team_samples)
+                            team_samples = []
+                            logger.info("Team classifier fitted successfully.")
+                        except Exception as clf_err:
+                            logger.warning(f"Team classifier fitting failed: {clf_err}")
+
 
                 refresh_due = (
                     backend == "sam2"
@@ -356,6 +452,57 @@ def main(config_path: Path):
                 current_ball_pitch_pos = None
                 visible_area_list = None
 
+                if team_validator and team_classifier and team_classifier.is_fitted and len(tracked_detections) > 0:
+                    crops_for_prediction: List[np.ndarray] = []
+                    tracker_ids_for_prediction: List[int] = []
+                    for det_idx in range(len(tracked_detections)):
+                        if tracked_detections.tracker_id is None:
+                            continue
+                        tracker_id = tracked_detections.tracker_id[det_idx]
+                        if tracker_id is None:
+                            continue
+                        class_id = None
+                        if tracked_detections.class_id is not None:
+                            class_id = int(tracked_detections.class_id[det_idx])
+                        class_name = id_to_name_map.get(class_id, "") if class_id is not None else ""
+                        if class_name not in {"player", "goalkeeper"}:
+                            continue
+                        crop = _extract_crop(frame, tracked_detections.xyxy[det_idx], crop_scale)
+                        if crop is None:
+                            continue
+                        crops_for_prediction.append(crop)
+                        tracker_ids_for_prediction.append(int(tracker_id))
+                    if crops_for_prediction:
+                        try:
+                            predictions = team_classifier.predict(crops_for_prediction)
+                            validated = team_validator.update(tracker_ids_for_prediction, predictions)
+                            for tid, team_id in zip(tracker_ids_for_prediction, validated):
+                                if team_id is not None:
+                                    team_assignments[tid] = int(team_id)
+                        except Exception as pred_err:
+                            logger.warning(f"Team classifier prediction failed: {pred_err}")
+
+                    active_ids = set()
+                    if tracked_detections.tracker_id is not None:
+                        active_ids = {
+                            int(tid)
+                            for tid in tracked_detections.tracker_id
+                            if tid is not None
+                        }
+                    team_validator.prune(active_ids)
+                    team_assignments = {
+                        tid: team for tid, team in team_assignments.items() if tid in active_ids
+                    }
+                    if tracked_detections.tracker_id is not None:
+                        team_array = np.array(
+                            [team_assignments.get(int(tid), -1) if tid is not None else -1 for tid in tracked_detections.tracker_id],
+                            dtype=int,
+                        )
+                        player_team_ids_for_vis = team_array
+                        tracked_detections.data["team_id"] = team_array
+                elif team_validator:
+                    tracked_detections.data.pop("team_id", None)
+
                 if view_transformer.current_homography is not None:
                     if len(tracked_detections) > 0 and tracked_detections.xyxy.size > 0:
                         player_anchors_frame = (
@@ -366,8 +513,6 @@ def main(config_path: Path):
                         player_pitch_coords = view_transformer.transform_frame_to_pitch(
                             player_anchors_frame
                         )
-                        if "class_id" in tracked_detections.data:
-                            player_team_ids_for_vis = tracked_detections.class_id
 
                     if len(ball_detections) > 0 and ball_detections.xyxy.size > 0:
                         ball_anchor_frame = ball_detections.get_anchors_coordinates(
@@ -435,14 +580,36 @@ def main(config_path: Path):
                     )
 
                 annotated_frame = frame.copy()
+                color_lookup_indices = None
+                if (
+                    tracked_detections.tracker_id is not None
+                    and len(tracked_detections) > 0
+                ):
+                    color_lookup_indices = np.full(
+                        len(tracked_detections), TEAM_DEFAULT_COLOR_IDX, dtype=int
+                    )
+                    for idx, tid in enumerate(tracked_detections.tracker_id):
+                        if tid is None:
+                            continue
+                        assigned_team = team_assignments.get(int(tid))
+                        if assigned_team in (0, 1):
+                            color_lookup_indices[idx] = int(assigned_team)
                 if (
                     mask_annotator
                     and tracked_detections.mask is not None
                     and tracked_detections.mask.size > 0
                 ):
                     try:
+                        kwargs = {}
+                        if (
+                            color_lookup_indices is not None
+                            and color_lookup_indices.size == len(tracked_detections)
+                        ):
+                            kwargs["custom_color_lookup"] = color_lookup_indices
                         annotated_frame = mask_annotator.annotate(
-                            scene=annotated_frame, detections=tracked_detections
+                            scene=annotated_frame,
+                            detections=tracked_detections,
+                            **kwargs,
                         )
                     except Exception as mask_err:
                         logger.warning(
@@ -470,20 +637,46 @@ def main(config_path: Path):
                             if tracked_detections.tracker_id is not None
                             else None
                         )
-                        label = f"#{tracker_id}" if tracker_id is not None else ""
+                        label_parts: List[str] = []
+                        if tracker_id is not None:
+                            label_parts.append(f"#{tracker_id}")
+                        class_id = (
+                            int(tracked_detections.class_id[det_idx])
+                            if tracked_detections.class_id is not None
+                            else None
+                        )
+                        if class_id is not None:
+                            class_name = id_to_name_map.get(class_id, str(class_id))
+                            if class_name:
+                                label_parts.append(class_name)
+                        if tracker_id is not None and tracker_id in team_assignments:
+                            label_parts.append(f"T{team_assignments[int(tracker_id)]}")
+                        label = " ".join(label_parts)
                         labels.append(label)
+                    box_kwargs = {}
+                    if (
+                        color_lookup_indices is not None
+                        and color_lookup_indices.size == len(tracked_detections)
+                    ):
+                        box_kwargs["custom_color_lookup"] = color_lookup_indices
                     annotated_frame = box_annotator.annotate(
-                        annotated_frame, tracked_detections
+                        annotated_frame, tracked_detections, **box_kwargs
                     )
                     if any(labels):
+                        label_kwargs = {}
+                        if (
+                            color_lookup_indices is not None
+                            and color_lookup_indices.size == len(tracked_detections)
+                        ):
+                            label_kwargs["custom_color_lookup"] = color_lookup_indices
                         annotated_frame = label_annotator.annotate(
-                            annotated_frame, tracked_detections, labels
+                            annotated_frame, tracked_detections, labels, **label_kwargs
                         )
                 if (
                     config.visualization.draw_bounding_boxes
                     and len(ball_detections) > 0
                 ):
-                    annotated_frame = box_annotator.annotate(
+                    annotated_frame = ball_box_annotator.annotate(
                         annotated_frame, ball_detections
                     )
                 if pitch_bbox_xyxy is not None:

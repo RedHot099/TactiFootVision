@@ -156,6 +156,17 @@ class ProcessingConfig(BaseModel):
     period_start_time_seconds: float = Field(0.0, ge=0)
 
 
+class TeamClassificationConfig(BaseModel):
+    enabled: bool = False
+    warmup_frames: int = Field(150, ge=0)
+    sample_stride: int = Field(5, ge=1)
+    max_samples: int = Field(200, ge=2)
+    crop_scale: float = Field(0.6, gt=0.0, le=1.0)
+    consecutive_frames: int = Field(3, ge=1)
+    embedding_model: str = "resnet18"
+    device: Optional[str] = None
+
+
 # Shared training parameters moved to a common base
 class TrainingSharedSettings(BaseModel):
     ultralytics_assets_tag: str = "v8.0.0"
@@ -254,6 +265,7 @@ class Config(BaseModel):
     visualization: PitchVisualizerConfig = Field(default_factory=PitchVisualizerConfig)
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     training: Optional[TrainingConfig] = None
+    team_classification: Optional[TeamClassificationConfig] = None
 
     @model_validator(mode="before")
     @classmethod
