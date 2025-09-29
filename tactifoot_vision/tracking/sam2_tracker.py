@@ -97,6 +97,9 @@ class SAM2Tracker:
     def track(self, frame: np.ndarray) -> sv.Detections:
         if not self._initialized:
             raise RuntimeError("SAM2Tracker not initialized. Call initialize() with first frame and boxes.")
+        if not self._id_to_class:
+            self._frame_index += 1
+            return sv.Detections.empty()
         return self._run_raw_track(frame)
 
     def allocate_ids(self, count: int) -> np.ndarray:

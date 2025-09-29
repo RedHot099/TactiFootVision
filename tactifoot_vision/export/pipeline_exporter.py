@@ -141,6 +141,22 @@ class PipelineExporter:
         frame_level_data["freeze_frame"] = current_freeze_frame
         self.data_per_frame.append(frame_level_data)
 
+    def update_team_assignments(self, team_assignments: Dict[int, int]) -> None:
+        if not team_assignments or not self.data_per_frame:
+            return
+        for frame_entry in self.data_per_frame:
+            freeze = frame_entry.get("freeze_frame", [])
+            if not freeze:
+                continue
+            for obj in freeze:
+                if not isinstance(obj, dict):
+                    continue
+                player_id = obj.get("player_id")
+                if player_id is None or player_id < 0:
+                    continue
+                if player_id in team_assignments:
+                    obj["team_id"] = int(team_assignments[player_id])
+
     def save(self, output_csv_path: Union[str, Path]):
         output_path = Path(output_csv_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

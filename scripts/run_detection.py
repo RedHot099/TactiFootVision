@@ -1,12 +1,20 @@
 # scripts/run_detection.py
 import argparse
-import sys
+from dataclasses import dataclass
 from pathlib import Path
+import sys
+
+# Ensure project root is discoverable when executed via `python scripts/...`.
+project_root = Path(__file__).resolve().parents[1]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import cv2
 import supervision as sv
 from tqdm import tqdm
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from collections import deque
 
 from loguru import logger
 
@@ -14,7 +22,6 @@ from config.loaders import load_config
 from config.models import DetectionModelType, KeypointModelType
 from tactifoot_vision.data.video_loader import VideoLoader
 from tactifoot_vision.detection.yolo_handler import YOLOHandler
-from tactifoot_vision.detection.rfdetr_handler import RFDETRHandler
 from tactifoot_vision.tracking.tracker import Tracker
 from tactifoot_vision.tracking.sam2_tracker import SAM2Tracker
 from tactifoot_vision.tracking.ball_tracker import BallTracker
@@ -25,10 +32,6 @@ from tactifoot_vision.visualization.pitch_visualizer import PitchVisualizer
 from tactifoot_vision.utils.logging_config import setup_logging
 from tactifoot_vision.export.pipeline_exporter import PipelineExporter
 from tactifoot_vision.team.classifier import TeamAssignmentManager, TeamClassifier
-
-
-project_root = Path(__file__).resolve().parents[1]
-
 
 def _shrink_box(box: np.ndarray, scale: float, frame_shape: tuple[int, int, int]) -> Optional[np.ndarray]:
     x1, y1, x2, y2 = box.astype(float)
@@ -60,6 +63,29 @@ def _extract_crop(frame: np.ndarray, box: np.ndarray, scale: float) -> Optional[
     return frame[y1:y2, x1:x2].copy() if x2 > x1 and y2 > y1 else None
 
 
+@dataclass
+class PendingCandidate:
+    box: np.ndarray
+    class_id: int
+    first_seen: int
+    last_seen: int
+    hits: int = 1
+
+    def update(
+        self, new_box: np.ndarray, frame_idx: int, momentum: float = 0.4
+    ) -> None:
+        # Smooth the box to reduce jitter before reseeding.
+        blended = (1.0 - momentum) * self.box + momentum * new_box
+        self.box = blended.astype(np.float32)
+        self.last_seen = frame_idx
+        self.hits += 1
+
+
+def _single_iou(box_a: np.ndarray, box_b: np.ndarray) -> float:
+    iou_matrix = sv.box_iou_batch(box_a[np.newaxis, :], box_b[np.newaxis, :])
+    return float(iou_matrix[0, 0]) if iou_matrix.size else 0.0
+
+
 def main(config_path: Path):
     try:
         if not config_path.is_absolute():
@@ -85,6 +111,9 @@ def main(config_path: Path):
                     config.detection, model_dir=model_dir_abs
                 )
             elif config.detection.model_type == DetectionModelType.RFDETR:
+                from tactifoot_vision.detection.rfdetr_handler import (
+                    RFDETRHandler,
+                )
                 detection_handler = RFDETRHandler(
                     config.detection, model_dir=model_dir_abs
                 )
@@ -257,6 +286,333 @@ def main(config_path: Path):
                 f"Output video will be saved to: {output_video_path} ({output_w}x{output_h})"
             )
 
+        team_classifier_ready = not (
+            team_classifier and team_clf_cfg and team_clf_cfg.enabled
+        )
+        buffered_frames: List[Dict[str, Any]] = []
+
+        def clone_detections(detections: sv.Detections) -> sv.Detections:
+            if detections is None or detections.xyxy.size == 0:
+                return sv.Detections.empty()
+            data_copy = {
+                key: value.copy() if isinstance(value, np.ndarray) else value
+                for key, value in detections.data.items()
+            }
+            return sv.Detections(
+                xyxy=detections.xyxy.copy(),
+                mask=detections.mask.copy() if detections.mask is not None else None,
+                confidence=detections.confidence.copy()
+                if detections.confidence is not None
+                else None,
+                class_id=detections.class_id.copy()
+                if detections.class_id is not None
+                else None,
+                tracker_id=detections.tracker_id.copy()
+                if detections.tracker_id is not None
+                else None,
+                data=data_copy,
+            )
+
+        def apply_team_classification(
+            frame_local: np.ndarray, detections_local: sv.Detections
+        ) -> Optional[np.ndarray]:
+            nonlocal team_assignments
+            if (
+                not team_classifier
+                or not team_classifier.is_fitted
+                or team_validator is None
+                or len(detections_local) == 0
+            ):
+                detections_local.data.pop("team_id", None)
+                return None
+
+            crops: List[np.ndarray] = []
+            tracker_ids_local: List[int] = []
+            for det_idx in range(len(detections_local)):
+                if detections_local.tracker_id is None:
+                    continue
+                tracker_id = detections_local.tracker_id[det_idx]
+                if tracker_id is None:
+                    continue
+                class_id = (
+                    int(detections_local.class_id[det_idx])
+                    if detections_local.class_id is not None
+                    else None
+                )
+                class_name = (
+                    id_to_name_map.get(class_id, "") if class_id is not None else ""
+                )
+                if class_name not in {"player", "goalkeeper"}:
+                    continue
+                crop = _extract_crop(
+                    frame_local, detections_local.xyxy[det_idx], crop_scale
+                )
+                if crop is None:
+                    continue
+                crops.append(crop)
+                tracker_ids_local.append(int(tracker_id))
+
+            if not crops:
+                detections_local.data.pop("team_id", None)
+                return None
+
+            try:
+                predictions = team_classifier.predict(crops)
+                validated = team_validator.update(tracker_ids_local, predictions)
+                for tid, team_id in zip(tracker_ids_local, validated):
+                    if team_id is not None:
+                        team_assignments[int(tid)] = int(team_id)
+            except Exception as pred_err:  # pragma: no cover
+                logger.warning(f"Team classifier prediction failed: {pred_err}")
+                detections_local.data.pop("team_id", None)
+                return None
+
+            active_ids = []
+            if detections_local.tracker_id is not None:
+                active_ids = [
+                    int(tid) for tid in detections_local.tracker_id if tid is not None
+                ]
+            team_validator.prune(active_ids)
+            team_assignments = {
+                tid: team
+                for tid, team in team_assignments.items()
+                if tid in set(active_ids)
+            }
+
+            if detections_local.tracker_id is not None:
+                team_array = np.array(
+                    [
+                        team_assignments.get(int(tid), -1) if tid is not None else -1
+                        for tid in detections_local.tracker_id
+                    ],
+                    dtype=int,
+                )
+                detections_local.data["team_id"] = team_array
+                return team_array
+
+            detections_local.data.pop("team_id", None)
+            return None
+
+        def process_payload(payload: Dict[str, Any]) -> None:
+            frame_local = payload["frame"].copy()
+            tracked_local = payload["tracked"]
+            ball_local = payload["ball"]
+            player_pitch_coords_local = payload["player_pitch_coords"]
+            ball_pitch_coords_local = payload["ball_pitch_coords"]
+            frame_pitch_vertices_local = payload["frame_pitch_vertices_main"]
+            visible_area_local = payload["visible_area_list"]
+            current_timestamp_local = payload["timestamp_seconds"]
+            frame_id_local = payload["frame_id"]
+            period_local = payload["period"]
+            homography_local = payload["homography"]
+
+            team_array: Optional[np.ndarray] = None
+            team_array = apply_team_classification(frame_local, tracked_local)
+            pipeline_exporter.update_team_assignments(team_assignments)
+
+            player_team_ids_for_vis = team_array if team_array is not None else None
+
+            pitch_map_frame = None
+            if pitch_visualizer and config.visualization.enabled:
+                pitch_map_frame = pitch_visualizer.draw_frame(
+                    player_coords=player_pitch_coords_local,
+                    player_team_ids=player_team_ids_for_vis,
+                    ball_coords=ball_pitch_coords_local
+                    if ball_pitch_coords_local is not None
+                    and hasattr(ball_pitch_coords_local, "size")
+                    and ball_pitch_coords_local.size > 0
+                    else None,
+                )
+
+            annotated_frame = frame_local.copy()
+            team_indices = None
+            if len(tracked_local) > 0:
+                if team_array is not None:
+                    team_indices = np.clip(team_array, 0, TEAM_DEFAULT_COLOR_IDX)
+                    team_indices[team_array < 0] = TEAM_DEFAULT_COLOR_IDX
+                else:
+                    team_indices = np.full(
+                        len(tracked_local), TEAM_DEFAULT_COLOR_IDX, dtype=int
+                    )
+
+            if (
+                mask_annotator
+                and tracked_local.mask is not None
+                and tracked_local.mask.size > 0
+            ):
+                mask_kwargs = {}
+                if team_indices is not None:
+                    mask_kwargs["custom_color_lookup"] = team_indices
+                annotated_frame = mask_annotator.annotate(
+                    scene=annotated_frame,
+                    detections=tracked_local,
+                    **mask_kwargs,
+                )
+
+            pipeline_exporter.add_frame_data(
+                frame_id=frame_id_local,
+                period=period_local,
+                tracked_detections=tracked_local,
+                pitch_coords=player_pitch_coords_local,
+                ball_pitch_coords=ball_pitch_coords_local,
+                homography=homography_local,
+                visible_area=visible_area_local,
+                timestamp_seconds=current_timestamp_local,
+            )
+
+            if config.visualization.draw_bounding_boxes and len(tracked_local) > 0:
+                labels: List[str] = []
+                for det_idx in range(len(tracked_local)):
+                    tracker_id = (
+                        tracked_local.tracker_id[det_idx]
+                        if tracked_local.tracker_id is not None
+                        else None
+                    )
+                    label_parts: List[str] = []
+                    if tracker_id is not None:
+                        label_parts.append(f"#{tracker_id}")
+                    class_id = (
+                        int(tracked_local.class_id[det_idx])
+                        if tracked_local.class_id is not None
+                        else None
+                    )
+                    if class_id is not None:
+                        class_name = id_to_name_map.get(class_id, str(class_id))
+                        if class_name:
+                            label_parts.append(class_name)
+                    if (
+                        team_array is not None
+                        and det_idx < len(team_array)
+                        and team_array[det_idx] in (0, 1)
+                    ):
+                        label_parts.append(f"T{int(team_array[det_idx])}")
+                    labels.append(" ".join(label_parts))
+
+                box_kwargs = {}
+                label_kwargs = {}
+                if team_indices is not None:
+                    box_kwargs["custom_color_lookup"] = team_indices
+                    label_kwargs["custom_color_lookup"] = team_indices
+                annotated_frame = box_annotator.annotate(
+                    annotated_frame, tracked_local, **box_kwargs
+                )
+                if any(labels):
+                    annotated_frame = label_annotator.annotate(
+                        annotated_frame, tracked_local, labels, **label_kwargs
+                    )
+
+                if config.visualization.draw_bounding_boxes and len(ball_local) > 0:
+                    annotated_frame = ball_box_annotator.annotate(
+                        annotated_frame, ball_local
+                    )
+
+                if (
+                    frame_pitch_vertices_local is not None
+                    and frame_pitch_vertices_local.shape == (num_expected_vertices, 2)
+                ):
+                    if config.visualization.draw_projected_pitch:
+                        for u, v in main_frame_edges_0_based:
+                            if 0 <= u < len(frame_pitch_vertices_local) and 0 <= v < len(
+                                frame_pitch_vertices_local
+                            ):
+                                pt1 = tuple(frame_pitch_vertices_local[u].astype(int))
+                                pt2 = tuple(frame_pitch_vertices_local[v].astype(int))
+                                cv2.line(
+                                    annotated_frame,
+                                    pt1,
+                                    pt2,
+                                    proj_line_color,
+                                    proj_line_thickness,
+                                )
+                        key_points = sv.KeyPoints(
+                            xy=frame_pitch_vertices_local[np.newaxis, ...]
+                        )
+                        annotated_frame = pitch_vertex_annotator.annotate(
+                            scene=annotated_frame, key_points=key_points
+                        )
+                        for i, xy in enumerate(frame_pitch_vertices_local):
+                            if i < len(pitch_labels):
+                                center = tuple(xy.astype(int))
+                                cv2.putText(
+                                    annotated_frame,
+                                    pitch_labels[i],
+                                    (center[0] - 4, center[1] + kp_radius + 8),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    proj_label_scale,
+                                    proj_label_color,
+                                    proj_label_thickness,
+                                    cv2.LINE_AA,
+                                )
+
+            final_frame = annotated_frame
+            if (
+                pitch_map_frame is not None
+                and config.visualization.overlay
+                and pitch_map_frame.size > 0
+            ):
+                try:
+                    overlay_w = int(
+                        final_frame.shape[1]
+                        * config.visualization.overlay_width_fraction
+                    )
+                    generated_h, generated_w = pitch_map_frame.shape[:2]
+                    if generated_w == 0:
+                        raise ValueError("Generated pitch map frame has zero width.")
+                    generated_aspect_ratio = generated_h / generated_w
+                    overlay_h = int(overlay_w * generated_aspect_ratio)
+                    resized_pitch_map = cv2.resize(
+                        pitch_map_frame, (overlay_w, overlay_h)
+                    )
+                    pad = config.visualization.overlay_padding
+                    pos = config.visualization.overlay_position
+                    max_y, max_x = final_frame.shape[:2]
+                    if "bottom" in pos:
+                        y_start = max_y - overlay_h - pad
+                    elif "top" in pos:
+                        y_start = pad
+                    else:
+                        y_start = (max_y - overlay_h) // 2
+                    if "left" in pos:
+                        x_start = pad
+                    elif "right" in pos:
+                        x_start = max_x - overlay_w - pad
+                    else:
+                        x_start = (max_x - overlay_w) // 2
+                    y_start, x_start = max(0, y_start), max(0, x_start)
+                    y_end, x_end = (
+                        min(max_y, y_start + overlay_h),
+                        min(max_x, x_start + overlay_w),
+                    )
+                    actual_overlay_h, actual_overlay_w = (
+                        y_end - y_start,
+                        x_end - x_start,
+                    )
+                    if actual_overlay_h != overlay_h or actual_overlay_w != overlay_w:
+                        resized_pitch_map = cv2.resize(
+                            resized_pitch_map, (actual_overlay_w, actual_overlay_h)
+                        )
+                    roi = final_frame[y_start:y_end, x_start:x_end]
+                    alpha = config.visualization.overlay_alpha
+                    if roi.shape == resized_pitch_map.shape:
+                        blended_roi = cv2.addWeighted(
+                            resized_pitch_map, alpha, roi, 1 - alpha, 0
+                        )
+                        final_frame[y_start:y_end, x_start:x_end] = blended_roi
+                except Exception as overlay_e:  # pragma: no cover
+                    logger.warning(
+                        f"Could not overlay pitch map on frame {frame_id_local}: {overlay_e}",
+                        exc_info=True,
+                    )
+
+            if writer:
+                output_frame = final_frame
+                if (
+                    output_frame.shape[1] != frame_size[0]
+                    or output_frame.shape[0] != frame_size[1]
+                ):
+                    output_frame = cv2.resize(output_frame, frame_size)
+                writer.write(output_frame)
+
         logger.info("Starting frame processing...")
         frame_count = 0
         frame_generator = video_loader.frame_generator()
@@ -276,6 +632,14 @@ def main(config_path: Path):
         if backend == "sam2" and config.tracking.sam2 is not None:
             reseed_interval = config.tracking.sam2.reseed_interval
             reseed_iou_threshold = config.tracking.sam2.reseed_iou_threshold
+
+        pending_candidates: Dict[int, PendingCandidate] = {}
+        next_candidate_id = 1
+        reseed_cooldown = reseed_interval if reseed_interval is not None else 30
+        last_reseed_frame = -reseed_cooldown
+        candidate_min_hits = 3
+        candidate_timeout = max(reseed_cooldown, candidate_min_hits + 2)
+        candidate_merge_iou = min(0.5, reseed_iou_threshold * 0.75)
 
         with tqdm(total=total_frames, desc="Processing frames", unit="frame") as pbar:
             for frame in frame_generator:
@@ -351,19 +715,15 @@ def main(config_path: Path):
                             team_classifier.fit(team_samples)
                             team_samples = []
                             logger.info("Team classifier fitted successfully.")
+                            team_classifier_ready = True
+                            if buffered_frames:
+                                for buffered_payload in buffered_frames:
+                                    process_payload(buffered_payload)
+                                buffered_frames.clear()
                         except Exception as clf_err:
                             logger.warning(f"Team classifier fitting failed: {clf_err}")
 
-
-                refresh_due = (
-                    backend == "sam2"
-                    and sam2_tracker is not None
-                    and reseed_interval is not None
-                    and reseed_interval > 0
-                    and frame_count > 0
-                    and frame_count % reseed_interval == 0
-                )
-                if refresh_due:
+                if backend == "sam2" and sam2_tracker is not None:
                     tracked_boxes = (
                         tracked_detections.xyxy.astype(np.float32)
                         if len(tracked_detections) > 0
@@ -380,41 +740,100 @@ def main(config_path: Path):
                         else np.full(len(tracked_boxes), -1, dtype=int)
                     )
 
-                    det_boxes = (
-                        other_detections.xyxy.astype(np.float32)
-                        if len(other_detections) > 0
-                        else np.empty((0, 4), dtype=np.float32)
-                    )
-                    det_classes = (
+                    det_class_ids = (
                         other_detections.class_id.astype(int)
                         if other_detections.class_id is not None
-                        else np.full(len(det_boxes), -1, dtype=int)
+                        else np.full(len(other_detections), -1, dtype=int)
                     )
+                    candidate_boxes = np.empty((0, 4), dtype=np.float32)
+                    candidate_classes = np.empty((0,), dtype=int)
+                    if len(other_detections) > 0:
+                        mask_players = np.array(
+                            [
+                                id_to_name_map.get(int(cid), "")
+                                in {"player", "goalkeeper"}
+                                for cid in det_class_ids
+                            ]
+                        )
+                        if mask_players.any():
+                            candidate_boxes = other_detections.xyxy[
+                                mask_players
+                            ].astype(np.float32)
+                            candidate_classes = det_class_ids[mask_players]
 
-                    new_mask = np.ones(len(det_boxes), dtype=bool)
-                    if tracked_boxes.size > 0 and det_boxes.size > 0:
-                        iou_matrix = sv.box_iou_batch(det_boxes, tracked_boxes)
-                        max_iou = iou_matrix.max(axis=1)
-                        new_mask = max_iou < reseed_iou_threshold
+                    for box, cls in zip(candidate_boxes, candidate_classes):
+                        if tracked_boxes.size > 0:
+                            iou_existing = sv.box_iou_batch(
+                                box[np.newaxis, :], tracked_boxes
+                            ).max()
+                            if iou_existing >= reseed_iou_threshold:
+                                continue
 
-                    new_boxes = det_boxes[new_mask]
-                    new_classes = det_classes[new_mask]
-                    new_ids = sam2_tracker.allocate_ids(len(new_boxes)) if len(new_boxes) > 0 else np.empty((0,), dtype=int)
+                        best_match = None
+                        best_iou = 0.0
+                        for cand_id, cand in pending_candidates.items():
+                            cand_iou = _single_iou(box, cand.box)
+                            if cand_iou > best_iou:
+                                best_iou = cand_iou
+                                best_match = cand_id
 
-                    if tracked_boxes.size > 0:
-                        combined_boxes = tracked_boxes
-                        combined_classes = tracked_classes
-                        combined_ids = tracked_ids
-                        if len(new_boxes) > 0:
-                            combined_boxes = np.concatenate([combined_boxes, new_boxes], axis=0)
-                            combined_classes = np.concatenate([combined_classes, new_classes], axis=0)
-                            combined_ids = np.concatenate([combined_ids, new_ids], axis=0)
-                    else:
-                        combined_boxes = new_boxes
-                        combined_classes = new_classes
-                        combined_ids = new_ids
+                        if best_match is not None and best_iou >= candidate_merge_iou:
+                            pending_candidates[best_match].update(box, frame_count)
+                        else:
+                            pending_candidates[next_candidate_id] = PendingCandidate(
+                                box=box.astype(np.float32),
+                                class_id=int(cls),
+                                first_seen=frame_count,
+                                last_seen=frame_count,
+                            )
+                            next_candidate_id += 1
 
-                    if combined_boxes.size > 0:
+                    stale_ids = [
+                        cand_id
+                        for cand_id, cand in pending_candidates.items()
+                        if frame_count - cand.last_seen >= candidate_timeout
+                    ]
+                    for cand_id in stale_ids:
+                        pending_candidates.pop(cand_id, None)
+
+                    cooldown_ok = (
+                        reseed_cooldown <= 0
+                        or frame_count - last_reseed_frame >= reseed_cooldown
+                    )
+                    promote_ids = [
+                        cand_id
+                        for cand_id, cand in pending_candidates.items()
+                        if cand.hits >= candidate_min_hits and cooldown_ok
+                    ]
+
+                    if promote_ids:
+                        new_boxes = np.vstack(
+                            [
+                                pending_candidates[cid].box.astype(np.float32)
+                                for cid in promote_ids
+                            ]
+                        )
+                        new_classes = np.array(
+                            [pending_candidates[cid].class_id for cid in promote_ids],
+                            dtype=int,
+                        )
+                        new_ids = sam2_tracker.allocate_ids(len(promote_ids))
+
+                        if tracked_boxes.size > 0:
+                            combined_boxes = np.concatenate(
+                                [tracked_boxes, new_boxes], axis=0
+                            )
+                            combined_classes = np.concatenate(
+                                [tracked_classes, new_classes], axis=0
+                            )
+                            combined_ids = np.concatenate(
+                                [tracked_ids, new_ids], axis=0
+                            )
+                        else:
+                            combined_boxes = new_boxes
+                            combined_classes = new_classes
+                            combined_ids = new_ids
+
                         refresh_result = sam2_tracker.refresh_prompts(
                             frame,
                             combined_boxes,
@@ -422,14 +841,9 @@ def main(config_path: Path):
                             combined_ids,
                         )
                         tracked_detections = refresh_result
-                    else:
-                        sam2_tracker.refresh_prompts(
-                            frame,
-                            combined_boxes,
-                            combined_classes,
-                            combined_ids,
-                        )
-                        tracked_detections = sv.Detections.empty()
+                        last_reseed_frame = frame_count
+                        for cid in promote_ids:
+                            pending_candidates.pop(cid, None)
 
                 keypoints_sv: Optional[sv.KeyPoints] = None
                 pitch_bbox_xyxy: Optional[np.ndarray] = None
@@ -493,6 +907,7 @@ def main(config_path: Path):
                     team_assignments = {
                         tid: team for tid, team in team_assignments.items() if tid in active_ids
                     }
+                    pipeline_exporter.update_team_assignments(team_assignments)
                     if tracked_detections.tracker_id is not None:
                         team_array = np.array(
                             [team_assignments.get(int(tid), -1) if tid is not None else -1 for tid in tracked_detections.tracker_id],
@@ -557,6 +972,27 @@ def main(config_path: Path):
                     frame_count / video_fps
                 )
 
+                # Buffer early frames until team classifier is ready
+                if team_classifier and team_clf_cfg and team_clf_cfg.enabled and not team_classifier_ready:
+                    buffered_frames.append(
+                        {
+                            "frame": frame,
+                            "tracked": tracked_detections,
+                            "ball": ball_detections,
+                            "player_pitch_coords": player_pitch_coords,
+                            "ball_pitch_coords": current_ball_pitch_pos,
+                            "frame_pitch_vertices_main": frame_pitch_vertices_main,
+                            "visible_area_list": visible_area_list,
+                            "timestamp_seconds": current_timestamp_seconds,
+                            "frame_id": frame_count,
+                            "period": current_period,
+                            "homography": view_transformer.current_homography,
+                        }
+                    )
+                    frame_count += 1
+                    pbar.update(1)
+                    continue
+
                 pipeline_exporter.add_frame_data(
                     frame_id=frame_count,
                     period=current_period,  # Pass period
@@ -615,17 +1051,6 @@ def main(config_path: Path):
                         logger.warning(
                             f"Frame {frame_count}: Failed to draw segmentation masks: {mask_err}"
                         )
-                pipeline_exporter.add_frame_data(
-                    frame_id=frame_count,
-                    period=current_period,
-                    tracked_detections=tracked_detections,
-                    pitch_coords=player_pitch_coords,
-                    ball_pitch_coords=current_ball_pitch_pos,
-                    homography=view_transformer.current_homography,
-                    visible_area=visible_area_list,
-                    timestamp_seconds=current_timestamp_seconds,
-                )
-
                 if (
                     config.visualization.draw_bounding_boxes
                     and len(tracked_detections) > 0
@@ -679,6 +1104,16 @@ def main(config_path: Path):
                     annotated_frame = ball_box_annotator.annotate(
                         annotated_frame, ball_detections
                     )
+                pipeline_exporter.add_frame_data(
+                    frame_id=frame_count,
+                    period=current_period,
+                    tracked_detections=tracked_detections,
+                    pitch_coords=player_pitch_coords,
+                    ball_pitch_coords=current_ball_pitch_pos,
+                    homography=view_transformer.current_homography,
+                    visible_area=visible_area_list,
+                    timestamp_seconds=current_timestamp_seconds,
+                )
                 if pitch_bbox_xyxy is not None:
                     bbox_int = pitch_bbox_xyxy.astype(int)
                     cv2.rectangle(
