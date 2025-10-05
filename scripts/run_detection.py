@@ -222,9 +222,16 @@ def main(config_path: Path):
         crop_scale = 0.6
         consecutive_frames = 3
         if team_clf_cfg and team_clf_cfg.enabled:
+            model_name = team_clf_cfg.embedding_model
+            siglip_cfg = None
+            if getattr(team_clf_cfg, "method", "resnet") == "siglip":
+                siglip_cfg = team_clf_cfg.siglip.model_dump()
+                model_name = team_clf_cfg.siglip.model_name
             team_classifier = TeamClassifier(
                 device=team_clf_cfg.device,
-                model_name=team_clf_cfg.embedding_model,
+                model_name=model_name,
+                method=getattr(team_clf_cfg, "method", None),
+                siglip_config=siglip_cfg,
             )
             team_validator = TeamAssignmentManager(team_clf_cfg.consecutive_frames)
             sample_stride = max(1, team_clf_cfg.sample_stride)
@@ -714,7 +721,7 @@ def main(config_path: Path):
                         try:
                             team_classifier.fit(team_samples)
                             team_samples = []
-                            logger.info("Team classifier fitted successfully.")
+                            logger.debug("Team classifier fitted successfully.")
                             team_classifier_ready = True
                             if buffered_frames:
                                 for buffered_payload in buffered_frames:

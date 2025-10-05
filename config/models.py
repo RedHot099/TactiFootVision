@@ -156,6 +156,21 @@ class ProcessingConfig(BaseModel):
     period_start_time_seconds: float = Field(0.0, ge=0)
 
 
+class SiglipTeamClassificationOptions(BaseModel):
+    model_name: str = "google/siglip-base-patch16-224"
+    batch_size: int = Field(32, ge=1)
+    pooling: Literal["mean", "cls"] = "mean"
+    use_umap: bool = True
+    umap_components: int = Field(3, ge=1)
+    umap_neighbors: int = Field(15, ge=2)
+    umap_min_dist: float = Field(0.1, ge=0.0, le=1.0)
+    umap_metric: str = "euclidean"
+    umap_random_state: Optional[int] = None
+    color_space: Literal["rgb", "hsv"] = "rgb"
+    color_hist_bins: int = Field(16, ge=0, le=256)
+    color_hist_weight: float = Field(0.2, ge=0.0)
+
+
 class TeamClassificationConfig(BaseModel):
     enabled: bool = False
     warmup_frames: int = Field(150, ge=0)
@@ -164,6 +179,10 @@ class TeamClassificationConfig(BaseModel):
     crop_scale: float = Field(0.6, gt=0.0, le=1.0)
     consecutive_frames: int = Field(3, ge=1)
     embedding_model: str = "resnet18"
+    method: Literal["resnet", "siglip"] = "resnet"
+    siglip: SiglipTeamClassificationOptions = Field(
+        default_factory=SiglipTeamClassificationOptions
+    )
     device: Optional[str] = None
 
 
