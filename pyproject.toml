@@ -1,40 +1,40 @@
-[tool.poetry]
+[project]
 name = "tactifoot-vision"
 version = "0.1.0"
 description = ""
-authors = ["Jakub Eichner <redhotdevil996@gmail.com>"]
 readme = "README.md"
+requires-python = ">=3.12,<4.0"
+authors = [
+    { name = "Jakub Eichner", email = "redhotdevil996@gmail.com" }
+]
+dependencies = [
+    "numpy>=1.23.0,<=2.1.1",
+    "ultralytics>=8.3.98,<9.0.0",
+    "pydantic>=2.11.0,<3.0.0",
+    "pyyaml>=6.0.2,<7.0.0",
+    "supervision>=0.25.1,<0.26.0",
+    "opencv-python-headless>=4.11.0.86,<5.0.0",
+    "torch>=2.6.0,<3.0.0",
+    "torchvision>=0.21.0,<0.22.0",
+    "loguru>=0.7.3,<0.8.0",
+    "rfdetr>=1.0.8,<2.0.0",
+    "tqdm>=4.67.1,<5.0.0",
+    "pyarrow>=19.0.1,<20.0.0",
+    "transformers>=4.48.0,<5.0.0",
+    "umap-learn>=0.5.7,<0.6.0",
+    "scikit-learn>=1.5.2,<1.6.0",
+    "pandas>=2.2.0,<3.0.0",
+    "pillow>=10.0.1,<11.0.0",
+    "seaborn>=0.13.0,<0.14.0",
+    "matplotlib>=3.10.1,<4.0.0"
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-numpy = ">=1.23.0,<=2.1.1"
-ultralytics = "^8.3.98"
-pydantic = "^2.11.0"
-pyyaml = "^6.0.2"
-supervision = "^0.25.1"
-opencv-python-headless = "^4.11.0.86"
-torch = "^2.6.0"
-torchvision = "^0.21.0"
-torchaudio = "^2.6.0"
-loguru = "^0.7.3"
-rfdetr = "^1.0.8"
-pycocotools = "^2.0.8"
-ruff = "^0.11.2"
-tqdm = "^4.67.1"
-scipy = "^1.15.2"
-mplsoccer = "^1.4.0"
-matplotlib = "^3.10.1"
-pyarrow = "^19.0.1"
-fastparquet = "^2024.11.0"
-transformers = "^4.48.0"
-umap-learn = "^0.5.7"
-scikit-learn = "^1.5.2"
-sentencepiece = "^0.2.0"
-
-
-[tool.poetry.group.dev.dependencies]
-ipykernel = "^6.29.5"
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5,<7.0.0",
+    "ruff>=0.11.2,<0.12.0"
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"

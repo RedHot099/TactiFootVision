@@ -24,7 +24,7 @@
    git clone https://github.com/yourorg/tactifoot_vision.git
    cd tactifoot_vision
    # Install dependencies and environment
-   poetry install
+   uv sync
    ```
 
 2. **Prepare Configuration**
@@ -46,12 +46,12 @@
 
 3. **Run Detection & Tracking**
    ```bash
-   poetry run python scripts/run_detection.py --config config/default_config.yaml
+   uv run python scripts/run_detection.py --config config/default_config.yaml
    ```
 
 4. **Merge with StatsBomb**
    ```bash
-   poetry run python scripts/merge_pipeline_statsbomb.py --config config/default_config.yaml
+   uv run python scripts/merge_pipeline_statsbomb.py --config config/default_config.yaml
    ```
 
 ## 🛠 Configuration
