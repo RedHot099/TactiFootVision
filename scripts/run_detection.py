@@ -13,7 +13,7 @@ import cv2
 import supervision as sv
 from tqdm import tqdm
 import numpy as np
-from typing import Any, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
 from collections import deque
 
 from loguru import logger
@@ -55,12 +55,38 @@ def _shrink_box(box: np.ndarray, scale: float, frame_shape: tuple[int, int, int]
     return np.array([new_x1, new_y1, new_x2, new_y2], dtype=float)
 
 
-def _extract_crop(frame: np.ndarray, box: np.ndarray, scale: float) -> Optional[np.ndarray]:
+def _extract_crop(
+    frame: np.ndarray,
+    box: np.ndarray,
+    scale: float,
+    center_ratio: float = 1.0,
+) -> Optional[np.ndarray]:
     shrunk = _shrink_box(box, scale, frame.shape)
     if shrunk is None:
         return None
     x1, y1, x2, y2 = shrunk.astype(int)
-    return frame[y1:y2, x1:x2].copy() if x2 > x1 and y2 > y1 else None
+    if x2 <= x1 or y2 <= y1:
+        return None
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    if center_ratio < 1.0:
+        center_ratio = max(0.05, min(1.0, float(center_ratio)))
+        h, w = crop.shape[:2]
+        target_w = max(1, int(round(w * center_ratio)))
+        target_h = max(1, int(round(h * center_ratio)))
+        start_x = max(0, (w - target_w) // 2)
+        start_y = max(0, (h - target_h) // 2)
+        end_x = start_x + target_w
+        end_y = start_y + target_h
+        if end_x > w:
+            end_x = w
+        if end_y > h:
+            end_y = h
+        crop = crop[start_y:end_y, start_x:end_x]
+        if crop.size == 0:
+            return None
+    return crop.copy()
 
 
 @dataclass
@@ -214,13 +240,15 @@ def main(config_path: Path):
         team_clf_cfg = getattr(config, "team_classification", None)
         team_classifier = None
         team_validator = None
-        team_samples: List[np.ndarray] = []
+        team_samples: Deque[np.ndarray] = deque()
         team_assignments: Dict[int, int] = {}
         sample_stride = 1
         max_samples = 0
         warmup_frames = 0
         crop_scale = 0.6
         consecutive_frames = 3
+        center_crop_ratio = 1.0
+        min_fit_samples = 2
         if team_clf_cfg and team_clf_cfg.enabled:
             model_name = team_clf_cfg.embedding_model
             siglip_cfg = None
@@ -232,6 +260,7 @@ def main(config_path: Path):
                 model_name=model_name,
                 method=getattr(team_clf_cfg, "method", None),
                 siglip_config=siglip_cfg,
+                kmeans_kwargs={"n_clusters": int(team_clf_cfg.num_clusters)},
             )
             team_validator = TeamAssignmentManager(team_clf_cfg.consecutive_frames)
             sample_stride = max(1, team_clf_cfg.sample_stride)
@@ -239,6 +268,9 @@ def main(config_path: Path):
             warmup_frames = team_clf_cfg.warmup_frames
             crop_scale = team_clf_cfg.crop_scale
             consecutive_frames = team_clf_cfg.consecutive_frames
+            center_crop_ratio = team_clf_cfg.center_crop_ratio
+            if getattr(team_clf_cfg, "num_clusters", None):
+                min_fit_samples = max(2, int(team_clf_cfg.num_clusters))
 
         team_colors = [
             sv.Color.from_hex(config.visualization.team_color_0),
@@ -349,10 +381,13 @@ def main(config_path: Path):
                 class_name = (
                     id_to_name_map.get(class_id, "") if class_id is not None else ""
                 )
-                if class_name not in {"player", "goalkeeper"}:
+                if class_name not in {"player", "goalkeeper", "referee"}:
                     continue
                 crop = _extract_crop(
-                    frame_local, detections_local.xyxy[det_idx], crop_scale
+                    frame_local,
+                    detections_local.xyxy[det_idx],
+                    crop_scale,
+                    center_ratio=center_crop_ratio,
                 )
                 if crop is None:
                     continue
@@ -694,33 +729,46 @@ def main(config_path: Path):
 
                 if team_classifier and not team_classifier.is_fitted:
                     if frame_count <= warmup_frames and frame_count % sample_stride == 0:
+                        sampling_source = tracked_detections
+                        if (
+                            sampling_source is None
+                            or len(sampling_source) == 0
+                            or sampling_source.tracker_id is None
+                        ):
+                            sampling_source = other_detections
                         candidate_boxes = (
-                            other_detections.xyxy.astype(np.float32)
-                            if len(other_detections) > 0
+                            sampling_source.xyxy.astype(np.float32)
+                            if len(sampling_source) > 0
                             else np.empty((0, 4), dtype=np.float32)
                         )
                         candidate_classes = (
-                            other_detections.class_id.astype(int)
-                            if other_detections.class_id is not None
+                            sampling_source.class_id.astype(int)
+                            if sampling_source.class_id is not None
                             else np.full(len(candidate_boxes), -1, dtype=int)
                         )
                         if candidate_boxes.size > 0:
-                            for box, cls in zip(candidate_boxes, candidate_classes):
+                            for box, cls in zip(
+                                candidate_boxes, candidate_classes
+                            ):
                                 class_name = id_to_name_map.get(int(cls), "")
-                                if class_name not in {"player", "goalkeeper"}:
+                                if class_name not in {"player", "goalkeeper", "referee"}:
                                     continue
-                                crop = _extract_crop(frame, box, crop_scale)
-                                if crop is not None:
-                                    team_samples.append(crop)
-                                    if max_samples and len(team_samples) > max_samples:
-                                        team_samples = team_samples[-max_samples:]
+                                crop = _extract_crop(
+                                    frame, box, crop_scale, center_ratio=center_crop_ratio
+                                )
+                                if crop is None:
+                                    continue
+                                team_samples.append(crop)
+                                if max_samples and len(team_samples) > max_samples:
+                                    team_samples.popleft()
                     if (
-                        len(team_samples) >= 2
+                        len(team_samples) >= min_fit_samples
                         and (frame_count >= warmup_frames or (max_samples and len(team_samples) >= max_samples))
                     ):
                         try:
-                            team_classifier.fit(team_samples)
-                            team_samples = []
+                            crops_to_fit = list(team_samples)
+                            team_classifier.fit(crops_to_fit)
+                            team_samples.clear()
                             logger.debug("Team classifier fitted successfully.")
                             team_classifier_ready = True
                             if buffered_frames:
@@ -758,7 +806,7 @@ def main(config_path: Path):
                         mask_players = np.array(
                             [
                                 id_to_name_map.get(int(cid), "")
-                                in {"player", "goalkeeper"}
+                                in {"player", "goalkeeper", "referee"}
                                 for cid in det_class_ids
                             ]
                         )
@@ -886,9 +934,14 @@ def main(config_path: Path):
                         if tracked_detections.class_id is not None:
                             class_id = int(tracked_detections.class_id[det_idx])
                         class_name = id_to_name_map.get(class_id, "") if class_id is not None else ""
-                        if class_name not in {"player", "goalkeeper"}:
+                        if class_name not in {"player", "goalkeeper", "referee"}:
                             continue
-                        crop = _extract_crop(frame, tracked_detections.xyxy[det_idx], crop_scale)
+                        crop = _extract_crop(
+                            frame,
+                            tracked_detections.xyxy[det_idx],
+                            crop_scale,
+                            center_ratio=center_crop_ratio,
+                        )
                         if crop is None:
                             continue
                         crops_for_prediction.append(crop)

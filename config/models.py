@@ -179,6 +179,8 @@ class TeamClassificationConfig(BaseModel):
     crop_scale: float = Field(0.6, gt=0.0, le=1.0)
     consecutive_frames: int = Field(3, ge=1)
     embedding_model: str = "resnet18"
+    num_clusters: int = Field(2, ge=2)
+    center_crop_ratio: float = Field(0.3, gt=0.0, le=3)
     method: Literal["resnet", "siglip"] = "resnet"
     siglip: SiglipTeamClassificationOptions = Field(
         default_factory=SiglipTeamClassificationOptions

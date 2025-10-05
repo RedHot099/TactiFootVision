@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -13,56 +14,42 @@ from sklearn.cluster import KMeans
 from torchvision.models import ResNet18_Weights, resnet18
 
 
-class TeamClassifier:
-    """Clusters player crops into two visual groups using configurable embeddings."""
+_DEFAULT_KMEANS_ARGS: Dict[str, Any] = {
+    "n_clusters": 2,
+    "n_init": 10,
+    "random_state": 0,
+}
 
-    _DEFAULT_KMEANS_ARGS: Dict[str, Any] = {
-        "n_clusters": 2,
-        "n_init": 10,
-        "random_state": 0,
-    }
+_SIGLIP_DEFAULTS: Dict[str, Any] = {
+    "model_name": "google/siglip-base-patch16-224",
+    "batch_size": 32,
+    "pooling": "mean",
+    "use_umap": True,
+    "umap_components": 3,
+    "umap_neighbors": 15,
+    "umap_min_dist": 0.1,
+    "umap_metric": "euclidean",
+    "umap_random_state": None,
+    "color_space": "rgb",
+    "color_hist_bins": 0,
+    "color_hist_weight": 0.0,
+}
 
-    _SIGLIP_DEFAULTS: Dict[str, Any] = {
-        "model_name": "google/siglip-base-patch16-224",
-        "batch_size": 32,
-        "pooling": "mean",
-        "use_umap": True,
-        "umap_components": 3,
-        "umap_neighbors": 15,
-        "umap_min_dist": 0.1,
-        "umap_metric": "euclidean",
-        "umap_random_state": None,
-        "color_space": "rgb",
-        "color_hist_bins": 16,
-        "color_hist_weight": 0.2,
-    }
+
+class BaseTeamClassifier(ABC):
+    """Shared helpers for team-clustering backends."""
 
     def __init__(
         self,
-        device: Optional[str] = None,
-        model_name: str = "resnet18",
         *,
-        method: Optional[str] = None,
-        siglip_config: Optional[Dict[str, Any]] = None,
+        device: Optional[str] = None,
         kmeans_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> None:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        resolved_method = self._resolve_method(method, model_name, siglip_config)
-        if resolved_method not in {"resnet", "siglip"}:
-            raise ValueError(f"Unsupported team classification method: {resolved_method}")
-
-        self._method = resolved_method
+        self._kmeans_kwargs = {**_DEFAULT_KMEANS_ARGS, **(kmeans_kwargs or {})}
         self._kmeans: Optional[KMeans] = None
         self._cluster_remap: Dict[int, int] = {}
-        self._kmeans_kwargs = {**self._DEFAULT_KMEANS_ARGS, **(kmeans_kwargs or {})}
         self._feature_dim: Optional[int] = None
-        self._umap_model = None
-
-        if self._method == "siglip":
-            config = {**self._SIGLIP_DEFAULTS, **(siglip_config or {})}
-            self._init_siglip_backend(config)
-        else:
-            self._init_resnet_backend(model_name)
 
     @property
     def is_fitted(self) -> bool:
@@ -70,14 +57,30 @@ class TeamClassifier:
 
     def fit(self, crops: List[np.ndarray]) -> None:
         features = self._extract_features(crops)
-        if features.shape[0] < 2:
-            raise ValueError("Need at least two crops to fit team classifier")
-        if self._method == "siglip" and self._umap_model is not None:
-            features = self._umap_model.fit_transform(features)
-            self._feature_dim = features.shape[1]
+        min_required = self._min_samples_required()
+        if features.shape[0] < min_required:
+            raise ValueError(
+                f"Need at least {min_required} crops to fit team classifier"
+            )
+
+        features = self._prepare_features_for_fit(features)
         kmeans = KMeans(**self._kmeans_kwargs)
         kmeans.fit(features)
-        order = np.argsort(kmeans.cluster_centers_[:, 0])
+
+        centers = kmeans.cluster_centers_
+        labels = getattr(kmeans, "labels_", None)
+        if kmeans.n_clusters <= 1:
+            order = [0]
+        elif labels is not None and labels.size > 0:
+            counts = np.bincount(labels, minlength=kmeans.n_clusters)
+            sorted_by_count = list(np.argsort(counts)[::-1])
+            top_two = sorted_by_count[:2]
+            top_two_sorted = sorted(top_two, key=lambda idx: centers[idx, 0])
+            remaining = sorted_by_count[2:]
+            order = [int(idx) for idx in top_two_sorted + remaining]
+        else:
+            order = sorted(range(kmeans.n_clusters), key=lambda idx: centers[idx, 0])
+
         self._cluster_remap = {int(orig): int(rank) for rank, orig in enumerate(order)}
         self._kmeans = kmeans
         if self._feature_dim is None:
@@ -88,22 +91,52 @@ class TeamClassifier:
             raise RuntimeError("TeamClassifier must be fitted before calling predict")
         if not crops:
             return np.empty((0,), dtype=int)
+
         features = self._extract_features(crops)
         if features.size == 0:
             return np.empty((0,), dtype=int)
-        if self._method == "siglip" and self._umap_model is not None:
-            features = self._umap_model.transform(features)
+
+        features = self._prepare_features_for_predict(features)
         raw_preds = self._kmeans.predict(features)
-        remapped = np.vectorize(self._cluster_remap.get)(raw_preds)
+        remapped = np.vectorize(lambda idx: self._cluster_remap.get(int(idx), -1))(
+            raw_preds
+        )
         return remapped.astype(int)
 
+    def _min_samples_required(self) -> int:
+        n_clusters = int(
+            self._kmeans_kwargs.get("n_clusters", _DEFAULT_KMEANS_ARGS["n_clusters"])
+        )
+        return max(2, n_clusters)
+
+    def _prepare_features_for_fit(self, features: np.ndarray) -> np.ndarray:
+        if self._feature_dim is None and features.size:
+            self._feature_dim = features.shape[1]
+        return features
+
+    def _prepare_features_for_predict(self, features: np.ndarray) -> np.ndarray:
+        return features
+
+    @abstractmethod
     def _extract_features(self, crops: List[np.ndarray]) -> np.ndarray:
-        if self._method == "siglip":
-            return self._extract_siglip_features(crops)
-        return self._extract_resnet_features(crops)
+        """Subclasses must provide embedding extraction."""
+
+
+class ResnetTeamClassifier(BaseTeamClassifier):
+    """Team clustering powered by torchvision ResNet embeddings."""
+
+    def __init__(
+        self,
+        *,
+        device: Optional[str] = None,
+        model_name: str = "resnet18",
+        kmeans_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(device=device, kmeans_kwargs=kmeans_kwargs)
+        self._init_resnet_backend(model_name)
 
     def _init_resnet_backend(self, model_name: str) -> None:
-        normalized = model_name.lower()
+        normalized = (model_name or "").lower()
         if normalized != "resnet18":
             raise ValueError("Currently only resnet18 embeddings are supported")
         weights = ResNet18_Weights.DEFAULT
@@ -116,13 +149,63 @@ class TeamClassifier:
             dummy = torch.zeros(1, 3, 224, 224, device=self.device)
             self._feature_dim = int(self.model(dummy).shape[1])
 
+    def _extract_features(self, crops: List[np.ndarray]) -> np.ndarray:
+        tensors = []
+        for crop in crops:
+            if crop is None or crop.size == 0:
+                continue
+            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            tensor = self.preprocess(pil)
+            tensors.append(tensor)
+        if not tensors:
+            return np.empty((0, self._feature_dim or 0), dtype=np.float32)
+        batch = torch.stack(tensors).to(self.device)
+        with torch.inference_mode():
+            feats = self.model(batch)
+        return feats.detach().cpu().numpy().astype(np.float32)
+
+
+class SiglipTeamClassifier(BaseTeamClassifier):
+    """Team clustering powered by SigLIP embeddings and optional UMAP."""
+
+    def __init__(
+        self,
+        *,
+        device: Optional[str] = None,
+        model_name: str = "google/siglip-base-patch16-224",
+        siglip_config: Optional[Dict[str, Any]] = None,
+        kmeans_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        config = {**_SIGLIP_DEFAULTS, **(siglip_config or {})}
+        if model_name:
+            config["model_name"] = model_name
+        super().__init__(device=device, kmeans_kwargs=kmeans_kwargs)
+        self._init_siglip_backend(config)
+
     def _init_siglip_backend(self, config: Dict[str, Any]) -> None:
         try:
-            from transformers import SiglipImageProcessor, SiglipVisionModel
+            from transformers import SiglipVisionModel
         except ImportError as exc:  # pragma: no cover - runtime guard
             raise ImportError(
                 "SigLIP team classification requires the 'transformers' package."
             ) from exc
+
+        processor_cls = None
+        try:  # pragma: no cover - runtime guard
+            from transformers import SiglipImageProcessor as _ProcessorCls
+
+            processor_cls = _ProcessorCls
+        except ImportError:
+            try:
+                from transformers import AutoImageProcessor as _ProcessorCls
+
+                processor_cls = _ProcessorCls
+            except ImportError as proc_exc:
+                raise ImportError(
+                    "SigLIP image preprocessing requires either 'SiglipImageProcessor' or 'AutoImageProcessor' from transformers."
+                ) from proc_exc
+        assert processor_cls is not None  # narrow type checkers
 
         self._siglip_config = config
         pooling = config.get("pooling", "mean").lower()
@@ -130,10 +213,10 @@ class TeamClassifier:
             raise ValueError("SigLIP pooling must be either 'mean' or 'cls'")
         self._siglip_pooling = pooling
         self._siglip_batch_size = int(config.get("batch_size", 32))
-        self._siglip_processor = SiglipImageProcessor.from_pretrained(
-            config["model_name"]
+        self._siglip_processor = processor_cls.from_pretrained(config["model_name"])
+        self._siglip_model = SiglipVisionModel.from_pretrained(config["model_name"]).to(
+            self.device
         )
-        self._siglip_model = SiglipVisionModel.from_pretrained(config["model_name"]).to(self.device)
         self._siglip_model.eval()
 
         hidden_size = getattr(self._siglip_model.config, "hidden_size", None)
@@ -165,23 +248,7 @@ class TeamClassifier:
         base_dim = (self._siglip_embedding_dim or 0) + self._color_feature_dim
         self._feature_dim = self._umap_components if self._use_umap else base_dim
 
-    def _extract_resnet_features(self, crops: List[np.ndarray]) -> np.ndarray:
-        tensors = []
-        for crop in crops:
-            if crop is None or crop.size == 0:
-                continue
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            pil = Image.fromarray(rgb)
-            tensor = self.preprocess(pil)
-            tensors.append(tensor)
-        if not tensors:
-            return np.empty((0, self._feature_dim or 0), dtype=np.float32)
-        batch = torch.stack(tensors).to(self.device)
-        with torch.inference_mode():
-            feats = self.model(batch)
-        return feats.detach().cpu().numpy().astype(np.float32)
-
-    def _extract_siglip_features(self, crops: List[np.ndarray]) -> np.ndarray:
+    def _extract_features(self, crops: List[np.ndarray]) -> np.ndarray:
         valid_rgb: List[np.ndarray] = []
         hist_features: List[np.ndarray] = []
         for crop in crops:
@@ -214,13 +281,27 @@ class TeamClassifier:
                 hist_array *= self._color_hist_weight
             features = np.concatenate([embeddings, hist_array], axis=1)
 
-        if not self._use_umap:
+        if self._use_umap and self._umap_model is None:
+            self._init_umap_model()
+        if not self._use_umap and features.size:
             self._feature_dim = features.shape[1]
-        else:
-            # Delay UMAP instantiation until first fit call so we can reuse it.
-            if self._umap_model is None:
-                self._init_umap_model()
         return features.astype(np.float32)
+
+    def _prepare_features_for_fit(self, features: np.ndarray) -> np.ndarray:
+        if not self._use_umap:
+            if self._feature_dim is None and features.size:
+                self._feature_dim = features.shape[1]
+            return features
+        if self._umap_model is None:
+            self._init_umap_model()
+        transformed = self._umap_model.fit_transform(features)
+        self._feature_dim = transformed.shape[1]
+        return transformed
+
+    def _prepare_features_for_predict(self, features: np.ndarray) -> np.ndarray:
+        if self._use_umap and self._umap_model is not None:
+            return self._umap_model.transform(features)
+        return features
 
     def _run_siglip_inference(self, images_rgb: List[np.ndarray]) -> np.ndarray:
         batches: List[np.ndarray] = []
@@ -270,11 +351,55 @@ class TeamClassifier:
 
         self._umap_model = umap.UMAP(
             n_components=self._umap_components,
-            n_neighbors=self._umap_neighbors,
-            min_dist=self._umap_min_dist,
-            metric=self._umap_metric,
-            random_state=self._umap_random_state,
+            # n_neighbors=self._umap_neighbors,
+            # min_dist=self._umap_min_dist,
+            # metric=self._umap_metric,
+            # random_state=self._umap_random_state,
         )
+
+
+class TeamClassifier:
+    """Backwards-compatible facade that selects the appropriate backend."""
+
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        model_name: str = "resnet18",
+        *,
+        method: Optional[str] = None,
+        siglip_config: Optional[Dict[str, Any]] = None,
+        kmeans_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        resolved = self._resolve_method(method, model_name, siglip_config)
+        backend_kwargs = {
+            "device": device,
+            "kmeans_kwargs": kmeans_kwargs,
+        }
+        if resolved == "siglip":
+            self._backend: BaseTeamClassifier = SiglipTeamClassifier(
+                model_name=model_name,
+                siglip_config=siglip_config,
+                **backend_kwargs,
+            )
+        else:
+            self._backend = ResnetTeamClassifier(
+                model_name=model_name,
+                **backend_kwargs,
+            )
+
+    @property
+    def is_fitted(self) -> bool:
+        return self._backend.is_fitted
+
+    def fit(self, crops: List[np.ndarray]) -> None:
+        self._backend.fit(crops)
+
+    def predict(self, crops: List[np.ndarray]) -> np.ndarray:
+        return self._backend.predict(crops)
+
+    @property
+    def backend(self) -> BaseTeamClassifier:
+        return self._backend
 
     @staticmethod
     def _resolve_method(

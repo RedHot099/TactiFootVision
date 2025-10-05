@@ -1,3 +1,15 @@
-from .classifier import TeamAssignmentManager, TeamClassifier
+from .classifier import (
+    BaseTeamClassifier,
+    ResnetTeamClassifier,
+    SiglipTeamClassifier,
+    TeamAssignmentManager,
+    TeamClassifier,
+)
 
-__all__ = ["TeamClassifier", "TeamAssignmentManager"]
+__all__ = [
+    "BaseTeamClassifier",
+    "TeamClassifier",
+    "ResnetTeamClassifier",
+    "SiglipTeamClassifier",
+    "TeamAssignmentManager",
+]

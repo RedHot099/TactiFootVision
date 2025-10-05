@@ -4,7 +4,7 @@ import torch
 import cv2
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterable
 
 from config.models import TrackingConfig
 
@@ -108,6 +108,31 @@ class SAM2Tracker:
         ids = np.arange(self._next_id, self._next_id + count, dtype=int)
         self._next_id += count
         return ids
+
+    def remove_ids(self, frame: np.ndarray, ids_to_remove: Iterable[int]) -> sv.Detections:
+        remove_set = {int(tid) for tid in ids_to_remove if tid is not None}
+        if not remove_set:
+            return self._run_raw_track(frame)
+
+        keep_entries: list[tuple[int, np.ndarray, int]] = []
+        for tid, cls in self._id_to_class.items():
+            if tid in remove_set:
+                continue
+            if tid not in self._last_boxes:
+                continue
+            keep_entries.append((tid, self._last_boxes[tid], cls))
+
+        if not keep_entries:
+            empty_boxes = np.empty((0, 4), dtype=np.float32)
+            empty_classes = np.empty((0,), dtype=int)
+            empty_ids = np.empty((0,), dtype=int)
+            return self.refresh_prompts(frame, empty_boxes, empty_classes, empty_ids)
+
+        keep_entries.sort(key=lambda item: item[0])
+        boxes = np.stack([box for _, box, _ in keep_entries], axis=0).astype(np.float32)
+        classes = np.array([cls for _, _, cls in keep_entries], dtype=int)
+        tracker_ids = np.array([tid for tid, _, _ in keep_entries], dtype=int)
+        return self.refresh_prompts(frame, boxes, classes, tracker_ids)
 
     def refresh_prompts(
         self,
