@@ -17,6 +17,11 @@ class KeypointModelType(str, Enum):
     YOLO_POSE = "yolo_pose"
 
 
+class FrameVisualizationStyle(str, Enum):
+    STANDARD = "standard"
+    VIDEO_GAME = "video_game"
+
+
 class PathsConfig(BaseModel):
     input_video: Path
     output_video: Path = Path("data/output/output_video.mp4")
@@ -50,6 +55,7 @@ class DetectionConfig(BaseModel):
     classes: Dict[str, int] = Field(
         default_factory=lambda: {"ball": 0, "goalkeeper": 1, "player": 2, "referee": 3}
     )
+    include_labels: Optional[list[str]] = None
 
     @field_validator("checkpoint_path", mode="before")
     @classmethod
@@ -61,6 +67,28 @@ class DetectionConfig(BaseModel):
         if v is None or (isinstance(v, str) and not v):
             return None
         raise TypeError("checkpoint_path must be a string, Path, or None")
+
+    @field_validator("include_labels", mode="before")
+    @classmethod
+    def _normalize_include_labels(cls, v: Any) -> Optional[list[str]]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            stripped = v.strip()
+            return [stripped] if stripped else None
+        if isinstance(v, (list, tuple, set)):
+            cleaned: list[str] = []
+            for item in v:
+                if isinstance(item, str):
+                    stripped = item.strip()
+                    if stripped:
+                        cleaned.append(stripped)
+                else:
+                    raise TypeError(
+                        "include_labels entries must be strings if provided"
+                    )
+            return cleaned or None
+        raise TypeError("include_labels must be a string, sequence of strings, or None")
 
 
 class TrackingConfig(BaseModel):
@@ -149,6 +177,9 @@ class PitchVisualizerConfig(BaseModel):
     draw_projected_pitch: bool = True
     draw_segmentation_masks: bool = False
     draw_bounding_boxes: bool = True
+    draw_keypoints: bool = True
+    draw_pitch_detection: bool = True
+    frame_style: FrameVisualizationStyle = FrameVisualizationStyle.STANDARD
 
 
 class ProcessingConfig(BaseModel):

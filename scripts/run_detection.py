@@ -19,7 +19,7 @@ from collections import deque
 from loguru import logger
 
 from config.loaders import load_config
-from config.models import DetectionModelType, KeypointModelType
+from config.models import DetectionModelType, FrameVisualizationStyle, KeypointModelType
 from tactifoot_vision.data.video_loader import VideoLoader
 from tactifoot_vision.detection.yolo_handler import YOLOHandler
 from tactifoot_vision.tracking.tracker import Tracker
@@ -279,6 +279,9 @@ def main(config_path: Path):
         ]
         TEAM_DEFAULT_COLOR_IDX = len(team_colors) - 1
         team_palette = sv.ColorPalette(team_colors)
+        use_video_game_style = (
+            config.visualization.frame_style == FrameVisualizationStyle.VIDEO_GAME
+        )
 
         box_annotator = sv.BoxAnnotator(thickness=2, color=team_palette)
         label_annotator = sv.LabelAnnotator(
@@ -292,7 +295,45 @@ def main(config_path: Path):
             thickness=2,
             color=sv.Color.from_hex(config.visualization.ball_color),
         )
+        ellipse_annotator = None
+        triangle_annotator = None
+        if use_video_game_style:
+            ellipse_annotator = sv.EllipseAnnotator(
+                color=team_palette,
+                thickness=2,
+            )
+            triangle_annotator = sv.TriangleAnnotator(
+                color=sv.Color.from_hex(config.visualization.ball_color),
+                base=25,
+                height=21,
+                outline_thickness=1,
+            )
         ball_class_id = config.detection.classes.get("ball", -1)
+        allowed_detection_class_ids: Optional[set[int]] = None
+        include_labels = (
+            list(config.detection.include_labels)
+            if getattr(config.detection, "include_labels", None)
+            else None
+        )
+        if include_labels:
+            kept_label_names: set[str] = set()
+            allowed_detection_class_ids = set()
+            for label in include_labels:
+                label_id = config.detection.classes.get(label)
+                if label_id is None:
+                    logger.warning(
+                        f"include_labels entry '{label}' not found in detection.classes; skipping"
+                    )
+                    continue
+                allowed_detection_class_ids.add(int(label_id))
+                kept_label_names.add(label)
+            if not allowed_detection_class_ids:
+                allowed_detection_class_ids = None
+            else:
+                label_list_str = ", ".join(sorted(kept_label_names))
+                logger.info(
+                    f"Filtering detections to configured labels: {label_list_str}"
+                )
         pitch_config_instance = SoccerPitchConfiguration(
             length=config.geometry.target_pitch_length,
             width=config.geometry.target_pitch_width,
@@ -502,7 +543,10 @@ def main(config_path: Path):
                 timestamp_seconds=current_timestamp_local,
             )
 
-            if config.visualization.draw_bounding_boxes and len(tracked_local) > 0:
+            draw_player_annotations = (
+                config.visualization.draw_bounding_boxes and len(tracked_local) > 0
+            )
+            if draw_player_annotations:
                 labels: List[str] = []
                 for det_idx in range(len(tracked_local)):
                     tracker_id = (
@@ -520,30 +564,42 @@ def main(config_path: Path):
                     )
                     if class_id is not None:
                         class_name = id_to_name_map.get(class_id, str(class_id))
-                        if class_name:
-                            label_parts.append(class_name)
-                    if (
-                        team_array is not None
-                        and det_idx < len(team_array)
-                        and team_array[det_idx] in (0, 1)
-                    ):
-                        label_parts.append(f"T{int(team_array[det_idx])}")
+                        # if class_name:
+                        #     label_parts.append(class_name)
+                    # if (
+                    #     team_array is not None
+                    #     and det_idx < len(team_array)
+                    #     and team_array[det_idx] in (0, 1)
+                    # ):
+                    #     label_parts.append(f"T{int(team_array[det_idx])}")
                     labels.append(" ".join(label_parts))
 
-                box_kwargs = {}
-                label_kwargs = {}
+                annotation_kwargs: Dict[str, Any] = {}
+                label_kwargs: Dict[str, Any] = {}
                 if team_indices is not None:
-                    box_kwargs["custom_color_lookup"] = team_indices
+                    annotation_kwargs["custom_color_lookup"] = team_indices
                     label_kwargs["custom_color_lookup"] = team_indices
-                annotated_frame = box_annotator.annotate(
-                    annotated_frame, tracked_local, **box_kwargs
-                )
+
+                if use_video_game_style and ellipse_annotator is not None:
+                    annotated_frame = ellipse_annotator.annotate(
+                        annotated_frame, tracked_local, **annotation_kwargs
+                    )
+                else:
+                    annotated_frame = box_annotator.annotate(
+                        annotated_frame, tracked_local, **annotation_kwargs
+                    )
+
                 if any(labels):
                     annotated_frame = label_annotator.annotate(
                         annotated_frame, tracked_local, labels, **label_kwargs
                     )
 
-                if config.visualization.draw_bounding_boxes and len(ball_local) > 0:
+            if config.visualization.draw_bounding_boxes and len(ball_local) > 0:
+                if use_video_game_style and triangle_annotator is not None:
+                    annotated_frame = triangle_annotator.annotate(
+                        annotated_frame, ball_local
+                    )
+                else:
                     annotated_frame = ball_box_annotator.annotate(
                         annotated_frame, ball_local
                     )
@@ -554,9 +610,9 @@ def main(config_path: Path):
                 ):
                     if config.visualization.draw_projected_pitch:
                         for u, v in main_frame_edges_0_based:
-                            if 0 <= u < len(frame_pitch_vertices_local) and 0 <= v < len(
+                            if 0 <= u < len(
                                 frame_pitch_vertices_local
-                            ):
+                            ) and 0 <= v < len(frame_pitch_vertices_local):
                                 pt1 = tuple(frame_pitch_vertices_local[u].astype(int))
                                 pt2 = tuple(frame_pitch_vertices_local[v].astype(int))
                                 cv2.line(
@@ -686,6 +742,21 @@ def main(config_path: Path):
         with tqdm(total=total_frames, desc="Processing frames", unit="frame") as pbar:
             for frame in frame_generator:
                 detections = detection_handler.detect(frame)
+                if (
+                    allowed_detection_class_ids
+                    and detections.class_id is not None
+                    and len(detections) > 0
+                ):
+                    keep_mask = np.zeros(len(detections), dtype=bool)
+                    for det_idx, cls in enumerate(detections.class_id):
+                        if cls is None:
+                            continue
+                        cls_int = int(cls)
+                        if ball_class_id >= 0 and cls_int == ball_class_id:
+                            keep_mask[det_idx] = True
+                        elif cls_int in allowed_detection_class_ids:
+                            keep_mask[det_idx] = True
+                    detections = detections[keep_mask]
                 ball_detections = detections[detections.class_id == ball_class_id]
                 other_detections = detections[detections.class_id != ball_class_id]
 
@@ -728,7 +799,10 @@ def main(config_path: Path):
                             tracked_detections = other_detections
 
                 if team_classifier and not team_classifier.is_fitted:
-                    if frame_count <= warmup_frames and frame_count % sample_stride == 0:
+                    if (
+                        frame_count <= warmup_frames
+                        and frame_count % sample_stride == 0
+                    ):
                         sampling_source = tracked_detections
                         if (
                             sampling_source is None
@@ -747,23 +821,28 @@ def main(config_path: Path):
                             else np.full(len(candidate_boxes), -1, dtype=int)
                         )
                         if candidate_boxes.size > 0:
-                            for box, cls in zip(
-                                candidate_boxes, candidate_classes
-                            ):
+                            for box, cls in zip(candidate_boxes, candidate_classes):
                                 class_name = id_to_name_map.get(int(cls), "")
-                                if class_name not in {"player", "goalkeeper", "referee"}:
+                                if class_name not in {
+                                    "player",
+                                    "goalkeeper",
+                                    "referee",
+                                }:
                                     continue
                                 crop = _extract_crop(
-                                    frame, box, crop_scale, center_ratio=center_crop_ratio
+                                    frame,
+                                    box,
+                                    crop_scale,
+                                    center_ratio=center_crop_ratio,
                                 )
                                 if crop is None:
                                     continue
                                 team_samples.append(crop)
                                 if max_samples and len(team_samples) > max_samples:
                                     team_samples.popleft()
-                    if (
-                        len(team_samples) >= min_fit_samples
-                        and (frame_count >= warmup_frames or (max_samples and len(team_samples) >= max_samples))
+                    if len(team_samples) >= min_fit_samples and (
+                        frame_count >= warmup_frames
+                        or (max_samples and len(team_samples) >= max_samples)
                     ):
                         try:
                             crops_to_fit = list(team_samples)
@@ -921,7 +1000,12 @@ def main(config_path: Path):
                 current_ball_pitch_pos = None
                 visible_area_list = None
 
-                if team_validator and team_classifier and team_classifier.is_fitted and len(tracked_detections) > 0:
+                if (
+                    team_validator
+                    and team_classifier
+                    and team_classifier.is_fitted
+                    and len(tracked_detections) > 0
+                ):
                     crops_for_prediction: List[np.ndarray] = []
                     tracker_ids_for_prediction: List[int] = []
                     for det_idx in range(len(tracked_detections)):
@@ -933,7 +1017,11 @@ def main(config_path: Path):
                         class_id = None
                         if tracked_detections.class_id is not None:
                             class_id = int(tracked_detections.class_id[det_idx])
-                        class_name = id_to_name_map.get(class_id, "") if class_id is not None else ""
+                        class_name = (
+                            id_to_name_map.get(class_id, "")
+                            if class_id is not None
+                            else ""
+                        )
                         if class_name not in {"player", "goalkeeper", "referee"}:
                             continue
                         crop = _extract_crop(
@@ -949,12 +1037,18 @@ def main(config_path: Path):
                     if crops_for_prediction:
                         try:
                             predictions = team_classifier.predict(crops_for_prediction)
-                            validated = team_validator.update(tracker_ids_for_prediction, predictions)
-                            for tid, team_id in zip(tracker_ids_for_prediction, validated):
+                            validated = team_validator.update(
+                                tracker_ids_for_prediction, predictions
+                            )
+                            for tid, team_id in zip(
+                                tracker_ids_for_prediction, validated
+                            ):
                                 if team_id is not None:
                                     team_assignments[tid] = int(team_id)
                         except Exception as pred_err:
-                            logger.warning(f"Team classifier prediction failed: {pred_err}")
+                            logger.warning(
+                                f"Team classifier prediction failed: {pred_err}"
+                            )
 
                     active_ids = set()
                     if tracked_detections.tracker_id is not None:
@@ -965,12 +1059,19 @@ def main(config_path: Path):
                         }
                     team_validator.prune(active_ids)
                     team_assignments = {
-                        tid: team for tid, team in team_assignments.items() if tid in active_ids
+                        tid: team
+                        for tid, team in team_assignments.items()
+                        if tid in active_ids
                     }
                     pipeline_exporter.update_team_assignments(team_assignments)
                     if tracked_detections.tracker_id is not None:
                         team_array = np.array(
-                            [team_assignments.get(int(tid), -1) if tid is not None else -1 for tid in tracked_detections.tracker_id],
+                            [
+                                team_assignments.get(int(tid), -1)
+                                if tid is not None
+                                else -1
+                                for tid in tracked_detections.tracker_id
+                            ],
                             dtype=int,
                         )
                         player_team_ids_for_vis = team_array
@@ -1033,7 +1134,12 @@ def main(config_path: Path):
                 )
 
                 # Buffer early frames until team classifier is ready
-                if team_classifier and team_clf_cfg and team_clf_cfg.enabled and not team_classifier_ready:
+                if (
+                    team_classifier
+                    and team_clf_cfg
+                    and team_clf_cfg.enabled
+                    and not team_classifier_ready
+                ):
                     buffered_frames.append(
                         {
                             "frame": frame,
@@ -1111,10 +1217,11 @@ def main(config_path: Path):
                         logger.warning(
                             f"Frame {frame_count}: Failed to draw segmentation masks: {mask_err}"
                         )
-                if (
+                draw_player_annotations = (
                     config.visualization.draw_bounding_boxes
                     and len(tracked_detections) > 0
-                ):
+                )
+                if draw_player_annotations:
                     labels: list[str] = []
                     for det_idx in range(len(tracked_detections)):
                         tracker_id = (
@@ -1132,23 +1239,30 @@ def main(config_path: Path):
                         )
                         if class_id is not None:
                             class_name = id_to_name_map.get(class_id, str(class_id))
-                            if class_name:
-                                label_parts.append(class_name)
-                        if tracker_id is not None and tracker_id in team_assignments:
-                            label_parts.append(f"T{team_assignments[int(tracker_id)]}")
-                        label = " ".join(label_parts)
-                        labels.append(label)
-                    box_kwargs = {}
+                            # if class_name:
+                            #     label_parts.append(class_name)
+                        # if tracker_id is not None and tracker_id in team_assignments:
+                        #     label_parts.append(f"T{team_assignments[int(tracker_id)]}")
+                        labels.append(" ".join(label_parts))
+
+                    annotation_kwargs: Dict[str, Any] = {}
                     if (
                         color_lookup_indices is not None
                         and color_lookup_indices.size == len(tracked_detections)
                     ):
-                        box_kwargs["custom_color_lookup"] = color_lookup_indices
-                    annotated_frame = box_annotator.annotate(
-                        annotated_frame, tracked_detections, **box_kwargs
-                    )
+                        annotation_kwargs["custom_color_lookup"] = color_lookup_indices
+
+                    if use_video_game_style and ellipse_annotator is not None:
+                        annotated_frame = ellipse_annotator.annotate(
+                            annotated_frame, tracked_detections, **annotation_kwargs
+                        )
+                    else:
+                        annotated_frame = box_annotator.annotate(
+                            annotated_frame, tracked_detections, **annotation_kwargs
+                        )
+
                     if any(labels):
-                        label_kwargs = {}
+                        label_kwargs: Dict[str, Any] = {}
                         if (
                             color_lookup_indices is not None
                             and color_lookup_indices.size == len(tracked_detections)
@@ -1157,13 +1271,20 @@ def main(config_path: Path):
                         annotated_frame = label_annotator.annotate(
                             annotated_frame, tracked_detections, labels, **label_kwargs
                         )
-                if (
+
+                draw_ball_annotations = (
                     config.visualization.draw_bounding_boxes
                     and len(ball_detections) > 0
-                ):
-                    annotated_frame = ball_box_annotator.annotate(
-                        annotated_frame, ball_detections
-                    )
+                )
+                if draw_ball_annotations:
+                    if use_video_game_style and triangle_annotator is not None:
+                        annotated_frame = triangle_annotator.annotate(
+                            annotated_frame, ball_detections
+                        )
+                    else:
+                        annotated_frame = ball_box_annotator.annotate(
+                            annotated_frame, ball_detections
+                        )
                 pipeline_exporter.add_frame_data(
                     frame_id=frame_count,
                     period=current_period,
@@ -1174,7 +1295,10 @@ def main(config_path: Path):
                     visible_area=visible_area_list,
                     timestamp_seconds=current_timestamp_seconds,
                 )
-                if pitch_bbox_xyxy is not None:
+                if (
+                    config.visualization.draw_pitch_detection
+                    and pitch_bbox_xyxy is not None
+                ):
                     bbox_int = pitch_bbox_xyxy.astype(int)
                     cv2.rectangle(
                         annotated_frame,
@@ -1184,7 +1308,11 @@ def main(config_path: Path):
                         1,
                     )
 
-                if keypoints_sv is not None and keypoints_sv.xy.size > 0:
+                if (
+                    config.visualization.draw_keypoints
+                    and keypoints_sv is not None
+                    and keypoints_sv.xy.size > 0
+                ):
                     draw_threshold = config.keypoints.confidence_threshold
                     kpts_xy, kpts_conf = keypoints_sv.xy[0], keypoints_sv.confidence[0]
                     used_indices_set = (
