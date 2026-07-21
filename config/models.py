@@ -227,6 +227,8 @@ class TrainingSharedSettings(BaseModel):
     optimizer: str = "auto"
     device: Optional[str] = None
     plots: bool = True
+    project_name: Optional[str] = None
+    run_name: Optional[str] = None
 
 
 class TrainingDetectionConfig(TrainingSharedSettings):

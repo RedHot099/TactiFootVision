@@ -31,8 +31,8 @@ class RFDETRHandler(BaseHandler):
     def _init_model_from_name(self, model_name: str) -> RFDETRBase:
         logger.debug(f"RFDETR: Initializing from name {model_name}")
         try:
-            model = RFDETRBase()
-            logger.info("RFDETR base model instantiated (with default weights).")
+            model = RFDETRBase(pretrain_weights=model_name)
+            logger.info("RFDETR base model instantiated.")
             return model
         except Exception as e:
             logger.error(f"Failed to initialize RFDETR base model: {e}", exc_info=True)
@@ -102,14 +102,32 @@ class RFDETRHandler(BaseHandler):
                 "batch_size": train_cfg.batch_size,
                 "grad_accum_steps": train_cfg.grad_accum_steps,
                 "lr": train_cfg.learning_rate,
+                "output_dir": str(self._resolve_training_output_dir(train_cfg)),
+                "project": train_cfg.project_name,
+                "run": train_cfg.run_name,
+                "resolution": train_cfg.imgsz,
+                "class_names": ["person"],
+                "num_classes": 1,
+                "device": train_cfg.device,
+                "run_test": False,
             }
+            train_args = {key: value for key, value in train_args.items() if value is not None}
 
             logger.info(f"Starting RFDETR model.train() with args: {train_args}")
             self.model.train(**train_args)
-            logger.success("RF-DETR training process finished.")
+            logger.info("RF-DETR training process finished.")
 
         except Exception as e:
             logger.error(
                 f"An error occurred during RF-DETR training: {e}", exc_info=True
             )
             raise RuntimeError(f"RF-DETR training failed: {e}") from e
+
+    def _resolve_training_output_dir(self, train_cfg) -> Path:
+        if train_cfg.project_name and train_cfg.run_name:
+            return Path(train_cfg.project_name) / train_cfg.run_name
+        if train_cfg.project_name:
+            return Path(train_cfg.project_name)
+        if train_cfg.run_name:
+            return Path(train_cfg.run_name)
+        return Path("output")
