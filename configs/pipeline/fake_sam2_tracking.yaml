@@ -1,0 +1,15 @@
+name: fake_sam2_tracking
+paths:
+  input: data/soccernet_dummy/img1
+detection:
+  backend: fake
+tracking:
+  backend: sam2
+  sam2:
+    checkpoint: external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
+    model_config_path: external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+    device: cpu
+    max_side: 512
+    max_objects: 4
+export:
+  pipeline_csv: results/fake_sam2_tracking.csv

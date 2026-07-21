@@ -1,0 +1,23 @@
+name: yolo_sam2_smoke
+paths:
+  input: data/soccernet_dummy/img1
+detection:
+  backend: yolo
+  checkpoint: models/yolo11m.pt
+  confidence: 0.3
+  nms: 0.5
+tracking:
+  backend: sam2
+  frame_rate: 25
+  sam2:
+    checkpoint: external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
+    model_config_path: external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+    device: auto
+    max_side: 768
+    max_objects: 32
+    reseed_interval: 15
+    reseed_iou: 0.3
+    output_box_mode: mask
+export:
+  pipeline_csv: results/yolo_sam2_smoke.csv
+  mot: results/yolo_sam2_smoke_mot.txt

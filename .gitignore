@@ -22,11 +22,18 @@ tactifoot_kp_training/
 results/
 external/
 runs/
+components/
 *.sh
 *.txt
 *.pt
 *.pth
 *.yaml
+!configs/
+!configs/**/
+!configs/**/*.yaml
+/config.yaml
+*.local.yaml
+.config/
 
 # IDE specific
 .idea/

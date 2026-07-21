@@ -1,0 +1,19 @@
+name: yolo_pose_projection_smoke
+paths:
+  input: data/soccernet_dummy/img1
+detection:
+  backend: fake
+tracking:
+  backend: fake
+keypoints:
+  backend: yolo_pose
+  checkpoint: models/yolo_pose.pt
+  confidence: 0.5
+projection:
+  enabled: true
+  min_keypoint_confidence: 0.5
+  min_keypoints: 4
+  smoothing_window: 15
+  project_ball: true
+export:
+  pipeline_csv: results/yolo_pose_projection_smoke.csv

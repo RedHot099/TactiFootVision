@@ -1,0 +1,18 @@
+name: team_classification_smoke
+kind: team_classification
+max_frames: 2
+output_dir: results/experiments/team_classification_smoke
+pipeline:
+  name: team_classification_smoke
+  paths:
+    input: data/soccernet_dummy/img1
+  detection:
+    backend: fake
+  tracking:
+    backend: fake
+  team_assignment:
+    enabled: true
+    embedding: color_histogram
+    reducer: none
+    clusterer: kmeans
+    clusters: 2

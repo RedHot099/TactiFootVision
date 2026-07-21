@@ -1,0 +1,7 @@
+dataset_root: data/soccernet/tracking/extracted/train
+output_root: data/soccernet/tracking/coco_tracking_2023
+valid_fraction: 0.2
+seed: 42
+every_nth_frame: 1
+max_sequences: 1
+symlink_images: true

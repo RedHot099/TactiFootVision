@@ -1,0 +1,17 @@
+name: soccernet_detection_tracking
+kind: detection_tracking
+max_frames: 40
+output_dir: results/experiments/soccernet_detection_tracking
+pipeline:
+  name: soccernet_detection_tracking
+  paths:
+    input: data/soccernet_dummy/img1
+    output_dir: results/experiments/soccernet_detection_tracking
+  detection:
+    backend: fake
+  tracking:
+    backend: fake
+    frame_rate: 25
+  export:
+    pipeline_csv: results/experiments/soccernet_detection_tracking/pipeline.csv
+    mot: results/experiments/soccernet_detection_tracking/tracks.txt

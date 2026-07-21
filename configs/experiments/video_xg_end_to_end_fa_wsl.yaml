@@ -1,0 +1,35 @@
+name: fa_wsl_video_only_xg_end_to_end
+video_parts:
+  - /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/part1.mp4
+  - /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/part2.mp4
+scan_fps: 10
+refine_fps: 30
+refine_window_before_seconds: 1.5
+refine_window_after_seconds: 1.0
+output_dir: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/experiments/video_only_xg_end_to_end
+detector:
+  backend: rfdetr
+  checkpoint: models/rfdetr_base.pth
+  confidence: 0.25
+  per_class_confidence:
+    ball: 0.05
+    player: 0.3
+    goalkeeper: 0.25
+tracking:
+  backend: bytetrack
+  frame_rate: 10
+ball:
+  method: kalman_rts
+  max_gap_seconds: 2.0
+  max_speed_mps: 38.0
+shots:
+  kind: contact_kinematic
+  min_candidate_confidence: 0.25
+  temporal_nms_seconds: 8.0
+xg:
+  models:
+    - video_geometry
+    - video_freeze_context
+    - video_kinematic_context
+evaluation:
+  reference_events: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/events.parquet

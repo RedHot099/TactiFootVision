@@ -1,70 +1,145 @@
 # TactiFoot Vision
 
-**TactiFoot Vision** is a comprehensive Python toolkit for soccer match video analysis. It provides high-performance detection, keypoint estimation, homography mapping, player & ball tracking, visualization, and data export—all driven by a single, Pydantic-validated YAML configuration.
+TactiFoot Vision is a Python toolkit for football video analysis. The production
+runtime uses a domain-oriented `src/` package with notebook-friendly APIs for
+detection, tracking, pitch projection, team assignment, export and experiments.
 
----
+## Install
 
-## 🌟 Features
+```bash
+uv sync --group dev
+```
 
-- **Object Detection**: YOLO & RF-DETR handlers for player, ball, referee, goalkeeper.
-- **Keypoint Estimation**: YOLO-Pose for pitch landmark detection and homography.
-- **Homography & Mapping**: Smooth RANSAC homographies and transform frame ↔ pitch coordinates.
-- **Tracking**: ByteTrack-based multi-object tracker and raw ball path collection with outlier filtering.
-- **Visualization**: OpenCV `PitchVisualizer` with overlay support; Matplotlib utilities for charts.
-- **Data Export**: Per-frame CSV of freeze frames, homography matrices, timestamps, and more.
-- **Config-Driven**: Single `default_config.yaml` governs all components with sensible defaults.
-- **Scripts**: Ready-to-use scripts for detection and StatsBomb merging.
+## Python API
 
----
+```python
+from tactifoot_vision.detection import RFDETRDetectionModel, YOLODetectionModel
+from tactifoot_vision.tracking import ByteTrackTracker
+from tactifoot_vision.pipeline import InferencePipeline
 
-## 🚀 Quickstart
+model = YOLODetectionModel.from_weights("models/yolo11m.pt")
+detector = model.as_detector(confidence=0.3)
+pipeline = InferencePipeline(detector=detector, tracker=ByteTrackTracker(frame_rate=25))
 
-1. **Clone & Install**
-   ```bash
-   git clone https://github.com/yourorg/tactifoot_vision.git
-   cd tactifoot_vision
-   # Install dependencies and environment
-   uv sync
-   ```
+result = pipeline.run_video("input.mp4", max_frames=300)
+result.to_csv("results/pipeline.csv")
+result.to_mot("results/tracks.txt")
+```
 
-2. **Prepare Configuration**
-   Copy and edit `config/default_config.yaml`:
+RF-DETR uses the same detector interface:
 
-   ```yaml
-   paths:
-     input_video:            /path/to/video.mp4
-     output_video:           /path/to/output.mp4
-     model_dir:              /path/to/models
-     statsbomb_input_csv:    data/statsbomb.csv
-     pipeline_input_csv:     data/pipeline.csv
-     merged_output_csv:      data/merged.csv
+```python
+from tactifoot_vision.detection import RFDETRDetectionModel
 
-   detection:
-     model_type: yolo
-     # …other sections (keypoints, tracking, geometry, visualization, processing, training)
-   ```
+detector = RFDETRDetectionModel.from_weights("models/rfdetr_smoketest_sample.pth").as_detector()
+```
 
-3. **Run Detection & Tracking**
-   ```bash
-   uv run python scripts/run_detection.py --config config/default_config.yaml
-   ```
+## CLI
 
-4. **Merge with StatsBomb**
-   ```bash
-   uv run python scripts/merge_pipeline_statsbomb.py --config config/default_config.yaml
-   ```
+```bash
+uv run tactifoot infer --config configs/pipeline/fake_bytetrack.yaml
+uv run tactifoot track images --config configs/pipeline/yolo_bytetrack_smoke.yaml --max-frames 3
+uv run tactifoot dataset convert soccernet-tracking --input data/soccernet/tracking/extracted/train --output results/coco_smoke --max-sequences 1
+uv run tactifoot experiment detection-tracking --config configs/experiments/soccernet_detection_tracking.yaml
+uv run tactifoot experiment team-classification --config configs/experiments/team_classification_smoke.yaml
+```
 
-## 🛠 Configuration
+## Detection Smoke
 
-All options live in `config/default_config.yaml`.
+Run one-image detection without tracking:
 
-Pydantic enforces types, ranges, and resolves relative paths.
+```bash
+uv run tactifoot detect image --config configs/pipeline/yolo_model_smoke.yaml --input data/soccernet_dummy/img1/frame_0001.jpg
+```
 
-Change only the settings you need—everything else uses production-grade defaults.
+Run opt-in model smoke tests:
 
-## 📈 Mini Roadmap
+```bash
+uv run pytest tests/model/test_detection_model_smoke.py -m model -v
+```
 
-- Add support for additional tracking backends (e.g., DeepSORT, OC-SORT)
-- Dockerize the entire pipeline for zero-install, reproducible deployments
-- Integrate alternative detection models (e.g., Detectron2, MMDetection)
-- Add built-in benchmarking & metric reporting (FPS, mAP, tracking metrics)
+## Tracking Smoke
+
+ByteTrack can be used directly from Python:
+
+```python
+from tactifoot_vision.detection import YOLODetectionModel
+from tactifoot_vision.pipeline import InferencePipeline
+from tactifoot_vision.tracking import ByteTrackTracker
+
+detector = YOLODetectionModel.from_weights("models/yolo11m.pt").as_detector()
+pipeline = InferencePipeline(detector=detector, tracker=ByteTrackTracker(frame_rate=25))
+result = pipeline.run_video("data/soccernet_dummy/img1", max_frames=3)
+```
+
+SAM2 uses the same tracker contract:
+
+```python
+from tactifoot_vision.config import SAM2Config
+from tactifoot_vision.tracking import SAM2Tracker
+
+tracker = SAM2Tracker(
+    SAM2Config(
+        checkpoint="external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt",
+        model_config_path="external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml",
+        device="auto",
+        max_side=768,
+        max_objects=32,
+    )
+)
+```
+
+Run a tracking CLI smoke:
+
+```bash
+uv run tactifoot track images --config configs/pipeline/yolo_bytetrack_smoke.yaml --max-frames 3
+```
+
+Run the opt-in SAM2 model smoke:
+
+```bash
+uv run pytest tests/model/test_sam2_tracker_smoke.py -m "model and sam2" -v
+```
+
+BoTSORT is intentionally disabled until a stable production adapter is selected.
+
+## Projection And Team Assignment
+
+Pitch projection composes a keypoint detector and a homography projector:
+
+```python
+from tactifoot_vision.keypoints import YOLOPoseKeypointModel
+from tactifoot_vision.projection import PitchProjector
+
+keypoints = YOLOPoseKeypointModel.from_weights("models/yolo_pose.pt")
+projector = PitchProjector(keypoint_detector=keypoints)
+```
+
+Team assignment uses the same Python/YAML config surface:
+
+```python
+from tactifoot_vision.config import TeamAssignmentConfig
+from tactifoot_vision.team_assignment import TeamAssigner
+
+assigner = TeamAssigner.from_config(TeamAssignmentConfig(clusters=2))
+assigner.fit(crops)
+team_ids = assigner.predict(crops)
+```
+
+Run tracking evaluation from exported predictions:
+
+```bash
+uv run tactifoot evaluate tracking --pred results/pipeline.csv --gt data/.../gt/gt.txt --output results/metrics.json
+uv run tactifoot evaluate tracking --pred results/mot.txt --gt data/.../gt/gt.txt
+```
+
+Pipeline CSV predictions are auto-detected and shifted from 0-based frames to
+MOT/SoccerNet 1-based frames when evaluated against MOT ground truth; pass
+`--pred-frame-offset` to override that behavior.
+
+StatsBomb360 support is limited to evaluation helpers for already-normalized
+projection tables. Native StatsBomb360 export is not implemented; use pipeline
+CSV for generic projection output.
+
+Legacy scripts and configs are archived under `legacy/` for reference. New
+development should target `src/tactifoot_vision`.

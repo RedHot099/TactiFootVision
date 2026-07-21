@@ -1,0 +1,60 @@
+name: fa_wsl_video_only_xg_improvement
+video_parts:
+  - /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/part1.mp4
+  - /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/part2.mp4
+scan_fps: 10
+refine_fps: 30
+refine_window_before_seconds: 1.5
+refine_window_after_seconds: 1.0
+output_dir: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/experiments/video_only_xg_end_to_end
+detector:
+  backend: yolo
+  checkpoint: models/yolo11m.pt
+  confidence: 0.05
+  classes:
+    player: 0
+    ball: 32
+  include_labels:
+    - player
+    - ball
+  per_class_confidence:
+    ball: 0.05
+    player: 0.3
+detection:
+  variant: chunked_batched
+  batch_size: 8
+  chunk_size: 500
+  benchmark_max_frames: 300
+tracking:
+  backend: bytetrack
+  frame_rate: 10
+ball:
+  method: kalman_rts
+  variant: kalman_rts_v2
+  max_gap_seconds: 2.0
+  max_speed_mps: 38.0
+calibration:
+  enabled: false
+  variant: quality_aware_degraded
+  fallback: image_normalized
+shots:
+  kind: contact_kinematic
+  variant: rule_sweep
+  min_candidate_confidence: 0.25
+  temporal_nms_seconds: 8.0
+  max_candidates: 80
+  contact_distance_m: 2.5
+xg:
+  models:
+    - video_geometry
+    - video_freeze_context
+    - video_kinematic_context
+  calibration_variant: quality_aware_ensemble
+evaluation:
+  reference_events: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/events.parquet
+ablation:
+  baseline_run_dir: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/experiments/video_only_xg_end_to_end_yolo11m_1fps_20260526_131429
+  output_dir: /home/kuba/projects/ball-vision/data/FA_WSL_2020_2021/3775567_Chelsea_FCW_vs_Manchester_United/experiments/video_xg_improvement
+  baseline_runtime_seconds: 1.0
+  target_scan_fps: 10
+  smoke_first_minutes_per_half: 5

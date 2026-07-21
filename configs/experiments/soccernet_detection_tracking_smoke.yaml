@@ -1,0 +1,12 @@
+name: soccernet_detection_tracking_smoke
+kind: detection_tracking
+soccernet_root: data/soccernet/tracking/extracted/train
+max_sequences: 1
+max_frames: 3
+output_dir: results/experiments/soccernet_detection_tracking_smoke
+pipeline:
+  name: soccernet_detection_tracking_smoke
+  detection:
+    backend: fake
+  tracking:
+    backend: fake

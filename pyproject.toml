@@ -27,14 +27,53 @@ dependencies = [
     "pillow>=10.0.1,<11.0.0",
     "seaborn>=0.13.0,<0.14.0",
     "matplotlib>=3.10.1,<4.0.0",
+    "statsbombpy>=1.16.0",
 ]
+
+[project.scripts]
+tactifoot = "tactifoot_vision.cli:main"
 
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5,<7.0.0",
-    "ruff>=0.11.2,<0.12.0"
+    "mypy>=1.13.0,<2.0.0",
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "ruff>=0.11.2,<0.12.0",
+    "types-PyYAML>=6.0.12,<7.0.0",
 ]
 
 [build-system]
 requires = ["hatchling>=1.24.0"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tactifoot_vision"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: integration tests that are too slow for default CI",
+    "model: tests that require local model checkpoints",
+    "sam2: tests that require SAM2 checkpoints and config",
+]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/tactifoot_vision"]
+strict = false
+warn_unused_ignores = true
+warn_return_any = false
+disallow_untyped_defs = true
+ignore_missing_imports = true
+disallow_any_generics = false
+disable_error_code = ["attr-defined", "call-arg"]

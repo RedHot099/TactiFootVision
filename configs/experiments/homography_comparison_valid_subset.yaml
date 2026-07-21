@@ -1,0 +1,24 @@
+name: homography_comparison_valid_subset
+kind: homography_comparison
+soccernet_root: data/SoccerNetGS
+output_dir: results/experiments/homography_comparison_valid_subset
+max_sequences: 5
+max_frames: 100
+pipeline:
+  keypoints:
+    backend: yolo_pose
+    checkpoint: models/yolov8n-pose.pt
+    confidence: 0.5
+  projection:
+    enabled: true
+    min_keypoint_confidence: 0.5
+    min_keypoints: 4
+    smoothing_window: 1
+    project_ball: true
+homography_comparison:
+  split: valid
+  methods:
+    - current_yolopose_7pt
+    - oracle_gsr_lines_ransac
+  external_homographies: []
+  confidence_iterations: 200

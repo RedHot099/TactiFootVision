@@ -1,0 +1,13 @@
+name: homography_comparison_smoke
+kind: homography_comparison
+soccernet_root: data/SoccerNetGS
+output_dir: results/experiments/homography_comparison_smoke
+max_sequences: 1
+max_frames: 10
+homography_comparison:
+  split: valid
+  methods:
+    - current_yolopose_7pt
+    - oracle_gsr_lines_ransac
+  external_homographies: []
+  confidence_iterations: 0

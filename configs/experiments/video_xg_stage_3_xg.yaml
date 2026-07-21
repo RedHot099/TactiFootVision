@@ -1,0 +1,29 @@
+name: video_xg_stage_3_xg_smoke
+kind: video_xg
+soccernet_root: data/soccernet/tracking/extracted/train
+sequence_names:
+  - SNMOT-061
+max_sequences: 1
+max_frames: 450
+output_dir: results/experiments/video_xg_stage_3_xg_smoke
+video_xg:
+  group_by_game_id: true
+  ball:
+    method: linear
+    max_speed_pixels_per_frame: 120.0
+  shots:
+    kind: metadata
+    use_soccernet_metadata: true
+    window_before: 64
+    window_after: 32
+  xg:
+    model: geometry
+    image_width: 1920
+    image_height: 1080
+    penalty_xg: 0.76
+pipeline:
+  name: video_xg_stage_3_xg_smoke
+  detection:
+    backend: fake
+  tracking:
+    backend: fake

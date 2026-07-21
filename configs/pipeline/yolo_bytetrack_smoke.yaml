@@ -1,0 +1,14 @@
+name: yolo_bytetrack_smoke
+paths:
+  input: data/soccernet_dummy/img1
+detection:
+  backend: yolo
+  checkpoint: models/yolo11m.pt
+  confidence: 0.3
+  nms: 0.5
+tracking:
+  backend: bytetrack
+  frame_rate: 25
+export:
+  pipeline_csv: results/yolo_bytetrack_smoke.csv
+  mot: results/yolo_bytetrack_smoke_mot.txt

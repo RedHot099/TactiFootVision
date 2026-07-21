@@ -1,0 +1,12 @@
+name: fake_bytetrack
+paths:
+  input: data/soccernet_dummy/img1
+  output_dir: results/fake_bytetrack
+detection:
+  backend: fake
+tracking:
+  backend: fake
+  frame_rate: 25
+export:
+  pipeline_csv: results/fake_bytetrack/pipeline.csv
+  mot: results/fake_bytetrack/tracks.txt

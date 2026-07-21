@@ -1,0 +1,4 @@
+stage,method,split,sequences,metric,value,notes
+1,linear,smoke,0,coverage,0.0,placeholder header for reproduced runs
+2,metadata,smoke,0,hit_at_1s,0.0,placeholder header for reproduced runs
+3,geometry,smoke,0,brier,0.0,placeholder header for reproduced runs

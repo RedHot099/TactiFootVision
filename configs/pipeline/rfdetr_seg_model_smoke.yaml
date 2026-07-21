@@ -1,0 +1,11 @@
+name: rfdetr_seg_model_smoke
+paths:
+  input: data/soccernet_dummy/img1
+  output_dir: results/model_smoke/rfdetr_seg
+detection:
+  backend: rfdetr_seg
+  checkpoint: rf-detr-seg-preview.pt
+  confidence: 0.3
+  nms: 0.5
+tracking:
+  backend: fake

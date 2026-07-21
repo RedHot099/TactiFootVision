@@ -1,0 +1,26 @@
+name: video_xg_stage_2_shots_smoke
+kind: video_xg
+soccernet_root: data/soccernet/tracking/extracted/train
+max_sequences: 1
+max_frames: 128
+output_dir: results/experiments/video_xg_stage_2_shots_smoke
+video_xg:
+  ball:
+    method: linear
+  shots:
+    kind: kinematic
+    use_soccernet_metadata: false
+    window_before: 64
+    window_after: 32
+    max_candidates: 1
+    min_speed_pixels_per_frame: 0.0
+  xg:
+    model: geometry
+    image_width: 1920
+    image_height: 1080
+pipeline:
+  name: video_xg_stage_2_shots_smoke
+  detection:
+    backend: fake
+  tracking:
+    backend: fake

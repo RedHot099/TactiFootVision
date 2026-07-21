@@ -1,0 +1,12 @@
+{
+  "model_type": "rfdetr",
+  "checkpoint_path": "/home/kuba/projects/tactifoot_vision/results/project/raw/rfdetr_base/checkpoints/checkpoint_best_total.pth",
+  "frames_total": 1499,
+  "timed_frames": 1494,
+  "warmup_frames_excluded": 5,
+  "detection_time_total_s": 67.34261362600637,
+  "detection_time_avg_ms": 45.075377259709754,
+  "detection_fps": 22.185061130788174,
+  "wall_time_total_s": 90.25693297999987,
+  "output_pipeline_csv": "/home/kuba/projects/tactifoot_vision/presentation_assets/intermediate/pipeline_rfdetr_demo_pipelinedata_p1.csv"
+}
