@@ -24,9 +24,9 @@ OFFSETS = (-800, -400, 0, 400, 800)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--videos", type=Path, default=Path("/home/kuba/projects/tactifoot_vision/data/soccernet_xg_smoke_224p"))
-    ap.add_argument("--labels", type=Path, default=Path("/home/kuba/projects/tactifoot_vision/data/soccernet_as"))
-    ap.add_argument("--out", type=Path, default=Path("/home/kuba/projects/tactifoot_vision/data/xg_shots_sample/claude_fable/soccernet"))
+    ap.add_argument("--videos", type=Path, default=Path("/home/kuba/projects/football_data/xg_shots_full/soccernet_224p"))
+    ap.add_argument("--labels", type=Path, default=Path("/home/kuba/projects/football_data/xg_shots_full/soccernet_labels"))
+    ap.add_argument("--out", type=Path, default=Path("/home/kuba/projects/football_data/xg_shots_full/samples/soccernet"))
     a = ap.parse_args()
     frames_dir = a.out / "frames"
     rows, weak = [], []

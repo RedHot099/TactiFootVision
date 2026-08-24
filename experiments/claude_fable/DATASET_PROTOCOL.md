@@ -109,13 +109,17 @@ niekomercyjne, bez redystrybucji. Surowe wideo i klatki nie wchodzą do gita.
 5. Merge indexów, `dataset_card.md`, commit metadanych (bez danych).
 6. Handoff do treningu: `HANDOFF.md` krok 1 na pełnym indexie.
 
-## 7. Otwarte decyzje (do potwierdzenia przez użytkownika)
+## 7. Decyzje (potwierdzone 2026-08-24)
 
-1. **Ścieżka `<MIEJSCE_NA_DANE>`** — czekam na wskazanie; default
-   `/home/kuba/projects/tactifoot_vision/data/xg_shots_full/` (klatki bez klipów
-   zmieszczą się na obecnym dysku; klipy +60 GB też, ale wolę potwierdzenie).
-2. Czy `--clips` włączone (rekomenduję: tak).
-3. Czy lokalizator kontaktu SoccerTrack robić teraz, czy po pierwszym pełnym
-   treningu na SoccerNet (rekomenduję: po — SoccerNet wystarczy do porównania
-   architektur, SoccerTrack doda kohortę walidacyjną z pozycjami GT).
+1. `<MIEJSCE_NA_DANE>` = `/home/kuba/projects/football_data/xg_shots_full/`.
+   Przeniesione tam: `soccernet_labels/` (dawne `data/soccernet_as`, symlink
+   zostawiony), `soccernet_224p/`, `samples/` (indeksy z przepisanymi ścieżkami),
+   `soccertrack_v2/` i `statsbomb/` (z worktree codexa).
+2. `--clips` włączone. Nieużywane dane skompresowane: GSR 43 GB -> 5.5 GB (zstd -8,
+   pliki `.json.zst`; czytnik fazy 2 musi dekompresować strumieniowo). `soccernet_224p`
+   zostaje bez kompresji (H264 się nie kompresuje); do usunięcia, gdy 720p pokryje te mecze.
+3. W każdej chwili >= 5 GB wolnego dysku: kolektor ma strażnika (czeka przy < 8 GB,
+   przerywa po godzinie), fetch SoccerTrack i kompresja zatrzymują się przy < 8 GB.
+4. Lokalizator kontaktu SoccerTrack: po pierwszym pełnym treningu na SoccerNet.
+   Fetch brakujących plików z Drive uruchomiony równolegle.
 ```

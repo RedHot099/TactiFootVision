@@ -16,13 +16,13 @@ from xgpoc.data.frames import extract_shot_frames, grass_ratio
 from xgpoc.data.index import split_by_game
 from xgpoc.data.soccertrack_bas import parse_bas
 
-CODEX_DATA = Path("/home/kuba/projects/tactifoot_vision_codex_xg_video/experiments/codex_xg_video/data/soccertrack_v2")
+CODEX_DATA = Path("/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2")
 OFFSETS = (-800, -400, 0, 400, 800)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", type=Path, default=Path("/home/kuba/projects/tactifoot_vision/data/xg_shots_sample/claude_fable/soccertrack"))
+    ap.add_argument("--out", type=Path, default=Path("/home/kuba/projects/football_data/xg_shots_full/samples/soccertrack"))
     a = ap.parse_args()
     frames_dir = a.out / "frames"
     rows, weak = [], []

@@ -15,7 +15,9 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import cv2
@@ -25,7 +27,24 @@ from xgpoc.data.frames import extract_shot_frames, grass_ratio
 from xgpoc.data.soccernet_labels import parse_labels
 
 OFFSETS = (-1600, -1200, -800, -400, 0, 400, 800)
-LABELS_ROOT = Path("/home/kuba/projects/tactifoot_vision/data/soccernet_as")
+LABELS_ROOT = Path("/home/kuba/projects/football_data/xg_shots_full/soccernet_labels")
+MIN_FREE_GB = 5.0       # hard floor requested by the user
+DOWNLOAD_HEADROOM_GB = 3.0  # a 720p half is ~1 GB; leave margin above the floor
+
+
+def free_gb(path: Path) -> float:
+    return shutil.disk_usage(path).free / 1e9
+
+
+def wait_for_space(path: Path, need_gb: float, max_wait_s: int = 3600) -> bool:
+    """Block until enough space is free (something else may release it); False = give up."""
+    t0 = time.time()
+    while free_gb(path) < need_gb:
+        if time.time() - t0 > max_wait_s:
+            return False
+        print(f"low disk ({free_gb(path):.1f} GB free < {need_gb:.1f} GB needed), waiting 60 s...", flush=True)
+        time.sleep(60)
+    return True
 
 
 def sha256(path: Path, chunk=1 << 20) -> str:
@@ -67,6 +86,9 @@ def collect_game(dl, game: str, split: str, out: Path, clips: bool, keep_video: 
         if not half_events:
             continue
         if not video.exists():
+            if not wait_for_space(out, MIN_FREE_GB + DOWNLOAD_HEADROOM_GB):
+                assets.append({"game": game, "half": half, "component": "720p", "error": "disk_full_gave_up"})
+                continue
             try:
                 dl.LocalDirectory = str(out / "raw")
                 dl.downloadGame(game, files=[f"{half}_720p.mkv"], spl=split, verbose=False)
