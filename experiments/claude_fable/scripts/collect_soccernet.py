@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -85,20 +86,24 @@ def collect_game(dl, game: str, split: str, out: Path, clips: bool, keep_video: 
         video = out / "raw" / game / f"{half}_720p.mkv"
         if not half_events:
             continue
-        if not video.exists():
+        for attempt in range(2):
+            if video.exists() and probe(video)["duration_s"] >= 2400:
+                break  # complete file (a half is at least 40 min)
+            video.unlink(missing_ok=True)  # partial file from an interrupted run
             if not wait_for_space(out, MIN_FREE_GB + DOWNLOAD_HEADROOM_GB):
                 assets.append({"game": game, "half": half, "component": "720p", "error": "disk_full_gave_up"})
-                continue
+                break
             try:
                 dl.LocalDirectory = str(out / "raw")
                 dl.downloadGame(game, files=[f"{half}_720p.mkv"], spl=split, verbose=False)
-            except Exception as e:  # noqa: BLE001 - record and move on
-                assets.append({"game": game, "half": half, "component": "720p", "error": f"{type(e).__name__}: {e}"[:200]})
-                continue
-        if not video.exists():
-            assets.append({"game": game, "half": half, "component": "720p", "error": "download_missing_file"})
+            except Exception as e:  # noqa: BLE001 - stalled/failed download, retry once
+                print(f"download error {game} half {half} (attempt {attempt}): {type(e).__name__}", flush=True)
+                if attempt == 1:
+                    assets.append({"game": game, "half": half, "component": "720p", "error": f"{type(e).__name__}: {e}"[:200]})
+        if not video.exists() or (meta := probe(video))["duration_s"] < 2400:
+            video.unlink(missing_ok=True)
+            assets.append({"game": game, "half": half, "component": "720p", "error": "download_incomplete"})
             continue
-        meta = probe(video)
         assets.append({"game": game, "half": half, "component": "720p", "bytes": video.stat().st_size,
                        "sha256": sha256(video), "error": "", **meta})
         for ev in half_events:
@@ -139,6 +144,7 @@ def main():
     a = ap.parse_args()
     if not a.password:
         raise SystemExit("need --password or SOCCERNET_PASSWORD")
+    socket.setdefaulttimeout(120)  # a stalled read raises instead of hanging forever
     dl = SoccerNetDownloader(LocalDirectory=str(a.out / "raw"))
     dl.password = a.password
     todo = [(g, s) for s in a.splits for g in getListGames(s, task="spotting")]
