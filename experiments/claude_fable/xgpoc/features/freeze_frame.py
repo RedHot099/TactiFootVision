@@ -50,10 +50,10 @@ class FreezeFrame:
 
 class FreezeFrameExtractor:
     def __init__(self, detector_weights=DETECTOR_WEIGHTS, keypoint_weights=KEYPOINT_WEIGHTS,
-                 det_conf=0.3, kp_conf=0.5, device=None):
+                 det_conf=0.3, kp_conf=0.5, device=None, det_imgsz=1920):
         self.detector = YOLO(str(detector_weights))
         self.keypoints = YOLO(str(keypoint_weights), task="pose")
-        self.det_conf, self.kp_conf, self.device = det_conf, kp_conf, device
+        self.det_conf, self.kp_conf, self.device, self.det_imgsz = det_conf, kp_conf, device, det_imgsz
         cfg = SoccerPitchConfiguration(length=PITCH_LENGTH, width=PITCH_WIDTH)
         self.pitch_vertices = np.array(cfg.vertices, dtype=np.float32)
 
@@ -74,8 +74,12 @@ class FreezeFrameExtractor:
         return H, int(m.sum())
 
     def detect(self, img: np.ndarray):
-        r = self.detector.predict(img, verbose=False, device=self.device, conf=self.det_conf)[0]
-        return r.boxes.xyxy.cpu().numpy(), r.boxes.cls.cpu().numpy().astype(int), r.boxes.conf.cpu().numpy()
+        # Large inference size: the ball is only a few pixels at the default 640.
+        # Per-class thresholds: the tiny ball never reaches player-level confidence.
+        r = self.detector.predict(img, verbose=False, device=self.device, conf=0.1, imgsz=self.det_imgsz)[0]
+        boxes, cls, conf = r.boxes.xyxy.cpu().numpy(), r.boxes.cls.cpu().numpy().astype(int), r.boxes.conf.cpu().numpy()
+        keep = np.where(cls == CLS_BALL, conf >= min(0.15, self.det_conf), conf >= self.det_conf)
+        return boxes[keep], cls[keep], conf[keep]
 
     def __call__(self, img: np.ndarray) -> FreezeFrame:
         H, n_kp = self.homography(img)
