@@ -65,7 +65,16 @@ Na prawdziwych danych: podmienić `--index` na plik od agenta danych, podnieść
 `--epochs` i `--max-minutes`. Cache pozycji (A, B, E) i cech DINOv2 (D, E) buduje się
 raz na index.
 
-## Stan (2026-08-27)
+## Stan (2026-08-28)
+
+Duży trening zakończony: 3 seedy × 5 PoC do zbieżności + ablacje (C z domkniętym
+cyklem LR, DINOv2-B). Finalny ranking (ensemble, test 2 229 strzałów / 100 meczów):
+C ConvNeXt 0.732 AUC / BSS 7.6% > D DINOv2-B frozen 0.722/6.5% > E 0.710 >> A/B
+pozycyjne ~0.61. Rekomendacja: C jako ścieżka główna, D jako tania alternatywa;
+E i pozycyjne bez inwestycji do czasu lepszej ekstrakcji. Raport:
+`results_reports/big_v1_FINAL_REPORT.md`.
+
+## Stan poprzedni (2026-08-27)
 
 Krok 1 handoffu wykonany na pełnym SoccerNet 720p (11 035 strzałów / 1 491 goli):
 krótkie przebiegi (≤4 min/model) dały na teście (2 232 strzały, 100 meczów):
