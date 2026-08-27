@@ -65,7 +65,17 @@ Na prawdziwych danych: podmienić `--index` na plik od agenta danych, podnieść
 `--epochs` i `--max-minutes`. Cache pozycji (A, B, E) i cech DINOv2 (D, E) buduje się
 raz na index.
 
-## Stan (2026-08-23)
+## Stan (2026-08-27)
+
+Krok 1 handoffu wykonany na pełnym SoccerNet 720p (11 035 strzałów / 1 491 goli):
+krótkie przebiegi (≤4 min/model) dały na teście (2 232 strzały, 100 meczów):
+C ConvNeXt AUC 0.729 / BSS 6.9% > D DINOv2-frozen 0.715/6.5% ≈ E hybryda 0.709/6.2%
+>> A/B pozycyjne ~0.61/1.5%. Obrazowe biją pozycyjne poza CI; pełny raport:
+`results_reports/full_v1_short_REPORT.md`. Słabość A/B to jakość ekstrakcji pozycji
+(piłka 49%, homografia 61%), nie architektura. Czeka: duży trening + poprawa
+ekstrakcji + faza 2 SoccerTrack.
+
+## Stan poprzedni (2026-08-23)
 
 - Szkielet działa end-to-end na atrapie (240 klatek, losowe etykiety): wszystkie 5
   PoC trenuje, kalibruje temperaturę na valid, zapisuje predykcje i metryki.
