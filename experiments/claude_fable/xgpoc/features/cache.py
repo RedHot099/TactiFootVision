@@ -53,7 +53,10 @@ def freeze_frame_tokens(ff: FreezeFrame) -> np.ndarray:
     return tok
 
 
-def build_cache(index: pd.DataFrame, cache_dir: Path, extractor: FreezeFrameExtractor | None = None) -> None:
+def build_cache(index: pd.DataFrame, cache_dir: Path, extractor: FreezeFrameExtractor | None = None,
+                fallback_cols: tuple[str, ...] = ()) -> None:
+    """fallback_cols: extra frame-path columns tried (in order) when the ball is not
+    detected on the primary frame; the first freeze-frame with a ball wins."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     extractor = extractor or FreezeFrameExtractor()
     feats, toks, boxes, ids = [], [], [], []
@@ -62,6 +65,16 @@ def build_cache(index: pd.DataFrame, cache_dir: Path, extractor: FreezeFrameExtr
         if img is None:
             continue
         ff = extractor(img)
+        if ff.ball_xy is None:
+            for col in fallback_cols:
+                alt_path = getattr(row, col, "") or ""
+                alt = cv2.imread(alt_path) if alt_path else None
+                if alt is None:
+                    continue
+                ff_alt = extractor(alt)
+                if ff_alt.ball_xy is not None:
+                    ff, img = ff_alt, alt
+                    break
         feats.append(freeze_frame_features(ff))
         toks.append(freeze_frame_tokens(ff))
         boxes.append(detection_boxes(ff, img.shape[:2]))
