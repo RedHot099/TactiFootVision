@@ -30,6 +30,8 @@ MODELS = {  # label -> list of prediction csv globs (seed ensemble = mean)
     "F temporalny": ["results/night_v1/f/seed*/f_temporal_dinov2_s_test_predictions.csv"],
     "Ensemble C+D-L": ["results/big_v1/c8/seed*/c_cnn_e2e_test_predictions.csv",
                        "results/night_v1/dl/seed*/d_frozen_dinov2_l_test_predictions.csv"],
+    "GBM po poprawkach": ["results/before_after/GBM_po_poprawkach_test_predictions.csv"],
+    "D po poprawkach": ["results/before_after/D_po_poprawkach_(+pen)_test_predictions.csv"],
 }
 
 
