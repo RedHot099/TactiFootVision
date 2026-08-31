@@ -80,8 +80,22 @@ def main() -> None:
         "mean_temporal_diff_inside": round(float(temporal[mask].mean()), 2) if mask.any() else None,
         "mean_temporal_diff_outside": round(float(temporal[~mask].mean()), 2),
     }
+    # A second, stricter mask keeping only the graphics *boxes*: components that sit
+    # wholly in the top quarter and are tall enough to be a widget rather than a 1-2 px
+    # encoding border. The wide mask also contains thin strips along the frame edges,
+    # and those strips carry pitch pixels - a probe trained on them would measure camera
+    # framing, not the scoreboard, and would attribute the wrong cause to the result.
+    graphics = np.zeros_like(mask)
+    for i in range(1, n):
+        x, y, cw, ch, ar = stats[i]
+        if ch >= 20 and ar >= 1500 and y + ch < 0.25 * mask.shape[0]:
+            graphics |= lab == i
+    rep["graphics_components"] = int(cv2.connectedComponents(graphics.astype(np.uint8))[0] - 1)
+    rep["graphics_pixels_pct"] = round(100 * float(graphics.mean()), 3)
+
     (a.out / "overlay_mask.json").write_text(json.dumps(rep, indent=2))
     cv2.imwrite(str(a.out / "overlay_mask.png"), (mask * 255).astype(np.uint8))
+    cv2.imwrite(str(a.out / "graphics_mask.png"), (graphics * 255).astype(np.uint8))
 
     heat = cv2.applyColorMap(cv2.normalize(np.clip(score, 0, np.quantile(score, 0.99)), None, 0, 255,
                                            cv2.NORM_MINMAX).astype(np.uint8), cv2.COLORMAP_INFERNO)

@@ -21,18 +21,34 @@ MUTED = "#6b7280"
 BAR = "#5b8db8"
 GRID = "#e5e7eb"
 
-MODELS = {  # label -> list of prediction csv globs (seed ensemble = mean)
-    "A pozycyjny (GBM)": ["results/big_v1/seed*/a_tabular_gbm_test_predictions.csv"],
-    "B Set Transformer": ["results/big_v1/seed*/b_set_transformer_test_predictions.csv"],
-    "C ConvNeXt 448": ["results/big_v1/c8/seed*/c_cnn_e2e_test_predictions.csv"],
-    "D DINOv2-L": ["results/night_v1/dl/seed*/d_frozen_dinov2_l_test_predictions.csv"],
-    "E hybryda": ["results/big_v1/seed*/e_hybrid_dinov2_s_test_predictions.csv"],
-    "F temporalny": ["results/night_v1/f/seed*/f_temporal_dinov2_s_test_predictions.csv"],
-    "Ensemble C+D-L": ["results/big_v1/c8/seed*/c_cnn_e2e_test_predictions.csv",
-                       "results/night_v1/dl/seed*/d_frozen_dinov2_l_test_predictions.csv"],
-    "GBM po poprawkach": ["results/before_after/GBM_po_poprawkach_test_predictions.csv"],
-    "D po poprawkach": ["results/before_after/D_po_poprawkach_(+pen)_test_predictions.csv"],
+# preset -> {label: list of prediction csv globs}; several globs = pooled seed ensemble
+PRESETS = {
+    "architektury": {
+        "A pozycyjny (GBM)": ["results/big_v1/seed*/a_tabular_gbm_test_predictions.csv"],
+        "B Set Transformer": ["results/big_v1/seed*/b_set_transformer_test_predictions.csv"],
+        "C ConvNeXt 448": ["results/big_v1/c8/seed*/c_cnn_e2e_test_predictions.csv"],
+        "D DINOv2-L": ["results/night_v1/dl/seed*/d_frozen_dinov2_l_test_predictions.csv"],
+        "E hybryda": ["results/big_v1/seed*/e_hybrid_dinov2_s_test_predictions.csv"],
+        "F temporalny": ["results/night_v1/f/seed*/f_temporal_dinov2_s_test_predictions.csv"],
+        "Ensemble C+D-L": ["results/big_v1/c8/seed*/c_cnn_e2e_test_predictions.csv",
+                           "results/night_v1/dl/seed*/d_frozen_dinov2_l_test_predictions.csv"],
+        "GBM po poprawkach": ["results/before_after/GBM_po_poprawkach_test_predictions.csv"],
+        "D po poprawkach": ["results/before_after/D_po_poprawkach_(+pen)_test_predictions.csv"],
+    },
+    # after the pre-merge pass: everything below is trained on masked frames, so no
+    # model in this preset can read the scoreboard
+    "finalne": {
+        "A pozycyjny (GBM)": ["results/premerge/gbm/seed*/a_tabular_gbm_sel_test_predictions.csv"],
+        "C ConvNeXt (bez nakladki)": ["results/premerge/c_mask/seed*/c_cnn_e2e_overlay_test_predictions.csv"],
+        "C + maska + TTA": ["results/premerge/c_mask_tta/seed*/c_cnn_e2e_overlay_tta_test_predictions.csv"],
+        "D DINOv2-L (bez nakladki)": ["results/premerge/dl_mask/seed*/d_frozen_dinov2_l_overlay_test_predictions.csv"],
+        "D + maska + TTA": ["results/premerge/dl_mask_tta/seed*/d_frozen_dinov2_l_overlay_tta_test_predictions.csv"],
+        "G fine-tune DINOv2": ["results/premerge/g_best/seed*/g_finetune_*_test_predictions.csv"],
+        "G + maska + TTA": ["results/premerge/g_best_mask_tta/seed*/g_finetune_*_overlay_tta_test_predictions.csv"],
+        "Ensemble (wybrany na walidacji)": ["results/ensemble/best_ensemble_test_predictions.csv"],
+    },
 }
+MODELS = PRESETS["architektury"]
 
 
 def ensemble(globs: list[str]) -> pd.Series:
@@ -100,7 +116,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("results_reports/figures"))
     ap.add_argument("--index", default="/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet")
+    ap.add_argument("--preset", default="architektury", choices=list(PRESETS))
     a = ap.parse_args()
+    global MODELS
+    MODELS = PRESETS[a.preset]
     a.out.mkdir(parents=True, exist_ok=True)
     idx = pd.read_parquet(a.index)
     test = idx[idx.split == "test"].set_index("shot_id")

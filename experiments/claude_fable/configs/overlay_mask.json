@@ -66,5 +66,7 @@
     }
   ],
   "mean_temporal_diff_inside": 22.05,
-  "mean_temporal_diff_outside": 23.71
+  "mean_temporal_diff_outside": 23.71,
+  "graphics_components": 2,
+  "graphics_pixels_pct": 2.808
 }

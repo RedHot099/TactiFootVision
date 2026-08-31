@@ -151,7 +151,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--img-size", default=None, help="WxH for poc c, e.g. 672x384")
     ap.add_argument("--frame-col", default="frame_path", help="input frame column for poc c")
-    ap.add_argument("--mask", default="none", choices=["none", "overlay", "overlay_only"],
+    ap.add_argument("--mask", default="none", choices=["none", "overlay", "overlay_only", "graphics_only"],
                     help="blank the broadcast overlay (c, d, g)")
     ap.add_argument("--tta", action="store_true", help="horizontal-flip test-time augmentation (c, d, g)")
     ap.add_argument("--backbone", default=None, help="backbone override for poc d and g")

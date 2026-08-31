@@ -65,11 +65,13 @@ def main() -> None:
         return a.stages is None or stage_name in a.stages
 
 
-    # 1. control probe: how much can a model score seeing only the broadcast graphics?
+    # 1. control probes. `overlay_only` keeps the graphics *and* the static strips at
+    #    the frame edges, `graphics_only` keeps the two graphics widgets alone; the gap
+    #    between them says whether a shortcut comes from the scoreboard or from framing.
     if want("probe"):
-        cfg = TrainConfig(epochs=8, max_minutes=25, batch_size=32, seed=0)
-        stage(rp.run_c, OUT / "probe", "c_cnn_e2e_overlay_only", cfg, data,
-              mask="overlay_only", tag="_overlay_only")
+        for mode in ("overlay_only", "graphics_only"):
+            cfg = TrainConfig(epochs=8, max_minutes=25, batch_size=32, seed=0)
+            stage(rp.run_c, OUT / "probe", f"c_cnn_e2e_{mode}", cfg, data, mask=mode, tag=f"_{mode}")
 
     # 2. C: baseline re-run under the current code (so every variant, including the
     #    baseline, has validation predictions available for honest ensembling), then

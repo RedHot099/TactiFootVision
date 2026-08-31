@@ -14,7 +14,7 @@ from torch.utils.data import Dataset
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 FILL = 114                                        # neutral grey for masked-out pixels
-OVERLAY_MASK_PATH = Path(__file__).resolve().parents[2] / "configs" / "overlay_mask.png"
+CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 TOP_BAND = 0.14                                   # broadcasts place scoreboards inside it
 
 
@@ -24,15 +24,26 @@ def overlay_mask(size_wh: tuple[int, int], mode: str) -> np.ndarray:
 
     `overlay` removes the graphics detected by scripts/find_overlay_region.py plus a
     generous top band, because the detected mask only covers scoreboard positions
-    common to most broadcasters. `overlay_only` is the complement: it keeps the
-    graphics and blanks the pitch, which is the control probe asking how much a model
-    can score knowing nothing but the score bug.
+    common to most broadcasters.
+
+    Two complementary control probes, which answer different questions:
+    `overlay_only` keeps everything the wide mask would remove - graphics *and* the
+    thin static strips along the frame edges, which still contain pitch pixels;
+    `graphics_only` keeps just the two graphics widgets. Comparing them separates
+    "the model reads the scoreboard" from "the model reads camera framing at the
+    edges of the frame", which are very different findings.
     """
     w, h = size_wh
-    raw = cv2.imread(str(OVERLAY_MASK_PATH), cv2.IMREAD_GRAYSCALE)
-    if raw is None:
-        raise FileNotFoundError(f"{OVERLAY_MASK_PATH} - run scripts/find_overlay_region.py first")
-    m = cv2.resize(raw, (w, h), interpolation=cv2.INTER_NEAREST) > 127
+
+    def load(name: str) -> np.ndarray:
+        raw = cv2.imread(str(CONFIGS / name), cv2.IMREAD_GRAYSCALE)
+        if raw is None:
+            raise FileNotFoundError(f"{CONFIGS / name} - run scripts/find_overlay_region.py first")
+        return cv2.resize(raw, (w, h), interpolation=cv2.INTER_NEAREST) > 127
+
+    if mode == "graphics_only":
+        return ~load("graphics_mask.png")
+    m = load("overlay_mask.png")
     if mode == "overlay_only":
         return ~m
     band = np.zeros((h, w), bool)

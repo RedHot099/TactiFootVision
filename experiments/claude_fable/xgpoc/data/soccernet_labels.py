@@ -48,8 +48,8 @@ def parse_labels(labels_path: Path, goal_window_ms: int = 6000, goal_backoff_ms:
         parsed.append((half, pos, a["label"], a.get("team", "not applicable"), a.get("visibility", "unknown")))
     parsed.sort(key=lambda x: (x[0], x[1]))
 
-    goals = [(h, p, t) for h, p, l, t, _ in parsed if l == GOAL_LABEL]
-    penalties = [(h, p, t) for h, p, l, t, _ in parsed if l == PENALTY_LABEL]
+    goals = [(h, p, t) for h, p, lbl, t, _ in parsed if lbl == GOAL_LABEL]
+    penalties = [(h, p, t) for h, p, lbl, t, _ in parsed if lbl == PENALTY_LABEL]
     used_goals: set[tuple[int, int, str]] = set()
     events: list[ShotEvent] = []
 
@@ -70,7 +70,7 @@ def parse_labels(labels_path: Path, goal_window_ms: int = 6000, goal_backoff_ms:
             continue
         half, pos, team = g
         is_pen = any(p[0] == half and p[2] == team and 0 <= pos - p[1] <= penalty_window_ms for p in penalties)
-        vis = next((v for h, p, l, t, v in parsed if (h, p, t) == g and l == GOAL_LABEL), "unknown")
+        vis = next((v for h, p, lbl, t, v in parsed if (h, p, t) == g and lbl == GOAL_LABEL), "unknown")
         events.append(ShotEvent(game, half, max(0, pos - goal_backoff_ms), GOAL_LABEL, team, vis, True, is_pen, "goal_only"))
 
     events.sort(key=lambda e: (e.half, e.position_ms))
