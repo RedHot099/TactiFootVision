@@ -61,24 +61,10 @@ for s in 0 1 2; do
         --poc a b --epochs 120 --max-minutes 12 --seed "$s"
 done
 
-# 6. D with DINOv2-L at higher input resolution (672x378), 3 seeds
-for s in 0 1 2; do
-    if [ -f "$OUT/dl672/seed$s/d_frozen_dinov2_l672_metrics.json" ]; then continue; fi
-    echo "=== dl672/seed$s ($(date +%H:%M)) ==="
-    ./run.sh python - <<PY
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path("scripts").resolve()))
-import run_poc as rp
-from xgpoc.models import d_foundation
-d_foundation.BACKBONES["dinov2_l672"] = ("vit_large_patch14_dinov2.lvd142m", (672, 378))
-from xgpoc.data.index import load_index
-from xgpoc.models.common import TrainConfig
-df = load_index(Path("$IDX"))
-tr, va, te = (df[df["split"] == s].reset_index(drop=True) for s in ("train", "valid", "test"))
-cfg = TrainConfig(epochs=100, max_minutes=45, batch_size=16, seed=$s)
-rp.run_d(tr, va, te, Path("$CACHE"), Path("$OUT/dl672/seed$s"), cfg, backbone="dinov2_l672")
-PY
-done
+# 6. (removed) D with DINOv2-L at 672x378. Attempted three times and abandoned: the
+# feature extractor materialises every token in RAM before np.savez, which needs ~29 GB
+# at that resolution and was killed each time. Reviving it means rewriting
+# extract_patch_features to append to an on-disk array; expected value is low next to
+# the strong 448 baseline, so it is documented as a known issue instead.
 
 echo "NIGHT RUN DONE ($(date +%H:%M))"

@@ -1,4 +1,9 @@
 cache/
 results/
 .env
+# the repo root ignores bare `data/` and `models/`, which silently swallowed the whole
+# xgpoc/data and xgpoc/models packages - without these two lines the branch does not run
+!xgpoc/data/
+!xgpoc/models/
+# and the root ignores *.sh, which would drop every runner script in this experiment
 !*.sh

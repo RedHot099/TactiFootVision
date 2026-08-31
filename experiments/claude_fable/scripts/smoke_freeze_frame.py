@@ -1,5 +1,4 @@
 import sys
-from pathlib import Path
 import cv2
 from xgpoc.features.freeze_frame import FreezeFrameExtractor
 

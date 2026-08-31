@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-import pandas as pd
 
 from xgpoc.data.index import load_index
 from xgpoc.features.aux import build_aux_table

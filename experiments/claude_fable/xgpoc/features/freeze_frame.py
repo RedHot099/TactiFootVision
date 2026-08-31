@@ -42,7 +42,9 @@ class FreezeFrame:
         """Mirror so the attacked goal is always at x = PITCH_LENGTH."""
         if self.attacking_right():
             return self
-        flip = lambda a: None if a is None else np.column_stack([PITCH_LENGTH - a[..., 0], a[..., 1]])
+        def flip(a):
+            return None if a is None else np.column_stack([PITCH_LENGTH - a[..., 0], a[..., 1]])
+
         return FreezeFrame(flip(self.ball_xy[None])[0] if self.ball_xy is not None else None, flip(self.players_xy),
                            self.players_cls, self.players_team, self.attacking_team, PITCH_LENGTH,
                            self.n_keypoints, self.homography_ok, self.boxes_xyxy, self.boxes_cls)
@@ -123,7 +125,8 @@ class FreezeFrameExtractor:
             h = y2 - y1
             crop = img[y1 + int(0.15 * h): y1 + int(0.55 * h), x1:x2]
             if crop.size == 0:
-                feats.append(np.zeros(48)); continue
+                feats.append(np.zeros(48))
+                continue
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
             hist = cv2.calcHist([hsv], [0, 1], None, [16, 3], [0, 180, 0, 256]).flatten()
             feats.append(hist / (hist.sum() + 1e-6))
