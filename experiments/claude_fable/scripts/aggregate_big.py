@@ -26,13 +26,11 @@ def main():
     idx = pd.read_parquet(a.index)[["shot_id", "game"]]
     root = Path(a.results)
     preds: dict[str, list[pd.DataFrame]] = {}
-    for f in (sorted(root.glob("seed*/*_test_predictions.csv")) + sorted(root.glob("dinov2_b/*_test_predictions.csv"))
-              + sorted(root.glob("c8/seed*/*_test_predictions.csv"))):
+    for f in sorted(root.glob("**/*_test_predictions.csv")):
         name = f.name.replace("_test_predictions.csv", "")
-        if f.parent.name == "dinov2_b":
-            name += "@b"
-        if f.parent.parent.name == "c8":
-            name += "@cycle8"
+        group = f.parent.name if not f.parent.name.startswith("seed") else f.parent.parent.name
+        if group not in (root.name, ""):
+            name += "@" + group
         preds.setdefault(name, []).append(pd.read_csv(f).drop_duplicates("shot_id"))
     rows = []
     for name, dfs in preds.items():
@@ -54,8 +52,7 @@ def main():
     print(out.round(4).to_string(index=False))
     out.to_csv(root / "aggregate.csv", index=False)
     hist = {}
-    for f in (sorted(root.glob("seed*/*_metrics.json")) + sorted(root.glob("dinov2_b/*_metrics.json"))
-              + sorted(root.glob("c8/seed*/*_metrics.json"))):
+    for f in sorted(root.glob("**/*_metrics.json")):
         m = json.loads(f.read_text())
         if "history" in m:
             hist[f.parent.name + "/" + m["model"]] = {"epochs": len(m["history"]), "minutes": round(m["history"][-1]["minutes"], 1),
