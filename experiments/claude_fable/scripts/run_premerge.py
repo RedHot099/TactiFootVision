@@ -105,6 +105,18 @@ def main() -> None:
             stage(rp.run_g, OUT / "g_sweep" / f"{bb}_b{nb}", f"g_finetune_{bb}_b{nb}", cfg, data,
                   backbone=bb, n_blocks=nb)
 
+    # 4b. learning-rate sweep for the winning depth. The depth sweep ran at a single
+    #     (lr, backbone_lr_mult) and its deep variants collapsed to the base rate, which
+    #     is an optimisation failure, not evidence that depth cannot work - so the LR is
+    #     swept before any verdict on fine-tuning is written down.
+    if want("g_lr"):
+        for bb, nb, lr, mult in [("dinov2_l", 4, 1e-4, 0.1), ("dinov2_l", 4, 1e-4, 0.02),
+                                 ("dinov2_l", 4, 3e-4, 0.02), ("dinov2_l", 12, 1e-4, 0.02)]:
+            name = f"{bb}_b{nb}_lr{lr:g}_m{mult:g}"
+            cfg = TrainConfig(epochs=10, max_minutes=70, batch_size=16, seed=0)
+            stage(rp.run_g, OUT / "g_lr" / name, f"g_finetune_{bb}_b{nb}_{name}", cfg, data,
+                  backbone=bb, n_blocks=nb, lr=lr, backbone_lr_mult=mult, tag=f"_{name}")
+
     # 5. seeds + masking + TTA for whichever depth won on validation
     if want("g_best"):
         scored = {(bb, nb): best_valid_log_loss(OUT / "g_sweep" / f"{bb}_b{nb}", f"g_finetune_{bb}_b{nb}")

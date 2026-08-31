@@ -101,12 +101,12 @@ def run_d(tr, va, te, cache, out, cfg, backbone="dinov2_s", mask="none", tta=Fal
 
 
 def run_g(tr, va, te, cache, out, cfg, backbone="dinov2_b", n_blocks=4, mask="none", tta=False, tag="",
-          backbone_lr_mult=0.1):
+          backbone_lr_mult=0.1, lr=3e-4):
     """PoC G: PoC D with the top blocks of the backbone unfrozen (see FinetuneViTXG)."""
     from xgpoc.models.d_foundation import BACKBONES, FinetuneViTXG
     model = FinetuneViTXG(backbone, n_blocks=n_blocks)
     size_wh = BACKBONES[backbone][1]
-    cfg = TrainConfig(**{**config_dict(cfg), "lr": 3e-4, "batch_size": min(cfg.batch_size, 8 if "_l" in backbone else 16)})
+    cfg = TrainConfig(**{**config_dict(cfg), "lr": lr, "batch_size": min(cfg.batch_size, 8 if "_l" in backbone else 16)})
     kw = dict(size_wh=size_wh, mask=mask)
     fit = train_torch(model, ImageDataset(tr, train=True, **kw), ImageDataset(va, **kw), cfg,
                       backbone_lr_mult=backbone_lr_mult)
@@ -116,7 +116,7 @@ def run_g(tr, va, te, cache, out, cfg, backbone="dinov2_b", n_blocks=4, mask="no
     return write_result(out, f"g_finetune_{backbone}_b{n_blocks}{tag}", te_v[0].df,
                         predict_torch(model, te_v, cfg, temp),
                         {"params": n_trainable(model), "backbone": backbone, "n_blocks": n_blocks, "mask": mask,
-                         "tta": tta, "backbone_lr_mult": backbone_lr_mult, "history": fit["history"],
+                         "tta": tta, "backbone_lr_mult": backbone_lr_mult, "lr": lr, "history": fit["history"],
                          "temperature": temp.t},
                         valid_df=va_v[0].df, p_valid=predict_torch(model, va_v, cfg, temp))
 

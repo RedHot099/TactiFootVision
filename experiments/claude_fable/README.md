@@ -65,6 +65,42 @@ Na prawdziwych danych: podmienić `--index` na plik od agenta danych, podnieść
 `--epochs` i `--max-minutes`. Cache pozycji (A, B, E) i cech DINOv2 (D, E) buduje się
 raz na index.
 
+## Jak odtworzyć wyniki od zera
+
+Wymagane: SoccerNet (hasło NDA), ~600 GB miejsca na transfer i ~50 GB na cache cech,
+GPU z 8 GB VRAM. Całość to ~30 h transferu i ~10 h GPU.
+
+```bash
+cd experiments/claude_fable
+# 1. dane: pobranie 500 meczów 720p i wycięcie okien wokół strzałów (wznawialne,
+#    pilnuje 5 GB wolnego miejsca; szczegóły i fazy w DATASET_PROTOCOL.md)
+./run.sh python scripts/collect_soccernet.py --password "$SOCCERNET_PASSWORD"
+./run.sh python scripts/check_index_quality.py          # bramki odbioru datasetu
+
+# 2. cache pozycji (A, B, E) i tabela cech dodatkowych
+./run.sh python scripts/build_positional_cache.py "$IDX" cache/full_v2_fallback/positional --ball-fallback
+./run.sh python scripts/build_aux_table.py
+
+# 3. wiarygodność: przeciek między splitami i lokalizacja nakładki telewizyjnej
+./run.sh python scripts/audit_leakage.py --out results/audit
+./run.sh python scripts/find_overlay_region.py --out configs
+
+# 4. treningi: porównanie architektur, potem kolejka przedmerge'owa
+bash scripts/run_big.sh && bash scripts/run_night.sh
+./run.sh python scripts/run_premerge.py
+./run.sh python scripts/build_positional_member.py
+
+# 5. analiza
+./run.sh python scripts/aggregate_big.py --index "$IDX" --results results/premerge
+./run.sh python scripts/build_ensemble.py --results results/premerge --out results/ensemble
+./run.sh python scripts/eval_subgroups.py --preds "results/ensemble/*_test_predictions.csv" --out results/subgroups
+./run.sh python scripts/significance.py --preds <a.csv> <b.csv> --names A B
+./run.sh python scripts/make_situation_figures.py --preset finalne --out results_reports/figures_finalne
+```
+
+Wszystkie treningi są wznawialne na poziomie (etap, seed): gotowy przebieg zostawia
+plik `*_metrics.json` i jest pomijany przy ponownym uruchomieniu.
+
 ## Stan (2026-08-28)
 
 Duży trening zakończony: 3 seedy × 5 PoC do zbieżności + ablacje (C z domkniętym
@@ -101,9 +137,12 @@ ekstrakcji + faza 2 SoccerTrack.
 ```
 xgpoc/data       index (kontrakt), parser etykiet SoccerNet, ekstrakcja klatek, datasety torch
 xgpoc/features   freeze_frame (obraz → pozycje), tabular (cechy), cache
-xgpoc/models     a_tabular, b_set_transformer, c_cnn_e2e, d_foundation, e_hybrid, common (trener)
+xgpoc/models     a_tabular, b_set_transformer, c_cnn_e2e, d_foundation (zamrożony + FinetuneViTXG),
+                 e_hybrid, f_temporal, common (trener, kalibracja, TTA)
 xgpoc/eval       metryki (Brier, log-loss, AUC, ECE, BSS)
-scripts          run_poc, compare, build_positional_cache, make_dummy_index
+configs          maski nakładki telewizyjnej wykryte z danych (overlay_mask.png, graphics_mask.png)
+scripts          run_poc (PoC a-g), run_premerge (kolejka GPU), audit_leakage, find_overlay_region,
+                 build_ensemble, eval_subgroups, significance, compare, build_positional_cache
 research         literatura i datasety
 tests            parser, metryki, modele (w tym test uczenia reguły syntetycznej)
 ```

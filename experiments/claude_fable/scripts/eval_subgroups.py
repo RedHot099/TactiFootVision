@@ -80,12 +80,12 @@ def reliability(preds: dict[str, pd.DataFrame], out: Path, n_bins: int = 8) -> N
             ns.append(m.sum())
         axes[0].plot(xs, ys, "o-", label=name, alpha=0.85)
         axes[1].hist(p.p, bins=30, histtype="step", label=name)
-    axes[0].plot([0, 1], [0, 1], "k--", lw=1, label="perfect calibration")
+    axes[0].plot([0, 1], [0, 1], "k--", lw=1, label="idealna kalibracja")
     lim = max(0.6, max(max(p.p.max() for p in preds.values()), 0.6))
-    axes[0].set(xlim=(0, lim), ylim=(0, lim), xlabel="predicted xG (bin mean)",
-                ylabel="observed goal rate", title="Krzywa niezawodności (kubełki kwantylowe)")
+    axes[0].set(xlim=(0, lim), ylim=(0, lim), xlabel="przewidywane xG (średnia w kubełku)",
+                ylabel="zaobserwowana częstość goli", title="Krzywa niezawodności (kubełki kwantylowe)")
     axes[0].legend(fontsize=8)
-    axes[1].set(xlabel="predicted xG", ylabel="liczba strzałów", title="Rozkład predykcji", yscale="log")
+    axes[1].set(xlabel="przewidywane xG", ylabel="liczba strzałów", title="Rozkład predykcji", yscale="log")
     axes[1].legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(out, dpi=130)
