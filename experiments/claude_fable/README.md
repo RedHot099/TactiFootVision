@@ -101,7 +101,29 @@ bash scripts/run_big.sh && bash scripts/run_night.sh
 Wszystkie treningi są wznawialne na poziomie (etap, seed): gotowy przebieg zostawia
 plik `*_metrics.json` i jest pomijany przy ponownym uruchomieniu.
 
-## Stan (2026-08-28)
+## Stan (2026-08-31) — po rundzie przedmerge'owej
+
+Audyt przecieku: **PASS** (0 klatek testowych z bliźniakiem w treningu). Zależność od
+grafiki telewizyjnej sprawdzona i **wykluczona** (model widzący sam scoreboard: AUC
+0.530, BSS −0.2%); maskowanie nakładki włączone domyślnie, bo nic nie kosztuje.
+
+Ranking finalny (test 2 229 strzałów / 100 meczów, wszystkie porównania sparowane):
+
+| Model | AUC [95% CI] | BSS | log-loss |
+|---|---|---|---|
+| **Ensemble: D-L(maska) + fine-tune L/12 + GBM** | **0.758 [0.734, 0.781]** | **11.7%** | **0.340** |
+| G fine-tune DINOv2-L/4 + maska | 0.754 | 9.6% | 0.346 |
+| D-L zamrożony + maska | 0.735 | 8.2% | 0.353 |
+| C ConvNeXt + maska | 0.735 | 7.9% | 0.352 |
+| A pozycyjny GBM (train only) | 0.622 | 5.4% | 0.372 |
+
+**Fine-tuning DINOv2 istotnie bije zamrożoną głowę** (ΔAUC +0.019 [+0.001, +0.037]) —
+ale dopiero po naprawieniu learning rate; przy pierwszym ustawieniu głębsze odmrażanie
+zapadało się do stałej predykcji. **TTA odrzucone** (istotnie szkodzi C). Model
+pozycyjny zostaje w składzie mimo AUC 0.62, bo jako jedyny domyka karne i górny ogon
+rozkładu. Raport: `results_reports/premerge_REPORT.md`.
+
+## Stan poprzedni (2026-08-28)
 
 Duży trening zakończony: 3 seedy × 5 PoC do zbieżności + ablacje (C z domkniętym
 cyklem LR, DINOv2-B). Finalny ranking (ensemble, test 2 229 strzałów / 100 meczów):

@@ -42,17 +42,28 @@ def logit(p: np.ndarray) -> np.ndarray:
 
 
 def collect(root: Path) -> dict[str, dict[str, pd.DataFrame]]:
-    """variant -> {'valid': df, 'test': df} with seeds averaged in logit space."""
-    found: dict[tuple[str, str], list[pd.DataFrame]] = {}
+    """variant -> {'valid': df, 'test': df} with seeds averaged in logit space.
+
+    Grouping is by (directory, model name), not by directory alone: one directory can
+    hold several different models - the control probes do - and averaging those
+    together as if they were seeds of one model would be meaningless."""
+    found: dict[tuple[str, str, str], list[pd.DataFrame]] = {}
+    models_per_dir: dict[str, set[str]] = {}
     for f in sorted(root.glob("**/*_predictions.csv")):
         split = "valid" if f.name.endswith("_valid_predictions.csv") else "test"
-        variant = f.parent.name if not f.parent.name.startswith("seed") else f.parent.parent.name
-        found.setdefault((variant, split), []).append(pd.read_csv(f).drop_duplicates("shot_id"))
+        model = f.name.replace(f"_{split}_predictions.csv", "")
+        parent = f.parent
+        while parent.name.startswith("seed"):
+            parent = parent.parent
+        variant = str(parent.relative_to(root))
+        models_per_dir.setdefault(variant, set()).add(model)
+        found.setdefault((variant, model, split), []).append(pd.read_csv(f).drop_duplicates("shot_id"))
     out: dict[str, dict[str, pd.DataFrame]] = {}
-    for (variant, split), dfs in found.items():
+    for (variant, model, split), dfs in found.items():
+        label = variant if len(models_per_dir[variant]) == 1 else f"{variant}:{model}"
         base = dfs[0][["shot_id", "goal"]]
         z = np.mean([logit(d.set_index("shot_id").loc[base.shot_id, "p"].to_numpy()) for d in dfs], axis=0)
-        out.setdefault(variant, {})[split] = base.assign(p=1 / (1 + np.exp(-z)), seeds=len(dfs))
+        out.setdefault(label, {})[split] = base.assign(p=1 / (1 + np.exp(-z)), seeds=len(dfs))
     return out
 
 
@@ -142,7 +153,7 @@ def main() -> None:
                         "auc": m["auc"], "auc_ci": ci["auc"], "log_loss": m["log_loss"],
                         "log_loss_ci": ci["log_loss"], "brier": m["brier"],
                         "bss": m["brier_skill_score"], "ece": m["ece"], "seeds": int(te.seeds.iloc[0])})
-        te.to_csv(a.out / f"{v}_test_predictions.csv", index=False)
+        te.to_csv(a.out / f"{v.replace('/', '__').replace(':', '__')}_test_predictions.csv", index=False)
 
     combos = []
     for k in range(2, a.max_k + 1):

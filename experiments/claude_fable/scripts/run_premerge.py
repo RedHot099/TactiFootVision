@@ -117,6 +117,19 @@ def main() -> None:
             stage(rp.run_g, OUT / "g_lr" / name, f"g_finetune_{bb}_b{nb}_{name}", cfg, data,
                   backbone=bb, n_blocks=nb, lr=lr, backbone_lr_mult=mult, tag=f"_{name}")
 
+    # 4c. three seeds for the two leading fine-tuning configurations. One seed proved
+    #     too noisy to choose on: the deepest variant had the worst validation log-loss
+    #     yet the best test score, which is exactly the situation where picking on a
+    #     single validation run is guesswork. The winner is taken on the *mean*
+    #     validation log-loss over seeds; both are reported.
+    if want("g_final"):
+        for bb, nb, lr, mult in [("dinov2_l", 4, 3e-4, 0.02), ("dinov2_l", 12, 1e-4, 0.02)]:
+            name = f"{bb}_b{nb}_lr{lr:g}_m{mult:g}"
+            for s_ in range(a.seeds):
+                cfg = TrainConfig(epochs=10, max_minutes=70, batch_size=16, seed=s_)
+                stage(rp.run_g, OUT / "g_final" / name / f"seed{s_}", f"g_finetune_{bb}_b{nb}_{name}",
+                      cfg, data, backbone=bb, n_blocks=nb, lr=lr, backbone_lr_mult=mult, tag=f"_{name}")
+
     # 5. seeds + masking + TTA for whichever depth won on validation
     if want("g_best"):
         scored = {(bb, nb): best_valid_log_loss(OUT / "g_sweep" / f"{bb}_b{nb}", f"g_finetune_{bb}_b{nb}")

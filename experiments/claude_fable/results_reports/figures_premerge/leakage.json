@@ -1,0 +1,90 @@
+{
+  "n_shots": 11030,
+  "duplicate_shot_ids": 0,
+  "games": {
+    "train": 300,
+    "valid": 100,
+    "test": 100
+  },
+  "game_overlap": {
+    "train|valid": [],
+    "train|test": [],
+    "valid|test": []
+  },
+  "fixtures_in_multiple_splits": [],
+  "unreadable_frames": 0,
+  "degenerate_frames": 0,
+  "frames_with_identical_dhash": 5,
+  "dhash_calibration": {
+    "same_shot_p50": 13.0,
+    "same_shot_p90": 25.0,
+    "random_p1": 21.0,
+    "random_p50": 31.0,
+    "separable": false
+  },
+  "embedding_calibration": {
+    "same_shot_cos_p5": 0.941029965877533,
+    "same_shot_cos_p50": 0.9722834825515747,
+    "random_cos_p99": 0.9206984639167786,
+    "random_cos_p50": 0.8475275039672852,
+    "separable": true,
+    "thr_scene_rule": "cos >= 5th pct of same-shot (t0 vs -400 ms) pairs: similar scene",
+    "thr_twin_rule": "cos >= median of same-shot pairs: as similar as the same moment 400 ms apart"
+  },
+  "cross_split": {
+    "test_frames_with_similar_scene": 1080,
+    "test_frames_with_similar_scene_pct": 48.452,
+    "test_frames_with_twin": 0,
+    "test_frames_with_twin_pct": 0.0,
+    "pairs_similar_scene": 9211,
+    "pairs_same_game": 0,
+    "max_similarity": 0.9702174067497253,
+    "nearest_similarity_p50": 0.9406002759933472,
+    "nearest_similarity_p99": 0.9634385704994202
+  },
+  "top_game_pairs": [
+    {
+      "test_game": "italy_serie-a/2016-2017/2017-04-01 - 21-45 AS Roma 2 - 0 Empoli",
+      "ref_game": "italy_serie-a/2016-2017/2017-03-19 - 22-45 AS Roma 3 - 1 Sassuolo",
+      "mean": 0.9491329193115234,
+      "count": 25
+    },
+    {
+      "test_game": "italy_serie-a/2016-2017/2017-02-25 - 20-00 Napoli 0 - 2 Atalanta",
+      "ref_game": "italy_serie-a/2016-2017/2017-02-10 - 22-45 Napoli 2 - 0 Genoa",
+      "mean": 0.942444384098053,
+      "count": 17
+    },
+    {
+      "test_game": "europe_uefa-champions-league/2015-2016/2015-09-29 - 21-45 Bayern Munich 5 - 0 D. Zagreb",
+      "ref_game": "europe_uefa-champions-league/2015-2016/2015-11-04 - 22-45 Bayern Munich 5 - 1 Arsenal",
+      "mean": 0.9445879459381104,
+      "count": 15
+    },
+    {
+      "test_game": "europe_uefa-champions-league/2014-2015/2015-05-05 - 21-45 Juventus 2 - 1 Real Madrid",
+      "ref_game": "europe_uefa-champions-league/2014-2015/2015-04-14 - 21-45 Juventus 1 - 0 Monaco",
+      "mean": 0.9468314051628113,
+      "count": 14
+    },
+    {
+      "test_game": "england_epl/2016-2017/2016-09-24 - 14-30 Manchester United 4 - 1 Leicester",
+      "ref_game": "england_epl/2015-2016/2015-09-26 - 17-00 Manchester United 3 - 0 Sunderland",
+      "mean": 0.946226179599762,
+      "count": 14
+    }
+  ],
+  "max_nn_concentration": {
+    "game": "italy_serie-a/2016-2017/2017-04-01 - 21-45 AS Roma 2 - 0 Empoli",
+    "share": 0.8064516129032258,
+    "mean_sim": 0.9481000304222107,
+    "duplicate_broadcast_suspected": false
+  },
+  "venue_overlap": {
+    "test_games_with_home_team_seen_in_train": 85,
+    "test_games": 100,
+    "unparsed_game_names": 0,
+    "note": "same home team implies same stadium and often the same broadcast style; measured effect on metrics is reported in eval_subgroups.py (seen vs unseen venue)"
+  },
+  "pass": true
+}

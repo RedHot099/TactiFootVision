@@ -1,5 +1,12 @@
 # Podsumowanie eksperymentu: wybór architektury xG z obrazu
 
+> **Uwaga (2026-08-31):** ten dokument opisuje stan po dużym treningu. Runda
+> przedmerge'owa zmieniła dwie rzeczy i obie są opisane w `premerge_REPORT.md`:
+> (1) tabela w sekcji 2 nie jest rankingiem — sparowany test pokazuje, że **C i D są
+> nierozróżnialne** (P = 0.64), a jedyna istotna różnica to przewaga modeli obrazowych
+> nad pozycyjnymi; (2) **fine-tuning DINOv2 istotnie bije zamrożoną głowę** i finalny
+> wynik to ensemble o AUC 0.758 / BSS 11.7% / log-loss 0.340, nie 0.746 / 8.4% / 0.351.
+
 Data: 2026-08-29. Branch `claude-fable/xg-poc`. Szczegółowe raporty cząstkowe:
 `big_v1_FINAL_REPORT.md` (duży trening), `full_v1_short_REPORT.md` (krok 1),
 `../research/` (literatura, plan i protokół danych).
@@ -80,9 +87,13 @@ częstość bazowa 0.13):
 
 ## 5. Co pozostaje otwarte
 
-1. **dl672** (cechy DINOv2-L w 672×378) — w trakcie; dopisek po zakończeniu.
+1. ~~**dl672**~~ — porzucone po 3 próbach; ekstraktor wymaga ~29 GB RAM przy zapisie
+   (do przebudowy na zapis strumieniowy). Opisane jako known issue w `run_night.sh`.
 2. **SoccerTrack v2**: czeka na ręczne pobrania (DOWNLOAD_CHECKLIST.md) → pozycje GT
    → uczciwy re-test A/B i lokalizator kontaktu (faza 2 protokołu).
-3. Kierunki dalszej poprawy jakości: fine-tuning DINOv2 (nie tylko głowa), klipy 8 s
-   z modelem wideo (mamy 18 GB klipów), maskowanie scoreboardu, większy zbiór
-   (SoccerReplay-1988 po NDA), TTA.
+3. Kierunki dalszej poprawy jakości — stan po rundzie przedmerge'owej:
+   - fine-tuning DINOv2 — **zrobione, działa** (+0.019 AUC istotnie);
+   - maskowanie scoreboardu — **zrobione, darmowe**, włączone domyślnie;
+   - TTA — **zrobione, odrzucone** (istotnie szkodzi);
+   - wciąż otwarte: klipy 8 s z modelem wideo (mamy 18 GB klipów), większy zbiór
+     (SoccerReplay-1988 po NDA), pozycje GT z SoccerTrack.

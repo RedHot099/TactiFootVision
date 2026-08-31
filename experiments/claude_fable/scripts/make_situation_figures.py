@@ -38,14 +38,13 @@ PRESETS = {
     # after the pre-merge pass: everything below is trained on masked frames, so no
     # model in this preset can read the scoreboard
     "finalne": {
-        "A pozycyjny (GBM)": ["results/premerge/gbm/seed*/a_tabular_gbm_sel_test_predictions.csv"],
-        "C ConvNeXt (bez nakladki)": ["results/premerge/c_mask/seed*/c_cnn_e2e_overlay_test_predictions.csv"],
-        "C + maska + TTA": ["results/premerge/c_mask_tta/seed*/c_cnn_e2e_overlay_tta_test_predictions.csv"],
-        "D DINOv2-L (bez nakladki)": ["results/premerge/dl_mask/seed*/d_frozen_dinov2_l_overlay_test_predictions.csv"],
-        "D + maska + TTA": ["results/premerge/dl_mask_tta/seed*/d_frozen_dinov2_l_overlay_tta_test_predictions.csv"],
-        "G fine-tune DINOv2": ["results/premerge/g_best/seed*/g_finetune_*_test_predictions.csv"],
-        "G + maska + TTA": ["results/premerge/g_best_mask_tta/seed*/g_finetune_*_overlay_tta_test_predictions.csv"],
-        "Ensemble (wybrany na walidacji)": ["results/ensemble/best_ensemble_test_predictions.csv"],
+        "A pozycyjny (GBM)": ["results/ensemble/gbm_test_predictions.csv"],
+        "C ConvNeXt + maska": ["results/ensemble/c_mask_test_predictions.csv"],
+        "D DINOv2-L zamrozony + maska": ["results/ensemble/dl_mask_test_predictions.csv"],
+        "G fine-tune DINOv2-L/4": ["results/ensemble/g_final__dinov2_l_b4_lr0.0003_m0.02_test_predictions.csv"],
+        "G fine-tune DINOv2-L/12": ["results/ensemble/g_final__dinov2_l_b12_lr0.0001_m0.02_test_predictions.csv"],
+        "Stary ensemble C+D-L": ["results/ensemble/OLD_ensemble_C_DL_test_predictions.csv"],
+        "ENSEMBLE finalny": ["results/ensemble/best_ensemble_test_predictions.csv"],
     },
 }
 MODELS = PRESETS["architektury"]
@@ -60,7 +59,11 @@ def ensemble(globs: list[str]) -> pd.Series:
 
 
 def pick_situations(df: pd.DataFrame) -> list[tuple[str, str]]:
-    """Return (shot_id, situation description) pairs covering distinct cases."""
+    """Return (shot_id, situation description) pairs covering distinct cases.
+
+    Situations are ranked by the last model in the preset, which is the reference
+    ensemble; the preset therefore has to keep it last."""
+    REF = list(MODELS)[-1]
     picks = []
     d = df.copy()
     d["spread"] = d[list(MODELS)].max(axis=1) - d[list(MODELS)].min(axis=1)
@@ -70,18 +73,18 @@ def pick_situations(df: pd.DataFrame) -> list[tuple[str, str]]:
             r = cand.iloc[0]
             picks.append((r.name, desc_txt))
             d.drop(index=r.name, inplace=True)
-    take(d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), "Ensemble C+D-L", False, "Gol z bliska (dobitka/sytuacja sam na sam)")
-    take(d.goal & (d.dist_to_goal > 22) & d.has_ball.astype(bool), "Ensemble C+D-L", True, "Gol z dystansu (niska szansa a priori)")
-    take(~d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), "Ensemble C+D-L", False, "Zmarnowana wielka okazja (strzał z pola bramkowego)")
-    take(~d.goal & (d.dist_to_goal > 25) & d.has_ball.astype(bool), "Ensemble C+D-L", True, "Strzał z dużego dystansu (typowe niskie xG)")
-    take(d.is_penalty.astype(bool), "Ensemble C+D-L", False, "Rzut karny")
+    take(d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), REF, False, "Gol z bliska (dobitka/sytuacja sam na sam)")
+    take(d.goal & (d.dist_to_goal > 22) & d.has_ball.astype(bool), REF, True, "Gol z dystansu (niska szansa a priori)")
+    take(~d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), REF, False, "Zmarnowana wielka okazja (strzał z pola bramkowego)")
+    take(~d.goal & (d.dist_to_goal > 25) & d.has_ball.astype(bool), REF, True, "Strzał z dużego dystansu (typowe niskie xG)")
+    take(d.is_penalty.astype(bool), REF, False, "Rzut karny")
     take(d.spread > 0, "spread", False, "Największa niezgoda między modelami")
     return picks
 
 
 def render(row: pd.Series, desc: str, out: Path, base_rate: float):
-    fig = plt.figure(figsize=(13.5, 4.6), dpi=150, facecolor="white")
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1], wspace=0.08, left=0.02, right=0.97, top=0.82, bottom=0.12)
+    fig = plt.figure(figsize=(14.5, 4.6), dpi=150, facecolor="white")
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1], wspace=0.30, left=0.02, right=0.97, top=0.82, bottom=0.12)
     ax_img = fig.add_subplot(gs[0])
     img = plt.imread(row["frame_path"])
     ax_img.imshow(img)
