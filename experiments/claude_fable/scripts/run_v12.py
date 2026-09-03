@@ -43,6 +43,15 @@ STAGES = {
     "g_mixup": ("g", "g_finetune_dinov2_l_b4_overlay_mixup", {**FT, "mixup_alpha": 0.2}, dict(**G_KW, tag="_overlay_mixup")),
     "g_llrd": ("g", "g_finetune_dinov2_l_b8_overlay_llrd", {**FT, "llrd": 0.7}, dict(**{**G_KW, "n_blocks": 8, "backbone_lr_mult": 0.05}, tag="_overlay_llrd")),
     "dl_mt": ("d", "d_frozen_dinov2_l_overlay_mt", {**HEAD, "aux_weight": 0.5}, dict(backbone="dinov2_l", mask="overlay", tag="_overlay_mt", mt=True)),
+    # --- combinations of the screening winners (RRC and the on-target head; the temporal
+    #     offset draw and the multi-task head on the frozen features did not help) ---
+    "g_combo": ("g", "g_finetune_dinov2_l_b4_overlay_combo", {**FT, "aux_weight": 0.5},
+                dict(**G_KW, tag="_overlay_combo", rrc=(0.85, 1.0), mt=True)),
+    "g_combo_mix": ("g", "g_finetune_dinov2_l_b4_overlay_combo_mix", {**FT, "aux_weight": 0.5, "mixup_alpha": 0.2},
+                    dict(**G_KW, tag="_overlay_combo_mix", rrc=(0.85, 1.0), mt=True)),
+    "g_combo_llrd": ("g", "g_finetune_dinov2_l_b8_overlay_combo_llrd", {**FT, "aux_weight": 0.5, "llrd": 0.7},
+                     dict(**{**G_KW, "n_blocks": 8, "backbone_lr_mult": 0.05}, tag="_overlay_combo_llrd", rrc=(0.85, 1.0), mt=True)),
+    "c_combo": ("c", "c_cnn_e2e_overlay_combo", {**CNN, "aux_weight": 0.5}, dict(mask="overlay", tag="_overlay_combo", rrc=(0.85, 1.0), mt=True)),
     # --- backbone check on the frozen head (features cached by scripts/extract_features.py) ---
     "dl3_mask": ("d", "d_frozen_dinov3_l_overlay", HEAD, dict(backbone="dinov3_l", mask="overlay", tag="_overlay")),
     "dlreg_mask": ("d", "d_frozen_dinov2_l_reg_overlay", HEAD, dict(backbone="dinov2_l_reg", mask="overlay", tag="_overlay")),
