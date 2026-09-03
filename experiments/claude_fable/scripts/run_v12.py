@@ -43,6 +43,9 @@ STAGES = {
     "g_mixup": ("g", "g_finetune_dinov2_l_b4_overlay_mixup", {**FT, "mixup_alpha": 0.2}, dict(**G_KW, tag="_overlay_mixup")),
     "g_llrd": ("g", "g_finetune_dinov2_l_b8_overlay_llrd", {**FT, "llrd": 0.7}, dict(**{**G_KW, "n_blocks": 8, "backbone_lr_mult": 0.05}, tag="_overlay_llrd")),
     "dl_mt": ("d", "d_frozen_dinov2_l_overlay_mt", {**HEAD, "aux_weight": 0.5}, dict(backbone="dinov2_l", mask="overlay", tag="_overlay_mt", mt=True)),
+    # --- backbone check on the frozen head (features cached by scripts/extract_features.py) ---
+    "dl3_mask": ("d", "d_frozen_dinov3_l_overlay", HEAD, dict(backbone="dinov3_l", mask="overlay", tag="_overlay")),
+    "dlreg_mask": ("d", "d_frozen_dinov2_l_reg_overlay", HEAD, dict(backbone="dinov2_l_reg", mask="overlay", tag="_overlay")),
 }
 
 

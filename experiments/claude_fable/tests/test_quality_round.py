@@ -135,3 +135,28 @@ def test_layerwise_lr_groups_decay_from_top():
     groups, max_lr = _param_groups(m, params, TrainConfig(lr=1e-3, llrd=0.5), backbone_lr_mult=0.1)
     assert len(groups) == 4 and max_lr[:3] == [1e-4, 5e-5, 2.5e-5] and max_lr[3] == 1e-3
     assert sum(len(g["params"]) for g in groups) == len(params)
+
+
+def test_temperature_is_bounded_on_degenerate_logits():
+    from xgpoc.models.common import TemperatureScaler
+    y = np.array([0] * 90 + [1] * 10, float)
+    for z in (np.zeros(100), np.full(100, 1e-4), np.linspace(-1e-5, 1e-5, 100)):
+        t = TemperatureScaler().fit(z, y)
+        assert 0.05 <= t.t <= 20.0 and np.isfinite(t(z)).all()
+    rng = np.random.default_rng(0)
+    z = rng.normal(0, 2, 4000)
+    yy = (rng.random(4000) < 1 / (1 + np.exp(-z))).astype(float)   # already calibrated -> T ~ 1
+    assert 0.85 < TemperatureScaler().fit(z, yy).t < 1.15
+
+
+def test_ema_warmup_forgets_initialisation():
+    from xgpoc.models.common import _Ema
+    lin = nn.Linear(2, 1)
+    with torch.no_grad():
+        lin.weight.fill_(0.0)
+    ema = _Ema(lin, 0.999)
+    with torch.no_grad():
+        lin.weight.fill_(1.0)
+    for _ in range(50):
+        ema.update(lin)
+    assert ema.shadow["weight"].mean().item() > 0.9   # 0.999 decay alone would still sit near 0.05

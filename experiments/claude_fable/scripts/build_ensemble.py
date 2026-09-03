@@ -44,7 +44,13 @@ INDEX = str(_INDEX)
 
 
 def collect(root: Path) -> dict[str, dict[str, pd.DataFrame]]:
-    """variant -> {'valid': df, 'test': df} with seeds averaged in logit space.
+    """variant -> {'valid': df, 'test': df}, averaged in logit space per shot.
+
+    Directory layout: <variant>/[fold<k>/][seed<s>/]<model>_{valid,test}_predictions.csv.
+    Averaging is per shot_id, which covers both layouts at once: with seeds only, every
+    shot appears once per seed; with cross-validation folds the validation files are
+    disjoint (each shot is out-of-fold exactly once per seed) and are concatenated into one
+    OOF frame, while the test files (one per fold model) are averaged.
 
     Grouping is by (directory, model name), not by directory alone: one directory can
     hold several different models - the control probes do - and averaging those
@@ -55,17 +61,19 @@ def collect(root: Path) -> dict[str, dict[str, pd.DataFrame]]:
         split = "valid" if f.name.endswith("_valid_predictions.csv") else "test"
         model = f.name.replace(f"_{split}_predictions.csv", "")
         parent = f.parent
-        while parent.name.startswith("seed"):
+        while parent.name.startswith(("seed", "fold")):
             parent = parent.parent
         variant = str(parent.relative_to(root))
         models_per_dir.setdefault(variant, set()).add(model)
-        found.setdefault((variant, model, split), []).append(pd.read_csv(f).drop_duplicates("shot_id"))
+        found.setdefault((variant, model, split), []).append(pd.read_csv(f).drop_duplicates("shot_id")[["shot_id", "p"]])
     out: dict[str, dict[str, pd.DataFrame]] = {}
     for (variant, model, split), dfs in found.items():
         label = variant if len(models_per_dir[variant]) == 1 else f"{variant}:{model}"
-        base = dfs[0][["shot_id"]]
-        z = np.mean([logit(d.set_index("shot_id").loc[base.shot_id, "p"].to_numpy()) for d in dfs], axis=0)
-        out.setdefault(label, {})[split] = base.assign(p=1 / (1 + np.exp(-z)), seeds=len(dfs))
+        allp = pd.concat(dfs, ignore_index=True)
+        allp["z"] = logit(allp.p.to_numpy())
+        agg = allp.groupby("shot_id", sort=True).z.agg(["mean", "size"]).reset_index()
+        out.setdefault(label, {})[split] = pd.DataFrame({"shot_id": agg.shot_id, "p": 1 / (1 + np.exp(-agg["mean"])),
+                                                         "seeds": agg["size"]})
     return out
 
 
@@ -110,7 +118,7 @@ def stack(variants: list[str], data: dict, labels: pd.Series, games: pd.DataFram
     w, b = _fit(xv, yv)
     p = 1 / (1 + np.exp(-(xt @ w + b)))
     return {"members": "+".join(variants), "k": len(variants), "weights": [round(float(x), 3) for x in w],
-            "valid_cv_log_loss": cv["log_loss"], "valid_cv_auc": cv["auc"],
+            "valid_cv_log_loss": cv["log_loss"], "valid_cv_auc": cv["auc"], "_from_rate": float(yv.mean()),
             "_pred": pd.DataFrame({"shot_id": te_ids, "goal": yt, "p": p})}
 
 
@@ -143,10 +151,10 @@ def main() -> None:
     p_pen = penalty_rate(int(pen_train.goal.sum()), len(pen_train))
     is_pen = idx.set_index("shot_id")["is_penalty"].astype(bool)
 
-    def post(pred: pd.DataFrame) -> pd.DataFrame:
+    def post(pred: pd.DataFrame, from_rate: float) -> pd.DataFrame:
         p = pred.p.to_numpy()
         if a.prior_shift:
-            p = prior_shift(p, valid_rate, pooled_rate)
+            p = prior_shift(p, from_rate, pooled_rate)
         if a.penalty_route:
             p = route_penalties(p, is_pen.loc[pred.shot_id].to_numpy(), p_pen)
         return pred.assign(p=p)
@@ -163,18 +171,19 @@ def main() -> None:
     print(f"candidates: {usable}")
     if skipped:
         print(f"skipped (no validation predictions): {skipped}")
-    print(f"pooled train+valid goal rate {pooled_rate:.4f}, valid {valid_rate:.4f}, penalty rate {p_pen:.3f} "
+    print(f"pooled train+valid goal rate {pooled_rate:.4f}, official valid {valid_rate:.4f}, penalty rate {p_pen:.3f} "
           f"(prior_shift={a.prior_shift}, penalty_route={a.penalty_route})")
 
     rows = []
     for v in usable:
         te, va = data[v]["test"].copy(), data[v]["valid"].copy()
         yv = labels.loc[va.shot_id].to_numpy()
+        from_rate = float(yv.mean())                    # base rate of the frame the calibration is fitted on
         mv = evaluate(yv, va.p.to_numpy())
         # Platt on validation logits (scale + offset), then the same post-processing as the stacks
         platt = PlattScaler().fit(logit(va.p.to_numpy()), yv)
         pred = post(pd.DataFrame({"shot_id": te.shot_id, "goal": labels.loc[te.shot_id].to_numpy().astype(int),
-                                  "p": platt(logit(te.p.to_numpy()))}))
+                                  "p": platt(logit(te.p.to_numpy()))}), from_rate)
         raw = score(pd.DataFrame({"shot_id": te.shot_id, "goal": pred.goal, "p": te.p}), games)
         rows.append({"members": v, "k": 1, "weights": [1.0], "valid_cv_log_loss": mv["log_loss"], "valid_cv_auc": mv["auc"],
                      **score(pred, games), "auc_raw": raw["auc"], "log_loss_raw": raw["log_loss"], "seeds": int(te.seeds.iloc[0])})
@@ -184,7 +193,7 @@ def main() -> None:
     for k in range(2, a.max_k + 1):
         for c in combinations(usable, k):
             s = stack(list(c), data, labels, games)
-            pred = post(s.pop("_pred"))
+            pred = post(s.pop("_pred"), s.pop("_from_rate"))
             combos.append({**s, **score(pred, games), "_pred": pred})
     best = min(combos + rows, key=lambda r: r["valid_cv_log_loss"]) if combos else None
     if best is not None:

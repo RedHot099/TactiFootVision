@@ -15,14 +15,15 @@ index v1.2; stare tabele (v1.1) nieporównywalne.
 | A5 | Datasety: guard na klatki po strzale, losowy offset w treningu, RRC, cel pomocniczy | zrobione | `xgpoc/data/datasets.py` |
 | A6 | Kalibracja: Platt + korekta priora, hierarchia karnych (w `build_ensemble.py`) | zrobione | `xgpoc/eval/calibration.py` |
 | A7 | Nowa baza na v1.2 (C, D-L, G-L/4, GBM; 3 seedy) + ensemble | w toku (kolejka `run_v12.py`, log `results/v12.log`) | `results/v12/` |
-| B1 | Foldy po gospodarzu, runner CV, ensemble na OOF | — | `scripts/run_cv.py` |
-| B2 | Krzywa uczenia 25/50/75/100% | — | |
+| B1 | Foldy po gospodarzu, runner CV, ensemble na OOF | kod gotowy (foldy: 5 × 80 meczów, 22–23 gospodarzy); czeka na GPU | `scripts/run_cv.py`, `cache/folds_v12_home5.csv` |
+| B2 | Krzywa uczenia 25/50/75/100% | kod gotowy; czeka na GPU | `scripts/run_learning_curve.py` |
 | C1 | Augmentacja (RRC, mixup), augmentacja czasowa, multi-task „celny”, LLRD — screening G | — | |
 | C2 | Najlepsza konfiguracja G → CV; to samo dla C | — | |
-| C3 | Backbone: DINOv2-L z rejestrami / DINOv3 na zamrożonej głowie | — | |
+| C3 | Backbone: DINOv2-L z rejestrami / DINOv3 na zamrożonej głowie | cechy zbudowane (10 GB + 13 GB); głowy w kolejce | `scripts/extract_features.py` |
 | D | Finalny ensemble, podgrupy, istotność, raport, README | — | `results_reports/v12_quality_REPORT.md` |
 
 ## Dziennik
 
 - 2026-09-02: start. GPU wolne (RTX 4070 Ti SUPER 16 GB), 290 GB dysku, torch 2.6.0, timm 1.0.20.
 - 2026-09-02: index v1.2 zbudowany (`index_v1_2.parquet`, changelog w dataset card). Sanity głowy D-L z nowym trenerem na v1.2: AUC 0.770 / LL 0.337, najlepsza epoka 13/25 (cykl 25 epok, EMA 0.999). 38 testów zielonych. Start kolejki bazowej `run_v12.py` (gbm, dl_mask, c_mask, g_l4 × 3 seedy).
+- 2026-09-03: pierwszy przebieg kolejki przerwany po awarii: przy epoce 0 z EMA logity są niemal stałe, LBFGS temperatury uciekł do 0 → NaN. Poprawka: klamra T∈[0.05, 20], rozgrzewka EMA (decay rośnie od 0.1), nan_to_num w ocenie epoki; testy. Wyniki sprzed poprawki skasowane, kolejka wystartowana od nowa (gbm, dl_mask, dl3_mask, dlreg_mask, c_mask, g_l4 × 3 seedy). Wynik cząstkowy sprzed poprawki: D-L 0.766–0.768 AUC (3 seedy), C 0.758 (seed 0), DINOv3-L 0.740 (seed 0, gorzej niż DINOv2-L).

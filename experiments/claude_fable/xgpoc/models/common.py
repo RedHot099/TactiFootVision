@@ -49,14 +49,17 @@ class TemperatureScaler:
     def fit(self, logits: np.ndarray, y: np.ndarray) -> "TemperatureScaler":
         lg, yy = torch.tensor(logits, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
         log_t = torch.zeros(1, requires_grad=True)
-        opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=100)
+        opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=100, line_search_fn="strong_wolfe")
         def closure():
             opt.zero_grad()
-            loss = nn.functional.binary_cross_entropy_with_logits(lg / log_t.exp(), yy)
+            loss = nn.functional.binary_cross_entropy_with_logits(lg / log_t.exp().clamp(1e-3, 1e3), yy)
             loss.backward()
             return loss
         opt.step(closure)
-        self.t = float(log_t.exp())
+        t = float(log_t.exp())
+        # near-constant logits (e.g. an EMA copy evaluated after its first few steps) make the
+        # likelihood flat in T and LBFGS can run off to 0 or infinity; clamp to a sane range
+        self.t = float(np.clip(t, 0.05, 20.0)) if np.isfinite(t) else 1.0
         return self
 
     def __call__(self, logits: np.ndarray) -> np.ndarray:
@@ -69,14 +72,18 @@ class _Ema:
     where the fine-tuning runs were unstable."""
 
     def __init__(self, model: nn.Module, decay: float):
-        self.decay = decay
+        self.decay, self.n = decay, 0
         self.shadow = {n: p.detach().clone().float() for n, p in model.named_parameters() if p.requires_grad}
 
     @torch.no_grad()
     def update(self, model: nn.Module) -> None:
+        # warm-up: the average forgets the random initialisation quickly instead of
+        # carrying it through the first epochs (decay ramps from 0.1 towards `decay`)
+        self.n += 1
+        d = min(self.decay, (1 + self.n) / (10 + self.n))
         for n, p in model.named_parameters():
             if n in self.shadow:
-                self.shadow[n].lerp_(p.detach().float(), 1 - self.decay)
+                self.shadow[n].lerp_(p.detach().float(), 1 - d)
 
     @contextlib.contextmanager
     def applied(self, model: nn.Module):
@@ -202,7 +209,8 @@ def train_torch(model: nn.Module, train_ds: Dataset, valid_ds: Dataset, cfg: Tra
         with (ema.applied(model) if ema is not None else contextlib.nullcontext()):
             vlog = _predict_logits(model, vl, dev)
         temp = TemperatureScaler().fit(vlog, yv)
-        vm_raw, vm_cal = evaluate(yv, 1 / (1 + np.exp(-vlog))), evaluate(yv, temp(vlog))
+        vm_raw = evaluate(yv, np.nan_to_num(1 / (1 + np.exp(-vlog)), nan=float(yv.mean())))
+        vm_cal = evaluate(yv, np.nan_to_num(temp(vlog), nan=float(yv.mean())))
         score = {"calibrated": vm_cal["log_loss"], "raw": vm_raw["log_loss"], "auc": -vm_raw["auc"]}[cfg.select_on]
         history.append({"epoch": ep, "train_loss": tot / max(n, 1), "valid_log_loss": vm_raw["log_loss"],
                         "valid_log_loss_cal": vm_cal["log_loss"], "valid_auc": vm_raw["auc"],
