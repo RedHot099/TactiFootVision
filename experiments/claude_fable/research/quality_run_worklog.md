@@ -16,11 +16,11 @@ index v1.2; stare tabele (v1.1) nieporównywalne.
 | A6 | Kalibracja: Platt + korekta priora, hierarchia karnych (w `build_ensemble.py`) | zrobione | `xgpoc/eval/calibration.py` |
 | A7 | Nowa baza na v1.2 (C, D-L, G-L/4, GBM; 3 seedy) + ensemble | zrobione: ensemble C+G+GBM **0.7875 AUC / 0.3265 LL / BSS 15.2%** (stare modele na v1.2: 0.782 / 0.330) | `results/v12/`, `results/v12_ensemble/`, `results/v12_report/` |
 | B1 | Foldy po gospodarzu, runner CV, ensemble na OOF | kod gotowy (foldy: 5 × 80 meczów, 22–23 gospodarzy); czeka na GPU | `scripts/run_cv.py`, `cache/folds_v12_home5.csv` |
-| B2 | Krzywa uczenia 25/50/75/100% | D-L głowa: 0.737 / 0.748 / 0.757 / 0.769 AUC (3 seedy, std ≤0.002) — **nie wypłaszcza się**; G w kolejce | `results/v12_lc/dl_mask_learning_curve.csv` |
+| B2 | Krzywa uczenia 25/50/75/100% | D-L głowa: 0.737 / 0.748 / 0.757 / 0.769 (3 seedy); G-L/4: 0.740 / 0.766 / 0.771 / 0.780 (1 seed) — **obie nadal rosną** | `results/v12_lc/*_learning_curve.csv` |
 | C1 | Augmentacja (RRC, mixup), augmentacja czasowa, multi-task „celny”, LLRD — screening G | RRC ✓ (valid cal LL 0.3787 vs 0.3809), multi-task ✓ (0.3792; test 0.780/0.3347), mixup ? (valid ✓ 0.3785, test ✗), offset czasowy ✗, dl_mt ✗; LLRD w toku | `results/v12/g_*` |
-| C2 | Najlepsza konfiguracja G → CV; to samo dla C | w toku: CV lekkich członków (gbm, dl_mask, c_mask, c_combo) + zakolejkowane CV g_combo (RRC+MT) i g_combo_mix | `results/v12_cv/` |
+| C2 | Najlepsza konfiguracja G → CV; to samo dla C | zrobione: g_combo (10 modeli) 0.7923 / 0.3242, g_combo_mix 0.7909 / 0.3245, c_combo 0.7658 / 0.3367, dl_mask (10) 0.7740 / 0.3319 | `results/v12_cv/` |
 | C3 | Backbone: DINOv2-L z rejestrami / DINOv3 na zamrożonej głowie | zrobione, oba gorsze: DINOv3-L 0.738–0.752, DINOv2-L-reg 0.756–0.760 vs DINOv2-L 0.768–0.769 (3 seedy). Backbone zostaje. | `scripts/extract_features.py` |
-| D | Finalny ensemble, podgrupy, istotność, raport, README | — | `results_reports/v12_quality_REPORT.md` |
+| D | Finalny ensemble, podgrupy, istotność, raport, README | zrobione: **0.7933 [0.768, 0.816] / 0.3232 / BSS 16.3%**; vs stary ΔAUC +0.011 (P 0.98), Δll +0.007 (P 1.00) | `results_reports/v12_quality_REPORT.md`, `results/v12_cv_ensemble/`, `results/v12_report/` |
 
 ## Dziennik
 
@@ -53,3 +53,8 @@ index v1.2; stare tabele (v1.1) nieporównywalne.
   | multi-task na zamrożonej głowie D-L | 0.383 | 0.766 | 0.338 | ✗ |
 
   Konfiguracje do CV: `g_combo` = RRC + multi-task; `g_combo_mix` = + mixup; `c_combo` = C z RRC + multi-task.
+- 2026-09-03 13:30: CV po gospodarzu, lekcy członkowie (5 foldów × 1 seed, kalibracja Platt na OOF 400 meczów, routing karnych), test: D-L głowa 0.7733 / 0.3323 (vs 0.768 / 0.337 na oficjalnym splicie → fold-ensembling działa), C-combo (RRC+MT) 0.7658 / 0.3367 vs C 0.7637 / 0.3377 (OOF LL 0.3659 vs 0.3672 → RRC+MT pomaga też C), GBM 0.644 / 0.369. Stack bez G: 0.7770 / 0.3308. LLRD seed 0: valid cal LL 0.3814 ≈ baza, test 0.779 / 0.339, szybsze przeuczenie — wstępnie neutralne.
+- 2026-09-03 14:28: krzywa uczenia G-L/4 (1 seed): 75/150/225/300 meczów → AUC 0.740 / 0.766 / 0.771 / 0.780, log-loss 0.350 / 0.340 / 0.340 / 0.340. Ostatni krok +0.009 AUC. Wniosek bramki P5: dane nie są nasycone dla żadnej z dwóch ścieżek → po tej rundzie priorytetem jest pozyskanie meczów. CV dla g_combo/g_combo_mix wystartowało dopiero teraz (łańcuch czekał na cały poprzedni proces, w tym krzywą G).
+- 2026-09-03 15:35: wstępny ensemble CV (OOF 400 meczów, Platt, routing karnych): **c_combo + g_combo + gbm → test AUC 0.7933 [0.768, 0.816], log-loss 0.3238**, wagi [0.18, 0.76, 0.32]; g_combo sam (5 foldów): 0.7919 / 0.3251. Czekają: g_combo_mix (CV), drugi seed g_combo.
+- 2026-09-03 16:40: CV g_combo_mix gotowe: OOF LL 0.3496 (lepiej niż g_combo 0.3515), test 0.7909 / 0.3245 (remis). Stack po OOF: g_combo + g_combo_mix + gbm → 0.7914 / 0.3242; c_combo + g_combo + gbm → 0.7933 / 0.3238 — wszystko w szumie ±0.002. Drugi seed CV g_combo w toku (koniec ~17:45); potem finalny ensemble z max-k 4.
+- 2026-09-03 17:55: **finał.** Ensemble C-combo + G-combo + G-combo-mix + GBM (wagi 0.11/0.48/0.39/0.27, OOF LL 0.3481): test AUC 0.7933 [0.768, 0.816], log-loss 0.3232, BSS 16.3%, ECE 0.016, średnie xG 0.1385. Istotność vs stary ensemble na v1.2: ΔAUC +0.0112 [+0.0004, +0.0222] P=0.98, Δll +0.0070 [+0.0024, +0.0116] P=1.00. Podgrupy: 0–6 m 0.855 (było 0.801), 11–16 m 0.664 (0.643), karne xG 0.68 vs 0.71 obs., nieznane stadiony 0.774 vs znane 0.797. Raport: `results_reports/v12_quality_REPORT.md`.

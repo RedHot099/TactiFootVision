@@ -90,6 +90,12 @@ bash scripts/run_big.sh && bash scripts/run_night.sh
 ./run.sh python scripts/run_premerge.py
 ./run.sh python scripts/build_positional_member.py
 
+# 4b. runda jakości (2026-09): etykiety v1.2, naprawiony trener, CV po gospodarzu
+./run.sh python scripts/relabel_index.py                # index v1.2
+./run.sh python scripts/run_v12.py                      # baza na oficjalnym splicie
+./run.sh python scripts/run_cv.py --stages gbm dl_mask c_combo g_combo g_combo_mix --seeds 2
+./run.sh python scripts/build_ensemble.py --results results/v12_cv --out results/v12_cv_ensemble --prior-shift --penalty-route --max-k 4
+
 # 5. analiza
 ./run.sh python scripts/aggregate_big.py --index "$IDX" --results results/premerge
 ./run.sh python scripts/build_ensemble.py --results results/premerge --out results/ensemble
@@ -100,6 +106,35 @@ bash scripts/run_big.sh && bash scripts/run_night.sh
 
 Wszystkie treningi są wznawialne na poziomie (etap, seed): gotowy przebieg zostawia
 plik `*_metrics.json` i jest pomijany przy ponownym uruchomieniu.
+
+## Stan (2026-09-03) — runda jakości po review
+
+Review (`research/review_2026-09-02.md`) znalazło trzy usterki zmieniające liczby:
+(1) parser przypisywał gola do najwcześniejszego strzału w oknie 6 s zamiast do
+najbliższego (194 odwrócone etykiety, 52 w teście) → **index v1.2**; (2) trener ucinał
+głowy w fazie rozgrzewki i wybierał epokę po niekalibrowanym log-lossie → cykl = budżet
+epok, selekcja po skalibrowanym LL, EMA; (3) prior walidacji (14.9%) wdrukowany w kalibrację
+→ Platt + korekta priora + routing karnych. Wszystkie nowe liczby są na etykietach v1.2 i
+**nie są porównywalne** ze starymi tabelami; stare predykcje przeliczone na v1.2 dają
+0.782 AUC / 0.330 log-loss.
+
+Finalny wynik (test 2 229 strzałów / 100 meczów, etykiety v1.2, wybór składu wyłącznie na
+predykcjach out-of-fold z CV grupowanego po drużynie gospodarzy):
+
+| Model | AUC [95% CI] | log-loss | BSS |
+|---|---|---|---|
+| **Ensemble: C-combo + G-combo + G-combo-mix + GBM** | **0.793 [0.768, 0.816]** | **0.323** | **16.3%** |
+| G-combo (fine-tune DINOv2-L/4 + RRC + głowa „celny", 5 foldów × 2 seedy) | 0.792 | 0.324 | 16.1% |
+| D-L zamrożony + głowa (CV) | 0.774 | 0.332 | 14.1% |
+| C-combo (ConvNeXt + RRC + głowa „celny", CV) | 0.766 | 0.337 | 12.4% |
+| A pozycyjny GBM (CV) | 0.647 | 0.369 | 6.2% |
+| stary ensemble przedmerge'owy na etykietach v1.2 | 0.782 | 0.330 | 14.4% |
+
+Finalny vs stary: ΔAUC +0.011 [+0.000, +0.022] (P = 0.98), Δlog-loss +0.007 [+0.002, +0.012]
+(P = 1.00). Krzywe uczenia obu ścieżek nadal rosną (+0.01 AUC na ostatnie 75 meczów), więc
+następny krok to więcej meczów, nie architektura. DINOv3-L i DINOv2-L z rejestrami są gorsze
+od DINOv2-L na zamrożonej głowie. Raport: `results_reports/v12_quality_REPORT.md`, dziennik:
+`research/quality_run_worklog.md`.
 
 ## Stan (2026-08-31) — po rundzie przedmerge'owej
 

@@ -1,5 +1,10 @@
 # Podsumowanie eksperymentu: wybór architektury xG z obrazu
 
+> **Uwaga (2026-09-03):** review (`../research/review_2026-09-02.md`) wykazało błąd atrybucji gola
+> w parserze etykiet; wszystkie liczby poniżej i w `premerge_REPORT.md` są na etykietach v1.1 i nie są
+> porównywalne z nowymi. Aktualny wynik na etykietach v1.2: ensemble **0.793 AUC / 0.323 log-loss / BSS 16.3%**
+> (`v12_quality_REPORT.md`); stary ensemble przeliczony na v1.2 to 0.782 / 0.330.
+
 > **Uwaga (2026-08-31):** ten dokument opisuje stan po dużym treningu. Runda
 > przedmerge'owa zmieniła dwie rzeczy i obie są opisane w `premerge_REPORT.md`:
 > (1) tabela w sekcji 2 nie jest rankingiem — sparowany test pokazuje, że **C i D są
