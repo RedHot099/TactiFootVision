@@ -1,20 +1,26 @@
 """Seed-ensemble every variant, then combine variants with weights fitted on validation.
 
-    ./run.sh python scripts/build_ensemble.py --results results/premerge --out results/ensemble
+    ./run.sh python scripts/build_ensemble.py --results results/v12 --out results/v12_ensemble \
+        --prior-shift --penalty-route
 
 Two levels, both honest about where the test set is allowed to be used:
   * within a variant, seeds are averaged in logit space (a plain mean, no fitting);
   * across variants, a non-negative logistic stack is fitted on the *validation*
     predictions only, and the test set is touched once, at the end, to report.
 
-Previous rounds used an unweighted average of whatever looked good on the test table,
-which quietly turns model selection into a test-set fit. Any variant lacking
-validation predictions is therefore refused rather than silently included.
-
 Selection between candidates uses a game-grouped cross-validated log-loss computed
 inside the validation set, so a bigger stack cannot win by fitting validation harder.
 Single models are scored on plain validation log-loss; the only thing they fitted
 there is one temperature scalar, so the optimism is negligible next to a k-weight stack.
+
+Post-processing of the reported test predictions (off by default, both recommended):
+  --prior-shift    the validation split has 14.9% goals against 13.1% in train and 13.3%
+                   in test; anything calibrated on it inherits that prior. Predictions are
+                   shifted in logit space to the pooled train+valid rate.
+  --penalty-route  penalties are a known input condition; they get the Beta-posterior
+                   conversion rate from the training penalties instead of the model's guess.
+Selection is done *before* post-processing (on validation), so the choice of members
+cannot depend on it.
 """
 
 import argparse
@@ -30,15 +36,11 @@ from sklearn.linear_model import LogisticRegression
 sys.path.insert(0, str(Path(__file__).parent))
 from compare import bootstrap  # noqa: E402
 
+from xgpoc.eval.calibration import PlattScaler, logit, penalty_rate, prior_shift, route_penalties  # noqa: E402
 from xgpoc.eval.metrics import evaluate  # noqa: E402
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
-EPS = 1e-6
-
-
-def logit(p: np.ndarray) -> np.ndarray:
-    p = np.clip(p, EPS, 1 - EPS)
-    return np.log(p / (1 - p))
+INDEX = str(_INDEX)
 
 
 def collect(root: Path) -> dict[str, dict[str, pd.DataFrame]]:
@@ -61,7 +63,7 @@ def collect(root: Path) -> dict[str, dict[str, pd.DataFrame]]:
     out: dict[str, dict[str, pd.DataFrame]] = {}
     for (variant, model, split), dfs in found.items():
         label = variant if len(models_per_dir[variant]) == 1 else f"{variant}:{model}"
-        base = dfs[0][["shot_id", "goal"]]
+        base = dfs[0][["shot_id"]]
         z = np.mean([logit(d.set_index("shot_id").loc[base.shot_id, "p"].to_numpy()) for d in dfs], axis=0)
         out.setdefault(label, {})[split] = base.assign(p=1 / (1 + np.exp(-z)), seeds=len(dfs))
     return out
@@ -80,18 +82,18 @@ def _fit(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, float]:
     return w, b
 
 
-def stack(variants: list[str], data: dict, games: pd.DataFrame, n_folds: int = 5) -> dict:
+def stack(variants: list[str], data: dict, labels: pd.Series, games: pd.DataFrame, n_folds: int = 5) -> dict:
+    """Fit on validation, score the selection metric by game-grouped CV inside
+    validation, return *raw* test predictions (post-processing happens in main)."""
     va = [data[v]["valid"].set_index("shot_id") for v in variants]
     te = [data[v]["test"].set_index("shot_id") for v in variants]
     va_ids = sorted(set.intersection(*[set(d.index) for d in va]))
     te_ids = sorted(set.intersection(*[set(d.index) for d in te]))
     xv = np.column_stack([logit(d.loc[va_ids, "p"].to_numpy()) for d in va])
     xt = np.column_stack([logit(d.loc[te_ids, "p"].to_numpy()) for d in te])
-    yv = va[0].loc[va_ids, "goal"].to_numpy().astype(int)
-    yt = te[0].loc[te_ids, "goal"].to_numpy().astype(int)
+    yv = labels.loc[va_ids].to_numpy().astype(int)
+    yt = labels.loc[te_ids].to_numpy().astype(int)
 
-    # selection score: game-grouped CV inside validation, so that adding members cannot
-    # buy a better number through in-sample fit alone
     g = games.set_index("shot_id").loc[va_ids, "game"].to_numpy()
     uniq = np.unique(g)
     fold_of = {game: i % n_folds for i, game in enumerate(uniq)}
@@ -105,17 +107,19 @@ def stack(variants: list[str], data: dict, games: pd.DataFrame, n_folds: int = 5
         w, b = _fit(xv[tr], yv[tr])
         oof[ho] = 1 / (1 + np.exp(-(xv[ho] @ w + b)))
     cv = evaluate(yv, oof)
-
     w, b = _fit(xv, yv)
     p = 1 / (1 + np.exp(-(xt @ w + b)))
-    m = evaluate(yt, p)
-    pred = pd.DataFrame({"shot_id": te_ids, "goal": yt, "p": p})
+    return {"members": "+".join(variants), "k": len(variants), "weights": [round(float(x), 3) for x in w],
+            "valid_cv_log_loss": cv["log_loss"], "valid_cv_auc": cv["auc"],
+            "_pred": pd.DataFrame({"shot_id": te_ids, "goal": yt, "p": p})}
+
+
+def score(pred: pd.DataFrame, games: pd.DataFrame) -> dict:
+    m = evaluate(pred.goal.to_numpy(), pred.p.to_numpy())
     ci = bootstrap(pred.merge(games, on="shot_id"))
-    return {"members": "+".join(variants), "k": len(variants), "n": m["n"],
-            "weights": [round(float(x), 3) for x in w], "valid_cv_log_loss": cv["log_loss"],
-            "valid_cv_auc": cv["auc"], "auc": m["auc"], "auc_ci": ci["auc"],
-            "log_loss": m["log_loss"], "log_loss_ci": ci["log_loss"], "brier": m["brier"],
-            "bss": m["brier_skill_score"], "ece": m["ece"], "_pred": pred}
+    return {"n": m["n"], "auc": m["auc"], "auc_ci": ci["auc"], "log_loss": m["log_loss"], "log_loss_ci": ci["log_loss"],
+            "brier": m["brier"], "bss": m["brier_skill_score"], "ece": m["ece"], "mean_xg": float(pred.p.mean()),
+            "goal_rate": m["goal_rate"]}
 
 
 def main() -> None:
@@ -125,9 +129,27 @@ def main() -> None:
     ap.add_argument("--index", default=INDEX)
     ap.add_argument("--max-k", type=int, default=3)
     ap.add_argument("--only", nargs="*", default=None, help="restrict candidate variants")
+    ap.add_argument("--prior-shift", action="store_true")
+    ap.add_argument("--penalty-route", action="store_true")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    games = pd.read_parquet(a.index)[["shot_id", "game"]].drop_duplicates("shot_id")
+    idx = pd.read_parquet(a.index).drop_duplicates("shot_id")
+    idx["goal"] = idx.goal.astype(bool)
+    games = idx[["shot_id", "game"]]
+    labels = idx.set_index("shot_id")["goal"]          # labels come from the index, never from the CSVs
+    pooled_rate = float(idx[idx.split != "test"].goal.mean())
+    valid_rate = float(idx[idx.split == "valid"].goal.mean())
+    pen_train = idx[(idx.split == "train") & idx.is_penalty]
+    p_pen = penalty_rate(int(pen_train.goal.sum()), len(pen_train))
+    is_pen = idx.set_index("shot_id")["is_penalty"].astype(bool)
+
+    def post(pred: pd.DataFrame) -> pd.DataFrame:
+        p = pred.p.to_numpy()
+        if a.prior_shift:
+            p = prior_shift(p, valid_rate, pooled_rate)
+        if a.penalty_route:
+            p = route_penalties(p, is_pen.loc[pred.shot_id].to_numpy(), p_pen)
+        return pred.assign(p=p)
 
     data: dict[str, dict[str, pd.DataFrame]] = {}
     for root in a.results:
@@ -141,36 +163,40 @@ def main() -> None:
     print(f"candidates: {usable}")
     if skipped:
         print(f"skipped (no validation predictions): {skipped}")
+    print(f"pooled train+valid goal rate {pooled_rate:.4f}, valid {valid_rate:.4f}, penalty rate {p_pen:.3f} "
+          f"(prior_shift={a.prior_shift}, penalty_route={a.penalty_route})")
 
-    singles = []
+    rows = []
     for v in usable:
-        te, va = data[v]["test"], data[v]["valid"]
-        m = evaluate(te.goal.to_numpy(), te.p.to_numpy())
-        mv = evaluate(va.goal.to_numpy(), va.p.to_numpy())
-        ci = bootstrap(te.merge(games, on="shot_id"))
-        singles.append({"members": v, "k": 1, "n": m["n"], "weights": [1.0],
-                        "valid_cv_log_loss": mv["log_loss"], "valid_cv_auc": mv["auc"],
-                        "auc": m["auc"], "auc_ci": ci["auc"], "log_loss": m["log_loss"],
-                        "log_loss_ci": ci["log_loss"], "brier": m["brier"],
-                        "bss": m["brier_skill_score"], "ece": m["ece"], "seeds": int(te.seeds.iloc[0])})
-        te.to_csv(a.out / f"{v.replace('/', '__').replace(':', '__')}_test_predictions.csv", index=False)
+        te, va = data[v]["test"].copy(), data[v]["valid"].copy()
+        yv = labels.loc[va.shot_id].to_numpy()
+        mv = evaluate(yv, va.p.to_numpy())
+        # Platt on validation logits (scale + offset), then the same post-processing as the stacks
+        platt = PlattScaler().fit(logit(va.p.to_numpy()), yv)
+        pred = post(pd.DataFrame({"shot_id": te.shot_id, "goal": labels.loc[te.shot_id].to_numpy().astype(int),
+                                  "p": platt(logit(te.p.to_numpy()))}))
+        raw = score(pd.DataFrame({"shot_id": te.shot_id, "goal": pred.goal, "p": te.p}), games)
+        rows.append({"members": v, "k": 1, "weights": [1.0], "valid_cv_log_loss": mv["log_loss"], "valid_cv_auc": mv["auc"],
+                     **score(pred, games), "auc_raw": raw["auc"], "log_loss_raw": raw["log_loss"], "seeds": int(te.seeds.iloc[0])})
+        pred.to_csv(a.out / f"{v.replace('/', '__').replace(':', '__')}_test_predictions.csv", index=False)
 
     combos = []
     for k in range(2, a.max_k + 1):
         for c in combinations(usable, k):
-            combos.append(stack(list(c), data, games))
-    # the reported ensemble is chosen on the validation CV score, never on the test one
-    best = min(combos + singles, key=lambda r: r["valid_cv_log_loss"]) if combos else None
-    if best is not None and "_pred" in best:
-        best["_pred"].to_csv(a.out / "best_ensemble_test_predictions.csv", index=False)
+            s = stack(list(c), data, labels, games)
+            pred = post(s.pop("_pred"))
+            combos.append({**s, **score(pred, games), "_pred": pred})
+    best = min(combos + rows, key=lambda r: r["valid_cv_log_loss"]) if combos else None
     if best is not None:
+        if "_pred" in best:
+            best["_pred"].to_csv(a.out / "best_ensemble_test_predictions.csv", index=False)
         (a.out / "best_ensemble.json").write_text(json.dumps(
-            {k: v for k, v in best.items() if k != "_pred"}, indent=2, default=float))
-        print(f"\nchosen on validation CV: {best['members']} "
-              f"(valid CV log-loss {best['valid_cv_log_loss']:.4f}) -> test log-loss "
-              f"{best['log_loss']:.4f}, AUC {best['auc']:.4f}")
-    table = pd.DataFrame([{k: v for k, v in r.items() if k != "_pred"} for r in singles + combos])
-    table = table.sort_values("valid_cv_log_loss")
+            {k: v for k, v in best.items() if k != "_pred"} | {"prior_shift": a.prior_shift, "penalty_route": a.penalty_route,
+                                                              "pooled_rate": pooled_rate, "valid_rate": valid_rate, "p_pen": p_pen},
+            indent=2, default=float))
+        print(f"\nchosen on validation CV: {best['members']} (valid CV log-loss {best['valid_cv_log_loss']:.4f}) -> "
+              f"test log-loss {best['log_loss']:.4f}, AUC {best['auc']:.4f}, mean xG {best['mean_xg']:.4f}")
+    table = pd.DataFrame([{k: v for k, v in r.items() if k != "_pred"} for r in rows + combos]).sort_values("valid_cv_log_loss")
     table.to_csv(a.out / "ensemble_table.csv", index=False)
     pd.set_option("display.width", 250)
     print(table.head(25).round(4).to_string(index=False))

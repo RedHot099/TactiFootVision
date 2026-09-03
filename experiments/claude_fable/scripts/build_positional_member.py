@@ -23,7 +23,8 @@ from xgpoc.eval.metrics import evaluate
 from xgpoc.features.tabular import FEATURE_NAMES
 from xgpoc.models.common import write_result
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 CACHE = "cache/full_v2_fallback/positional"
 ACCEPTED = ["is_penalty", "ball_in_air", "ball_air_valid", "def_in_cone_fixed", "nearest_def_fixed", "teams_known"]
 
@@ -35,10 +36,11 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("results/premerge/gbm/seed0"))
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
-    df = load_index(Path(a.index))[["shot_id", "split", "goal"]]
+    df = load_index(Path(a.index))[["shot_id", "split", "goal", "is_penalty"]]
+    df["is_penalty"] = df.is_penalty.astype(float)
     tab = pd.read_parquet(Path(a.cache) / "tabular.parquet").drop_duplicates("shot_id")
     aux = pd.read_parquet(Path(a.cache) / "aux.parquet").drop_duplicates("shot_id")
-    data = df.merge(tab, on="shot_id").merge(aux[["shot_id", *ACCEPTED]], on="shot_id")
+    data = df.merge(tab, on="shot_id").merge(aux[["shot_id", *[c for c in ACCEPTED if c != "is_penalty"]]], on="shot_id")
     feats = FEATURE_NAMES + ACCEPTED
     tr = data[data.split == "train"]
     g = HistGradientBoostingClassifier(max_depth=3, learning_rate=0.05, max_iter=300, l2_regularization=1.0,

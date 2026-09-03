@@ -25,7 +25,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from xgpoc.eval.metrics import evaluate  # noqa: E402
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 TAB = "cache/full_v2_fallback/positional/tabular.parquet"
 DIST_BINS = [0, 6, 11, 16, 25, 200]
 DIST_LABELS = ["0-6 m", "6-11 m", "11-16 m", "16-25 m", "25+ m"]
@@ -57,7 +58,7 @@ def subgroup_table(pred: pd.DataFrame, ctx: pd.DataFrame, cols: list[str]) -> pd
         for value, g in d.groupby(col, observed=True):
             if len(g) < 30:
                 continue
-            m = evaluate(g.goal_x.to_numpy() if "goal_x" in g else g.goal.to_numpy(), g.p.to_numpy())
+            m = evaluate(g.goal.to_numpy().astype(float), g.p.to_numpy())
             rows.append({"dimension": col, "group": str(value), "n": m["n"], "goal_rate": m["goal_rate"],
                          "mean_xg": float(g.p.mean()), "auc": m["auc"], "log_loss": m["log_loss"],
                          "brier": m["brier"], "bss": m["brier_skill_score"], "ece": m["ece"]})
@@ -109,7 +110,7 @@ def main() -> None:
     cols = ["distance", "league", "season", "visibility", "shot_type", "venue", "framing"]
     tables = []
     for name, p in preds.items():
-        t = subgroup_table(p[["shot_id", "goal", "p"]], ctx.drop(columns=["goal"]), cols)
+        t = subgroup_table(p[["shot_id", "p"]], ctx, cols)  # labels from the index, not the CSV
         tables.append(t.assign(model=name))
     out = pd.concat(tables)[["model", "dimension", "group", "n", "goal_rate", "mean_xg", "auc",
                              "log_loss", "brier", "bss", "ece"]]

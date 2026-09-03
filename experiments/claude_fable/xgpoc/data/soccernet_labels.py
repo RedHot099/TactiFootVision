@@ -2,14 +2,22 @@
 
 SoccerNet action spotting labels of interest: "Shots on target", "Shots off target",
 "Goal", "Penalty". A "Goal" annotation marks the moment the ball crosses the line; the
-preceding shot annotation (if any) marks the strike. We build one ShotEvent per shot
-and label it goal=True when a "Goal" of the same team follows within `goal_window_ms`.
-Goals without a preceding shot annotation become their own ShotEvent at goal_time -
-`goal_backoff_ms` (the strike happened shortly before the ball crossed the line).
+strike that scored is the *nearest preceding* shot annotation of the same team (on the
+500 games the gap is 0.6 s median, 2 s at p99). Earlier shots inside the window are
+saves, blocks or posts followed by a rebound and must stay goal=False. Crediting the
+earliest shot instead - the rule used up to index v1.1 - flipped ~200 labels in rebound
+chains (see research/review_2026-09-02.md, D1). Goals without any preceding shot
+annotation become their own ShotEvent at goal_time - `goal_backoff_ms`; the collector
+excludes them from the trusted index.
+
+A "Penalty" annotation shares its timestamp with the penalty kick's shot annotation
+(the gap is 0 ms up to p90), so the flag goes to the single nearest same-team shot in
+[-penalty_lead_ms, +penalty_window_ms]. The 60 s window used before v1.2 also flagged
+rebounds and the next attack.
 """
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -38,38 +46,44 @@ def _parse_annotation(ann: dict) -> tuple[int, int]:
 
 
 def parse_labels(labels_path: Path, goal_window_ms: int = 6000, goal_backoff_ms: int = 1000,
-                 penalty_window_ms: int = 60000) -> list[ShotEvent]:
+                 penalty_window_ms: int = 2000, penalty_lead_ms: int = 1000) -> list[ShotEvent]:
     game = labels_path.parent.as_posix()
     data = json.loads(labels_path.read_text())
-    anns = data["annotations"]
     parsed = []
-    for a in anns:
+    for a in data["annotations"]:
         half, pos = _parse_annotation(a)
         parsed.append((half, pos, a["label"], a.get("team", "not applicable"), a.get("visibility", "unknown")))
     parsed.sort(key=lambda x: (x[0], x[1]))
 
+    shots = [x for x in parsed if x[2] in SHOT_LABELS]
     goals = [(h, p, t) for h, p, lbl, t, _ in parsed if lbl == GOAL_LABEL]
     penalties = [(h, p, t) for h, p, lbl, t, _ in parsed if lbl == PENALTY_LABEL]
-    used_goals: set[tuple[int, int, str]] = set()
-    events: list[ShotEvent] = []
 
-    for half, pos, label, team, vis in parsed:
-        if label not in SHOT_LABELS:
-            continue
-        goal = False
-        for g in goals:
-            if g[0] == half and g[2] == team and 0 <= g[1] - pos <= goal_window_ms and g not in used_goals:
-                goal = True
-                used_goals.add(g)
-                break
-        is_pen = any(p[0] == half and p[2] == team and 0 <= pos - p[1] <= penalty_window_ms for p in penalties)
-        events.append(ShotEvent(game, half, pos, label, team, vis, goal, is_pen, "shot"))
-
+    # goal -> nearest preceding same-team shot that is not already credited
+    credited: dict[int, tuple[int, int, str]] = {}
     for g in goals:
-        if g in used_goals:
+        cands = [i for i, s in enumerate(shots)
+                 if s[0] == g[0] and s[3] == g[2] and 0 <= g[1] - s[1] <= goal_window_ms and i not in credited]
+        if cands:
+            credited[max(cands, key=lambda i: shots[i][1])] = g
+
+    # penalty label -> the single nearest same-team shot around its timestamp
+    penalty_shots: set[int] = set()
+    for p in penalties:
+        cands = [i for i, s in enumerate(shots)
+                 if s[0] == p[0] and s[3] == p[2] and -penalty_lead_ms <= s[1] - p[1] <= penalty_window_ms]
+        if cands:
+            penalty_shots.add(min(cands, key=lambda i: abs(shots[i][1] - p[1])))
+
+    events = [ShotEvent(game, half, pos, label, team, vis, i in credited, i in penalty_shots, "shot")
+              for i, (half, pos, label, team, vis) in enumerate(shots)]
+
+    used = set(credited.values())
+    for g in goals:
+        if g in used:
             continue
         half, pos, team = g
-        is_pen = any(p[0] == half and p[2] == team and 0 <= pos - p[1] <= penalty_window_ms for p in penalties)
+        is_pen = any(p[0] == half and p[2] == team and -penalty_lead_ms <= pos - p[1] <= goal_window_ms for p in penalties)
         vis = next((v for h, p, lbl, t, v in parsed if (h, p, t) == g and lbl == GOAL_LABEL), "unknown")
         events.append(ShotEvent(game, half, max(0, pos - goal_backoff_ms), GOAL_LABEL, team, vis, True, is_pen, "goal_only"))
 

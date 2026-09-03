@@ -21,13 +21,18 @@ import pandas as pd
 
 from xgpoc.eval.metrics import evaluate
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 
 
 def paired_bootstrap(a: pd.DataFrame, b: pd.DataFrame, games: pd.DataFrame, n_boot: int = 2000,
                      seed: int = 0) -> dict:
     """a, b: shot_id/goal/p frames. Positive delta = a better (AUC up, losses down)."""
-    m = a.merge(b, on=["shot_id", "goal"], suffixes=("_a", "_b")).merge(games, on="shot_id")
+    if "goal" in games.columns:  # labels come from the index, never from the CSVs
+        m = (a.drop(columns="goal", errors="ignore").merge(b.drop(columns="goal", errors="ignore"), on="shot_id", suffixes=("_a", "_b"))
+             .merge(games, on="shot_id"))
+    else:
+        m = a.merge(b, on=["shot_id", "goal"], suffixes=("_a", "_b")).merge(games, on="shot_id")
     by_game = {g: d for g, d in m.groupby("game")}
     keys = np.array(list(by_game))
     rng = np.random.default_rng(seed)
@@ -68,7 +73,8 @@ def main() -> None:
     names = a.names or [f.stem.replace("_test_predictions", "") for f in files]
     preds = {n: pd.read_csv(f).drop_duplicates("shot_id")[["shot_id", "goal", "p"]]
              for n, f in zip(names, files)}
-    games = pd.read_parquet(a.index)[["shot_id", "game"]].drop_duplicates("shot_id")
+    games = pd.read_parquet(a.index)[["shot_id", "game", "goal"]].drop_duplicates("shot_id")
+    games["goal"] = games.goal.astype(int)
 
     pairs = ([tuple(p.split(":")) for p in a.pairs] if a.pairs
              else list(itertools.combinations(names, 2)))

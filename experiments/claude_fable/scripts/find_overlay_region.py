@@ -23,7 +23,8 @@ import numpy as np
 
 from xgpoc.data.index import load_index
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 
 
 def pair_stats(paths: tuple[str, str]) -> tuple[np.ndarray, np.ndarray] | None:

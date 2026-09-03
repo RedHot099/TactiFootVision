@@ -36,7 +36,8 @@ from tqdm import tqdm
 from xgpoc.data.datasets import ImageDataset
 from xgpoc.data.index import load_index
 
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 POPCOUNT = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
 
 

@@ -33,7 +33,8 @@ CONFIGS = {
     "all": [c for c in AUX_NAMES],
     "sel": ["is_penalty", "ball_in_air", "ball_air_valid", "def_in_cone_fixed", "nearest_def_fixed", "teams_known"],
 }
-INDEX = "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet"
+from xgpoc.paths import INDEX as _INDEX  # noqa: E402
+INDEX = str(_INDEX)
 
 
 def main():

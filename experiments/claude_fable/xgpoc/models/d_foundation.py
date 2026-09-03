@@ -21,6 +21,8 @@ BACKBONES = {
     "dinov2_b": ("vit_base_patch14_dinov2.lvd142m", (448, 252)),
     "siglip_b": ("vit_base_patch16_siglip_256.webli", (256, 256)),
     "dinov2_l": ("vit_large_patch14_dinov2.lvd142m", (448, 252)),
+    "dinov2_l_reg": ("vit_large_patch14_reg4_dinov2.lvd142m", (448, 252)),
+    "dinov3_l": ("vit_large_patch16_dinov3.lvd1689m", (448, 256)),
 }
 
 
@@ -28,7 +30,8 @@ BACKBONES = {
 def extract_patch_features(df: pd.DataFrame, out: Path, backbone: str = "dinov2_s", batch_size: int = 16,
                            device: str = "cuda", flip: bool = False, path_col: str = "frame_path",
                            mask: str = "none") -> dict[str, np.ndarray]:
-    """Cache [N_patches+1, C] float16 tokens (CLS first) per shot. Returns the dict.
+    """Cache [N_tokens, C] float16 tokens (CLS first, then any register tokens, then the
+    patch grid) per shot. Returns the dict.
 
     `flip` and `mask` change the pixels the backbone sees, so they belong to the cache
     identity - callers must pass a distinct `out` path for each combination."""
@@ -43,7 +46,7 @@ def extract_patch_features(df: pd.DataFrame, out: Path, backbone: str = "dinov2_
     for batch in tqdm(loader, desc=f"features:{backbone}"):
         x = batch["image"].to(device)
         with torch.autocast("cuda", enabled=device == "cuda"):
-            t = model.forward_features(x)  # [B, 1+P, C] for ViTs
+            t = model.forward_features(x)  # [B, 1(+R)+P, C] for ViTs
         feats.append(t.half().cpu().numpy())
     feats = np.concatenate(feats)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -53,27 +56,34 @@ def extract_patch_features(df: pd.DataFrame, out: Path, backbone: str = "dinov2_
 
 class AttentionPoolHead(nn.Module):
     """Learned queries cross-attend the frozen patch grid; concat CLS (+ optional
-    engineered aux vector, layer-normed) ; MLP -> logit."""
+    engineered aux vector, layer-normed) ; MLP -> logit(s).
 
-    def __init__(self, dim: int = 384, n_queries: int = 4, n_heads: int = 4, dropout: float = 0.2, aux_dim: int = 0):
+    `n_prefix` = number of leading non-patch tokens (CLS, registers); the first one is
+    treated as the CLS summary, the rest are dropped from the grid.
+    `n_out` > 1 returns [B, n_out] for multi-task training (column 0 = goal)."""
+
+    def __init__(self, dim: int = 384, n_queries: int = 4, n_heads: int = 4, dropout: float = 0.2, aux_dim: int = 0,
+                 n_out: int = 1, n_prefix: int = 1):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.queries = nn.Parameter(torch.randn(1, n_queries, dim) * 0.02)
         self.attn = nn.MultiheadAttention(dim, n_heads, dropout=dropout, batch_first=True)
         self.aux_norm = nn.LayerNorm(aux_dim) if aux_dim else None
+        self.n_prefix = n_prefix
         in_dim = dim * (n_queries + 1) + aux_dim
         self.head = nn.Sequential(nn.LayerNorm(in_dim), nn.Dropout(dropout),
-                                  nn.Linear(in_dim, 256), nn.GELU(), nn.Dropout(dropout), nn.Linear(256, 1))
+                                  nn.Linear(in_dim, 256), nn.GELU(), nn.Dropout(dropout), nn.Linear(256, n_out))
 
     def forward(self, patches: torch.Tensor, aux: torch.Tensor | None = None) -> torch.Tensor:
         p = self.norm(patches.float())
-        cls, grid = p[:, :1], p[:, 1:]
+        cls, grid = p[:, :1], p[:, self.n_prefix:]
         q = self.queries.expand(p.size(0), -1, -1)
         pooled, _ = self.attn(q, grid, grid)
         z = torch.cat([cls, pooled], 1).flatten(1)
         if self.aux_norm is not None:
             z = torch.cat([z, self.aux_norm(aux.float())], 1)
-        return self.head(z).squeeze(-1)
+        out = self.head(z)
+        return out.squeeze(-1) if out.size(-1) == 1 else out
 
 
 class FinetuneViTXG(nn.Module):
@@ -89,7 +99,7 @@ class FinetuneViTXG(nn.Module):
     """
 
     def __init__(self, backbone: str = "dinov2_b", n_blocks: int = 4, dropout: float = 0.2,
-                 aux_dim: int = 0, grad_checkpointing: bool = True, pretrained: bool = True):
+                 aux_dim: int = 0, grad_checkpointing: bool = True, pretrained: bool = True, n_out: int = 1):
         super().__init__()
         timm_id, size = BACKBONES[backbone]
         self.size_wh = size
@@ -103,10 +113,23 @@ class FinetuneViTXG(nn.Module):
         for m in list(self.trainable_blocks) + ([self.backbone.norm] if n_blocks else []):
             for p in m.parameters():
                 p.requires_grad = True
-        self.head = AttentionPoolHead(self.backbone.embed_dim, dropout=dropout, aux_dim=aux_dim)
+        n_prefix = 1 + int(getattr(self.backbone, "num_prefix_tokens", 1) - 1)
+        self.head = AttentionPoolHead(self.backbone.embed_dim, dropout=dropout, aux_dim=aux_dim, n_out=n_out,
+                                      n_prefix=n_prefix)
 
     def backbone_parameters(self) -> list[nn.Parameter]:
         return [p for p in self.backbone.parameters() if p.requires_grad]
+
+    def backbone_param_groups(self) -> list[list[nn.Parameter]]:
+        """One group per unfrozen block, top block (nearest the head) first, so that the
+        trainer can decay the LR block by block; the final norm travels with the top."""
+        groups = []
+        for i, blk in enumerate(reversed(list(self.trainable_blocks))):
+            ps = list(blk.parameters())
+            if i == 0:
+                ps += list(self.backbone.norm.parameters())
+            groups.append(ps)
+        return groups
 
     def forward(self, image: torch.Tensor, aux: torch.Tensor | None = None) -> torch.Tensor:
         return self.head(self.backbone.forward_features(image), aux)

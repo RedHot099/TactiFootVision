@@ -6,7 +6,7 @@ from sklearn.inspection import permutation_importance
 
 from xgpoc.features.tabular import FEATURE_NAMES
 
-idx = pd.read_parquet("/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_1.parquet")
+idx = pd.read_parquet(__import__("xgpoc.paths", fromlist=["INDEX"]).INDEX)
 tab = pd.read_parquet("cache/full_v2_fallback/positional/tabular.parquet").drop_duplicates("shot_id")
 df = idx.merge(tab, on="shot_id")
 tr, va = df[df.split == "train"], df[df.split == "valid"]
