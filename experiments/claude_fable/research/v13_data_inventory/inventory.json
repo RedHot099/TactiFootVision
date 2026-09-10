@@ -1,0 +1,929 @@
+{
+  "checked_at_utc": "2026-09-07T15:16:05.083169+00:00",
+  "hf_token_present": true,
+  "hf_token_valid": true,
+  "main500_game_count": 500,
+  "soccerreplay": {
+    "gated": "manual",
+    "probe_file": "train/england_epl_2017-2018/2017-08-12_watford-fc-liverpool-fc/2017-08-12_Watford_3-3_Liverpool_AaZvBO5T.json",
+    "http_status": 403,
+    "error_code": "GatedRepo",
+    "listed_json_files": 1988
+  },
+  "soccertrack_halves": [
+    {
+      "match_id": "117092",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117092/117092_1st.mp4",
+          "bytes": 540944514,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 954
+            }
+          ],
+          "format": {
+            "duration": "2695.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/117092/117092_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 1348,
+        "HIGH PASS": 176,
+        "DRIVE": 1191,
+        "PLAYER SUCCESSFUL TACKLE": 48,
+        "CROSS": 71,
+        "BALL PLAYER BLOCK": 61,
+        "OUT": 123,
+        "FREE KICK": 19,
+        "SHOT": 37,
+        "THROW IN": 57,
+        "HEADER": 7,
+        "GOAL": 4
+      }
+    },
+    {
+      "match_id": "117092",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117092/117092_2nd.mp4",
+          "bytes": 606877881,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 954
+            }
+          ],
+          "format": {
+            "duration": "2703.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/117092/117092_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 1348,
+        "HIGH PASS": 176,
+        "DRIVE": 1191,
+        "PLAYER SUCCESSFUL TACKLE": 48,
+        "CROSS": 71,
+        "BALL PLAYER BLOCK": 61,
+        "OUT": 123,
+        "FREE KICK": 19,
+        "SHOT": 37,
+        "THROW IN": 57,
+        "HEADER": 7,
+        "GOAL": 4
+      }
+    },
+    {
+      "match_id": "117093",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117093/117093_1st.mp4",
+          "bytes": 660065146,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2705.960000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/117093/117093_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 951,
+        "HIGH PASS": 150,
+        "OUT": 80,
+        "THROW IN": 39,
+        "DRIVE": 889,
+        "SHOT": 23,
+        "CROSS": 45,
+        "HEADER": 3,
+        "BALL PLAYER BLOCK": 30,
+        "PLAYER SUCCESSFUL TACKLE": 20,
+        "FREE KICK": 17,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "117093",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117093/117093_2nd.mp4",
+          "bytes": 702476433,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2819.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/117093/117093_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 951,
+        "HIGH PASS": 150,
+        "OUT": 80,
+        "THROW IN": 39,
+        "DRIVE": 889,
+        "SHOT": 23,
+        "CROSS": 45,
+        "HEADER": 3,
+        "BALL PLAYER BLOCK": 30,
+        "PLAYER SUCCESSFUL TACKLE": 20,
+        "FREE KICK": 17,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "118575",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118575/118575_1st.mp4",
+          "bytes": 672990130,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2874.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118575/118575_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 907,
+        "DRIVE": 823,
+        "HIGH PASS": 111,
+        "OUT": 85,
+        "THROW IN": 50,
+        "PLAYER SUCCESSFUL TACKLE": 44,
+        "BALL PLAYER BLOCK": 28,
+        "CROSS": 26,
+        "SHOT": 21,
+        "GOAL": 3,
+        "FREE KICK": 16,
+        "HEADER": 3
+      }
+    },
+    {
+      "match_id": "118575",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118575/118575_2nd.mp4",
+          "bytes": 707018625,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2937.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118575/118575_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 907,
+        "DRIVE": 823,
+        "HIGH PASS": 111,
+        "OUT": 85,
+        "THROW IN": 50,
+        "PLAYER SUCCESSFUL TACKLE": 44,
+        "BALL PLAYER BLOCK": 28,
+        "CROSS": 26,
+        "SHOT": 21,
+        "GOAL": 3,
+        "FREE KICK": 16,
+        "HEADER": 3
+      }
+    },
+    {
+      "match_id": "118576",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118576/118576_1st.mp4",
+          "bytes": 665374492,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2914.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118576/118576_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 925,
+        "HIGH PASS": 103,
+        "DRIVE": 817,
+        "CROSS": 58,
+        "OUT": 76,
+        "THROW IN": 31,
+        "FREE KICK": 17,
+        "BALL PLAYER BLOCK": 33,
+        "SHOT": 38,
+        "GOAL": 5,
+        "HEADER": 3,
+        "PLAYER SUCCESSFUL TACKLE": 25
+      }
+    },
+    {
+      "match_id": "118576",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118576/118576_2nd.mp4",
+          "bytes": 637111816,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2911.960000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118576/118576_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 925,
+        "HIGH PASS": 103,
+        "DRIVE": 817,
+        "CROSS": 58,
+        "OUT": 76,
+        "THROW IN": 31,
+        "FREE KICK": 17,
+        "BALL PLAYER BLOCK": 33,
+        "SHOT": 38,
+        "GOAL": 5,
+        "HEADER": 3,
+        "PLAYER SUCCESSFUL TACKLE": 25
+      }
+    },
+    {
+      "match_id": "118577",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118577/118577_1st.mp4",
+          "bytes": 727754566,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 1920,
+              "height": 506
+            }
+          ],
+          "format": {
+            "duration": "2897.000000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118577/118577_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 820,
+        "DRIVE": 701,
+        "HIGH PASS": 111,
+        "OUT": 78,
+        "THROW IN": 44,
+        "PLAYER SUCCESSFUL TACKLE": 47,
+        "FREE KICK": 16,
+        "BALL PLAYER BLOCK": 47,
+        "CROSS": 48,
+        "SHOT": 28,
+        "GOAL": 5,
+        "HEADER": 1
+      }
+    },
+    {
+      "match_id": "118577",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118577_panorama_2nd_half.mp4",
+          "bytes": 3587354333,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2899.987000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118577/118577_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 820,
+        "DRIVE": 701,
+        "HIGH PASS": 111,
+        "OUT": 78,
+        "THROW IN": 44,
+        "PLAYER SUCCESSFUL TACKLE": 47,
+        "FREE KICK": 16,
+        "BALL PLAYER BLOCK": 47,
+        "CROSS": 48,
+        "SHOT": 28,
+        "GOAL": 5,
+        "HEADER": 1
+      }
+    },
+    {
+      "match_id": "118578",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_1st.mp4",
+          "bytes": 3474245098,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2815.004000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118578_panorama_1st_half.mp4",
+          "bytes": 3474245098,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2815.004000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118578/118578_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 856,
+        "HIGH PASS": 127,
+        "DRIVE": 838,
+        "OUT": 87,
+        "THROW IN": 37,
+        "PLAYER SUCCESSFUL TACKLE": 29,
+        "FREE KICK": 20,
+        "BALL PLAYER BLOCK": 34,
+        "CROSS": 44,
+        "SHOT": 25,
+        "GOAL": 4,
+        "HEADER": 5
+      }
+    },
+    {
+      "match_id": "118578",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_2nd.mp4",
+          "bytes": 3497908967,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2839.018000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118578_panorama_2nd_half.mp4",
+          "bytes": 3497908967,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2839.018000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/118578/118578_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 856,
+        "HIGH PASS": 127,
+        "DRIVE": 838,
+        "OUT": 87,
+        "THROW IN": 37,
+        "PLAYER SUCCESSFUL TACKLE": 29,
+        "FREE KICK": 20,
+        "BALL PLAYER BLOCK": 34,
+        "CROSS": 44,
+        "SHOT": 25,
+        "GOAL": 4,
+        "HEADER": 5
+      }
+    },
+    {
+      "match_id": "128057",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_1st.mp4",
+          "bytes": 3312813154,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2705.999000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128057_panorama_1st_half.mp4",
+          "bytes": 3312813154,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2705.999000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/128057/128057_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 846,
+        "HIGH PASS": 100,
+        "OUT": 74,
+        "THROW IN": 31,
+        "DRIVE": 750,
+        "PLAYER SUCCESSFUL TACKLE": 27,
+        "CROSS": 29,
+        "BALL PLAYER BLOCK": 25,
+        "FREE KICK": 22,
+        "HEADER": 1,
+        "SHOT": 22,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "128057",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_2nd.mp4",
+          "bytes": 3450936711,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2814.980000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128057_panorama_2nd_half.mp4",
+          "bytes": 3450936711,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2814.980000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/128057/128057_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 846,
+        "HIGH PASS": 100,
+        "OUT": 74,
+        "THROW IN": 31,
+        "DRIVE": 750,
+        "PLAYER SUCCESSFUL TACKLE": 27,
+        "CROSS": 29,
+        "BALL PLAYER BLOCK": 25,
+        "FREE KICK": 22,
+        "HEADER": 1,
+        "SHOT": 22,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "128058",
+      "half": "1st",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_1st.mp4",
+          "bytes": 3415425745,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2759.998000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128058_panorama_1st_half.mp4",
+          "bytes": 3415425745,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2759.998000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/128058/128058_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 957,
+        "HIGH PASS": 118,
+        "DRIVE": 811,
+        "BALL PLAYER BLOCK": 47,
+        "OUT": 64,
+        "THROW IN": 36,
+        "PLAYER SUCCESSFUL TACKLE": 26,
+        "CROSS": 47,
+        "SHOT": 24,
+        "FREE KICK": 5,
+        "HEADER": 4,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "128058",
+      "half": "2nd",
+      "videos": [
+        {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_2nd.mp4",
+          "bytes": 3319164113,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2711.004000"
+          }
+        },
+        {
+          "path": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128058_panorama_2nd_half.mp4",
+          "bytes": 3319164113,
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "width": 4096,
+              "height": 1080
+            },
+            {}
+          ],
+          "format": {
+            "duration": "2711.004000"
+          }
+        }
+      ],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/128058/128058_2nd.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 957,
+        "HIGH PASS": 118,
+        "DRIVE": 811,
+        "BALL PLAYER BLOCK": 47,
+        "OUT": 64,
+        "THROW IN": 36,
+        "PLAYER SUCCESSFUL TACKLE": 26,
+        "CROSS": 47,
+        "SHOT": 24,
+        "FREE KICK": 5,
+        "HEADER": 4,
+        "GOAL": 5
+      }
+    },
+    {
+      "match_id": "132831",
+      "half": "1st",
+      "videos": [],
+      "gsr_path": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/gsr/132831/132831_1st.json.zst",
+      "bas_match_label_counts": {
+        "PASS": 1393,
+        "HIGH PASS": 172,
+        "OUT": 115,
+        "THROW IN": 62,
+        "DRIVE": 1228,
+        "CROSS": 37,
+        "BALL PLAYER BLOCK": 54,
+        "GOAL": 6,
+        "PLAYER SUCCESSFUL TACKLE": 28,
+        "SHOT": 51,
+        "FREE KICK": 12,
+        "HEADER": 4
+      }
+    },
+    {
+      "match_id": "132831",
+      "half": "2nd",
+      "videos": [],
+      "gsr_path": null,
+      "bas_match_label_counts": {
+        "PASS": 1393,
+        "HIGH PASS": 172,
+        "OUT": 115,
+        "THROW IN": 62,
+        "DRIVE": 1228,
+        "CROSS": 37,
+        "BALL PLAYER BLOCK": 54,
+        "GOAL": 6,
+        "PLAYER SUCCESSFUL TACKLE": 28,
+        "SHOT": 51,
+        "FREE KICK": 12,
+        "HEADER": 4
+      }
+    },
+    {
+      "match_id": "132877",
+      "half": "1st",
+      "videos": [],
+      "gsr_path": null,
+      "bas_match_label_counts": {
+        "PASS": 1273,
+        "DRIVE": 1058,
+        "OUT": 85,
+        "FREE KICK": 20,
+        "HIGH PASS": 108,
+        "SHOT": 33,
+        "CROSS": 33,
+        "PLAYER SUCCESSFUL TACKLE": 34,
+        "THROW IN": 36,
+        "BALL PLAYER BLOCK": 42,
+        "GOAL": 5,
+        "HEADER": 4
+      }
+    },
+    {
+      "match_id": "132877",
+      "half": "2nd",
+      "videos": [],
+      "gsr_path": null,
+      "bas_match_label_counts": {
+        "PASS": 1273,
+        "DRIVE": 1058,
+        "OUT": 85,
+        "FREE KICK": 20,
+        "HIGH PASS": 108,
+        "SHOT": 33,
+        "CROSS": 33,
+        "PLAYER SUCCESSFUL TACKLE": 34,
+        "THROW IN": 36,
+        "BALL PLAYER BLOCK": 42,
+        "GOAL": 5,
+        "HEADER": 4
+      }
+    }
+  ],
+  "soccernet_bas_2025": [
+    {
+      "split": "train",
+      "gated": false,
+      "archive_bytes": 8454740433,
+      "sdk_games": [
+        "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest",
+        "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City",
+        "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday",
+        "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich"
+      ],
+      "sdk_overlap_main500": [],
+      "members": [
+        {
+          "name": "england_efl/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest/224p.mp4",
+          "bytes": 309758325
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest/720p.mp4",
+          "bytes": 2454290174
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest/Labels-ball.json",
+          "bytes": 374752
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City/224p.mp4",
+          "bytes": 279715145
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City/720p.mp4",
+          "bytes": 2100867625
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City/Labels-ball.json",
+          "bytes": 353123
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday/224p.mp4",
+          "bytes": 176146694
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday/720p.mp4",
+          "bytes": 1338000383
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday/Labels-ball.json",
+          "bytes": 298779
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich/224p.mp4",
+          "bytes": 246670724
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich/720p.mp4",
+          "bytes": 1556999601
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich/Labels-ball.json",
+          "bytes": 305966
+        }
+      ],
+      "labels": [
+        {
+          "archive_member": "england_efl/2019-2020/2019-10-01 - Blackburn Rovers - Nottingham Forest/Labels-ball.json",
+          "status": "encrypted_password_required",
+          "compression": 99
+        },
+        {
+          "archive_member": "england_efl/2019-2020/2019-10-01 - Brentford - Bristol City/Labels-ball.json",
+          "status": "encrypted_password_required",
+          "compression": 99
+        },
+        {
+          "archive_member": "england_efl/2019-2020/2019-10-01 - Hull City - Sheffield Wednesday/Labels-ball.json",
+          "status": "encrypted_password_required",
+          "compression": 99
+        },
+        {
+          "archive_member": "england_efl/2019-2020/2019-10-01 - Leeds United - West Bromwich/Labels-ball.json",
+          "status": "encrypted_password_required",
+          "compression": 99
+        }
+      ],
+      "metadata_bytes_downloaded": 2380
+    },
+    {
+      "split": "valid",
+      "gated": false,
+      "archive_bytes": 2042230928,
+      "sdk_games": [
+        "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End"
+      ],
+      "sdk_overlap_main500": [],
+      "members": [
+        {
+          "name": "england_efl/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End/",
+          "bytes": 0
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End/224p.mp4",
+          "bytes": 237589445
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End/720p.mp4",
+          "bytes": 1806605353
+        },
+        {
+          "name": "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End/Labels-ball.json",
+          "bytes": 312333
+        }
+      ],
+      "labels": [
+        {
+          "archive_member": "england_efl/2019-2020/2019-10-01 - Middlesbrough - Preston North End/Labels-ball.json",
+          "status": "encrypted_password_required",
+          "compression": 99
+        }
+      ],
+      "metadata_bytes_downloaded": 693
+    }
+  ],
+  "test_labels_inspected": false
+}

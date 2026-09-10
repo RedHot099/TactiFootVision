@@ -13,6 +13,8 @@ class TemporalFeatureDataset(Dataset):
     """Stacks per-offset patch features; requires the shot to have all offsets cached."""
 
     def __init__(self, df: pd.DataFrame, feats_per_offset: dict[int, dict[str, np.ndarray]]):
+        if not feats_per_offset or any(o > 0 for o in feats_per_offset):
+            raise ValueError("Temporal offsets must be nonempty and all <= 0")
         self.offsets = sorted(feats_per_offset)
         keep = df["shot_id"].map(lambda s: all(s in feats_per_offset[o] for o in self.offsets))
         self.df = df[keep].reset_index(drop=True)

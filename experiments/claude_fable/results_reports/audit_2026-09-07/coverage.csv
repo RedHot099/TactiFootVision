@@ -1,0 +1,6 @@
+member,models,oof_predictions_per_shot,oof_shots,test_shots_per_model
+c_combo,5,1,8801,2229
+g_combo,10,2,8801,2229
+g_combo_mix,5,1,8801,2229
+dl_mask,10,2,8801,2229
+gbm,10,2,8801,2229

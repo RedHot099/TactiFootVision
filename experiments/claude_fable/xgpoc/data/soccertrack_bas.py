@@ -72,8 +72,9 @@ def parse_bas(path: Path, goal_window_ms: int = 10000) -> list[Attempt]:
             goal = True
             matched_goals.add(gi)
             break
+        trusted = c["label"] == "SHOT" or c.get("is_shot") is True
         attempts.append(Attempt(match_id, ch, cp, video_ms(ch, cp), c["label"], c.get("team", "?"),
-                                c.get("player_id"), goal, True, ""))
+                                c.get("player_id"), goal, trusted, "" if trusted else "shot_intent_unverified"))
     for gi, g in enumerate(goals):
         if gi in matched_goals:
             continue

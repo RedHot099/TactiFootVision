@@ -1,0 +1,59 @@
+{
+  "commit": "1343f5bb3e53d042468a4a2bd401577d70ecf9d3",
+  "index": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+  "index_sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+  "prediction_sha256": {
+    "FINAL": "c3e873edcb49d4821be7afad355406102ee0935e0fc7c7c5f44be53364c0d34f",
+    "G_combo": "960bb3bf809727b0ad1dcb944a9a6a76cc6d6cfa8896828e0e33c2ac6ec78148",
+    "DL_cv": "6c6c3c6364fd5fe0eaf3f4e62daa314702aae84fff7906bead892e3b1138f33b",
+    "GBM": "ff6c23642c9d8cbbc531c3d29dc460b2a6e673397e5bbc9896f34c6a6919b50c",
+    "OLD": "b16a341c2f7ea9e6b07569e41f42e3531c1c83c9b82429988ec62922ddb64e4c"
+  },
+  "split_counts": {
+    "test": {
+      "shots": 2229,
+      "games": 100,
+      "goals": 296,
+      "penalties": 34
+    },
+    "train": {
+      "shots": 6657,
+      "games": 300,
+      "goals": 875,
+      "penalties": 84
+    },
+    "valid": {
+      "shots": 2144,
+      "games": 100,
+      "goals": 320,
+      "penalties": 31
+    }
+  },
+  "final_ci": {
+    "brier": [
+      0.0884746984401069,
+      0.10530184746796352
+    ],
+    "log_loss": [
+      0.3016090217561526,
+      0.34678140884896813
+    ],
+    "auc": [
+      0.7689102228839177,
+      0.8165221049556695
+    ]
+  },
+  "bootstrap_resamples": 2000,
+  "bootstrap_seed": 0,
+  "feature_quality": {
+    "has_ball": 0.7595648169517517,
+    "homography_ok": 0.8055303692817688,
+    "gk_present": 0.14197643101215363,
+    "attack_team_known": 0.7584768533706665,
+    "gkp_valid": 0.7583862194016319,
+    "occl_valid": 0.7584768812330009,
+    "teams_known": 0.7584768812330009
+  },
+  "checkpoints_in_experiment": [],
+  "note": "Saved-prediction audit. No retraining, model selection or inference benchmark."
+}

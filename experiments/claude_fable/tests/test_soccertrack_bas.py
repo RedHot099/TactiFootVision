@@ -46,3 +46,16 @@ def test_other_team_goal_not_credited(tmp_path):
     a = parse_bas(_write(tmp_path, acts))
     shots = [x for x in a if x.label == "SHOT"]
     assert not shots[0].goal and any(x.reason == "goal_without_candidate" for x in a)
+
+
+def test_unflagged_headers_and_free_kicks_are_not_trusted_shots(tmp_path):
+    acts = [{"gameTime": "1 - 10:00", "label": label, "position": str(600000 + i * 60000), "team": "left"}
+            for i, label in enumerate(("HEADER", "FREE KICK"))]
+    attempts = parse_bas(_write(tmp_path, acts))
+    assert len(attempts) == 2
+    assert all(not a.trusted and a.reason == "shot_intent_unverified" for a in attempts)
+
+
+def test_explicit_shot_flag_makes_header_a_candidate(tmp_path):
+    acts = [{"gameTime": "1 - 10:00", "label": "HEADER", "position": "600000", "team": "left", "is_shot": True}]
+    assert parse_bas(_write(tmp_path, acts))[0].trusted

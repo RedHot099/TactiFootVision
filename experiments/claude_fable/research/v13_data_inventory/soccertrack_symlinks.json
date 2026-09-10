@@ -1,0 +1,30 @@
+[
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118577/118577_2nd.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118577_panorama_2nd_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_1st.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118578_panorama_1st_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_2nd.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/118578_panorama_2nd_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_1st.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128057_panorama_1st_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_2nd.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128057_panorama_2nd_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_1st.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128058_panorama_1st_half.mp4"
+  },
+  {
+    "link": "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_2nd.mp4",
+    "target": "/home/kuba/projects/tactifoot_vision/data/soccertrack_v2/videos/128058_panorama_2nd_half.mp4"
+  }
+]

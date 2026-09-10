@@ -22,7 +22,7 @@ from xgpoc.data.datasets import FeatureDataset, ImageDataset, TokenDataset
 from xgpoc.data.index import load_index
 from xgpoc.features.cache import load_cache
 from xgpoc.models.common import (TrainConfig, config_dict, fit_temperature, n_trainable, predict_torch,
-                                 train_torch, write_result)
+                                 seed_all, train_torch, write_result)
 
 ON_TARGET = "on_target"
 
@@ -46,6 +46,7 @@ def run_a(tr, va, te, cache, out, cfg):
 
 def run_b(tr, va, te, cache, out, cfg):
     from xgpoc.models.b_set_transformer import SetTransformerXG
+    seed_all(cfg.seed)
     _, tokens, _ = load_cache(cache / "positional")
     model = SetTransformerXG()
     fit = train_torch(model, TokenDataset(tr, tokens, train=True), TokenDataset(va, tokens), cfg)
@@ -68,6 +69,7 @@ def _train_kw(path_cols, rrc, mt):
 def run_c(tr, va, te, cache, out, cfg, backbone="convnext_tiny.fb_in22k_ft_in1k", size_wh=(448, 256),
           path_col="frame_path", tag="", mask="none", tta=False, path_cols=None, rrc=None, mt=False, lr=5e-5):
     from xgpoc.models.c_cnn_e2e import CnnXG
+    seed_all(cfg.seed)
     model = CnnXG(backbone, n_out=2 if mt else 1)
     bs = 16 if size_wh[0] <= 512 else 8
     cfg = TrainConfig(**{**config_dict(cfg), "lr": lr, "batch_size": min(cfg.batch_size, bs)})
@@ -87,6 +89,7 @@ def run_c(tr, va, te, cache, out, cfg, backbone="convnext_tiny.fb_in22k_ft_in1k"
 def run_f(tr, va, te, cache, out, cfg, backbone="dinov2_s", offsets=(-1600, -1200, -800, -400, 0)):
     from xgpoc.models.d_foundation import extract_patch_features
     from xgpoc.models.f_temporal import TemporalFeatureDataset, TemporalXG
+    seed_all(cfg.seed)
     df_all = pd.concat([tr, va, te])
     feats = {}
     for o in offsets:
@@ -94,6 +97,7 @@ def run_f(tr, va, te, cache, out, cfg, backbone="dinov2_s", offsets=(-1600, -120
         feats[o] = extract_patch_features(df_all, cache / f"features_{backbone}_off{o}.npz", backbone,
                                           device=cfg.device, path_col=col)
     dim = next(iter(feats[0].values())).shape[-1]
+    seed_all(cfg.seed)
     model = TemporalXG(dim, n_frames=len(offsets))
     cfg = TrainConfig(**{**config_dict(cfg), "lr": 1e-4})
     fit = train_torch(model, TemporalFeatureDataset(tr, feats), TemporalFeatureDataset(va, feats), cfg)
@@ -115,10 +119,12 @@ def _n_prefix(backbone: str) -> int:
 
 def run_d(tr, va, te, cache, out, cfg, backbone="dinov2_s", mask="none", tta=False, tag="", mt=False, lr=1e-4):
     from xgpoc.models.d_foundation import AttentionPoolHead
+    seed_all(cfg.seed)
     df_all = pd.concat([tr, va, te])
     feats = _features(df_all, cache, backbone, cfg, mask=mask)
     alt = _features(df_all, cache, backbone, cfg, mask=mask, flip=True) if tta else None
     dim = next(iter(feats.values())).shape[-1]
+    seed_all(cfg.seed)
     model = AttentionPoolHead(dim, n_out=2 if mt else 1, n_prefix=_n_prefix(backbone))
     cfg = TrainConfig(**{**config_dict(cfg), "lr": lr})
     fit = train_torch(model, FeatureDataset(tr, feats, alt=alt, train=True, aux_col=ON_TARGET if mt else None),
@@ -137,6 +143,7 @@ def run_g(tr, va, te, cache, out, cfg, backbone="dinov2_b", n_blocks=4, mask="no
           backbone_lr_mult=0.1, lr=3e-4, path_cols=None, rrc=None, mt=False):
     """PoC G: PoC D with the top blocks of the backbone unfrozen (see FinetuneViTXG)."""
     from xgpoc.models.d_foundation import BACKBONES, FinetuneViTXG
+    seed_all(cfg.seed)
     model = FinetuneViTXG(backbone, n_blocks=n_blocks, n_out=2 if mt else 1)
     size_wh = BACKBONES[backbone][1]
     cfg = TrainConfig(**{**config_dict(cfg), "lr": lr, "batch_size": min(cfg.batch_size, 8 if "_l" in backbone else 16)})
@@ -158,10 +165,12 @@ def run_g(tr, va, te, cache, out, cfg, backbone="dinov2_b", n_blocks=4, mask="no
 def run_e(tr, va, te, cache, out, cfg, backbone="dinov2_s"):
     from xgpoc.models.d_foundation import BACKBONES
     from xgpoc.models.e_hybrid import HybridXG
+    seed_all(cfg.seed)
     feats = _features(pd.concat([tr, va, te]), cache, backbone, cfg)
     _, _, boxes = load_cache(cache / "positional")
     w, h = BACKBONES[backbone][1]
     dim = next(iter(feats.values())).shape[-1]
+    seed_all(cfg.seed)
     model = HybridXG(dim, grid_hw=(h // 14, w // 14) if "dinov2" in backbone else (h // 16, w // 16))
     cfg = TrainConfig(**{**config_dict(cfg), "lr": 1e-4})
     fit = train_torch(model, FeatureDataset(tr, feats, boxes), FeatureDataset(va, feats, boxes), cfg)

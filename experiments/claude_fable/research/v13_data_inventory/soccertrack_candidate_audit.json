@@ -1,0 +1,114 @@
+[
+  {
+    "match_id": "117092",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "FREE KICK": 19,
+      "SHOT": 37,
+      "HEADER": 7
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 4
+  },
+  {
+    "match_id": "117093",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "SHOT": 23,
+      "HEADER": 3,
+      "FREE KICK": 17
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 5
+  },
+  {
+    "match_id": "118575",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "SHOT": 21,
+      "FREE KICK": 16,
+      "HEADER": 3
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 3
+  },
+  {
+    "match_id": "118576",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "FREE KICK": 17,
+      "SHOT": 38,
+      "HEADER": 3
+    },
+    "matched_goals_by_anchor": {
+      "SHOT": 1
+    },
+    "unmatched_goals": 4
+  },
+  {
+    "match_id": "118577",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "FREE KICK": 16,
+      "SHOT": 28,
+      "HEADER": 1
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 5
+  },
+  {
+    "match_id": "118578",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "FREE KICK": 20,
+      "SHOT": 25,
+      "HEADER": 5
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 4
+  },
+  {
+    "match_id": "128057",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "FREE KICK": 22,
+      "HEADER": 1,
+      "SHOT": 22
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 5
+  },
+  {
+    "match_id": "128058",
+    "full_video_halves": 2,
+    "candidate_counts": {
+      "SHOT": 24,
+      "FREE KICK": 5,
+      "HEADER": 4
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 5
+  },
+  {
+    "match_id": "132831",
+    "full_video_halves": 0,
+    "candidate_counts": {
+      "SHOT": 51,
+      "FREE KICK": 12,
+      "HEADER": 4
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 6
+  },
+  {
+    "match_id": "132877",
+    "full_video_halves": 0,
+    "candidate_counts": {
+      "FREE KICK": 20,
+      "SHOT": 33,
+      "HEADER": 4
+    },
+    "matched_goals_by_anchor": {},
+    "unmatched_goals": 5
+  }
+]

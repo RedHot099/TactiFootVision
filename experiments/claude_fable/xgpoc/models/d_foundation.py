@@ -13,7 +13,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from xgpoc.data.datasets import ImageDataset
+from xgpoc.data.datasets import ImageDataset, check_frame_col
 
 BACKBONES = {
     # name: (timm id, input (w, h) multiple of patch size)
@@ -35,9 +35,14 @@ def extract_patch_features(df: pd.DataFrame, out: Path, backbone: str = "dinov2_
 
     `flip` and `mask` change the pixels the backbone sees, so they belong to the cache
     identity - callers must pass a distinct `out` path for each combination."""
+    check_frame_col(path_col)
     if out.exists():
-        z = np.load(out)
-        return dict(zip(z["shot_id"].tolist(), z["feats"]))
+        with np.load(out) as z:
+            ids = z["shot_id"].tolist()
+            missing = set(df.shot_id) - set(ids)
+            if missing:
+                raise ValueError(f"Feature cache {out} missing {len(missing)} requested shots")
+            return dict(zip(ids, z["feats"]))
     timm_id, size = BACKBONES[backbone]
     model = timm.create_model(timm_id, pretrained=True, num_classes=0, img_size=(size[1], size[0]), dynamic_img_size=True).to(device).eval()
     ds = ImageDataset(df, size_wh=size, path_col=path_col, mask=mask, flip=flip)
@@ -74,11 +79,14 @@ class AttentionPoolHead(nn.Module):
         self.head = nn.Sequential(nn.LayerNorm(in_dim), nn.Dropout(dropout),
                                   nn.Linear(in_dim, 256), nn.GELU(), nn.Dropout(dropout), nn.Linear(256, n_out))
 
-    def forward(self, patches: torch.Tensor, aux: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, patches: torch.Tensor, aux: torch.Tensor | None = None,
+                key_padding_mask: torch.Tensor | None = None) -> torch.Tensor:
+        """`key_padding_mask` [B, tokens] True = ignore that token in the pooling attention."""
         p = self.norm(patches.float())
         cls, grid = p[:, :1], p[:, self.n_prefix:]
         q = self.queries.expand(p.size(0), -1, -1)
-        pooled, _ = self.attn(q, grid, grid)
+        mask = None if key_padding_mask is None else key_padding_mask[:, self.n_prefix:]
+        pooled, _ = self.attn(q, grid, grid, key_padding_mask=mask)
         z = torch.cat([cls, pooled], 1).flatten(1)
         if self.aux_norm is not None:
             z = torch.cat([z, self.aux_norm(aux.float())], 1)

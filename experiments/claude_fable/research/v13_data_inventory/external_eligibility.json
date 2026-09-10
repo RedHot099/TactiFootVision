@@ -1,0 +1,95 @@
+{
+  "matches": [
+    {
+      "match": "117092",
+      "complete_video": true,
+      "trusted_attempts": 37,
+      "total_goals": 4,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "3511e4e8a241daffb0c7ac80b2cb471a3dfbb1731ff7175a01289a1bd46a32f5"
+    },
+    {
+      "match": "117093",
+      "complete_video": true,
+      "trusted_attempts": 23,
+      "total_goals": 5,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "0ec47b4467655fc4abcfd5e2debf38440905da08a28b23758308aa673056765e"
+    },
+    {
+      "match": "118575",
+      "complete_video": true,
+      "trusted_attempts": 21,
+      "total_goals": 3,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "606c29f0cce9fadc793618909baee1d25ea17bf6878fd90d49cf4f82ef5b5a64"
+    },
+    {
+      "match": "118576",
+      "complete_video": true,
+      "trusted_attempts": 38,
+      "total_goals": 5,
+      "trusted_anchored_goals": 1,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "57d34199872c98bd4ed467c3b0016e9f6afb3f722a8f949a7cbe61717305b596"
+    },
+    {
+      "match": "118577",
+      "complete_video": true,
+      "trusted_attempts": 28,
+      "total_goals": 5,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "3358cc5eb92467c90f3f31e24258a6392148a86e0f847418c11301eb7bd334dc"
+    },
+    {
+      "match": "118578",
+      "complete_video": true,
+      "trusted_attempts": 25,
+      "total_goals": 4,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "24854911c3d85c6385930076c77a855300cad40d21434972545a2f5f67bb8835"
+    },
+    {
+      "match": "128057",
+      "complete_video": true,
+      "trusted_attempts": 22,
+      "total_goals": 5,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "6ae462cf44b6e50ddfa558aaeac10174d665a35ddb81d9197134a5fad92c9848"
+    },
+    {
+      "match": "128058",
+      "complete_video": true,
+      "trusted_attempts": 24,
+      "total_goals": 5,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "483ae6754f24b88893fb37917834bd6588d448b02a9731a390dcacef00fe3436"
+    },
+    {
+      "match": "132831",
+      "complete_video": false,
+      "trusted_attempts": 51,
+      "total_goals": 6,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "c94cb233a410e8ecaecac804c6dc6d1f46021e9578a320351868237e4f2a7211"
+    },
+    {
+      "match": "132877",
+      "complete_video": false,
+      "trusted_attempts": 33,
+      "total_goals": 5,
+      "trusted_anchored_goals": 0,
+      "eligible_for_xg_evaluation": false,
+      "bas_sha256": "aa0c8921982a6391130abb0cd8d9f680de45be2d1a4472f58c4ca8f12465a9c2"
+    }
+  ],
+  "limitation": "Eligibility checks coverage only; timestamp accuracy and shot intent still need visual validation."
+}
