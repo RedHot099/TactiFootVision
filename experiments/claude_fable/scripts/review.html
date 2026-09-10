@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Przegląd kontaktu piłki</title>
+<style>
+body{font:16px system-ui;margin:24px auto;max-width:1120px;padding:0 16px;background:#111827;color:#e5e7eb}
+button,input,select,textarea{font:inherit;padding:8px;border:1px solid #64748b;border-radius:5px;background:#1e293b;color:#fff}
+button{cursor:pointer}button:hover{background:#334155}button:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+label{display:flex;flex-direction:column;gap:4px}img,video{width:100%;max-width:960px}#frame{display:block;cursor:crosshair}
+.warn{color:#fbbf24}#message{min-height:24px;color:#7dd3fc}#position{width:min(100%,960px)}textarea{width:95%}
+#picture{position:relative;width:fit-content;max-width:100%}#point{position:absolute;color:#f43f5e;transform:translate(-50%,-50%);pointer-events:none;font-size:30px;display:none}
+</style>
+<h1>Przegląd kontaktu piłki</h1>
+<p class="warn">Materiał do adnotacji. Zawiera klatki po strzale. Nie jest wejściem modelu xG.</p>
+<p>Oceń próbę strzału przy środku klipu. Zaznacz ostatnią klatkę na pewno przed kontaktem i pierwszą na pewno po nim.
+Jeśli kontakt jest zasłonięty lub dotyczy innej próby, pozostaw niepewność. Krok przewija kolejne zdekodowane klatki.</p>
+<div class="row"><label>Twój alias recenzenta <input id="reviewer" maxlength="80" placeholder="np. recenzent-a"></label>
+<button id="start">Otwórz moje adnotacje</button><button id="export" disabled>Pobierz ukończone adnotacje</button></div>
+<p id="message" role="status"></p>
+<main id="workspace" hidden>
+<div class="row"><button id="previous">Poprzednia próba</button><strong id="counter"></strong><button id="next">Następna próba</button><span id="progress"></span></div>
+<div id="picture"><img id="frame" alt="Klatka ocenianej próby"><span id="point">+</span></div>
+<input id="position" type="range" min="0" step="1" aria-label="Klatka w klipie">
+<div class="row"><button id="back">← Klatka</button><strong id="time"></strong><button id="forward">Klatka →</button>
+<button id="lower">Ustaw początek przedziału</button><button id="upper">Ustaw koniec przedziału</button></div>
+<p id="bounds"></p>
+<p>Kliknij środek strzelca na wybranej klatce, jeśli potrafisz go wskazać. <button id="clear-point">Usuń wskazanie</button></p>
+<div class="grid">
+<label>Kontakt <select id="contact_status"><option value="uncertain">Niepewny</option><option value="bounded">Przedział ustalony</option><option value="out_of_window">Poza zakresem klatek</option></select></label>
+<label>Część ciała <select id="body_part"><option value="unknown">Nie wiem</option><option value="foot">Stopa</option><option value="head">Głowa</option><option value="other">Inna</option></select></label>
+<label>Sytuacja <select id="situation"><option value="unknown">Nie wiem</option><option value="ordinary">Zwykły strzał</option><option value="rebound">Dobitka</option><option value="first_time">Z pierwszej piłki</option></select></label>
+<label>Piłka widoczna przy kontakcie <select id="ball_visible"><option value="unknown">Nie wiem</option><option value="yes">Tak</option><option value="no">Nie</option></select></label>
+<label>Bramkarz widoczny przy kontakcie <select id="keeper_visible"><option value="unknown">Nie wiem</option><option value="yes">Tak</option><option value="no">Nie</option></select></label>
+<label>Wynik tej próby <select id="outcome"><option value="unknown">Nie wiem</option><option value="goal">Gol</option><option value="no_goal">Bez gola</option></select></label>
+<label>Przypisanie gola <select id="goal_attribution"><option value="unknown">Nie wiem</option><option value="this_attempt">Gol z tej próby</option><option value="other_attempt">Gol z innej próby, np. dobitki</option><option value="no_goal">Nie było gola</option></select></label>
+</div>
+<details><summary>Pełny klip do rozstrzygnięcia próby i wyniku</summary><p>Nie wnioskuj o wyniku wyłącznie z końca krótkiego klipu. Gdy brakuje akcji, wybierz „Nie wiem”.</p><video id="clip" controls preload="none"></video></details>
+<label>Uwagi <textarea id="note" rows="2"></textarea></label>
+<div class="row"><button id="save">Oznacz próbę jako ocenioną</button><span>Zmiany są zachowywane w tej przeglądarce. Pobierz plik przed jej wyczyszczeniem.</span></div>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const fields=['contact_status','body_part','situation','ball_visible','keeper_visible','outcome','goal_attribution','note'];
+let packet, state, itemIndex=0, frameIndex=0, key, reviewer;
+const item=()=>packet.items[itemIndex];
+const current=()=>item().frames[frameIndex];
+const empty=()=>({review_id:item().review_id,contact_status:'uncertain',contact_lower_ms:null,contact_upper_ms:null,
+  shooter_x:null,shooter_y:null,shooter_frame_ms:null,body_part:'unknown',situation:'unknown',ball_visible:'unknown',
+  keeper_visible:'unknown',outcome:'unknown',goal_attribution:'unknown',note:'',completed:false});
+const row=()=>state[item().review_id]||(state[item().review_id]=empty());
+function message(text){$('message').textContent=text;}
+function persist(){try{localStorage.setItem(key,JSON.stringify(state));}catch(e){message('Nie udało się zapisać w przeglądarce. Pobierz adnotacje.');}}
+function changed(){row().completed=false;persist();progress();}
+function progress(){const done=Object.values(state).filter(r=>r.completed).length;$('progress').textContent=`Oceniono ${done} z ${packet.items.length}`;}
+function showFrame(){const f=current(),r=row();$('frame').src=f.image;$('position').value=frameIndex;
+  $('time').textContent=`${f.time_ms > 0 ? '+' : ''}${f.time_ms} ms względem kotwicy`;
+  $('back').disabled=frameIndex===0;$('forward').disabled=frameIndex===item().frames.length-1;
+  $('bounds').textContent=`Przedział: ${r.contact_lower_ms ?? '—'} do ${r.contact_upper_ms ?? '—'} ms`;
+  $('point').style.display=r.shooter_frame_ms===f.time_ms?'block':'none';
+  $('point').style.left=`${r.shooter_x*100}%`;$('point').style.top=`${r.shooter_y*100}%`;
+}
+function show(){const r=row();frameIndex=item().frames.reduce((best,f,i)=>Math.abs(f.time_ms)<Math.abs(item().frames[best].time_ms)?i:best,0);
+  $('counter').textContent=`Próba ${itemIndex+1} / ${packet.items.length} · ${item().review_id}`;
+  $('position').max=item().frames.length-1;$('previous').disabled=itemIndex===0;$('next').disabled=itemIndex===packet.items.length-1;
+  for(const field of fields)$(field).value=r[field];$('clip').src=item().clip;showFrame();progress();}
+$('start').onclick=()=>{reviewer=$('reviewer').value.trim();if(!reviewer)return message('Podaj alias recenzenta.');
+  if(!packet)return message('Materiały jeszcze się wczytują.');key=`xg-contact-${packet.packet_id}-${reviewer}`;
+  try{state=JSON.parse(localStorage.getItem(key)||'{}');}catch(e){return message('Zapis w przeglądarce jest nieczytelny. Użyj innego aliasu.');}
+  $('workspace').hidden=false;$('export').disabled=false;itemIndex=0;show();message('Nie pokazujemy etykiet źródłowych ani predykcji modelu.');};
+for(const field of fields)$(field).oninput=()=>{row()[field]=$(field).value;
+  if(field==='contact_status'&&row()[field]!=='bounded'){row().contact_lower_ms=null;row().contact_upper_ms=null;showFrame();}changed();};
+$('previous').onclick=()=>{itemIndex--;show();};$('next').onclick=()=>{itemIndex++;show();};
+$('position').oninput=()=>{frameIndex=Number($('position').value);showFrame();};
+$('back').onclick=()=>{frameIndex--;showFrame();};$('forward').onclick=()=>{frameIndex++;showFrame();};
+for(const side of ['lower','upper'])$(side).onclick=()=>{row()[`contact_${side}_ms`]=current().time_ms;row().contact_status='bounded';
+  $('contact_status').value='bounded';changed();showFrame();};
+$('frame').onclick=e=>{const rect=$('frame').getBoundingClientRect();Object.assign(row(),{shooter_x:(e.clientX-rect.left)/rect.width,
+  shooter_y:(e.clientY-rect.top)/rect.height,shooter_frame_ms:current().time_ms});changed();showFrame();};
+$('clear-point').onclick=()=>{Object.assign(row(),{shooter_x:null,shooter_y:null,shooter_frame_ms:null});changed();showFrame();};
+$('save').onclick=()=>{const r=row();if(r.contact_status==='bounded'&&(r.contact_lower_ms===null||r.contact_upper_ms===null||r.contact_lower_ms>r.contact_upper_ms))
+  return message('Ustaw obie granice we właściwej kolejności.');
+  if((r.goal_attribution==='this_attempt'&&r.outcome!=='goal')||(['other_attempt','no_goal'].includes(r.goal_attribution)&&r.outcome!=='no_goal'))
+    return message('Wynik tej próby nie zgadza się z przypisaniem gola.');
+  r.completed=true;persist();progress();message(`Zapisano ocenę ${r.review_id}.`);};
+$('export').onclick=()=>{const annotations=Object.values(state).filter(r=>r.completed).map(({completed,...r})=>r);
+  if(!annotations.length)return message('Nie ma ukończonych ocen do pobrania.');
+  const value={packet_id:packet.packet_id,source:'human',reviewer,annotations};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download='contact-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  message(`Pobrano ${annotations.length} ocen. Przekaż plik do walidacji.`);};
+fetch('packet.json').then(r=>{if(!r.ok)throw Error(r.status);return r.json();}).then(p=>{packet=p;message(`Gotowe: ${p.items.length} prób.`);})
+  .catch(()=>message('Nie udało się wczytać materiałów. Otwórz stronę przez lokalny serwer HTTP.'));
+</script>
+</html>

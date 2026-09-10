@@ -1,0 +1,34 @@
+{
+  "parser_sha256": "deb0167a707485a5bd5fd3be53a78454c37574c982c60eb8842cf6d4080514b1",
+  "script_sha256": "d81b95867a62601d42d83dbb4cb4d450a9fbfd4503283e610742ab1e56913e03",
+  "sources": {
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/117092_12_class_events.json": "3511e4e8a241daffb0c7ac80b2cb471a3dfbb1731ff7175a01289a1bd46a32f5",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/117093_12_class_events.json": "0ec47b4467655fc4abcfd5e2debf38440905da08a28b23758308aa673056765e",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/118575_12_class_events.json": "606c29f0cce9fadc793618909baee1d25ea17bf6878fd90d49cf4f82ef5b5a64",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/118576_12_class_events.json": "57d34199872c98bd4ed467c3b0016e9f6afb3f722a8f949a7cbe61717305b596",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/118577_12_class_events.json": "3358cc5eb92467c90f3f31e24258a6392148a86e0f847418c11301eb7bd334dc",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/118578_12_class_events.json": "24854911c3d85c6385930076c77a855300cad40d21434972545a2f5f67bb8835",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/128057_12_class_events.json": "6ae462cf44b6e50ddfa558aaeac10174d665a35ddb81d9197134a5fad92c9848",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/bas/128058_12_class_events.json": "483ae6754f24b88893fb37917834bd6588d448b02a9731a390dcacef00fe3436",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117092/117092_1st.mp4": "a4a166760570bd42f7d99d4d65b144213e594c23cd37c65512ca19952ba241ae",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117092/117092_2nd.mp4": "b8bd75d5493c7bf2ce9d3690c413f55169110e15ad9c6ea0778f88f980b9f7c0",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117093/117093_1st.mp4": "581dfbba95089aa991ee38fd9b205c452e407bdc081dd9ffde64d98e93284059",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/117093/117093_2nd.mp4": "e7718bfb36efcb14334b697cfa6a56d17c63314c71492aa649c48dfbd88fe77e",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118575/118575_1st.mp4": "45e85f79cb76a1c42f035102b96f1e02fe9af8da4b12b4762bc78adb6c447475",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118575/118575_2nd.mp4": "f7639a5ba8654e6d7bbf082c6772bae02b377b091d797f89923023877eecd77c",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118576/118576_1st.mp4": "c487f191ce1da9ca0150aab373dbd913071b4b37c426a454da34a1c168c8109d",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118576/118576_2nd.mp4": "d5c99502e568cfa259e280b84b532fdf915fe09204b0176e141d44847e4e169d",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118577/118577_1st.mp4": "e321b54fad01234d4fe6ee7259c225208b6f493ba8b1229fb3beb5fec656bebf",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118577/118577_2nd.mp4": "5a5b188d62fcf84ad299bb951ffa640d2f12bc307e8e6c0c12cd3cf620972f65",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_1st.mp4": "d2b9d12e242e396ca3bbc56526d538763519ca2c2fccc6af7472a5e27b8b9364",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/118578/118578_2nd.mp4": "aae8a7bae7489d0c48272bf4f95d3fac0d57b5f0c69d1f12d78bea32ac40a03b",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_1st.mp4": "3bc95a7bb31baec68be8d737e7b99fa083c595ba856e879106223a26548cbf23",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128057/128057_2nd.mp4": "e985c6b9ba50122d0a47074cdbc2436ef3c5a425ae3efe2cb7508a13e6fadaca",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_1st.mp4": "8db0efdc045978d67572c6764681a76350e8da75a9f5fa7bc9307f3b9f21d989",
+    "/home/kuba/projects/football_data/xg_shots_full/soccertrack_v2/videos/128058/128058_2nd.mp4": "c5554a1a85655770d7adc83d8ef272e656a14a04433d8b5ee74cf021f9805131"
+  },
+  "templates": {
+    "attempt_review.csv": "1cca5a4cf77d7f02e7c267cbf79ddbf83d8cca7de81344557f29f7c56b30103d",
+    "half_review.csv": "9da55c90d1d3403a55ccf6dd39461158c6d400b6b069e28851971cee98bcebe9"
+  }
+}

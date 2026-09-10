@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "real decoded image",
+    "interval selection",
+    "shooter point",
+    "full clip decoding and seeking",
+    "navigation",
+    "reload persistence",
+    "download and Python validation"
+  ],
+  "human_annotations_created": 0,
+  "page_errors": [],
+  "status": "passed",
+  "synthetic_export": "temporary file deleted; isolated browser storage cleared"
+}

@@ -1,0 +1,5 @@
+sampling_group,role,sampled,agreed_contacts,measured_t0,t0_definitely_after_contact,safe_inputs
+random,fit,154,0,0,0,0
+random,select,46,0,0,0,0
+targeted,fit,81,0,0,0,0
+targeted,select,19,0,0,0,0

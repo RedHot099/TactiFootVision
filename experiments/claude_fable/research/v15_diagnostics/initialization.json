@@ -1,0 +1,32 @@
+{
+  "backbone": "dinov2_l",
+  "seed": 1300,
+  "pretrained": false,
+  "input": "synthetic, full image dimensions",
+  "rows": [
+    {
+      "views": "missing",
+      "fusion_identity_error": 0.0,
+      "base_logit_error": 0.0009559988975524902,
+      "masked_local_logit_error": 2.9802322387695312e-08
+    },
+    {
+      "views": "shooter",
+      "fusion_identity_error": 0.0,
+      "base_logit_error": 0.007122337818145752,
+      "masked_local_logit_error": 2.9802322387695312e-08
+    },
+    {
+      "views": "both",
+      "fusion_identity_error": 0.0,
+      "base_logit_error": 0.007902383804321289,
+      "masked_local_logit_error": 2.9802322387695312e-08
+    }
+  ],
+  "source_sha256": {
+    "/home/kuba/projects/tactifoot_vision/.claude/worktrees/claude-fable-xg-poc/experiments/claude_fable/scripts/audit_v14_initialization.py": "7396a9c4150f40dbf9661861bd9c6c241d6753244759e58249a5ac706a1e554f",
+    "xgpoc/v14/models.py": "d36b190956c3dba39af3d367dda1b524b424018f768c4b1718d8e9abd1058ce3",
+    "xgpoc/models/d_foundation.py": "9baba0d66c90eb4e4fecd035c5f7c86dee0b5d046505f90e316affb0a2af223b"
+  },
+  "interpretation": "Identity fusion does not imply G equivalence: local tokens enter pooling. This mechanism check does not attribute the observed training degradation."
+}

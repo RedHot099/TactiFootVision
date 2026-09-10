@@ -1,0 +1,10 @@
+{
+  "candidate_rows": 412,
+  "complete_matches": 8,
+  "eligible_confirmatory_test_matches": 0,
+  "halves": 16,
+  "note": "Human full-video review, shot intent, goal accounting, timing and cross-dataset identity are required. Add missed attempts to a copy of attempt_review.csv. These are pilot candidates.",
+  "source_goal_rows": 36,
+  "source_untrusted_goal_rows": 35,
+  "video_hours": 12.500808333333334
+}

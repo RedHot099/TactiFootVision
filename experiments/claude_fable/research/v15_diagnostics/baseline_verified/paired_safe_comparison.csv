@@ -1,0 +1,1 @@
+shot_id,nominal_ms,frame_path,measured_ms,match_margin,frame_sha256,p,prediction_status,review_id,review_count,contact_quality,lower_ms,upper_ms,sampling_group,role,goal,p_t0,loss_t0

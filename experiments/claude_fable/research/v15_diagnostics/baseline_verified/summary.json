@@ -1,0 +1,12 @@
+{
+  "agreed_contact_with_measured_t0": 0,
+  "human_contact_status": {
+    "unreviewed": 300
+  },
+  "interpretation": "Exploratory sensitivity only. Fit is in-sample; select was used for epoch selection. Nominal frames may be post-contact. Human-reviewed subsets are not population estimates. No new generalization or causal claim; no calibration was refitted.",
+  "remaining_without_verified_safe_frame": 300,
+  "shots": 300,
+  "shots_with_verified_safe_frame": 0,
+  "t0_definitely_after_contact": 0,
+  "training_gate": "blocked_pending_human_review"
+}

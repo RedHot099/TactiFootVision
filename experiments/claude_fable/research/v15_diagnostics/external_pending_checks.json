@@ -1,0 +1,167 @@
+{
+  "attempts_sha256": "1cca5a4cf77d7f02e7c267cbf79ddbf83d8cca7de81344557f29f7c56b30103d",
+  "halves_sha256": "9da55c90d1d3403a55ccf6dd39461158c6d400b6b069e28851971cee98bcebe9",
+  "readiness": [
+    {
+      "match_id": "117092",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "117093",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "118575",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "118576",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "118577",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "118578",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "128057",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    },
+    {
+      "match_id": "128058",
+      "open_checks": [
+        "half_1:human_reviewer_missing",
+        "half_1:full_video_review_missing",
+        "half_1:all_attempts_checked",
+        "half_1:clock_alignment_checked",
+        "half_1:dataset_overlap_unresolved",
+        "half_1:shot_intent_unresolved",
+        "half_1:goal_accounting_unresolved",
+        "half_2:human_reviewer_missing",
+        "half_2:full_video_review_missing",
+        "half_2:all_attempts_checked",
+        "half_2:clock_alignment_checked",
+        "half_2:dataset_overlap_unresolved",
+        "half_2:shot_intent_unresolved",
+        "half_2:goal_accounting_unresolved"
+      ],
+      "ready_for_protocol_review": false
+    }
+  ],
+  "warning": "Readiness checks human declarations, not their truth; no test is automatically opened."
+}
