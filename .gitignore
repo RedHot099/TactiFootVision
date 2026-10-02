@@ -9,7 +9,7 @@ venv/
 env/
 *.egg-info/
 dist/
-build/
+/build/
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/

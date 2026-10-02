@@ -71,8 +71,9 @@ src/tactifoot_vision/
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
-notebooks/            end-to-end pipeline notebook
-examples/             one script per functional area (used to verify the notebook flow)
+notebooks/            executed notebooks: overview + one per functional area
+  build/              their generator (one module per notebook, build.py entry point)
+examples/             one script per functional area
 configs/              example run files
 ```
 
