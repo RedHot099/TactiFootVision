@@ -16,8 +16,8 @@ build/
 *.log
 
 # Data, weights and run artefacts (kept outside git; see README "Local data layout")
-data/
-models/
+/data/
+/models/
 output/
 outputs/
 results/
