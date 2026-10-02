@@ -8,6 +8,24 @@ interface across interchangeable backends.
 import tactifoot_vision as tv
 ```
 
+## Two modes, one core
+
+The package has two independent front-ends
+([ADR 0001](adr/0001-notebook-and-cli-are-independent-front-ends.md)):
+
+* **Notebook mode**: plain Python imports. No run file and no config object
+  sit between the user and the classes.
+* **CLI mode**: the `tactifoot` command. `cli.py` and `run_file.py` only
+  translate text into calls of the same functions and classes.
+
+Only the constructors, functions and `TrainConfig` hold default values and
+validate values. The CLI declares no defaults (`argparse.SUPPRESS`; a missing
+option is not passed), `tactifoot train` generates its flags from
+`TrainConfig.model_fields`, the `run` flags come from the signatures of
+`Pipeline.run` and `PipelineResult.export`, and run file keys are checked
+against the target signatures. A new field, parameter or changed default
+reaches both modes without editing `cli.py` or `run_file.py`.
+
 ## Functional areas → modules
 
 | Area | Module | Main entry points |
@@ -18,7 +36,7 @@ import tactifoot_vision as tv
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `show`, plotting helpers |
-| Configuration | `tv.config` | `PipelineConfig`, `load_config` (YAML), `Pipeline.from_config` |
+| CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
 name registry (`tactifoot_vision/registry.py`):
@@ -38,7 +56,7 @@ src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
   utils.py            setup_logging, resolve_device, ensure_dir
-  config.py           PipelineConfig (+ sub-configs), load_config
+  run_file.py         run files: load (+ overrides, key checks), RunFile.build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), video.py, statsbomb.py
@@ -55,7 +73,7 @@ src/tactifoot_vision/
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            end-to-end pipeline notebook
 examples/             one script per functional area (used to verify the notebook flow)
-configs/              example YAML configs
+configs/              example run files
 ```
 
 ## Conventions
@@ -177,8 +195,12 @@ configs/              example YAML configs
   `fit(crops)`, `predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings and skips UMAP below 30 crops.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
-  `.run(video, start=0, max_frames=None, stride=1) -> PipelineResult`;
-  `Pipeline.from_config(yaml_or_config)`.
+  `.run(video, start=0, max_frames=None, stride=1) -> PipelineResult`.
+  `PipelineResult.export(out_dir, *, period=1, period_start=0.0)` writes the
+  run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`).
+  With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
+  `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
+  covers, so memory grows with the people's area, not the frame area.
   Teams are assigned after tracking by majority vote over each track's crops
   (a bounded random sample of `team_samples_per_track` crops per track), so
   every frame of a track carries the same team id. Goalkeepers join the team
@@ -191,6 +213,7 @@ configs/              example YAML configs
 ### Results visualisation (`tv.viz`)
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
+  `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
 * `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame.
 * `render_video(result, source=None, output, annotator=None, radar=None)` → output path;
@@ -199,3 +222,61 @@ configs/              example YAML configs
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None)`, `plot_tracks(result)`, `plot_metrics(metrics)`,
   `plot_distance_histogram(distances)`.
+
+### Run files and the CLI (`tv.run_file`, `tactifoot`)
+
+A **run file** is YAML that says how to process video; it holds no run inputs
+(video, output folder, frame range, period), so one file serves many matches.
+Each section maps onto exactly one package call:
+
+| Section | Call | Notes |
+|---|---|---|
+| `detector` (required) | `tv.models.load_model(type, weights, **rest)` | keys checked against `MODELS[type]` |
+| `keypoints` | same as `detector` | absent or `null`: no keypoint model |
+| `tracker` | `tv.tracking.create_tracker(type, **rest)` | absent: `Pipeline`'s default; `null`: no tracking |
+| `teams` | `TeamClassifier(**section)` | absent or `null`: no teams; `{}`: defaults; takes embedder options, so any key passes the load check |
+| `pitch` | `SoccerPitch(**section)` | |
+| `homography` | `HomographyEstimator(pitch, **section)` | gets the pitch built from `pitch` |
+| `pipeline` | `Pipeline(**section)` | the scalar arguments (`include_classes`, `keep_masks`, ...) |
+| `render.annotator` | `FrameAnnotator(pitch=result.pitch, **section)` | |
+| `render.radar` | `PitchRadar(pitch=result.pitch, **section)` | `null`: no radar |
+| other `render` keys | `tv.viz.render_video(...)` keyword arguments | `overlay_position`, `fps`, ... |
+
+Backend options sit flat next to `type`:
+
+```yaml
+detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
+tracker: {type: bytetrack, lost_track_buffer: 30}
+render: {annotator: {style: video_game}, radar: null}
+```
+
+* `tv.run_file.load(path, overrides=())` checks every key against the target's
+  signature and fails with the section, the bad key and the valid keys (an
+  unknown section or `type` fails too). Values are checked by the constructors
+  in `build_pipeline()`, which the CLI calls before the first frame. Loading
+  imports no torch, ultralytics, rfdetr, transformers or sam2.
+* A key left out is not passed, so the package default applies.
+* Paths: string values starting with `./` or `../` (at any depth, lists
+  included) are relative to the run file. Absolute paths and bare names such
+  as `yolo11n.pt` pass through.
+* **Overrides** `dotted.key=value` replace one value for one run. The value is
+  YAML (`null`, `true`, `0.4`, `[player, goalkeeper]`), missing mappings are
+  created, and `./` / `../` paths in the value are relative to the current
+  directory. Overrides are applied before the key check.
+
+```
+tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
+          [--start N] [--max-frames N] [--stride N] [--period N] [--period-start S]
+          [--no-video] [--set KEY=VALUE ...]
+tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
+          [--set KEY=VALUE ...]
+tactifoot evaluate MODEL --weights W --data D [--split S] [--device DEV] [--set KEY=VALUE ...]
+tactifoot info
+```
+
+* `run`: `run_file.load` → `build_pipeline()` → `pipeline.run(video, ...)` →
+  `result.export(output_dir, ...)` → `run_file.render_video(...)` to
+  `annotated.mp4` unless `--no-video`.
+* `train`: `--set` keys are `TrainConfig` fields or backend options
+  (`mosaic=0.0`, `grad_accum_steps=4`); setting a key by flag and `--set` is an error.
+* `evaluate`: `--device` goes to `load_model`, `--split` and `--set` to `model.evaluate`.

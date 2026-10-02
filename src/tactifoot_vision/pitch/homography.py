@@ -51,8 +51,14 @@ class HomographyEstimator:
         ransac_threshold: float = 10.0,
         max_age: int | None = 50,
     ) -> None:
+        if not 0 <= min_confidence <= 1:
+            raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
         if smoothing_window < 1:
-            raise ValueError("smoothing_window must be >= 1")
+            raise ValueError(f"smoothing_window must be >= 1, got {smoothing_window}")
+        if ransac_threshold <= 0:
+            raise ValueError(f"ransac_threshold must be > 0, got {ransac_threshold}")
+        if max_age is not None and max_age < 0:
+            raise ValueError(f"max_age must be None or >= 0, got {max_age}")
         self.pitch = pitch or SoccerPitch()
         self.min_confidence = min_confidence
         self.ransac_threshold = ransac_threshold

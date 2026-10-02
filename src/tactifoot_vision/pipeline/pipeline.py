@@ -5,7 +5,6 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import supervision as sv
@@ -14,16 +13,18 @@ from tqdm.auto import tqdm
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.video import VideoReader
 from tactifoot_vision.models.base import Model
-from tactifoot_vision.pipeline.result import NO_TEAM, FrameResult, PipelineResult
+from tactifoot_vision.pipeline.result import (
+    NO_TEAM,
+    FrameResult,
+    ObjectMasks,
+    PipelineResult,
+)
 from tactifoot_vision.pitch.homography import HomographyEstimator, frame_to_pitch
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.teams.classifier import TeamClassifier
 from tactifoot_vision.teams.crops import extract_crops
 from tactifoot_vision.tracking.ball import clean_ball_path
 from tactifoot_vision.tracking.base import Tracker, create_tracker
-
-if TYPE_CHECKING:
-    from tactifoot_vision.config import PipelineConfig
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,14 @@ class Pipeline:
             :func:`~tactifoot_vision.tracking.clean_ball_path`). ``None`` keeps all.
         crop_scale, crop_center_ratio: crop geometry passed to
             :func:`~tactifoot_vision.teams.extract_crops`.
+        keep_masks: keep the tracker's segmentation masks (SAM2) in
+            :attr:`FrameResult.masks` so ``FrameAnnotator(draw_masks=True)`` can
+            draw them. Each mask is cropped to the pixels it covers
+            (:class:`ObjectMasks`), so memory grows with the people's on-screen
+            area instead of the frame area: on a wide 1080p broadcast view about
+            1 kB per person per frame (~40 MB per minute at 25 fps with 23
+            people), where full-frame masks would take 2 MB per person per frame.
+            Close-ups cost more. Off by default.
     """
 
     def __init__(
@@ -84,6 +93,7 @@ class Pipeline:
         ball_max_speed: float | None = 40.0,
         crop_scale: float = 0.8,
         crop_center_ratio: float = 1.0,
+        keep_masks: bool = False,
     ) -> None:
         if detector.task != Task.DETECT:
             raise ValueError(
@@ -124,15 +134,7 @@ class Pipeline:
         self.ball_max_speed = ball_max_speed
         self.crop_scale = crop_scale
         self.crop_center_ratio = crop_center_ratio
-
-    @classmethod
-    def from_config(cls, config: "str | Path | PipelineConfig") -> "Pipeline":
-        """Build a pipeline from a YAML file or :class:`~tactifoot_vision.config.PipelineConfig`."""
-        from tactifoot_vision.config import PipelineConfig, load_config
-
-        if not isinstance(config, PipelineConfig):
-            config = load_config(config)
-        return config.build()
+        self.keep_masks = keep_masks
 
     def run(
         self,
@@ -210,7 +212,10 @@ class Pipeline:
             people = people[np.isin(people.data["class_name"], self.include_classes)]
         if self.tracker is not None:
             people = self.tracker.update(people, frame)
-        # Full-frame masks (SAM2) cost ~2 MB per object per 1080p frame: don't keep them.
+        # Full-frame masks (SAM2) cost ~2 MB per object per 1080p frame: keep crops only.
+        masks = None
+        if self.keep_masks and people.mask is not None:
+            masks = ObjectMasks.from_dense(people.mask)
         people.mask = None
 
         keypoints = None
@@ -228,6 +233,7 @@ class Pipeline:
             ball=ball,
             keypoints=keypoints,
             homography=matrix,
+            masks=masks,
         )
 
     def _sample_crops(

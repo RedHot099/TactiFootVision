@@ -39,6 +39,12 @@ class SoccerPitch:
     length: float = _STD_LENGTH
     width: float = _STD_WIDTH
 
+    def __post_init__(self) -> None:
+        if self.length <= 0 or self.width <= 0:
+            raise ValueError(
+                f"Pitch length and width must be > 0, got {self.length} x {self.width}"
+            )
+
     @property
     def penalty_box_length(self) -> float:
         return self.length * _PENALTY_BOX[0]

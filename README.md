@@ -54,25 +54,69 @@ command is installed alongside (`tactifoot --help`). The SAM2 tracker needs
 | Evaluation | `tv.evaluation` | backend-independent mAP and keypoint metrics, StatsBomb 360 comparison |
 | Inference | `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | ByteTrack / SAM2 trackers, SigLIP / ResNet team clustering, homography to pitch coordinates, `Pipeline.run` → `PipelineResult` |
 | Visualisation | `tv.viz` | frame annotation, 2D pitch radar and overlay, video rendering, notebook plots |
-| Configuration | `tv.config` | YAML pipeline configs (`configs/*.yaml`) |
+| CLI mode | `tv.run_file`, `tactifoot` | run files (`configs/*.yaml`) and the command line |
 
 Backends are pluggable: models, trackers and team embedders are looked up by
 name in registries, so `tv.load_model("rfdetr", ...)` and
-`tv.load_model("yolo", ...)` return objects with the same methods, and a YAML
-config can switch between them. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+`tv.load_model("yolo", ...)` return objects with the same methods, and a run
+file can switch between them by name. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 for conventions and the design.
 
-## Command line
+## Two modes: notebook and command line
+
+The package is used in two independent ways
+([ADR 0001](docs/adr/0001-notebook-and-cli-are-independent-front-ends.md)):
+
+* **Notebook mode**: plain Python, as above. Build the objects you want and
+  call them; there is no config object.
+* **CLI mode**: the `tactifoot` command. It translates its arguments into the
+  same calls and declares no defaults of its own, so an option you leave out
+  keeps the package default.
 
 ```bash
-tactifoot run --config configs/pipeline.yaml --video data/videos/match.mp4 --output-dir outputs/match
-tactifoot train yolo --data data/datasets/football_yolo --weights yolo11n.pt --epochs 50
-tactifoot evaluate rfdetr --weights models/football_rfdetr_base.pth --data data/datasets/football_yolo
+tactifoot run configs/pipeline.yaml --video data/videos/match.mp4 --output-dir outputs/match \
+    --max-frames 500 --set detector.conf=0.4 --set render.annotator.style=video_game
+tactifoot train yolo --data data/datasets/football_yolo --weights yolo11n.pt --epochs 50 --set mosaic=0.0
+tactifoot evaluate rfdetr --weights models/football_rfdetr_base.pth --data data/datasets/football_yolo --set max_images=50
 tactifoot info
 ```
 
-`run` writes `result.pkl`, `tracks.csv`, StatsBomb-style `freeze_frames.csv`
-and `annotated.mp4`.
+`run` writes the **run folder**: `result.pkl`, `tracks.csv`, StatsBomb-style
+`freeze_frames.csv` (all three via `PipelineResult.export`) and
+`annotated.mp4` (skip it with `--no-video`). Its flags are the run inputs:
+`--start`, `--max-frames`, `--stride` (`Pipeline.run`) and `--period`,
+`--period-start` (`PipelineResult.export`). `train` has one flag per
+`TrainConfig` field (`tactifoot train --help` lists them with their defaults);
+backend options go through `--set`. `evaluate` passes `--split` and `--set`
+keys to `model.evaluate`.
+
+### Run files
+
+A run file says how to process video: models, tracker, teams, homography and
+rendering. Each section is the keyword arguments of one package call, and
+backend options sit next to `type`:
+
+```yaml
+detector: {type: yolo, weights: ../models/football_yolo11m.pt, conf: 0.3, iou: 0.5}   # tv.load_model
+keypoints: {type: yolo_pose, weights: ../models/pitch_yolov8n_pose.pt}                 # null: none
+tracker: {type: bytetrack, lost_track_buffer: 30}     # tv.tracking.create_tracker; null: none
+teams: {embedder: siglip}                             # tv.teams.TeamClassifier; null: none
+pitch: {length: 120, width: 80}                       # tv.SoccerPitch
+homography: {smoothing_window: 5}                     # tv.pitch.HomographyEstimator
+pipeline: {include_classes: [player, goalkeeper]}     # remaining tv.Pipeline arguments
+render:                                               # tv.viz.render_video arguments
+  annotator: {style: video_game}                      # tv.viz.FrameAnnotator
+  radar: {draw_ids: true}                             # tv.viz.PitchRadar; null: none
+```
+
+Keys are checked against the signatures when the file is loaded (a typo fails
+with the list of valid keys); values are checked by the constructors before the
+first frame. Paths starting with `./` or `../` are relative to the run file.
+`--set dotted.key=value` overrides one value for one run; the value is YAML
+(`null`, `true`, `0.4`, `[a, b]`) and missing keys are created. In Python,
+`tv.run_file.load("configs/pipeline.yaml", ["tracker=null"]).build_pipeline()`
+does the same as the CLI. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#run-files-and-the-cli-tvrun_file-tactifoot)
+for every section and [`examples/06_cli.sh`](examples/06_cli.sh) for a runnable tour.
 
 ## Local data layout
 
@@ -99,7 +143,7 @@ first use to `~/.cache/tactifoot_vision/`.
 ```bash
 uv run pytest                 # fast tests on synthetic data
 uv run pytest -m model        # tests that load real weights / use the GPU
-uv run ruff check src tests && uv run ruff format --check src tests
+uv run ruff check src tests examples && uv run ruff format --check src tests examples
 ```
 
 The `examples/` scripts run each functional area on the local data; the notebook

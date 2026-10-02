@@ -14,7 +14,7 @@ from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.models.base import TrainResult
-from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
+from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
 
 matplotlib.use("Agg")
@@ -144,15 +144,57 @@ def test_annotate_toggles(result: PipelineResult) -> None:
     assert (lines_only != frame).any()
 
 
-def test_annotate_masks_and_missing_data() -> None:
-    people = sv.Detections(
-        xyxy=np.array([[10, 10, 50, 80]], dtype=np.float32),
-        mask=np.zeros((1, H, W), dtype=bool),
-    )
-    people.mask[0, 10:80, 10:50] = True
-    frame_result = FrameResult(0, 0.0, people, sv.Detections.empty())
-    image = viz.FrameAnnotator(draw_masks=True).annotate(_frame(), frame_result)
-    assert (image[40, 30] != _frame()[40, 30]).any()
+def _with_masks(frame_result: FrameResult) -> FrameResult:
+    """The frame with a mask over the top half of every person's box."""
+    dense = np.zeros((len(frame_result.detections), H, W), dtype=bool)
+    for mask, (x1, y1, x2, y2) in zip(
+        dense, frame_result.detections.xyxy.astype(int), strict=True
+    ):
+        mask[y1 : (y1 + y2) // 2, x1:x2] = True
+    frame_result.masks = ObjectMasks.from_dense(dense)
+    return frame_result
+
+
+def test_annotate_draws_masks_at_their_frame_position() -> None:
+    frame_result = _with_masks(_frame_result(0))
+    annotator = viz.FrameAnnotator(
+        draw_masks=True, draw_boxes=False, draw_labels=False,
+        draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+    image = annotator.annotate(_frame(), frame_result)
+    x1, y1, x2, y2 = frame_result.detections.xyxy[0].astype(int)
+    assert (image[y1 + 2, x1 + 2] != _frame()[y1 + 2, x1 + 2]).any()  # masked
+    assert (image[y2 - 2, x1 + 2] == _frame()[y2 - 2, x1 + 2]).all()  # box, no mask
+    team_0 = np.array(viz.radar.as_color(viz.radar.TEAM_COLORS[0]).as_bgr())
+    drawn = image[y1 + 2, x1 + 2].astype(int) - _frame()[y1 + 2, x1 + 2]
+    assert np.sign(drawn).tolist() == np.sign(team_0 - _frame()[0, 0]).tolist()
+
+
+def test_annotate_warns_once_when_masks_are_missing(caplog) -> None:
+    annotator = viz.FrameAnnotator(draw_masks=True)
+    with caplog.at_level("WARNING", logger="tactifoot_vision"):
+        for i in range(3):
+            annotator.annotate(_frame(), _frame_result(i))
+    assert sum("no masks" in r.message for r in caplog.records) == 1
+
+
+def test_render_video_draws_masks(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    for frame_result in result:
+        _with_masks(frame_result)
+    plain = dict(radar=False, progress=False)
+    without, _ = _read_all(viz.render_video(result, video, tmp_path / "a.mp4", **plain))
+    with_masks, _ = _read_all(
+        viz.render_video(
+            result, video, tmp_path / "b.mp4",
+            annotator=viz.FrameAnnotator(draw_masks=True), **plain,
+        )
+    )  # fmt: skip
+    x1, y1, x2, _ = result[0].detections.xyxy[0].astype(int)
+    patch = np.s_[y1 + 3 : y1 + 8, x1 + 3 : x2 - 3]
+    difference = np.abs(with_masks[0][patch].astype(int) - without[0][patch]).mean()
+    assert difference > 20
 
 
 def test_annotate_rejects_unknown_style() -> None:

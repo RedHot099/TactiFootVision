@@ -1,11 +1,31 @@
-# Same pipeline with RF-DETR detections and SAM2 mask tracking.
-# SAM2 needs https://github.com/Gy920/segment-anything-2-real-time cloned to external/.
+# Run file: RF-DETR detections with SAM2 mask tracking.
+# SAM2 needs https://github.com/Gy920/segment-anything-2-real-time cloned to
+# external/ and `uv sync --extra sam2`.
+#
+#   CLI:      tactifoot run configs/pipeline_rfdetr_sam2.yaml --video match.mp4 \
+#                 --output-dir outputs/match_sam2 --max-frames 300
+#   Notebook: no run file, the same objects in plain Python:
+#               sam2 = "external/segment-anything-2-real-time"
+#               pipeline = tv.Pipeline(
+#                   detector=tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.5, size="base"),
+#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5),
+#                   tracker=tv.tracking.create_tracker(
+#                       "sam2",
+#                       checkpoint=f"{sam2}/checkpoints/sam2.1_hiera_tiny.pt",
+#                       config=f"{sam2}/sam2/configs/sam2.1/sam2.1_hiera_t.yaml",
+#                   ),
+#                   team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+#               )
+#               result = pipeline.run("match.mp4", max_frames=300)
+#               tv.viz.render_video(result, "match.mp4", "outputs/match_sam2/annotated.mp4")
+#
+# Paths starting with ./ or ../ are relative to this file.
 
 detector:
   type: rfdetr
   weights: ../models/football_rfdetr_base.pth
   conf: 0.5
-  options: {size: base}
+  size: base
 
 keypoints:
   type: yolo_pose
@@ -14,9 +34,14 @@ keypoints:
 
 tracker:
   type: sam2
-  options:
-    checkpoint: ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
-    config: ../external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+  checkpoint: ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
+  config: ../external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
 
 teams:
   embedder: siglip
+
+# Draw the SAM2 masks (or pass --set pipeline.keep_masks=true --set render.annotator.draw_masks=true):
+# pipeline:
+#   keep_masks: true        # keep mask crops in the result (memory: see tv.Pipeline)
+# render:
+#   annotator: {draw_masks: true}

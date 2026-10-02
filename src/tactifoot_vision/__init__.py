@@ -23,12 +23,12 @@ except PackageNotFoundError:  # running from a source tree without installation
 
 _SUBMODULES = (
     "augment",
-    "config",
     "data",
     "evaluation",
     "models",
     "pipeline",
     "pitch",
+    "run_file",
     "teams",
     "tracking",
     "utils",
@@ -54,12 +54,12 @@ _EXPORTS: dict[str, tuple[str, str]] = {
 __all__ = [
     "__version__",
     "augment",
-    "config",
     "data",
     "evaluation",
     "models",
     "pipeline",
     "pitch",
+    "run_file",
     "teams",
     "tracking",
     "utils",
@@ -81,12 +81,12 @@ __all__ = [
 if TYPE_CHECKING:
     from tactifoot_vision import (
         augment,
-        config,
         data,
         evaluation,
         models,
         pipeline,
         pitch,
+        run_file,
         teams,
         tracking,
         utils,

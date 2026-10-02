@@ -111,6 +111,8 @@ def test_classifier_validation():
         TeamClassifier(MeanColorEmbedder(), color_hist_bins=8)
     with pytest.raises(ValueError, match="reducer"):
         TeamClassifier(MeanColorEmbedder(), reducer="pca")
+    with pytest.raises(ValueError, match="n_teams must be >= 2"):
+        TeamClassifier(MeanColorEmbedder(), n_teams=1)
     with pytest.raises(ValueError, match="Unknown embedder"):
         TeamClassifier("nope")
     assert {"resnet", "siglip"} <= set(EMBEDDERS.names())

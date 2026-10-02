@@ -10,7 +10,9 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
-from tactifoot_vision.pipeline import NO_TEAM, FrameResult, PipelineResult
+from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.models import Model
+from tactifoot_vision.pipeline import NO_TEAM, FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import (
     HomographyEstimator,
     SoccerPitch,
@@ -209,3 +211,65 @@ def test_freeze_frame_clock_rounds_to_milliseconds():
 
     assert _format_clock(2.3) == "00:00:02.300"
     assert _format_clock(3599.9996) == "01:00:00.000"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"min_confidence": -0.1}, "min_confidence must be in"),
+        ({"min_confidence": 1.5}, "min_confidence must be in"),
+        ({"ransac_threshold": 0}, "ransac_threshold must be > 0"),
+        ({"max_age": -1}, "max_age must be None or >= 0"),
+        ({"smoothing_window": 0}, "smoothing_window must be >= 1"),
+    ],
+)
+def test_homography_rejects_out_of_range_settings(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        HomographyEstimator(**kwargs)
+
+
+def test_homography_accepts_the_edges_of_its_ranges():
+    HomographyEstimator(min_confidence=0, max_age=None)
+    HomographyEstimator(min_confidence=1, max_age=0, smoothing_window=1)
+
+
+@pytest.mark.parametrize("size", [(0, 68), (105, -1)])
+def test_pitch_rejects_a_non_positive_size(size):
+    with pytest.raises(ValueError, match="must be > 0"):
+        SoccerPitch(*size)
+
+
+class _NoOpModel(Model):
+    name = "no_op"
+    task = Task.DETECT
+
+    def _load(self, weights):
+        pass
+
+    def _train(self, dataset, config, run_dir):
+        raise NotImplementedError
+
+    @property
+    def class_names(self):
+        return []
+
+    def predict(self, image):
+        return sv.Detections.empty()
+
+
+@pytest.mark.parametrize("conf", [-0.01, 1.01])
+def test_model_rejects_conf_outside_zero_one(conf):
+    with pytest.raises(ValueError, match="conf must be in"):
+        _NoOpModel(conf=conf, device="cpu")
+    assert _NoOpModel(conf=1.0, device="cpu").conf == 1.0
+
+
+def test_object_masks_round_trip_through_crops():
+    masks = np.zeros((3, 50, 100), dtype=bool)
+    masks[0, 10:20, 30:35] = True
+    masks[0, 25, 60] = True  # a second fragment widens the crop
+    masks[2, 49, 99] = True  # touches the frame corner
+    compact = ObjectMasks.from_dense(masks)
+    assert [c.shape for c in compact.crops] == [(16, 31), (0, 0), (1, 1)]
+    assert compact.origins.tolist() == [[30, 10], [0, 0], [99, 49]]
+    np.testing.assert_array_equal(compact.to_dense(100, 50), masks)

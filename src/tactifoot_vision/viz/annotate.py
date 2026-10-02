@@ -1,5 +1,6 @@
 """Drawing pipeline results and dataset labels onto images."""
 
+import logging
 from collections.abc import Sequence
 from typing import Literal
 
@@ -8,7 +9,7 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
-from tactifoot_vision.pipeline.result import FrameResult
+from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.viz.radar import (
     BALL_COLOR,
@@ -27,6 +28,9 @@ CLASS_COLORS = ("#FFD400", "#FF6B00", "#00BFFF", "#FF1493", "#A259FF", "#FF4040"
 KEYPOINT_COLOR = "#FFA500"  # confident keypoint that agrees with the homography
 KEYPOINT_OUTLIER_COLOR = "#FF0000"  # confident keypoint the homography disagrees with
 PITCH_LINE_COLOR = "#FFFFFF"
+MASK_OPACITY = 0.45
+
+logger = logging.getLogger(__name__)
 
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -117,7 +121,8 @@ class FrameAnnotator:
             default_color: people without a team.
             draw_boxes: boxes/ellipses of people and the ball marker.
             draw_labels: ``#<track id>`` tags.
-            draw_masks: segmentation masks (SAM2 tracker) when present.
+            draw_masks: segmentation masks, kept by ``Pipeline(keep_masks=True)``
+                with a mask tracker (SAM2); warns once if a result has none.
             draw_keypoints: pitch keypoints with confidence ``>= keypoint_threshold``.
             draw_pitch_lines: pitch markings projected with the inverse homography.
             pitch: pitch model the homography maps to (default ``SoccerPitch()``).
@@ -140,6 +145,7 @@ class FrameAnnotator:
         self._palette = sv.ColorPalette(colors)
         self._text_palette = sv.ColorPalette([text_color_for(c) for c in colors])
         self._markings = pitch_markings(self.pitch)
+        self._warned_no_masks = False
 
     def annotate(self, frame: np.ndarray, frame_result: FrameResult) -> np.ndarray:
         """Return an annotated copy of ``frame`` (BGR ``uint8``)."""
@@ -154,10 +160,8 @@ class FrameAnnotator:
         people = frame_result.detections
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
         if len(people):
-            if self.draw_masks and people.mask is not None:
-                image = sv.MaskAnnotator(color=self._palette, opacity=0.45).annotate(
-                    image, people, custom_color_lookup=lookup
-                )
+            if self.draw_masks:
+                self._draw_masks(image, frame_result.masks, lookup)
             if self.draw_boxes:
                 image = self._people_annotator(thickness).annotate(
                     image, people, custom_color_lookup=lookup
@@ -204,6 +208,24 @@ class FrameAnnotator:
                 outline_thickness=max(1, thickness // 2),
             )
         return sv.BoxAnnotator(color=self.ball_color, thickness=thickness)
+
+    def _draw_masks(
+        self, image: np.ndarray, masks: ObjectMasks | None, lookup: np.ndarray
+    ) -> None:
+        if masks is None:
+            if not self._warned_no_masks:
+                logger.warning(
+                    "draw_masks=True but the result has no masks; run the pipeline "
+                    "with a mask tracker (sam2) and keep_masks=True"
+                )
+                self._warned_no_masks = True
+            return
+        tints = np.array([c.as_bgr() for c in self._palette.colors], dtype=np.float32)
+        for (x, y), crop, index in zip(masks.origins, masks.crops, lookup, strict=True):
+            region = image[y : y + crop.shape[0], x : x + crop.shape[1]]
+            region[crop] = (
+                (1 - MASK_OPACITY) * region[crop] + MASK_OPACITY * tints[index]
+            ).astype(np.uint8)
 
     # --------------------------------------------------------------- pitch
     def _draw_pitch(

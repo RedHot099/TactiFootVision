@@ -3,6 +3,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
@@ -12,6 +13,7 @@ from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
 from tactifoot_vision.teams import Embedder, TeamClassifier
+from tactifoot_vision.tracking import ByteTrackTracker, Tracker
 
 ROOT = Path(__file__).resolve().parents[1]
 WIDTH, HEIGHT, FPS, FRAMES = 320, 240, 25.0, 12
@@ -316,6 +318,55 @@ def test_validation():
         detector, homography=tv.pitch.HomographyEstimator(SoccerPitch(120, 80))
     )
     assert pipeline.pitch == SoccerPitch(120, 80)
+
+
+class BoxMaskTracker(Tracker):
+    """ByteTrack plus a full-frame mask over the top half of every tracked box (like SAM2)."""
+
+    name = "box_mask"
+
+    def __init__(self) -> None:
+        self._inner = ByteTrackTracker()
+
+    def reset(self, fps: float | None = None) -> None:
+        self._inner.reset(fps)
+
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections:
+        tracked = self._inner.update(detections, frame)
+        tracked.mask = np.zeros((len(tracked), *frame.shape[:2]), dtype=bool)
+        for mask, (x1, y1, x2, y2) in zip(
+            tracked.mask, tracked.xyxy.astype(int), strict=True
+        ):
+            mask[y1 : (y1 + y2) // 2, x1:x2] = True
+        return tracked
+
+
+def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
+    kept = _pipeline(tracker=BoxMaskTracker(), keep_masks=True).run(
+        video, max_frames=3, progress=False
+    )
+    dropped = _pipeline(tracker=BoxMaskTracker()).run(
+        video, max_frames=3, progress=False
+    )
+    assert all(f.masks is None and f.detections.mask is None for f in dropped)
+    for frame in kept:
+        assert frame.detections.mask is None
+        assert len(frame.masks) == len(frame.detections) > 0
+        dense = frame.masks.to_dense(WIDTH, HEIGHT)
+        boxes = frame.detections.xyxy.astype(int)
+        for mask, crop, (x1, y1, x2, y2) in zip(
+            dense, frame.masks.crops, boxes, strict=True
+        ):
+            assert crop.shape == ((y1 + y2) // 2 - y1, x2 - x1)
+            assert mask[y1, x1] and not mask[y2 - 1, x1] and mask.sum() == crop.size
+
+    loaded = PipelineResult.load(kept.save(tmp_path / "result.pkl"))
+    for before, after in zip(kept, loaded, strict=True):
+        np.testing.assert_array_equal(
+            after.masks.to_dense(WIDTH, HEIGHT), before.masks.to_dense(WIDTH, HEIGHT)
+        )
+    pd.testing.assert_frame_equal(kept.to_dataframe(), dropped.to_dataframe())
+    pd.testing.assert_frame_equal(kept.to_freeze_frames(), dropped.to_freeze_frames())
 
 
 # ----------------------------------------------------------------- real models

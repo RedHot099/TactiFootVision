@@ -50,17 +50,15 @@ result = pipeline.run(VIDEO, max_frames=250)
 print(result.to_dataframe().head())
 print("tracks:", len(result.track_ids))
 
-OUT.mkdir(parents=True, exist_ok=True)
-result.save(OUT / "result.pkl")
-result.to_csv(OUT / "tracks.csv")
-result.to_freeze_frames(period=1).to_csv(OUT / "freeze_frames.csv", index=False)
+result.export(OUT, period=1)  # result.pkl, tracks.csv, freeze_frames.csv
 
-# The same pipeline from YAML, here with RF-DETR swapped in by name.
-config = tv.config.load_config("configs/pipeline.yaml")
-config.detector = tv.config.ModelConfig(
-    type="rfdetr", weights="models/football_rfdetr_base.pth", conf=0.5
+# Swapping a component is plain Python: here RF-DETR replaces YOLO.
+rfdetr_pipeline = tv.Pipeline(
+    detector=detectors["rfdetr"],
+    keypoint_model=pitch_model,
+    tracker="bytetrack",
 )
-rfdetr_result = config.build().run(VIDEO, max_frames=50)
+rfdetr_result = rfdetr_pipeline.run(VIDEO, max_frames=50)
 print(
     "RF-DETR pipeline:",
     len(rfdetr_result),

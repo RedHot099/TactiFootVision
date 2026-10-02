@@ -18,6 +18,46 @@ NO_TEAM = -1
 
 
 @dataclass
+class ObjectMasks:
+    """Segmentation masks of a frame's people, each stored inside its own bounding region.
+
+    A full-frame boolean mask costs width x height bytes per object (2 MB at
+    1080p); a crop costs only the area the object covers. ``crops[i]`` is the
+    mask of detection ``i`` with its top-left pixel at ``origins[i]`` (x, y).
+    """
+
+    origins: np.ndarray  # (N, 2) int x, y
+    crops: list[np.ndarray]  # N bool arrays of shape (h_i, w_i)
+
+    @classmethod
+    def from_dense(cls, masks: np.ndarray) -> "ObjectMasks":
+        """Crop ``(N, H, W)`` boolean masks to the pixels each one covers."""
+        origins = np.zeros((len(masks), 2), dtype=int)
+        crops = []
+        for i, mask in enumerate(masks):
+            rows, cols = (
+                np.flatnonzero(mask.any(axis=1)),
+                np.flatnonzero(mask.any(axis=0)),
+            )
+            if len(rows) == 0:
+                crops.append(np.zeros((0, 0), dtype=bool))
+                continue
+            origins[i] = cols[0], rows[0]
+            crops.append(mask[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1].copy())
+        return cls(origins=origins, crops=crops)
+
+    def to_dense(self, width: int, height: int) -> np.ndarray:
+        """``(N, height, width)`` boolean masks at their full-frame position."""
+        dense = np.zeros((len(self), height, width), dtype=bool)
+        for mask, (x, y), crop in zip(dense, self.origins, self.crops, strict=True):
+            mask[y : y + crop.shape[0], x : x + crop.shape[1]] = crop
+        return dense
+
+    def __len__(self) -> int:
+        return len(self.crops)
+
+
+@dataclass
 class FrameResult:
     """Everything the pipeline knows about one video frame.
 
@@ -36,6 +76,7 @@ class FrameResult:
     ball: sv.Detections
     keypoints: sv.KeyPoints | None = None  # pitch keypoints in frame pixels
     homography: np.ndarray | None = None  # 3x3 frame -> pitch
+    masks: ObjectMasks | None = None  # one per person (Pipeline(keep_masks=True))
 
     @property
     def pitch_xy(self) -> np.ndarray:
@@ -182,6 +223,25 @@ class PipelineResult:
         return pd.DataFrame(rows)
 
     # ----------------------------------------------------------- persistence
+    def export(
+        self, out_dir: str | Path, *, period: int = 1, period_start: float = 0.0
+    ) -> Path:
+        """Write the run folder's data files to ``out_dir`` (created if missing).
+
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_csv`) and
+        ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period`` and
+        ``period_start``). Render the annotated video with
+        :func:`tactifoot_vision.viz.render_video`.
+        """
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self.save(out_dir / "result.pkl")
+        self.to_csv(out_dir / "tracks.csv")
+        self.to_freeze_frames(period, period_start).to_csv(
+            out_dir / "freeze_frames.csv", index=False
+        )
+        return out_dir
+
     def save(self, path: str | Path) -> Path:
         """Pickle the whole result (reload with :meth:`load`)."""
         path = Path(path)
