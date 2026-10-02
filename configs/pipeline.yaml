@@ -1,0 +1,29 @@
+# Inference pipeline for `tactifoot run --config configs/pipeline.yaml ...`
+# or `tv.config.load_config("configs/pipeline.yaml").build()`.
+# Relative paths are resolved against this file's folder.
+
+detector:
+  type: yolo                # yolo | rfdetr  (tv.models.available_models())
+  weights: ../models/football_yolo11m.pt
+  conf: 0.3
+  options: {iou: 0.5}
+
+keypoints:
+  type: yolo_pose
+  weights: ../models/pitch_yolov8n_pose.pt
+  conf: 0.5
+
+tracker:
+  type: bytetrack           # bytetrack | sam2
+  options: {lost_track_buffer: 30}
+
+teams:
+  embedder: siglip          # siglip | resnet
+  n_teams: 2
+  reducer: umap
+
+pitch: {length: 105, width: 68}
+
+homography:
+  min_confidence: 0.5
+  smoothing_window: 3

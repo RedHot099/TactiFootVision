@@ -12,22 +12,17 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
+.ipynb_checkpoints/
 *.log
 
-# Data and Models 
+# Data, weights and run artefacts (kept outside git; see README "Local data layout")
 data/
 models/
 output/
-tactifoot_kp_training/
+outputs/
 results/
 external/
 runs/
-*.sh
-*.txt
 *.pt
 *.pth
-*.yaml
-
-# IDE specific
-.idea/
-.vscode/
+*.mp4

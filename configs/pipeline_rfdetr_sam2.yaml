@@ -1,0 +1,22 @@
+# Same pipeline with RF-DETR detections and SAM2 mask tracking.
+# SAM2 needs https://github.com/Gy920/segment-anything-2-real-time cloned to external/.
+
+detector:
+  type: rfdetr
+  weights: ../models/football_rfdetr_base.pth
+  conf: 0.5
+  options: {size: base}
+
+keypoints:
+  type: yolo_pose
+  weights: ../models/pitch_yolov8n_pose.pt
+  conf: 0.5
+
+tracker:
+  type: sam2
+  options:
+    checkpoint: ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
+    config: ../external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+
+teams:
+  embedder: siglip
