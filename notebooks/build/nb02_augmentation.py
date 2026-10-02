@@ -232,7 +232,9 @@ gives the same images, and the result exports with `to_yolo` / `to_coco` like
 any dataset.
 """)
     nb.code("""
-augmented = A.augment_dataset(detection, recipe, OUT / "augmented", copies=2, seed=0)
+augmented = A.augment_dataset(
+    detection, recipe, OUT / "augmented", copies=2, seed=0, progress=False
+)
 print(augmented)
 augmented.summary()
 """)

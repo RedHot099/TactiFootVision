@@ -25,6 +25,7 @@ def augment_dataset(
     splits: Sequence[str] = ("train",),
     seed: int = 0,
     image_format: str = "jpg",
+    progress: bool = True,
 ) -> Dataset:
     """Add ``copies`` augmented variants of every image in ``splits``.
 
@@ -48,6 +49,7 @@ def augment_dataset(
             transform; image ``i`` of a split always gets the same random
             stream, whatever other splits are augmented.
         image_format: file extension of the written images (``jpg``, ``png``...).
+        progress: show a progress bar per split.
 
     Returns:
         A new dataset named ``"<name>-aug"``.
@@ -79,6 +81,7 @@ def augment_dataset(
             zip(originals, stems, strict=True),
             total=len(originals),
             desc=f"augment {split}",
+            disable=not progress,
         )
         for index, (sample, stem) in enumerate(progress):
             image = sample.read_image()

@@ -52,7 +52,7 @@ recipe = tv.augment.Compose([
     tv.augment.ColorJitter(),
 ])
 small = dataset.subset({"train": 100, "valid": 40}, seed=0)
-augmented = tv.augment.augment_dataset(small, recipe, OUT / "augmented", copies=1)
+augmented = tv.augment.augment_dataset(small, recipe, OUT / "augmented", copies=1, progress=False)
 augmented.summary()
 """)
 

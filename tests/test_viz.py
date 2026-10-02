@@ -456,3 +456,22 @@ def test_viz_modules_do_not_import_matplotlib_at_top_level() -> None:
             else:
                 continue
             assert not any(n.startswith("matplotlib") for n in names), path.name
+
+
+def test_notebook_figures_survive_a_backend_switch():
+    # Ultralytics training switches matplotlib to Agg and back, which drops the
+    # inline formatters; figures created afterwards must still render as images.
+    nbformat = pytest.importorskip("nbformat")
+    nbclient = pytest.importorskip("nbclient")
+    cells = [
+        "import matplotlib.pyplot as plt\nimport tactifoot_vision as tv\n"
+        "backend = plt.get_backend()\n"
+        "plt.switch_backend('Agg')\nplt.switch_backend(backend)",
+        "tv.viz.draw_pitch()",
+    ]
+    notebook = nbformat.v4.new_notebook(
+        cells=[nbformat.v4.new_code_cell(c) for c in cells]
+    )
+    nbclient.NotebookClient(notebook, kernel_name="python3", timeout=120).execute()
+    outputs = notebook.cells[1].outputs
+    assert any("image/png" in output.get("data", {}) for output in outputs)

@@ -5,7 +5,6 @@ matplotlib is imported inside the functions. Every helper returns a
 it exactly once (as the cell's value) and scripts can ``fig.savefig(...)``.
 """
 
-import functools
 import math
 import re
 import sys
@@ -89,14 +88,31 @@ def _new_figure(width: float, height: float) -> "Figure":
     return Figure(figsize=(width, height), layout="constrained")
 
 
-@functools.cache
 def _enable_notebook_display() -> None:
-    """Load pyplot's backend once inside IPython; the inline backend registers the
-    formatter that renders ``Figure`` objects."""
-    if "IPython" in sys.modules:
-        import matplotlib.pyplot as plt
+    """Make IPython render ``Figure`` objects (the inline backend's formatters).
 
-        plt.switch_backend(plt.get_backend())
+    Other libraries can drop the formatters by switching backends (Ultralytics
+    training does), so they are re-registered whenever they are missing.
+    """
+    if "IPython" not in sys.modules:
+        return
+    from IPython import get_ipython
+
+    shell = get_ipython()
+    if shell is None or not hasattr(shell, "display_formatter"):
+        return
+    from IPython.core.pylabtools import select_figure_formats
+    from matplotlib.figure import Figure
+
+    formatters = shell.display_formatter.formatters.values()
+    if any(Figure in formatter.type_printers for formatter in formatters):
+        return
+    try:
+        from matplotlib_inline.backend_inline import InlineBackend
+    except ImportError:  # not a Jupyter kernel
+        return
+    config = InlineBackend.instance(parent=shell)
+    select_figure_formats(shell, config.figure_formats, **config.print_figure_kwargs)
 
 
 def _titles(ax: "Axes", title: str, subtitle: str | None = None) -> None:
