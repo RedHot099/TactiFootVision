@@ -143,9 +143,12 @@ class RunFile:
         result: "PipelineResult",
         source: str | Path | None,
         output: str | Path,
-        progress: bool = True,
+        **options: Any,
     ) -> Path:
-        """:func:`tactifoot_vision.viz.render_video` with the ``render`` section."""
+        """:func:`tactifoot_vision.viz.render_video` with the ``render`` section.
+
+        ``options`` are further ``render_video`` arguments, e.g. ``progress=False``.
+        """
         from tactifoot_vision.viz import FrameAnnotator, PitchRadar, render_video
 
         kwargs = self.sections.get("render", {})
@@ -158,7 +161,7 @@ class RunFile:
             kwargs["radar"] = (
                 False if radar is None else PitchRadar(pitch=result.pitch, **radar)
             )
-        return render_video(result, source, output, progress=progress, **kwargs)
+        return render_video(result, source, output, **kwargs, **options)
 
     def __repr__(self) -> str:
         return f"RunFile({str(self.path)!r}, sections={list(self._sections)})"

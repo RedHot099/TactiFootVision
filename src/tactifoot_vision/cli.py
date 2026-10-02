@@ -89,10 +89,18 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     tv.setup_logging(**_given(args, ["level"]))
-    return args.handler(args)
+    try:
+        return args.handler(args)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        if getattr(args, "level", "").upper() == "DEBUG":
+            raise
+        print(f"tactifoot: error: {error}", file=sys.stderr)
+        return 1
 
 
 def _run(frame_range: list[str], period: list[str], args: argparse.Namespace) -> int:
+    if not args.video.is_file():  # fail before loading the models
+        raise FileNotFoundError(f"video not found: {args.video}")
     run_file = tv.run_file.load(args.run_file, _overrides(args))
     pipeline = run_file.build_pipeline()
     result = pipeline.run(args.video, **_given(args, frame_range))

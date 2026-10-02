@@ -47,6 +47,8 @@ class Notebook:
     def to_node(self) -> nbformat.NotebookNode:
         node = nbformat.v4.new_notebook()
         node.cells = self.cells
+        for number, cell in enumerate(node.cells):
+            cell.id = f"cell-{number:03d}"  # stable ids keep rebuild diffs small
         node.metadata = {"kernelspec": KERNELSPEC, "language_info": {"name": "python"}}
         return node
 

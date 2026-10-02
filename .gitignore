@@ -25,4 +25,6 @@ external/
 runs/
 *.pt
 *.pth
+*.onnx
+*.safetensors
 *.mp4

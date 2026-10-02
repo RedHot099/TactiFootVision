@@ -25,6 +25,7 @@ def render_video(
     overlay_position: str = "bottom-center",
     overlay_width_fraction: float = 0.25,
     overlay_alpha: float = 0.8,
+    overlay_padding: int = 10,
     fps: float | None = None,
     progress: bool = True,
 ) -> Path:
@@ -42,7 +43,8 @@ def render_video(
         annotator: frame drawing; default ``FrameAnnotator(pitch=result.pitch)``.
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
             ``False`` for none.
-        overlay_position, overlay_width_fraction, overlay_alpha: see :func:`overlay`.
+        overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding:
+            see :func:`overlay`.
         fps: output frame rate; default derived from the source and the stride.
         progress: show a progress bar.
 
@@ -116,6 +118,7 @@ def render_video(
                     position=overlay_position,
                     width_fraction=overlay_width_fraction,
                     alpha=overlay_alpha,
+                    padding=overlay_padding,
                 )
             writer.write(image)
             written += 1

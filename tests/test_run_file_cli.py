@@ -433,6 +433,26 @@ def test_cli_run_passes_run_inputs_and_overrides(tmp_path):
     assert (frames["period"] == 2).all() and frames["minute"].iloc[0] == 1
 
 
+def test_cli_reports_errors_without_a_traceback(tmp_path, capsys):
+    config = _write(tmp_path / "run.yaml", {"detector": {**DETECTOR, "bogus": 1}})
+    video = _video(tmp_path / "clip.mp4")
+    args = ["run", str(config), "--video", str(video), "--output-dir", str(tmp_path)]
+    assert main(args) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("tactifoot: error:") and "bogus" in err
+    assert "Traceback" not in err
+    with pytest.raises(ValueError, match="bogus"):  # DEBUG keeps the traceback
+        main(["--log-level", "DEBUG", *args])
+
+
+def test_cli_run_checks_the_video_before_loading_models(tmp_path, capsys):
+    config = _write(tmp_path / "run.yaml", {"detector": {"type": "no_such_model"}})
+    args = ["run", str(config), "--video", str(tmp_path / "missing.mp4")]
+    assert main([*args, "--output-dir", str(tmp_path / "out")]) == 1
+    assert "video not found" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
 def test_every_run_parameter_has_a_flag(capsys):
     with pytest.raises(SystemExit):
         main(["run", "--help"])

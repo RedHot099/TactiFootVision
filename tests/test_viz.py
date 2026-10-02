@@ -475,3 +475,20 @@ def test_notebook_figures_survive_a_backend_switch():
     nbclient.NotebookClient(notebook, kernel_name="python3", timeout=120).execute()
     outputs = notebook.cells[1].outputs
     assert any("image/png" in output.get("data", {}) for output in outputs)
+
+
+def test_render_video_passes_overlay_padding(
+    result: PipelineResult, video: Path, tmp_path: Path, monkeypatch
+):
+    seen = []
+    real_overlay = viz.video.overlay
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs["padding"])
+        return real_overlay(*args, **kwargs)
+
+    monkeypatch.setattr(viz.video, "overlay", spy)
+    viz.render_video(
+        result, video, tmp_path / "a.mp4", overlay_padding=3, progress=False
+    )
+    assert seen and set(seen) == {3}
