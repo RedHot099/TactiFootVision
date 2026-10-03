@@ -50,6 +50,7 @@ class ObjectMasks:
         """``(N, height, width)`` boolean masks at their full-frame position."""
         dense = np.zeros((len(self), height, width), dtype=bool)
         for mask, (x, y), crop in zip(dense, self.origins, self.crops, strict=True):
+            crop = crop[: height - y, : width - x]  # a crop may reach past the frame
             mask[y : y + crop.shape[0], x : x + crop.shape[1]] = crop
         return dense
 

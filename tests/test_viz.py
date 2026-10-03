@@ -572,3 +572,27 @@ def test_plot_training_rejects_a_non_numeric_epoch_column() -> None:
     history = pd.DataFrame({"epoch": ["a", "b"], "train/box_loss": [1.0, 0.5]})
     with pytest.raises(ValueError, match="epoch"):
         viz.plot_training(history)
+
+
+def test_masks_reaching_past_the_frame_are_clipped():
+    masks = ObjectMasks(origins=np.array([[75, 55]]), crops=[np.ones((10, 10), bool)])
+    dense = masks.to_dense(80, 60)
+    assert dense.shape == (1, 60, 80) and dense.sum() == 5 * 5
+    frame_result = _frame_result(0)
+    frame_result.masks = ObjectMasks(
+        origins=np.array([[75, 55]] * len(frame_result.detections)),
+        crops=[np.ones((10, 10), bool)] * len(frame_result.detections),
+    )
+    image = np.zeros((60, 80, 3), np.uint8)
+    out = viz.FrameAnnotator(draw_masks=True).annotate(image, frame_result)
+    assert out.shape == image.shape
+
+
+def test_a_singular_homography_draws_no_pitch_lines():
+    frame_result = _frame_result(0)
+    frame_result.homography = np.zeros((3, 3))
+    image = _frame()
+    out = viz.FrameAnnotator(draw_boxes=False, draw_labels=False).annotate(
+        image, frame_result
+    )
+    assert out.shape == image.shape

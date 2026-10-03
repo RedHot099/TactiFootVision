@@ -75,7 +75,10 @@ def project_to_frame(
     width, height = frame_size
     # The side of the horizon the camera looks at: where the frame centre lands.
     centre = homography @ np.array([width / 2, height / 2, 1.0])
-    inverse = np.linalg.inv(homography)
+    try:
+        inverse = np.linalg.inv(homography)
+    except np.linalg.LinAlgError:  # a degenerate fit: nothing can be projected
+        return np.zeros((len(points), 2)), np.zeros(len(points), dtype=bool)
     projected = np.column_stack([points, np.ones(len(points))]) @ inverse.T
     w = projected[:, 2] * np.sign(centre[2])
     valid = w > 1e-9
@@ -221,7 +224,9 @@ class FrameAnnotator:
                 self._warned_no_masks = True
             return
         tints = np.array([c.as_bgr() for c in self._palette.colors], dtype=np.float32)
+        height, width = image.shape[:2]
         for (x, y), crop, index in zip(masks.origins, masks.crops, lookup, strict=True):
+            crop = crop[: height - y, : width - x]  # a crop may reach past the frame
             region = image[y : y + crop.shape[0], x : x + crop.shape[1]]
             region[crop] = (
                 (1 - MASK_OPACITY) * region[crop] + MASK_OPACITY * tints[index]
