@@ -37,7 +37,7 @@ assert tv.load_dataset(OUT / "small_coco").summary().equals(small.summary())
 # Frames from match footage, e.g. to annotate a new dataset.
 video = tv.VideoReader("data/videos/broadcast_60s.mp4")
 print(video)
-frames = tv.data.extract_frames(video.path, OUT / "frames", every=250, max_frames=6)
+frames = tv.data.extract_frames(video.path, OUT / "frames", end=1500, stride=250)
 print("extracted", [p.name for p in frames])
 
 # StatsBomb 360 freeze frames for positional comparisons.

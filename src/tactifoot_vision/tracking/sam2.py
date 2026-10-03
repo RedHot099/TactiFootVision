@@ -56,7 +56,10 @@ class SAM2Tracker(Tracker):
     detections carry masks in ``mask``, boxes derived from the masks, and the
     ``class_id`` / ``data["class_name"]`` of the detection that seeded each
     track (other ``data`` keys are not kept). Objects whose mask is empty in
-    a frame are left out of that frame's output.
+    a frame are left out of that frame's output. A re-seed prompts SAM2 with
+    the tracks visible on that frame only, so a track whose mask is empty on
+    the re-seed frame loses its id; when the detector sees it again it comes
+    back as a new track.
 
     Args:
         checkpoint: SAM2 checkpoint, e.g. ``external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt``.
@@ -193,11 +196,15 @@ class SAM2Tracker(Tracker):
             self._last_reseed is not None
             and self._frame - self._last_reseed < self.reseed_interval
         )
-        ready = [c for c in self._candidates if c.hits >= self.candidate_min_hits]
+        ready = [
+            c
+            for c in self._candidates
+            if c.hits >= self.candidate_min_hits and not self._overlaps(c.box, tracked)
+        ]
         if cooling or not ready:
             return tracked
         self._candidates = [
-            c for c in self._candidates if c.hits < self.candidate_min_hits
+            c for c in self._candidates if not any(c is r for r in ready)
         ]
         self._last_reseed = self._frame
         logger.debug(
@@ -240,11 +247,21 @@ class SAM2Tracker(Tracker):
                 self._candidates.append(
                     _Candidate(box, int(class_ids[i]), str(names[i]), self._frame)
                 )
+        # A candidate on top of a tracked box is that track seen again (e.g. after
+        # its mask was empty for a few frames), not a new object.
         self._candidates = [
             c
             for c in self._candidates
             if self._frame - c.last_seen < self._candidate_timeout
+            and not self._overlaps(c.box, tracked)
         ]
+
+    def _overlaps(self, box: np.ndarray, tracked: sv.Detections) -> bool:
+        """Whether ``box`` overlaps a tracked box by at least ``reseed_iou_threshold``."""
+        if not len(tracked):
+            return False
+        iou = sv.box_iou_batch(np.asarray(box, dtype=np.float32)[None], tracked.xyxy)
+        return bool(iou.max() >= self.reseed_iou_threshold)
 
     def _allocate_ids(self, count: int) -> np.ndarray:
         ids = np.arange(self._next_id, self._next_id + count, dtype=int)

@@ -4,7 +4,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import cv2
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,6 +21,7 @@ from tactifoot_vision.models import (
     YOLOPoseModel,
     available_models,
 )
+from tactifoot_vision.models import ultralytics as ultralytics_backend
 from tactifoot_vision.models.rfdetr import (
     _check_train_options,
     _final_metrics,
@@ -35,7 +38,7 @@ from tactifoot_vision.utils import next_run_dir
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
-SAMPLE100 = ROOT / "data" / "datasets" / "football_yolo_sample100"
+FOOTBALL = ROOT / "data" / "datasets" / "football_yolo"
 KEYPOINTS = ROOT / "data" / "keypoints"
 FOOTBALL_CLASSES = ["ball", "goalkeeper", "player", "referee"]
 
@@ -217,10 +220,120 @@ def test_ultralytics_results_csv_columns_are_stripped(tmp_path):
         _read_results_csv(tmp_path / "missing.csv")
 
 
+# ---------------------------------------------- training with fake backends
+def _tiny_dataset(tmp_path: Path) -> tv.Dataset:
+    samples = []
+    for i in range(3):
+        path = tmp_path / "src" / f"img{i}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(path), np.full((48, 64, 3), 100, np.uint8))
+        annotations = tv.data.Annotations(boxes=[[1, 2, 30, 40]], class_ids=[0])
+        samples.append(tv.data.Sample(path, 64, 48, annotations))
+    return tv.Dataset(
+        tv.data.Task.DETECT, ["player"], {"train": samples[:2], "valid": samples[2:]}
+    )
+
+
+class _FakeYOLO:
+    """Trains like Ultralytics: appends one row per epoch to ``results.csv``."""
+
+    def train(self, **args):
+        save_dir = Path(args["project"]) / args["name"]
+        csv = save_dir / "results.csv"
+        if not csv.is_file():
+            csv.write_text("epoch,metrics/mAP50-95(B)\n")
+        rows = len(csv.read_text().splitlines()) - 1
+        with csv.open("a") as fh:
+            fh.write(f"{rows + 1},0.5\n")
+        (save_dir / "weights").mkdir(exist_ok=True)
+        (save_dir / "weights" / "best.pt").write_bytes(b"")
+        metrics = {"metrics/mAP50-95(B)": 0.5}
+        self.trainer = SimpleNamespace(save_dir=save_dir, metrics=metrics)
+
+
+class _FakeRFDETR:
+    """Trains like RF-DETR: appends one JSON line per epoch to ``log.txt``."""
+
+    model_config = SimpleNamespace(patch_size=16, num_windows=2)
+
+    def train(self, **kwargs):
+        run_dir = Path(kwargs["output_dir"])
+        with (run_dir / "log.txt").open("a") as fh:
+            fh.write(_log_line(0, 0.3, 0.2) + "\n")
+        (run_dir / "checkpoint_best_total.pth").write_bytes(b"")
+
+
+@pytest.fixture
+def fake_yolo(monkeypatch) -> YOLODetector:
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: None)
+    model = YOLODetector(device="cpu")
+    model._yolo = _FakeYOLO()
+    return model
+
+
+@pytest.fixture
+def fake_rfdetr(monkeypatch) -> RFDETRDetector:
+    monkeypatch.setattr(RFDETRDetector, "_load", lambda self, weights: None)
+    model = RFDETRDetector(size="base", device="cpu")
+    model._rf = _FakeRFDETR()
+    return model
+
+
+@pytest.mark.parametrize("backend", ["fake_yolo", "fake_rfdetr"])
+def test_rerunning_into_the_same_run_folder_starts_a_fresh_history(
+    backend, tmp_path, request
+):
+    model = request.getfixturevalue(backend)
+    dataset = _tiny_dataset(tmp_path)
+    options = {"output_dir": tmp_path / "runs", "exist_ok": True, "amp": False}
+    if backend == "fake_rfdetr":
+        options.pop("amp")
+    first = model.train(dataset, **options)
+    second = model.train(dataset, **options)
+    assert first.run_dir == second.run_dir
+    assert len(first.history) == len(second.history) == 1
+
+
+def test_ultralytics_replaces_a_dangling_amp_probe_link(
+    fake_yolo, tmp_path, monkeypatch
+):
+    cached = tmp_path / "cache" / "yolo11n.pt"
+    cached.parent.mkdir()
+    cached.write_bytes(b"")
+    monkeypatch.setattr(ultralytics_backend, "_cached_asset", lambda name: cached)
+    run_dir = tmp_path / "runs" / "yolo"
+    run_dir.mkdir(parents=True)
+    (run_dir / "yolo11n.pt").symlink_to(tmp_path / "gone.pt")  # an interrupted run
+    fake_yolo.train(
+        _tiny_dataset(tmp_path), output_dir=tmp_path / "runs", exist_ok=True
+    )
+    assert not (run_dir / "yolo11n.pt").is_symlink()
+
+
+@pytest.mark.parametrize(
+    ("backend", "options", "match"),
+    [
+        ("fake_yolo", {"mosiac": 0.0}, "mosiac"),
+        ("fake_yolo", {"project": "elsewhere"}, "project"),
+        ("fake_yolo", {"data": "other.yaml"}, "data"),
+        ("fake_rfdetr", {"epoch": 5}, "epoch"),
+        ("fake_rfdetr", {"dataset_dir": "elsewhere"}, "dataset_dir"),
+    ],
+)
+def test_bad_backend_options_fail_before_the_run_folder_exists(
+    backend, options, match, tmp_path, request
+):
+    model = request.getfixturevalue(backend)
+    with pytest.raises(ValueError, match=match):
+        model.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs", **options)
+    assert not (tmp_path / "runs").exists()
+
+
 # ======================================================= real weights / GPU
 @pytest.fixture(scope="module")
 def football() -> tv.Dataset:
-    return tv.load_dataset(SAMPLE100)
+    """A fixed sample of the football dataset: 100 training, 20 validation images."""
+    return tv.load_dataset(FOOTBALL).subset({"train": 100, "valid": 20})
 
 
 @pytest.fixture(scope="module")
@@ -371,9 +484,9 @@ def test_train_rfdetr_for_one_epoch(football, tmp_path, monkeypatch):
 
 @pytest.mark.model
 def test_yolo_and_rfdetr_score_on_the_same_scale(football):
-    # Measured on sample100/valid: YOLO11m mAP50 0.65; the RF-DETR checkpoint
-    # (1 epoch on SoccerNet frames) 0.21.
-    expected_map50 = {"football_yolo11m.pt": 0.5, "football_rfdetr_base.pth": 0.1}
+    # Measured on the fixture's 20 validation images: YOLO11m mAP50 0.84,
+    # the RF-DETR base checkpoint 0.88.
+    expected_map50 = {"football_yolo11m.pt": 0.7, "football_rfdetr_base.pth": 0.7}
     models = [
         tv.load_model("yolo", MODELS_DIR / "football_yolo11m.pt"),
         tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth"),

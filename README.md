@@ -19,7 +19,7 @@ pipeline = tv.Pipeline(
     keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt"),
     team_classifier=tv.teams.TeamClassifier("siglip"),
 )
-result = pipeline.run("match.mp4", max_frames=500)                       # inference
+result = pipeline.run("match.mp4", end=500)                       # inference
 result.to_csv("outputs/tracks.csv")
 tv.viz.render_video(result, "match.mp4", "outputs/annotated.mp4")        # visualisation
 ```
@@ -76,7 +76,7 @@ The package is used in two independent ways
 
 ```bash
 tactifoot run configs/pipeline.yaml --video data/videos/match.mp4 --output-dir outputs/match \
-    --max-frames 500 --set detector.conf=0.4 --set render.annotator.style=video_game
+    --end 500 --set detector.conf=0.4 --set render.annotator.style=video_game
 tactifoot train yolo --data data/datasets/football_yolo --weights yolo11n.pt --epochs 50 --set mosaic=0.0
 tactifoot evaluate rfdetr --weights models/football_rfdetr_base.pth --data data/datasets/football_yolo --set max_images=50
 tactifoot info
@@ -85,7 +85,7 @@ tactifoot info
 `run` writes the **run folder**: `result.pkl`, `tracks.csv`, StatsBomb-style
 `freeze_frames.csv` (all three via `PipelineResult.export`) and
 `annotated.mp4` (skip it with `--no-video`). Its flags are the run inputs:
-`--start`, `--max-frames`, `--stride` (`Pipeline.run`) and `--period`,
+`--start`, `--end`, `--stride` (`Pipeline.run`) and `--period`,
 `--period-start` (`PipelineResult.export`). `train` has one flag per
 `TrainConfig` field (`tactifoot train --help` lists them with their defaults);
 backend options go through `--set`. `evaluate` passes `--split` and `--set`

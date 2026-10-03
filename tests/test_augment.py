@@ -377,3 +377,11 @@ def test_augment_dataset_refuses_to_write_into_the_source_folders(tmp_path):
         augment_dataset(dataset, HorizontalFlip(p=1.0), source_root)
     with pytest.raises(ValueError, match="Refusing"):
         augment_dataset(dataset, HorizontalFlip(p=1.0), source_root.parent)
+
+
+def test_augment_dataset_refuses_an_export_folder(tmp_path):
+    dataset = make_dataset(tmp_path)
+    dataset.to_yolo(tmp_path / "export")
+    with pytest.raises(ValueError, match="export"):
+        augment_dataset(dataset, HorizontalFlip(), tmp_path / "export", progress=False)
+    assert not list((tmp_path / "export" / "train" / "images").glob("*_aug*"))

@@ -80,9 +80,23 @@ class _UltralyticsModel(Model):
             options["imgsz"] = self.imgsz
         return self._yolo.predict(image, **options)[0]
 
+    def _check_options(self, options: dict[str, Any]) -> None:
+        from ultralytics.cfg import DEFAULT_CFG_DICT
+
+        super()._check_options(options)
+
+        unknown = sorted(set(options) - set(DEFAULT_CFG_DICT))
+        if unknown:
+            raise ValueError(
+                f"Unknown Ultralytics training options: {', '.join(unknown)}"
+            )
+
     def _train(
         self, dataset: Dataset, config: TrainConfig, run_dir: Path
     ) -> TrainResult:
+        # Ultralytics appends to an existing results.csv (exist_ok=True re-runs);
+        # the history must describe this run only.
+        (run_dir / "results.csv").unlink(missing_ok=True)
         data_yaml = dataset.to_yolo(run_dir / "dataset")
         args: dict[str, Any] = {
             "data": str(data_yaml),
@@ -108,6 +122,7 @@ class _UltralyticsModel(Model):
         # cached copy, so nothing is downloaded twice or dropped in the caller's folder.
         probe = run_dir / _AMP_CHECK_WEIGHTS
         if args.get("amp", True) and not probe.exists():
+            probe.unlink(missing_ok=True)  # a dangling link left by an interrupted run
             probe.symlink_to(_cached_asset(_AMP_CHECK_WEIGHTS))
         try:
             with contextlib.chdir(run_dir):

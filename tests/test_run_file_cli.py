@@ -421,7 +421,7 @@ def test_cli_run_writes_the_run_folder(tmp_path):
 def test_cli_run_passes_run_inputs_and_overrides(tmp_path):
     out = _cli_run(
         tmp_path,
-        *("--start", "1", "--max-frames", "2", "--stride", "2"),
+        *("--start", "1", "--end", "4", "--stride", "2"),
         *("--period", "2", "--period-start", "90", "--no-video"),
         *("--set", "tracker=null", "--set", "detector.conf=0.5"),
     )
@@ -443,6 +443,18 @@ def test_cli_reports_errors_without_a_traceback(tmp_path, capsys):
     assert "Traceback" not in err
     with pytest.raises(ValueError, match="bogus"):  # DEBUG keeps the traceback
         main(["--log-level", "DEBUG", *args])
+
+
+def test_cli_reports_runtime_errors_in_one_line(tmp_path, capsys):
+    config = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"not a video")
+    args = ["run", str(config), "--video", str(video), "--output-dir", str(tmp_path)]
+    assert main(args) == 1
+    err = capsys.readouterr().err
+    last = err.strip().splitlines()[-1]
+    assert last.startswith("tactifoot: error:") and "cannot open" in last
+    assert "Traceback" not in err
 
 
 def test_cli_run_checks_the_video_before_loading_models(tmp_path, capsys):

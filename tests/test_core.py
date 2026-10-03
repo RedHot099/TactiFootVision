@@ -76,7 +76,23 @@ def test_pitch_vertices_and_scaling():
     np.testing.assert_allclose(
         pitch.vertices[10], [16.5, 34 - (9.15**2 - 5.5**2) ** 0.5], atol=1e-4
     )
-    assert statsbomb.vertices[31, 0] - 60 == pytest.approx(80 * 9.15 / 68)
+    # The centre circle meets the halfway line 9.15 m (in pitch units) from the centre.
+    assert statsbomb.vertices[31, 0] - 60 == pytest.approx(120 * 9.15 / 105)
+    assert statsbomb.vertices[15, 1] - 40 == pytest.approx(80 * 9.15 / 68)
+
+
+@pytest.mark.parametrize("size", [(105, 68), (120, 80), (100, 64)])
+def test_arc_landmarks_lie_on_the_drawn_arcs(size):
+    from tactifoot_vision.viz.radar import pitch_markings
+
+    pitch = SoccerPitch(*size)
+    vertices = pitch.vertices
+    lines, _ = pitch_markings(pitch)
+    circle, left_arc, right_arc = lines[-3:]
+    np.testing.assert_allclose(left_arc[[0, -1]], vertices[[10, 11]], atol=1e-4)
+    np.testing.assert_allclose(right_arc[[0, -1]], vertices[[18, 19]], atol=1e-4)
+    np.testing.assert_allclose(circle[0], vertices[31], atol=1e-4)
+    assert left_arc[0, 0] == pytest.approx(pitch.penalty_box_length)
 
 
 def _homography():
@@ -175,8 +191,30 @@ def test_result_tables(tmp_path):
     assert first["timestamp"] == "00:02:05.200"
     assert json.loads(first["location"]) == [50, 30]
     assert frames["location"].iloc[1] is None  # NaN position is not exported
-    assert json.loads(first["visible_area"]) == [[0, 0], [100, 0], [100, 50], [0, 50]]
+    # StatsBomb's flat [x1, y1, x2, y2, ...] polygon
+    assert json.loads(first["visible_area"]) == [0, 0, 100, 0, 100, 50, 0, 50]
     assert frames["type"].tolist() == ["player", "goalkeeper", "ball"]
+
+
+def test_freeze_frames_of_the_second_half_roll_over_the_minute():
+    frames = [
+        FrameResult(i, i / 25, sv.Detections.empty(), sv.Detections.empty())
+        for i in (0, 1499, 1500)
+    ]
+    ball = sv.Detections(
+        xyxy=np.float32([[0, 0, 2, 2]]),
+        confidence=np.float32([0.9]),
+        data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[1, 1]])},
+    )
+    for frame in frames:
+        frame.ball = ball
+    result = PipelineResult(frames, 25.0, (100, 50), ["ball"])
+    table = result.to_freeze_frames(period=2, period_start=45 * 60)
+    assert table[["minute", "second"]].values.tolist() == [[45, 0], [45, 59], [46, 0]]
+    assert table["timestamp"].tolist() == [
+        "00:45:00.000", "00:45:59.960", "00:46:00.000",
+    ]  # fmt: skip
+    assert (table["period"] == 2).all()
 
 
 def test_result_save_load(tmp_path):

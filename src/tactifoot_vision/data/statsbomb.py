@@ -45,7 +45,8 @@ def load_statsbomb(path: str | Path) -> pd.DataFrame:
     Returns one row per freeze-frame object with the event context, the object's
     ``pitch_location`` ``[x, y]`` in StatsBomb units (120 x 80), flags
     ``teammate`` / ``actor`` / ``keeper``, ``type`` (``"player"`` or
-    ``"goalkeeper"``) and the event's ``visible_area`` polygon.
+    ``"goalkeeper"``) and the event's ``visible_area`` polygon (StatsBomb's flat
+    ``[x1, y1, x2, y2, ...]`` list, like ``PipelineResult.to_freeze_frames``).
     """
     path = Path(path)
     if path.suffix == ".csv":

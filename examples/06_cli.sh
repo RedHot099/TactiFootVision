@@ -11,13 +11,16 @@ uv run tactifoot info
 # Inference: a run file says how to process video; run inputs are flags.
 # --set overrides one run file value for this run (the value is YAML).
 uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/run" \
-    --start 250 --max-frames 50 \
+    --start 250 --end 300 \
     --set teams=null --set render.annotator.style=video_game --set render.radar=null
 ls "$OUT/run"   # result.pkl tracks.csv freeze_frames.csv annotated.mp4
 
 # Training: TrainConfig fields are flags (see `tactifoot train --help`);
-# backend options go through --set.
-uv run tactifoot train yolo --data data/datasets/football_yolo_sample100 \
+# backend options go through --set. A small sample of the football dataset
+# keeps this quick; there is no CLI command for subsets, so it is one Python call.
+uv run python -c "import tactifoot_vision as tv; \
+tv.load_dataset('data/datasets/football_yolo').subset({'train': 100, 'valid': 20}).to_yolo('$OUT/football_sample')"
+uv run tactifoot train yolo --data "$OUT/football_sample/data.yaml" \
     --weights yolo11n.pt --epochs 1 --imgsz 320 --batch-size 16 \
     --output-dir "$OUT/runs" --name yolo11n --exist-ok --set mosaic=0.0
 

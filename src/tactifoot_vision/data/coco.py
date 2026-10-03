@@ -15,6 +15,7 @@ from tactifoot_vision.data._files import (
     clipped_box,
     link_file,
     prepare_output,
+    record_output,
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations, Task
@@ -145,6 +146,7 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
     managed = [out_dir / s for s in splits]
     check_output_location(out_dir, managed, (s.image_path for s in dataset))
     prepare_output(out_dir, managed)
+    written: list[Path] = []
     categories = []
     for i, name in enumerate(dataset.class_names):
         category = {"id": i, "name": name, "supercategory": SUPERCATEGORY}
@@ -163,7 +165,9 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
         names = unique_names([s.image_path for s in samples])
         # Ids start at 1: pycocotools (RF-DETR's evaluator) treats id 0 as "no match".
         for image_id, (sample, name) in enumerate(zip(samples, names, strict=True), 1):
-            link_file(sample.image_path, out_dir / split / name, link)
+            target = out_dir / split / name
+            link_file(sample.image_path, target, link)
+            written.append(target)
             images.append(
                 {
                     "id": image_id,
@@ -181,6 +185,7 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
             "annotations": annotations,
         }
         (out_dir / split / ANNOTATION_FILE).write_text(json.dumps(coco))
+    record_output(out_dir, written)
     logger.info("Wrote COCO dataset (%d images) to %s", len(dataset), out_dir)
     return out_dir
 

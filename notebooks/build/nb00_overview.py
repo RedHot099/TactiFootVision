@@ -61,8 +61,8 @@ augmented.summary()
 
 `tv.train` works the same for every backend (`yolo`, `rfdetr`, `yolo_pose`).
 This is a 15-epoch demo on 200 images; the checkpoints in `models/` were
-trained the same way on the full datasets for 200 epochs and are used from
-here on. Both are scored
+trained the same way on the full datasets for far longer (200 epochs for the
+YOLO models, about 30 for RF-DETR) and are used from here on. Both are scored
 by the same evaluation code.
 """)
     nb.code("""
@@ -92,7 +92,7 @@ pipeline = tv.Pipeline(
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
-result = pipeline.run(VIDEO, max_frames=250, progress=False)  # 10 seconds
+result = pipeline.run(VIDEO, end=250, progress=False)  # 10 seconds
 print(len(result), "frames,", len(result.track_ids), "tracks")
 result.to_dataframe().query("object == 'person'").head()
 """)

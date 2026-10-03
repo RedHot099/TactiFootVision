@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 MODELS: "Registry[Model]" = Registry("model")
 
+# Backend arguments that place the run; Model.train sets them from TrainConfig.
+_RUN_FOLDER_OPTIONS = ("output_dir", "project", "name", "dataset_dir", "data")
+
 
 class TrainConfig(BaseModel):
     """Training settings understood by every backend.
@@ -82,7 +85,8 @@ class Model(ABC):
     per detected object, sorted by confidence (best first).
 
     Subclasses implement ``_load``, ``_train``, ``class_names`` and ``predict``,
-    and register themselves in ``MODELS`` under ``name``.
+    may extend ``_check_options``, and register themselves in ``MODELS`` under
+    ``name``.
     """
 
     name: ClassVar[str]
@@ -116,6 +120,20 @@ class Model(ABC):
     ) -> TrainResult:
         """Fine-tune on ``dataset``, writing everything to ``run_dir`` (already created)."""
 
+    def _check_options(self, options: dict[str, Any]) -> None:
+        """Reject bad backend options; called before the run folder is created.
+
+        Options that would move the run folder are always refused. Backends
+        extend this (calling ``super()``) to reject options they do not know,
+        so a typo costs no run folder.
+        """
+        reserved = sorted(set(options) & set(_RUN_FOLDER_OPTIONS))
+        if reserved:
+            raise ValueError(
+                f"Backend option(s) {', '.join(reserved)} would move the run folder; "
+                "set output_dir, name and exist_ok instead"
+            )
+
     @property
     @abstractmethod
     def class_names(self) -> list[str]: ...
@@ -148,6 +166,7 @@ class Model(ABC):
         cfg = TrainConfig(**(base | overrides))
         if cfg.name is None:
             cfg.name = self.name
+        self._check_options(cfg.backend_options)
         run_dir = next_run_dir(Path(cfg.output_dir).absolute() / cfg.name, cfg.exist_ok)
         logger.info(
             "Training %s on %r for %d epochs in %s",

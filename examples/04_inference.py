@@ -46,7 +46,7 @@ pipeline = tv.Pipeline(
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
-result = pipeline.run(VIDEO, max_frames=250)
+result = pipeline.run(VIDEO, end=250)
 print(result.to_dataframe().head())
 print("tracks:", len(result.track_ids))
 
@@ -58,7 +58,7 @@ rfdetr_pipeline = tv.Pipeline(
     keypoint_model=pitch_model,
     tracker="bytetrack",
 )
-rfdetr_result = rfdetr_pipeline.run(VIDEO, max_frames=50)
+rfdetr_result = rfdetr_pipeline.run(VIDEO, end=50)
 print(
     "RF-DETR pipeline:",
     len(rfdetr_result),

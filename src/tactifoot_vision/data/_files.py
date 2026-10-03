@@ -9,7 +9,8 @@ import numpy as np
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
-# Written into every export folder, so a later export may safely clear it.
+# Written into every export folder, so a later export may safely clear it. It
+# lists the image files the export wrote as regular files (copies, hard links).
 EXPORT_MARKER = ".tactifoot-export"
 
 
@@ -86,21 +87,50 @@ def prepare_output(out_dir: Path, managed: Iterable[Path]) -> None:
 
     A non-empty ``out_dir`` must be an earlier export (it carries
     :data:`EXPORT_MARKER`); anything else is left alone with an error.
+
+    An export only deletes what it wrote: symlinks, label files, the COCO json
+    and the regular image files listed in the marker (``copy`` and
+    ``hardlink`` exports, see :func:`record_output`). A managed folder holding
+    any other regular image file, e.g. augmented images, is left alone with an
+    error, so re-exporting into the same folder works for every link mode and
+    nothing else is lost.
     """
-    if (
-        out_dir.is_dir()
-        and any(out_dir.iterdir())
-        and not (out_dir / EXPORT_MARKER).is_file()
-    ):
+    marker = out_dir / EXPORT_MARKER
+    if out_dir.is_dir() and any(out_dir.iterdir()) and not marker.is_file():
         raise ValueError(
             f"{out_dir} is not empty and is not a tactifoot export; use a new folder"
         )
+    managed = list(managed)
+    own = set(marker.read_text().splitlines()) if marker.is_file() else set()
+    for folder in managed:
+        if not folder.is_dir():
+            continue
+        for path in folder.rglob("*"):
+            if (
+                path.suffix.lower() in IMAGE_SUFFIXES
+                and path.is_file()
+                and not path.is_symlink()
+                and path.relative_to(out_dir).as_posix() not in own
+            ):
+                raise ValueError(
+                    f"Refusing to clear {folder}: it holds {path}, which the export "
+                    "did not write; move it or use a new folder"
+                )
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / EXPORT_MARKER).touch()
+    marker.write_text("")
     for folder in managed:
         if folder.exists():
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
+
+
+def record_output(out_dir: Path, written: Iterable[Path]) -> None:
+    """List the regular image files among ``written`` in ``out_dir``'s marker.
+
+    Symlinks need no entry: clearing them never deletes data.
+    """
+    names = [p.relative_to(out_dir).as_posix() for p in written if not p.is_symlink()]
+    (out_dir / EXPORT_MARKER).write_text("".join(f"{name}\n" for name in names))
 
 
 def clipped_box(box: np.ndarray, width: int, height: int) -> np.ndarray | None:

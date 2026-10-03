@@ -27,6 +27,7 @@ Part of the [TactiFoot Vision notebooks](README.md).
         imports="""
 import importlib.util
 import json
+import logging
 import os
 import warnings
 from collections import Counter
@@ -53,6 +54,10 @@ with the class names in `data["class_name"]`, whatever the backend, so YOLO
 and RF-DETR are interchangeable. Supervision's annotators draw them directly.
 """)
     nb.code("""
+# RF-DETR suggests optimize_for_inference() on its first prediction and torch warns
+# about a meshgrid argument inside RF-DETR; both are benign here.
+logging.getLogger("rfdetr.detr").addFilter(lambda record: "not optimized for inference" not in record.getMessage())
+warnings.filterwarnings("ignore", message="torch.meshgrid")
 detectors = {
     "yolo": tv.load_model("yolo", MODELS / "football_yolo11m.pt", conf=0.3),
     "rfdetr": tv.load_model("rfdetr", MODELS / "football_rfdetr_base.pth", conf=0.5),
@@ -102,8 +107,10 @@ fig
     nb.md("""
 `HomographyEstimator.update(keypoints)` fits a frame → pitch homography from
 the confident landmarks (RANSAC) and averages the last few fits to steady it
-over time. `frame_to_pitch` then maps pixels to metres; here the players' feet,
-the bottom centre of their boxes.
+over time. `estimator.used_indices` lists the landmarks given to RANSAC, those
+with confidence of at least `min_confidence`; RANSAC may still treat some of
+them as outliers, so they are not all inliers. `frame_to_pitch` then maps
+pixels to metres; here the players' feet, the bottom centre of their boxes.
 """)
     nb.code("""
 estimator = tv.pitch.HomographyEstimator(pitch)
@@ -111,7 +118,7 @@ homography = estimator.update(keypoints)
 detections = detectors["yolo"](frame)
 feet = detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 on_pitch = tv.pitch.frame_to_pitch(feet, homography)
-print("landmarks used for the fit:", estimator.used_indices.tolist())
+print("confident landmarks given to RANSAC:", estimator.used_indices.tolist())
 pd.DataFrame(on_pitch, columns=["x (m)", "y (m)"]).assign(
     class_name=detections.data["class_name"]).head().round(1)
 """)
@@ -125,7 +132,7 @@ the image.
 projected = tv.pitch.pitch_to_frame(pitch.vertices, homography)
 used = estimator.used_indices
 error = np.linalg.norm(projected[used] - keypoints.xy[0][used], axis=1)
-print(f"reprojection error on the fitted landmarks: median {np.median(error):.1f} px")
+print(f"reprojection error on the confident landmarks: median {np.median(error):.1f} px")
 
 check = frame.copy()
 for x, y in keypoints.xy[0][used]:
@@ -236,7 +243,7 @@ pipeline = tv.Pipeline(
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
-result = pipeline.run(VIDEO, max_frames=375, progress=False)  # the first 15 seconds
+result = pipeline.run(VIDEO, end=375, progress=False)  # the first 15 seconds
 print(len(result), "frames,", len(result.track_ids), "tracks,", f"{result.fps:.0f} fps")
 """)
     nb.md("""
@@ -253,7 +260,9 @@ print("homography:", None if frame_result.homography is None else frame_result.h
 """)
     nb.md("""
 Because teams are voted per track, every frame of a track carries the same
-team. The table counts tracks per class and team.
+team. The table counts tracks per class and team. The demo clip has no
+goalkeeper or referee track and the ball is visible in only a few frames, so
+the goalkeeper, referee and ball rules are described here rather than shown.
 """)
     nb.code("""
 tracks = result.to_dataframe()
@@ -267,8 +276,10 @@ people.groupby(["class_name", "team_id"])["track_id"].nunique().unstack(fill_val
 
 `to_dataframe` gives one row per object per frame. `to_freeze_frames` gives the
 StatsBomb 360 shape: one row per object with match-clock time, JSON-encoded
-pitch location and the visible area of the pitch. `period_start` is the match
-clock at the first frame, in seconds.
+pitch location and the visible area of the pitch (StatsBomb's flat
+`[x1, y1, x2, y2, ...]` polygon). `period_start` is the match clock at the
+first frame, in seconds; `timestamp` is that match clock too, while
+StatsBomb's own event timestamps restart every period.
 """)
     nb.code("""
 tracks.head()
@@ -300,7 +311,7 @@ RF-DETR replaces YOLO and there is no team classifier.
 """)
     nb.code("""
 rfdetr_result = tv.Pipeline(detector=detectors["rfdetr"], keypoint_model=pitch_model).run(
-    VIDEO, max_frames=125, progress=False)
+    VIDEO, end=125, progress=False)
 print(len(rfdetr_result), "frames,", len(rfdetr_result.track_ids), "tracks")
 """)
     nb.md("""
@@ -314,7 +325,7 @@ if sam2_tracker is None:
 else:
     masked = tv.Pipeline(
         detector=detectors["rfdetr"], keypoint_model=pitch_model, tracker=sam2_tracker, keep_masks=True,
-    ).run(VIDEO, max_frames=60, progress=False)
+    ).run(VIDEO, end=60, progress=False)
     masks = masked[-1].masks
     print(len(masked), "frames,", len(masked.track_ids), "tracks;",
           f"{len(masks)} masks in the last frame, {sum(c.size for c in masks.crops) / 1e3:.0f} kB")

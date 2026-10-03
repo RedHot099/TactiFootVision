@@ -45,7 +45,7 @@ pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt")
 pipeline = tv.Pipeline(
     detector=detector, keypoint_model=pitch_model, team_classifier=tv.teams.TeamClassifier(embedder="siglip")
 )
-result = pipeline.run(VIDEO, max_frames=250, progress=False)
+result = pipeline.run(VIDEO, end=250, progress=False)
 frame_result = result[200]
 frame = video.read(frame_result.index)
 print(len(result), "frames,", len(result.track_ids), "tracks")
@@ -59,7 +59,8 @@ print(len(result), "frames,", len(result.track_ids), "tracks")
 ellipses at the players' feet and a triangle over the ball. Both label people
 with their track id, colour them by team (referees in the default colour),
 draw the confident pitch keypoints and project the pitch lines with the
-homography.
+homography. The demo clip has no goalkeeper or referee track and the ball is
+visible in only a few frames, so their styles are described rather than shown.
 """)
     nb.code("""
 styles = {style: tv.viz.FrameAnnotator(style=style).annotate(frame, frame_result) for style in ("standard", "video_game")}
@@ -103,7 +104,7 @@ if SAM2_REPO.is_dir() and importlib.util.find_spec("hydra") is not None:
         config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
     )
     masked = tv.Pipeline(detector=detector, keypoint_model=pitch_model, tracker=sam2, keep_masks=True).run(
-        VIDEO, start=frame_result.index - 30, max_frames=31, progress=False)
+        VIDEO, start=frame_result.index - 30, end=frame_result.index + 1, progress=False)
     masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_keypoints=False).annotate(frame, masked[-1])
     display(tv.show(masks_view, titles="SAM2 masks", width=11))
 else:

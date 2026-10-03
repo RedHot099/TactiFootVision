@@ -14,6 +14,7 @@ from tactifoot_vision.data._files import (
     image_size,
     link_file,
     prepare_output,
+    record_output,
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
@@ -161,6 +162,7 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
     ]
     check_output_location(out_dir, managed, (s.image_path for s in dataset))
     prepare_output(out_dir, managed)
+    written: list[Path] = []
     for split in splits:
         samples = dataset[split]
         for sample, name in zip(
@@ -168,7 +170,9 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
         ):
             target = out_dir / split / "images" / name
             link_file(sample.image_path, target, link)
+            written.append(target)
             label_path(target).write_text(_format_labels(sample))
+    record_output(out_dir, written)
 
     config: dict = {"path": str(out_dir.resolve())}
     for split, key in (("train", "train"), ("valid", "val"), ("test", "test")):

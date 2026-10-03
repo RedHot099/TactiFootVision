@@ -38,7 +38,8 @@ def render_video(
     Args:
         result: pipeline output for ``source``.
         source: the video the result was computed on; ``None`` uses
-            ``result.video_path``. Its frame size must match the result.
+            ``result.video_path``. Its frame size must match the result and it
+            must hold every frame of the result (``RuntimeError`` otherwise).
         output: ``.mp4`` path to write (parent folders are created).
         annotator: frame drawing; default ``FrameAnnotator(pitch=result.pitch)``.
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
@@ -102,11 +103,17 @@ def render_video(
         from tqdm.auto import tqdm
 
         bar = tqdm(total=len(indices), desc="Rendering", unit="frame")
-    written = 0
+    written: set[int] = set()
     try:
         for index, frame in reader.frames(
             start=indices[0], end=indices[-1] + 1, stride=step
         ):
+            if not written and frame.shape[:2] != reader.size[::-1]:
+                raise ValueError(
+                    f"{reader.path} decodes to {frame.shape[1]}x{frame.shape[0]} frames "
+                    f"but its header says {reader.size[0]}x{reader.size[1]} (rotation "
+                    "metadata?); re-encode the video without rotation and rerun the pipeline"
+                )
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
@@ -121,21 +128,25 @@ def render_video(
                     padding=overlay_padding,
                 )
             writer.write(image)
-            written += 1
+            written.add(index)
             if bar is not None:
                 bar.update()
     finally:
         writer.release()
         if bar is not None:
             bar.close()
-    if written < len(indices):
-        logger.warning(
-            "%s ended early: wrote %d of %d result frames",
-            reader.path,
-            written,
-            len(indices),
+    if not written:
+        raise RuntimeError(
+            f"{reader.path} has no frame of the result (first index {indices[0]}); "
+            f"nothing was written to {output}"
         )
-    logger.info("Wrote %d frames at %.2f fps to %s", written, fps, output)
+    if len(written) < len(indices):
+        missing = next(i for i in indices if i not in written)
+        raise RuntimeError(
+            f"{reader.path} ended early: frame {missing} is missing, so {output} holds "
+            f"only {len(written)} of {len(indices)} result frames"
+        )
+    logger.info("Wrote %d frames at %.2f fps to %s", len(written), fps, output)
     return output
 
 

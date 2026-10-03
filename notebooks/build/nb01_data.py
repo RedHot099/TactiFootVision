@@ -222,11 +222,12 @@ print("frames read:", [index for index, _ in every_ten_seconds])
 tv.show([video.read(i) for i in (0, 750, 1400)], titles=["0 s", "30 s", "56 s"])
 """)
     nb.md("""
-`extract_frames` saves every n-th frame as an image, the usual first step when
+`extract_frames` saves every `stride`-th frame of `start <= index < end` as an
+image (the same frame range as `VideoReader.frames`), the usual first step when
 annotating new footage.
 """)
     nb.code("""
-paths = tv.data.extract_frames(VIDEO, OUT / "frames", every=375, max_frames=4)
+paths = tv.data.extract_frames(VIDEO, OUT / "frames", end=1500, stride=375)
 print([path.name for path in paths])
 """)
 

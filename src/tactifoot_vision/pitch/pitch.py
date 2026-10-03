@@ -10,7 +10,7 @@ import numpy as np
 _STD_LENGTH, _STD_WIDTH = 105.0, 68.0
 _PENALTY_BOX = (16.5 / _STD_LENGTH, 40.32 / _STD_WIDTH)
 _GOAL_BOX = (5.5 / _STD_LENGTH, 18.32 / _STD_WIDTH)
-_CENTRE_CIRCLE_RADIUS = 9.15 / _STD_WIDTH
+_CIRCLE_RADIUS = 9.15  # metres: centre circle and penalty arcs
 _PENALTY_SPOT = 11.0 / _STD_LENGTH
 
 # Pairs of vertex indices joined by a painted line.
@@ -62,8 +62,17 @@ class SoccerPitch:
         return self.width * _GOAL_BOX[1]
 
     @property
-    def centre_circle_radius(self) -> float:
-        return self.width * _CENTRE_CIRCLE_RADIUS
+    def circle_radii(self) -> tuple[float, float]:
+        """Radius of the centre circle and penalty arcs along ``x`` and along ``y``.
+
+        9.15 m scaled like the rest of the pitch, so on pitches that are not
+        105:68 (StatsBomb's 120 x 80) the circles are ellipses in pitch units
+        and round on the real pitch.
+        """
+        return (
+            self.length * _CIRCLE_RADIUS / _STD_LENGTH,
+            self.width * _CIRCLE_RADIUS / _STD_WIDTH,
+        )
 
     @property
     def penalty_spot_distance(self) -> float:
@@ -80,21 +89,22 @@ class SoccerPitch:
         hw = W / 2
         pb, gb = self.penalty_box_width / 2, self.goal_box_width / 2
         pl, gl = self.penalty_box_length, self.goal_box_length
-        spot, r = self.penalty_spot_distance, self.centre_circle_radius
+        spot = self.penalty_spot_distance
+        rx, ry = self.circle_radii
         # Keypoints 10, 11, 18, 19 are labelled where the penalty arc meets the
         # penalty-box line (checked against the dataset), not at goal-box width.
-        arc = (r**2 - (pl - spot) ** 2) ** 0.5
+        arc = ry * (1 - ((pl - spot) / rx) ** 2) ** 0.5
         points = [
             (0, 0), (0, hw - pb), (0, hw - gb), (0, hw + gb), (0, hw + pb), (0, W),  # 0-5
             (gl, hw - gb), (gl, hw + gb),  # 6-7
             (spot, hw),  # 8
             (pl, hw - pb), (pl, hw - arc), (pl, hw + arc), (pl, hw + pb),  # 9-12
-            (L / 2, 0), (L / 2, hw - r), (L / 2, hw + r), (L / 2, W),  # 13-16
+            (L / 2, 0), (L / 2, hw - ry), (L / 2, hw + ry), (L / 2, W),  # 13-16
             (L - pl, hw - pb), (L - pl, hw - arc), (L - pl, hw + arc), (L - pl, hw + pb),  # 17-20
             (L - spot, hw),  # 21
             (L - gl, hw - gb), (L - gl, hw + gb),  # 22-23
             (L, 0), (L, hw - pb), (L, hw - gb), (L, hw + gb), (L, hw + pb), (L, W),  # 24-29
-            (L / 2 - r, hw), (L / 2 + r, hw),  # 30-31
+            (L / 2 - rx, hw), (L / 2 + rx, hw),  # 30-31
         ]  # fmt: skip
         return np.asarray(points, dtype=np.float32)
 

@@ -153,11 +153,17 @@ class RFDETRDetector(Model):
         return detections
 
     # --------------------------------------------------------------- training
+    def _check_options(self, options: dict[str, Any]) -> None:
+        super()._check_options(options)
+        _check_train_options(options)
+
     def _train(
         self, dataset: Dataset, config: TrainConfig, run_dir: Path
     ) -> TrainResult:
         options = config.backend_options
-        _check_train_options(options)
+        # RF-DETR appends to an existing log.txt (exist_ok=True re-runs); the
+        # history must describe this run only.
+        (run_dir / "log.txt").unlink(missing_ok=True)
         # RF-DETR always builds a test loader; reuse the validation images if needed.
         has_test = bool(dataset["test"])
         export = dataset if has_test else dataset.with_split("test", dataset["valid"])

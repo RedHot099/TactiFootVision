@@ -129,7 +129,11 @@ class SigLIPEmbedder(Embedder):
                 cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
                 for crop in crops[start : start + self.batch_size]
             ]
-            inputs = self._processor(images=images, return_tensors="pt").to(self.device)
+            # Without the explicit format, crops 1 or 3 pixels tall are read as
+            # channels-first images.
+            inputs = self._processor(
+                images=images, return_tensors="pt", input_data_format="channels_last"
+            ).to(self.device)
             with _inference(self.device):
                 outputs = self._model(**inputs)
             pooled = (

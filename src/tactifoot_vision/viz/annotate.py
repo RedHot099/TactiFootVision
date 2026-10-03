@@ -271,7 +271,8 @@ class FrameAnnotator:
             agrees = valid & (np.linalg.norm(xy - expected, axis=1) <= tolerance)
         radius = max(3, round(8 * text_scale))
         used, outlier = as_color(KEYPOINT_COLOR), as_color(KEYPOINT_OUTLIER_COLOR)
-        for i in np.flatnonzero(confidence >= self.keypoint_threshold):
+        drawable = (confidence >= self.keypoint_threshold) & np.isfinite(xy).all(axis=1)
+        for i in np.flatnonzero(drawable):
             color = used if agrees[i] else outlier
             _draw_dot(image, xy[i], radius, color)
             org = (round(float(xy[i, 0])) + radius + 2, round(float(xy[i, 1])) - radius)
@@ -339,7 +340,7 @@ def draw_annotations(
         color = as_color(KEYPOINT_COLOR)
         for instance in annotations.keypoints:
             for k, (x, y, visibility) in enumerate(instance):
-                if visibility <= NOT_LABELLED:
+                if visibility <= NOT_LABELLED or not np.isfinite([x, y]).all():
                     continue
                 _draw_dot(out, np.array([x, y]), radius, color)
                 org = (round(float(x)) + radius + 2, round(float(y)) - radius)

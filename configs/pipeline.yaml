@@ -1,7 +1,7 @@
 # Run file: how `tactifoot run` processes video (YOLO detector, ByteTrack, SigLIP teams).
 #
 #   CLI:      tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match \
-#                 --max-frames 500 --set detector.conf=0.4
+#                 --end 500 --set detector.conf=0.4
 #   Notebook: no run file, the same objects in plain Python:
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3, iou=0.5),
@@ -9,7 +9,7 @@
 #                   tracker=tv.tracking.create_tracker("bytetrack", lost_track_buffer=30),
 #                   team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 #               )
-#               result = pipeline.run("match.mp4", max_frames=500)
+#               result = pipeline.run("match.mp4", end=500)
 #               tv.viz.render_video(result, "match.mp4", "outputs/match/annotated.mp4")
 #
 # Each section's keys are the keyword arguments of one package call (see

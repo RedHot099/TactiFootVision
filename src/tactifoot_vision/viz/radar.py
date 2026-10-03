@@ -9,8 +9,8 @@ import supervision as sv
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
-type ColorLike = str | sv.Color | tuple[int, int, int]
-"""A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple."""
+type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
+"""A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
 
 TEAM_COLORS: tuple[str, ...] = ("#00BFFF", "#FF1493")
 DEFAULT_COLOR = "#FFFFFF"  # people without a team (referees, unassigned tracks)
@@ -25,7 +25,7 @@ _SUBPIXEL = 4  # cv2 drawing "shift": coordinates carry 4 fractional bits
 
 
 def as_color(color: ColorLike) -> sv.Color:
-    """Parse a hex string, ``sv.Color`` or BGR tuple into an ``sv.Color``."""
+    """Parse a hex string, ``sv.Color`` or BGR tuple/list into an ``sv.Color``."""
     if isinstance(color, sv.Color):
         return color
     if isinstance(color, str):
@@ -61,8 +61,7 @@ def pitch_markings(
     centre circle, penalty arcs) and the ``(3, 2)`` centre and penalty spots.
     """
     lines = [pitch.vertices[[a, b]].astype(float) for a, b in pitch.edges]
-    ry = pitch.centre_circle_radius
-    rx = ry * (pitch.length / _STD_LENGTH) / (pitch.width / _STD_WIDTH)
+    rx, ry = pitch.circle_radii
     cx, cy = pitch.length / 2, pitch.width / 2
     t = np.linspace(0, 2 * np.pi, samples)
     lines.append(np.column_stack([cx + rx * np.cos(t), cy + ry * np.sin(t)]))
@@ -281,7 +280,7 @@ def _is_single_color(colors: object) -> bool:
     if isinstance(colors, str | sv.Color):
         return True
     return (
-        isinstance(colors, tuple)
+        isinstance(colors, tuple | list)
         and len(colors) == 3
         and all(isinstance(c, int | np.integer) for c in colors)
     )

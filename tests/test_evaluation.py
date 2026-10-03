@@ -335,3 +335,34 @@ def test_statsbomb_comparison_accepts_a_pipeline_result():
     assert list(merged["detected_player_id"][:2]) == [4, 5]
     assert merged["euclidean_distance"][:2].tolist() == pytest.approx([0.5, 2.0])
     assert json.loads(merged["detected_location"][1]) == [52.0, 50.0]
+
+
+def test_statsbomb_comparison_of_a_second_half_pipeline_result():
+    people = sv.Detections(
+        xyxy=np.array([[0, 0, 10, 20]], np.float32),
+        confidence=np.array([0.9], np.float32),
+        tracker_id=np.array([4]),
+        data={
+            "class_name": np.array(["player"]),
+            "pitch_xy": np.array([[10.5, 10.0]]),
+            "team_id": np.array([0]),
+        },
+    )
+    frame = FrameResult(
+        index=30, timestamp=1.2, detections=people, ball=sv.Detections.empty()
+    )
+    result = PipelineResult([frame], 25.0, (1280, 720), ["player"])
+    statsbomb = pd.DataFrame(
+        {
+            "period": [2, 2, 1],
+            "minute": [45, 0, 0],
+            "second": [1, 1, 1],
+            "pitch_location": [[10, 10], [10, 10], [10, 10]],
+            "type": ["player"] * 3,
+        }
+    )
+    merged = compare_with_statsbomb(result, statsbomb, period=2)
+    # The video starts at the second half's kick-off: 45:01 on StatsBomb's clock.
+    assert merged["euclidean_distance"].tolist()[0] == pytest.approx(0.5)
+    assert np.isnan(merged["euclidean_distance"][1])
+    assert list(merged["detected_player_id"][:1]) == [4]

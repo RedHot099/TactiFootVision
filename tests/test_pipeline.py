@@ -234,18 +234,21 @@ def test_table_export(result):
     assert set(people.team_id) == {NO_TEAM, 0, 1}
 
 
-def test_stride_start_and_max_frames(video):
+def test_frame_range_start_end_stride(video):
     embedder = MeanColorEmbedder()
     pipeline = _pipeline(team_classifier=TeamClassifier(embedder, reducer=None))
-    result = pipeline.run(video, start=1, max_frames=4, stride=2, progress=False)
+    result = pipeline.run(video, start=1, end=9, stride=2, progress=False)
     assert [f.index for f in result] == [1, 3, 5, 7]
     assert result[1].timestamp == pytest.approx(3 / FPS)
     assert {tuple(f.team_ids) for f in result} != {(NO_TEAM,) * 8}
+    assert [f.index for f in pipeline.run(video, start=8, progress=False)] == [
+        8, 9, 10, 11,
+    ]  # fmt: skip
 
 
 def test_include_classes_and_no_keypoints(video):
     pipeline = _pipeline(keypoint_model=None, include_classes=["player"])
-    result = pipeline.run(video, max_frames=3, progress=False)
+    result = pipeline.run(video, end=3, progress=False)
     for f in result:
         assert set(f.detections.data["class_name"]) == {"player"}
         assert len(f.ball) == 1  # the ball is always kept
@@ -254,7 +257,7 @@ def test_include_classes_and_no_keypoints(video):
 
 
 def test_without_tracker_each_detection_gets_a_team(video):
-    result = _pipeline(tracker=None).run(video, max_frames=3, progress=False)
+    result = _pipeline(tracker=None).run(video, end=3, progress=False)
     for t, f in enumerate(result):
         assert f.detections.tracker_id is None
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in RED_PLAYERS} == {0}
@@ -268,9 +271,7 @@ def test_prefitted_classifier_is_reused(video):
     ]
     classifier.fit(blue_first)
     before = classifier._kmeans
-    result = _pipeline(team_classifier=classifier).run(
-        video, max_frames=2, progress=False
-    )
+    result = _pipeline(team_classifier=classifier).run(video, end=2, progress=False)
     assert classifier._kmeans is before
     f = result[0]
     assert (
@@ -292,7 +293,7 @@ def test_sampling_stride_limits_embedding_calls(video):
 
 def test_no_team_classifier_leaves_no_team(video):
     result = _pipeline(team_classifier=None, tracker="bytetrack").run(
-        video, max_frames=2, progress=False
+        video, end=2, progress=False
     )
     assert all((f.team_ids == NO_TEAM).all() for f in result)
 
@@ -343,11 +344,9 @@ class BoxMaskTracker(Tracker):
 
 def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
     kept = _pipeline(tracker=BoxMaskTracker(), keep_masks=True).run(
-        video, max_frames=3, progress=False
+        video, end=3, progress=False
     )
-    dropped = _pipeline(tracker=BoxMaskTracker()).run(
-        video, max_frames=3, progress=False
-    )
+    dropped = _pipeline(tracker=BoxMaskTracker()).run(video, end=3, progress=False)
     assert all(f.masks is None and f.detections.mask is None for f in dropped)
     for frame in kept:
         assert frame.detections.mask is None
@@ -384,7 +383,7 @@ def test_real_video_pipeline(tmp_path):
         keypoint_model=tv.load_model("yolo_pose", pose_weights),
         team_classifier=TeamClassifier("siglip"),
     )
-    result = pipeline.run(video, max_frames=50, progress=False)
+    result = pipeline.run(video, end=50, progress=False)
     assert len(result) == 50
     table = result.to_dataframe()
     players = table[(table.object == "person") & (table.class_name == "player")]
@@ -416,3 +415,56 @@ def test_team_samples_keep_a_bounded_uniform_sample_per_track():
     assert samples.embeddings().shape == (3, 4)
     assert 3 < accepted < 200  # later crops still get a chance to enter
     assert samples.embeddings().max() > 2  # not just the first three crops
+
+
+def test_a_frame_without_a_valid_crop_uses_up_no_sample(monkeypatch):
+    from tactifoot_vision.pipeline import pipeline as module
+
+    pipeline = _pipeline()
+    samples = module._TeamSamples(per_key=2)
+    people = sv.Detections(
+        xyxy=np.float32([[0, 0, 10, 20]]),
+        tracker_id=np.array([5]),
+        data={"class_name": np.array(["player"])},
+    )
+    monkeypatch.setattr(module, "extract_crops", lambda frame, boxes, **_: [None])
+    frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+    pipeline._sample_crops(frame, people, np.array([5]), 1, samples)
+    # The track still counts as new, so its next frame is sampled.
+    assert 5 not in samples.seen and samples.offered[5] == 0
+    assert not samples._pending
+
+
+def _frame_with(keys, names, xy) -> "tv.pipeline.FrameResult":
+    detections = sv.Detections(
+        xyxy=np.zeros((len(keys), 4), np.float32),
+        tracker_id=np.array(keys),
+        data={"class_name": np.array(names), "pitch_xy": np.array(xy, float)},
+    )
+    return tv.pipeline.FrameResult(0, 0.0, detections, sv.Detections.empty())
+
+
+def test_goalkeeper_without_pitch_positions_keeps_its_crop_vote():
+    from collections import Counter
+
+    from tactifoot_vision.pipeline.pipeline import _goalkeeper_teams
+
+    keys = [1, 2, 9, 10]
+    frame = _frame_with(
+        keys, ["player", "player", "goalkeeper", "goalkeeper"], [[np.nan, np.nan]] * 4
+    )
+    votes = {9: Counter({1: 3, 0: 1})}  # goalkeeper 10 has no crops
+    teams = _goalkeeper_teams([9, 10], [frame], [np.array(keys)], {1: 0, 2: 1}, votes)
+    assert teams == {9: 1}
+
+
+def test_prefitted_classifier_with_no_team_crops(video):
+    classifier = TeamClassifier(MeanColorEmbedder(), reducer=None)
+    classifier.fit(
+        [np.full((10, 6, 3), c, np.uint8) for c in [(230, 0, 0), (0, 0, 230)] * 3]
+    )
+    result = _pipeline(team_classifier=classifier, include_classes=["referee"]).run(
+        video, end=3, progress=False
+    )
+    assert all(set(f.detections.data["class_name"]) == {"referee"} for f in result)
+    assert all((f.team_ids == NO_TEAM).all() for f in result)

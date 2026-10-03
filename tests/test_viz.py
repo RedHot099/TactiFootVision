@@ -492,3 +492,83 @@ def test_render_video_passes_overlay_padding(
         result, video, tmp_path / "a.mp4", overlay_padding=3, progress=False
     )
     assert seen and set(seen) == {3}
+
+
+def _empty_frames(*indices: int) -> PipelineResult:
+    frames = [
+        FrameResult(i, i / FPS, sv.Detections.empty(), sv.Detections.empty())
+        for i in indices
+    ]
+    return PipelineResult(frames, FPS, (W, H), [])
+
+
+def test_render_video_fails_when_no_frame_was_written(video: Path, tmp_path: Path):
+    beyond = _empty_frames(50)  # the source has 10 frames
+    with pytest.raises(RuntimeError, match="no frame"):
+        viz.render_video(beyond, video, tmp_path / "a.mp4", progress=False)
+
+
+def test_render_video_fails_on_missing_frames(video: Path, tmp_path: Path):
+    sparse = _empty_frames(0, 4, 20)
+    with pytest.raises(RuntimeError, match=r"clip\.mp4.*frame 20"):
+        viz.render_video(sparse, video, tmp_path / "a.mp4", progress=False)
+
+
+class _RotatedReader:
+    """A reader whose header says W x H but whose frames come out H x W."""
+
+    def __init__(self, path) -> None:
+        self.path, self.fps, self.size = Path(path), FPS, (W, H)
+
+    def frames(self, start=0, end=None, stride=1):
+        for index in range(start, end, stride):
+            yield index, np.zeros((W, H, 3), np.uint8)
+
+
+def test_render_video_checks_the_decoded_frame_size(
+    result: PipelineResult, video: Path, tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(viz.video, "VideoReader", _RotatedReader)
+    with pytest.raises(ValueError, match="rotation"):
+        viz.render_video(result, video, tmp_path / "a.mp4", progress=False)
+
+
+def test_heatmap_without_smoothing(result: PipelineResult) -> None:
+    assert isinstance(viz.plot_heatmap(result, smoothing=0), Figure)
+    with pytest.raises(ValueError, match="smoothing"):
+        viz.plot_heatmap(result, smoothing=-1)
+
+
+def test_colours_given_as_lists(result: PipelineResult) -> None:
+    # YAML gives BGR colours as lists.
+    radar = viz.PitchRadar(
+        team_colors=[[255, 0, 0], [0, 0, 255]], ball_color=[0, 255, 255]
+    )
+    xy = np.array([[10.0, 10.0], [50.0, 30.0]])
+    image = radar.draw_points(xy, colors=[0, 0, 255])
+    x, y = radar.to_pixels(xy[1])[0].round().astype(int)
+    assert tuple(image[y, x]) == (0, 0, 255)
+    per_point = radar.draw_points(xy, colors=[[0, 0, 255], [0, 255, 0]])
+    assert tuple(per_point[y, x]) == (0, 255, 0)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(radar.draw(result[0])[y, x]) == (255, 0, 0)
+    annotator = viz.FrameAnnotator(team_colors=[[255, 0, 0], [0, 0, 255]])
+    assert annotator.annotate(_frame(), result[0]).shape == (H, W, 3)
+
+
+def test_annotate_skips_non_finite_keypoints(result: PipelineResult) -> None:
+    frame_result = result[0]
+    xy = frame_result.keypoints.xy.copy()
+    xy[0, 0] = np.nan
+    xy[0, 3] = np.inf
+    frame_result.keypoints = sv.KeyPoints(
+        xy=xy, confidence=np.ones((1, 32), np.float32)
+    )
+    image = viz.FrameAnnotator().annotate(_frame(), frame_result)
+    assert image.shape == (H, W, 3)
+
+
+def test_plot_training_rejects_a_non_numeric_epoch_column() -> None:
+    history = pd.DataFrame({"epoch": ["a", "b"], "train/box_loss": [1.0, 0.5]})
+    with pytest.raises(ValueError, match="epoch"):
+        viz.plot_training(history)

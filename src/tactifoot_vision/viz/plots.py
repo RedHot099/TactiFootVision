@@ -374,6 +374,11 @@ def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
         if "epoch" in columns
         else np.arange(1, len(history) + 1)
     )
+    if np.isnan(epochs).any():
+        bad = history[columns["epoch"]][np.isnan(epochs)].iloc[0]
+        raise ValueError(
+            f"The history's epoch column must hold epoch numbers, got {bad!r}"
+        )
     losses = _loss_series(history)
     metrics = _metric_series(history)
     panels: list[tuple[str, dict[str, pd.Series]]] = [
@@ -568,10 +573,13 @@ def plot_heatmap(
         team: only this team id (drawn in its team colour); ``None`` for everybody.
         ax: axes to draw into; default a new figure.
         cell_m: histogram cell size in metres.
-        smoothing: Gaussian blur in cells.
+        smoothing: Gaussian blur in cells; 0 for none.
         team_colors: as in :class:`FrameAnnotator`, to match the video.
     """
     from matplotlib.colors import LinearSegmentedColormap
+
+    if smoothing < 0:
+        raise ValueError(f"smoothing must be >= 0, got {smoothing}")
 
     pitch = result.pitch
     table = _positions(result)
@@ -598,7 +606,9 @@ def plot_heatmap(
             bins=(ny, nx),
             range=[[0, pitch.width], [0, pitch.length]],
         )
-        hist = cv2.GaussianBlur(hist.astype(np.float32), (0, 0), smoothing)
+        hist = hist.astype(np.float32)
+        if smoothing > 0:
+            hist = cv2.GaussianBlur(hist, (0, 0), smoothing)
         hist /= hist.max() or 1.0
         r, g, b = _rgb(hue)
         light = tuple(c + (1 - c) * 0.55 for c in (r, g, b))

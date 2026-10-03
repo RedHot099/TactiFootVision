@@ -172,6 +172,13 @@ class PipelineResult:
         Columns match what :func:`tactifoot_vision.evaluation.compare_with_statsbomb`
         expects (``period, minute, second, location, type, player_id, ...``).
         ``period_start`` is the match clock (seconds) at the first video frame.
+
+        ``minute`` and ``second`` follow StatsBomb's match clock (the second
+        half starts at minute 45). ``timestamp`` (``HH:MM:SS.mmm``) and
+        ``timestamp_seconds`` are that match clock too, unlike StatsBomb's
+        event ``timestamp``, which restarts every period. ``visible_area`` is
+        the frame outline on the pitch as StatsBomb's flat
+        ``[x1, y1, x2, y2, ...]`` polygon (``None`` without a homography).
         """
         corners = np.array(
             [
@@ -194,7 +201,7 @@ class PipelineResult:
                 "second": math.floor(t % 60),
                 "homography_matrix": _json(f.homography),
                 "visible_area": _json(
-                    frame_to_pitch(corners, f.homography)
+                    frame_to_pitch(corners, f.homography).reshape(-1)
                     if f.homography is not None
                     else None
                 ),

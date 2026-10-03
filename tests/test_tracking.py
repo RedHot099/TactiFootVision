@@ -196,6 +196,36 @@ def test_sam2_reseed_respects_cooldown(fake_sam2):
     assert len(tracker.update(_detections(boxes[:1], ["player"]), FRAME)) == 1
 
 
+def test_sam2_does_not_give_a_reappearing_track_a_second_id(fake_sam2):
+    tracker, predictor = fake_sam2(candidate_min_hits=3, reseed_interval=10)
+    boxes = [[10, 10, 30, 50], [100, 20, 120, 60], [200, 100, 220, 140]]
+    tracker.update(_detections(boxes[:2], ["player"] * 2), FRAME)
+    for _ in range(3):  # frames 1-3: the third player is promoted (re-seed at 3)
+        tracker.update(_detections(boxes, ["player"] * 3), FRAME)
+    predictor.hidden.add(2)  # frames 4-7: track 2's mask vanishes, the detector
+    for _ in range(4):  # still sees it, so it becomes a ready candidate
+        tracker.update(_detections(boxes, ["player"] * 3), FRAME)
+    predictor.hidden.discard(2)  # back before the cooldown ends at frame 13
+    for _ in range(7):
+        tracked = tracker.update(_detections(boxes, ["player"] * 3), FRAME)
+    assert sorted(tracked.tracker_id) == [1, 2, 3]
+    assert predictor.loads == 2
+
+
+def test_sam2_reseed_skips_ready_candidates_that_are_tracked_again(fake_sam2):
+    tracker, predictor = fake_sam2(candidate_min_hits=1, reseed_interval=0)
+    box = [[10, 10, 30, 50]]
+    tracker.update(_detections(box, ["player"]), FRAME)
+    # A ready candidate on top of track 1 (e.g. left from a frame where its mask
+    # was empty) must not become a second track.
+    tracker._candidates.append(
+        sam2_module._Candidate(np.float32(box[0]), 2, "player", last_seen=1, hits=5)
+    )
+    tracked = tracker.update(_detections(box, ["player"]), FRAME)
+    assert list(tracked.tracker_id) == [1]
+    assert predictor.loads == 1 and not tracker._candidates
+
+
 def test_sam2_config_resolution(tmp_path):
     repo = tmp_path / "sam2-checkout"
     (repo / "sam2" / "configs" / "sam2.1").mkdir(parents=True)

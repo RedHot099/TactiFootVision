@@ -10,7 +10,11 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from tactifoot_vision.augment.base import Transform
-from tactifoot_vision.data._files import check_output_location, unique_stems
+from tactifoot_vision.data._files import (
+    EXPORT_MARKER,
+    check_output_location,
+    unique_stems,
+)
 from tactifoot_vision.data.dataset import SPLITS, Dataset, Sample, canonical_split
 from tactifoot_vision.utils import ensure_dir
 
@@ -42,7 +46,8 @@ def augment_dataset(
     Args:
         dataset: source dataset (not modified).
         transform: augmentation to apply, e.g. a :class:`Compose`.
-        out_dir: folder for the augmented images.
+        out_dir: folder for the augmented images; not an export folder of
+            ``to_yolo`` / ``to_coco`` (re-exporting would clear it).
         copies: augmented variants per original image.
         splits: splits to augment.
         seed: the output is identical for the same ``seed``, dataset and
@@ -65,6 +70,11 @@ def augment_dataset(
         )
     suffix = image_format.lower().lstrip(".")
     out_dir = Path(out_dir).resolve()
+    if (out_dir / EXPORT_MARKER).is_file():
+        raise ValueError(
+            f"{out_dir} holds a to_yolo / to_coco export, which a later export would "
+            "clear; write the augmented images to a folder of their own"
+        )
     check_output_location(
         out_dir,
         [out_dir / split / "images" for split in split_names],

@@ -214,8 +214,10 @@ def test_video_reader_and_frame_extraction(tmp_path):
     assert (video.width, video.height, video.frame_count, video.fps) == (32, 24, 12, 10)
     assert [i for i, _ in video.frames(start=2, end=9, stride=3)] == [2, 5, 8]
     assert abs(int(video.read(5).mean()) - 100) <= 8  # neighbours differ by 20
-    paths = extract_frames(video.path, tmp_path / "frames", every=4)
+    paths = extract_frames(video.path, tmp_path / "frames", stride=4)
     assert [p.name for p in paths] == ["v_000000.jpg", "v_000004.jpg", "v_000008.jpg"]
+    paths = extract_frames(video.path, tmp_path / "range", start=2, end=7, stride=2)
+    assert [p.name for p in paths] == ["v_000002.jpg", "v_000004.jpg", "v_000006.jpg"]
     with pytest.raises(IndexError):
         video.read(50)
 
@@ -314,3 +316,41 @@ def test_coco_ids_start_at_one(tmp_path):
     coco = json.loads((root / "train" / "_annotations.coco.json").read_text())
     assert min(i["id"] for i in coco["images"]) == 1
     assert min(a["id"] for a in coco["annotations"]) == 1
+
+
+@pytest.mark.parametrize("link", ["symlink", "hardlink", "copy"])
+@pytest.mark.parametrize("fmt", ["yolo", "coco"])
+def test_reexport_into_the_same_folder_works_for_every_link_mode(tmp_path, fmt, link):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    export = getattr(ds, f"to_{fmt}")
+    export(tmp_path / "out", link=link)
+    export(tmp_path / "out", link=link)
+    smaller = getattr(ds.subset({"train": 1}), f"to_{fmt}")
+    assert len(load_dataset(smaller(tmp_path / "out", link=link))["train"]) == 1
+
+
+def test_export_refuses_to_clear_images_it_did_not_write(tmp_path):
+    """Images that land in an export folder by other means survive a re-export."""
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    ds.to_yolo(tmp_path / "out", link="copy")
+    foreign = _image(tmp_path / "out" / "train" / "images" / "extra_aug0.jpg")
+    with pytest.raises(ValueError, match="extra_aug0.jpg"):
+        ds.subset({"train": 1}).to_yolo(tmp_path / "out")
+    assert foreign.is_file()
+
+
+def test_export_keeps_augmented_images_written_inside_its_folders(tmp_path):
+    # The scenario of a later export deleting augment_dataset's output: the
+    # augmented images sit inside a folder the COCO export manages.
+    from tactifoot_vision.augment import ColorJitter, augment_dataset
+
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    ds.to_coco(tmp_path / "out")
+    augmented = augment_dataset(
+        ds, ColorJitter(p=1.0), tmp_path / "out" / "train", progress=False
+    )
+    written = [s.image_path for s in augmented["train"] if "_aug" in s.image_path.name]
+    assert written
+    with pytest.raises(ValueError, match="did not write"):
+        ds.to_coco(tmp_path / "out")
+    assert all(path.is_file() for path in written)

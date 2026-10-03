@@ -28,7 +28,9 @@ Part of the [TactiFoot Vision notebooks](README.md).
 """)
     nb.setup(
         imports="""
+import logging
 import os
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -115,6 +117,10 @@ checkpoint. `grad_accum_steps` is an RF-DETR option.
 """)
     nb.code("""
 %%capture rfdetr_log
+# RF-DETR suggests optimize_for_inference() on its first prediction and torch warns
+# about a meshgrid argument inside RF-DETR; both are benign here.
+logging.getLogger("rfdetr.detr").addFilter(lambda record: "not optimized for inference" not in record.getMessage())
+warnings.filterwarnings("ignore", message="torch.meshgrid")
 rfdetr = tv.load_model("rfdetr", size="base")
 rfdetr_run = rfdetr.train(train_set, config, epochs=3, batch_size=4, grad_accum_steps=4, name="rfdetr")
 """)
@@ -124,7 +130,7 @@ tv.viz.plot_training(rfdetr_run)
 """)
     nb.md("""
 RF-DETR ignores options it does not know, so a typo would go unnoticed. The
-backend checks them and fails before training starts.
+backend checks them and fails before the run folder is created.
 """)
     nb.code("""
 try:

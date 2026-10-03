@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -9,6 +10,7 @@ from tactifoot_vision.teams import (
     TeamClassifier,
     extract_crops,
 )
+from tactifoot_vision.teams.embedders import SigLIPEmbedder
 
 RED, BLUE = (0, 0, 220), (220, 0, 0)  # BGR
 
@@ -169,3 +171,35 @@ def test_umap_is_skipped_for_a_handful_of_crops():
     assert (
         len(set(teams[:3])) == 1 and len(set(teams[3:])) == 1 and teams[0] != teams[3]
     )
+
+
+class _RecordingSigLIP:
+    """Stands in for the SigLIP vision tower and keeps the pixels it was given."""
+
+    config = SimpleNamespace(hidden_size=4)
+
+    def __call__(self, pixel_values):
+        import torch
+
+        self.pixel_values = pixel_values
+        hidden = torch.ones(len(pixel_values), 3, 4)
+        return SimpleNamespace(last_hidden_state=hidden, pooler_output=hidden[:, 0])
+
+
+@pytest.mark.parametrize("height", [1, 3])
+def test_siglip_reads_flat_crops_as_channels_last(height):
+    from transformers import SiglipImageProcessor
+
+    embedder = object.__new__(SigLIPEmbedder)
+    embedder.batch_size, embedder.pooling, embedder.color_hist_bins = 8, "mean", 0
+    embedder.device, embedder._dim = "cpu", 4
+    embedder._processor = SiglipImageProcessor()  # default config, no download
+    embedder._model = _RecordingSigLIP()
+    red = np.zeros((height, 40, 3), np.uint8)
+    red[..., 2] = 255  # BGR
+    assert embedder.embed([red]).shape == (1, 4)
+    pixels = embedder._model.pixel_values
+    assert pixels.shape == (1, 3, 224, 224)
+    # SigLIP normalises to [-1, 1]: red channel full, green and blue empty.
+    means = pixels[0].mean(dim=(1, 2)).tolist()
+    assert means == pytest.approx([1.0, -1.0, -1.0], abs=1e-3)

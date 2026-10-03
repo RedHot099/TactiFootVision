@@ -65,7 +65,8 @@ class HomographyEstimator:
         self.max_age = max_age
         self._history: deque[np.ndarray] = deque(maxlen=smoothing_window)
         self.matrix: np.ndarray | None = None
-        self.used_indices: np.ndarray | None = None  # keypoints behind the last fit
+        # Confident keypoints given to RANSAC in the last fit (not only its inliers).
+        self.used_indices: np.ndarray | None = None
         self._age = 0
 
     def reset(self) -> None:

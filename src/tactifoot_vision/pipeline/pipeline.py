@@ -140,13 +140,15 @@ class Pipeline:
         self,
         video: str | Path | VideoReader,
         start: int = 0,
-        max_frames: int | None = None,
+        end: int | None = None,
         stride: int = 1,
         progress: bool = True,
     ) -> PipelineResult:
-        """Process ``max_frames`` frames (all by default) every ``stride`` frames from ``start``."""
+        """Process the frames ``start <= index < end`` every ``stride`` frames.
+
+        ``end=None`` runs to the end of the video, like :meth:`VideoReader.frames`.
+        """
         reader = video if isinstance(video, VideoReader) else VideoReader(video)
-        end = None if max_frames is None else start + max_frames * stride
         total = len(
             range(start, min(end or reader.frame_count, reader.frame_count), stride)
         )
@@ -246,23 +248,25 @@ class Pipeline:
     ) -> None:
         """Embed crops of team-class people on sampled frames and on each track's first frame."""
         on_stride = position % self.team_sample_stride == 0
-        chosen = [
+        candidates = [
             i
             for i, (key, name) in enumerate(
                 zip(keys, people.data["class_name"], strict=True)
             )
-            if name in self.team_classes
-            and (on_stride or key not in samples.seen)
-            and samples.accepts(int(key))
+            if name in self.team_classes and (on_stride or key not in samples.seen)
         ]
         crops = extract_crops(
             frame,
-            people.xyxy[chosen],
+            people.xyxy[candidates],
             scale=self.crop_scale,
             center_ratio=self.crop_center_ratio,
         )
+        # Ask the sample only for valid crops: accepting reserves a slot and marks
+        # the track as seen, which a crop that is never embedded must not do.
         valid = [
-            (i, crop) for i, crop in zip(chosen, crops, strict=True) if crop is not None
+            (i, crop)
+            for i, crop in zip(candidates, crops, strict=True)
+            if crop is not None and samples.accepts(int(keys[i]))
         ]
         if not valid:
             return

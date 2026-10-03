@@ -30,12 +30,12 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `summary`, `to_yolo`, `to_coco`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
-| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `show`, plotting helpers |
+| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
@@ -134,9 +134,17 @@ configs/              example run files
 * Writers never touch the source: they refuse an output folder that contains
   source images or lies inside a source image folder, and only clear folders
   they created earlier (marked with `.tactifoot-export`).
+* A re-export only deletes what an export wrote: symlinks, label files, the
+  COCO json and the copied or hard-linked images listed in the marker. A
+  managed folder holding any other image (augmented images, say) is refused
+  with the file's name, so re-exporting into the same folder works for every
+  link mode and loses nothing else.
+* `Dataset.with_split(split, samples)` returns a copy with one split replaced.
 * `VideoReader(path)`: `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
-* `extract_frames(video, out_dir, every=25, start=0, end=None, max_frames=None)` → image paths.
+* `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths.
+  Frame ranges use `start`, `end` (exclusive, `None` = to the end) and
+  `stride` everywhere: `VideoReader.frames`, `extract_frames`, `Pipeline.run`.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
@@ -154,6 +162,8 @@ configs/              example run files
 * `augment_dataset(dataset, transform, out_dir, copies=1, splits=("train",), seed=0)`
   → new `Dataset` with originals plus `copies` augmented variants per image
   written to `out_dir`; other splits untouched (never augment validation data).
+  `out_dir` must not be a `to_yolo` / `to_coco` export folder, which a later
+  export would clear.
 
 ### Training and inference behind one interface (`tv.models`)
 
@@ -166,39 +176,52 @@ configs/              example run files
   exports with `to_coco`; class names come from the checkpoint.
 * `Model.train` picks the run folder (`output_dir/name`, then `name2`, ... unless
   `exist_ok=True`) and hands it to the backend, which exports the dataset into it.
+  An `exist_ok=True` re-run deletes the previous run's `results.csv` /
+  `log.txt` first, so history and metrics describe that run only.
+* `TrainConfig.backend_options` holds the keyword arguments that are not
+  `TrainConfig` fields; they go verbatim to the backend.
 * `TrainResult.metrics` uses the same keys for every backend (`map50_95`, `map50`,
   plus `map75`, `precision`, `recall`, `pose_*` when reported);
   `TrainResult.history` is a per-epoch DataFrame (1-based `epoch`, backend
   column names); `TrainResult.load()` rebuilds the model.
-* Unknown training options fail loudly (Ultralytics validates them itself;
-  the RF-DETR backend checks them because RF-DETR would ignore them).
+* Backend options are checked before the run folder is created
+  (`Model._check_options`: Ultralytics' known arguments, RF-DETR's train
+  config), so a typo costs no run folder. Options that would move the run
+  folder (`output_dir`, `project`, `name`, `dataset_dir`, `data`) are refused.
 
 ### Evaluation (`tv.evaluation`)
 
 * `evaluate(model, dataset, split="valid")` dispatches on `model.task`:
-  `evaluate_detector` → `DetectionMetrics` (mAP50-95, mAP50, mAP75, per-class AP
-  table, via `supervision.metrics`), `evaluate_keypoints` → `KeypointMetrics`
+  `evaluate_detector` → `DetectionMetrics` (mAP50-95, mAP50, mAP75 and the
+  per-class table `per_class`, via `supervision.metrics`), `evaluate_keypoints` → `KeypointMetrics`
   (mean pixel error, PCK at a fraction of the image diagonal).
   Same numbers for every backend, so YOLO and RF-DETR compare fairly.
 * `compare_with_statsbomb(freeze_frames, statsbomb, period=1)` → merged table
   with the nearest detected object per StatsBomb object and its distance
   (`euclidean_distance`). Build the pipeline with `SoccerPitch(120, 80)` so both
-  sides use StatsBomb units.
+  sides use StatsBomb units. A `PipelineResult` is accepted too and is
+  converted assuming the video starts at the period's kick-off (0', 45', 90', 105').
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
 * `ByteTrackTracker` (supervision ByteTrack), `SAM2Tracker` (segment-anything-2-real-time
-  camera predictor with detector-driven re-seeding of new objects).
+  camera predictor with detector-driven re-seeding of new objects). Detections
+  overlapping a tracked box never become new tracks; a track whose mask is
+  empty on a re-seed frame loses its id.
 * `clean_ball_path(positions, max_jump)` drops ball positions further than
   `max_jump` pitch units per elapsed frame from the last accepted one
   (the pipeline's `ball_max_speed` is the same limit in units per second).
 * `TeamClassifier(embedder="siglip" | "resnet" | Embedder, n_teams=2, reducer="umap" | None)`:
-  `fit(crops)`, `predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
+  `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings and skips UMAP below 30 crops.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
-  `.run(video, start=0, max_frames=None, stride=1) -> PipelineResult`.
+  `.run(video, start=0, end=None, stride=1) -> PipelineResult`.
   `PipelineResult.export(out_dir, *, period=1, period_start=0.0)` writes the
   run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`).
+  `to_freeze_frames(period, period_start)`: `minute` / `second` follow
+  StatsBomb's match clock, `timestamp` is that match clock too (StatsBomb's
+  event timestamp restarts every period), and `visible_area` is StatsBomb's
+  flat `[x1, y1, x2, y2, ...]` polygon.
   With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
   `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
   covers, so memory grows with the people's area, not the frame area.
@@ -208,20 +231,34 @@ configs/              example run files
   whose players are nearest on the pitch; referees get `NO_TEAM`.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
-  restarts the average after a gap. Pitch vertices 10/11/18/19 sit where the
-  penalty arc meets the box line, matching how the keypoint dataset labels them.
+  restarts the average after a gap. `used_indices` lists the confident
+  landmarks given to RANSAC in the last fit (not only its inliers). Pitch
+  vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
+  how the keypoint dataset labels them. Circles and arcs use
+  `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
+  ellipse the radar draws, so on any `length × width` those vertices lie
+  exactly on the drawn arcs.
 
 ### Results visualisation (`tv.viz`)
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
 * `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
+  `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
+  points (e.g. StatsBomb positions);
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame.
-* `render_video(result, source=None, output, annotator=None, radar=None)` → output path;
-  checks that the source video and the drawing pitch match the result.
+* Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
+  (what YAML gives).
+* `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
+* `render_video(result, source, output, annotator=None, radar=None,
+  overlay_position="bottom-center", overlay_width_fraction=0.25,
+  overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True)` → output
+  path; `source=None` uses `result.video_path`. Checks that the source video
+  (header and decoded frame size) and the drawing pitch match the result, and
+  raises `RuntimeError` when the source lacks a result frame.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
-  `plot_heatmap(result, team=None)`, `plot_tracks(result)`, `plot_metrics(metrics)`,
+  `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,
   `plot_distance_histogram(distances)`.
 
 ### Run files and the CLI (`tv.run_file`, `tactifoot`)
@@ -267,7 +304,7 @@ render: {annotator: {style: video_game}, radar: null}
 
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
-          [--start N] [--max-frames N] [--stride N] [--period N] [--period-start S]
+          [--start N] [--end N] [--stride N] [--period N] [--period-start S]
           [--no-video] [--set KEY=VALUE ...]
 tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
           [--set KEY=VALUE ...]

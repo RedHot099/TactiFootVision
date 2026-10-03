@@ -97,23 +97,22 @@ class VideoReader:
 def extract_frames(
     video: str | Path,
     out_dir: str | Path,
-    every: int = 25,
     start: int = 0,
     end: int | None = None,
-    max_frames: int | None = None,
+    stride: int = 25,
     image_format: str = "jpg",
 ) -> list[Path]:
-    """Save every ``every``-th frame as ``<video stem>_<index>.<format>``; return the paths.
+    """Save the frames ``start <= index < end`` every ``stride`` frames; return the paths.
 
-    Handy for building a new dataset to annotate from match footage.
+    Files are named ``<video stem>_<index>.<format>``; ``end=None`` runs to the
+    end of the video. Handy for building a new dataset to annotate from match
+    footage.
     """
     reader = VideoReader(video)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    for index, frame in reader.frames(start=start, end=end, stride=every):
-        if max_frames is not None and len(paths) >= max_frames:
-            break
+    for index, frame in reader.frames(start=start, end=end, stride=stride):
         path = out / f"{reader.path.stem}_{index:06d}.{image_format}"
         if not cv2.imwrite(str(path), frame):
             raise RuntimeError(f"Could not write {path}")

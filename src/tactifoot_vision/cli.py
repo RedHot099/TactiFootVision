@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         "run",
         help="run the pipeline on a video",
         description="Run a run file on a video and write the run folder. --start, "
-        "--max-frames and --stride go to Pipeline.run, --period and --period-start "
+        "--end and --stride go to Pipeline.run, --period and --period-start "
         "to PipelineResult.export.",
         argument_default=_SUPPRESS,
     )
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     tv.setup_logging(**_given(args, ["level"]))
     try:
         return args.handler(args)
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
         if getattr(args, "level", "").upper() == "DEBUG":
             raise
         print(f"tactifoot: error: {error}", file=sys.stderr)
