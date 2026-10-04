@@ -22,6 +22,9 @@ class _UltralyticsModel(Model):
     """Loading, settings and training shared by the Ultralytics backends."""
 
     default_weights: ClassVar[str]
+    # Ultralytics' names for TrainConfig fields that differ from them (the
+    # others, such as imgsz or epochs, are the same name and so the field itself).
+    _train_config_aliases = {"batch": "batch_size", "lr0": "lr"}
 
     def __init__(
         self,
@@ -51,12 +54,7 @@ class _UltralyticsModel(Model):
         if weights is None:
             weights = self.default_weights
             self.weights = weights
-        path = Path(weights)
-        if not path.is_file():
-            if path.parent != Path("."):
-                raise FileNotFoundError(f"Checkpoint not found: {path}")
-            path = _cached_asset(path.name)  # a bare name such as "yolo11n.pt"
-        model = YOLO(str(path))
+        model = YOLO(str(_checkpoint_path(weights)))
         if model.task != self.task.value:
             raise ValueError(
                 f"{weights} is a {model.task!r} checkpoint but {type(self).__name__} "
@@ -80,12 +78,11 @@ class _UltralyticsModel(Model):
             options["imgsz"] = self.imgsz
         return self._yolo.predict(image, **options)[0]
 
-    def _check_options(self, options: dict[str, Any]) -> None:
+    def _check_options(self, config: TrainConfig) -> None:
         from ultralytics.cfg import DEFAULT_CFG_DICT
 
-        super()._check_options(options)
-
-        unknown = sorted(set(options) - set(DEFAULT_CFG_DICT))
+        super()._check_options(config)
+        unknown = sorted(set(config.backend_options) - set(DEFAULT_CFG_DICT))
         if unknown:
             raise ValueError(
                 f"Unknown Ultralytics training options: {', '.join(unknown)}"
@@ -245,6 +242,22 @@ def _keypoints_from_arrays(
 
 
 _AMP_CHECK_WEIGHTS = "yolo11n.pt"
+
+
+def _checkpoint_path(weights: str | Path) -> Path:
+    """A local checkpoint, or an Ultralytics release asset by bare name (downloaded once).
+
+    Only names Ultralytics publishes (``yolo11n.pt``, ...) are downloaded; any
+    other missing file is ``FileNotFoundError``.
+    """
+    from ultralytics.utils.downloads import GITHUB_ASSETS_NAMES
+
+    path = Path(weights)
+    if path.is_file():
+        return path
+    if path.parent != Path(".") or path.name not in GITHUB_ASSETS_NAMES:
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+    return _cached_asset(path.name)
 
 
 def _cached_asset(name: str) -> Path:

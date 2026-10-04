@@ -354,3 +354,138 @@ def test_export_keeps_augmented_images_written_inside_its_folders(tmp_path):
     with pytest.raises(ValueError, match="did not write"):
         ds.to_coco(tmp_path / "out")
     assert all(path.is_file() for path in written)
+
+
+# ------------------------------------------------------- review round 2
+@pytest.mark.parametrize(
+    ("start", "end", "stride", "match"),
+    [
+        (-2, 3, 1, "start must be >= 0"),
+        (5, 3, 1, "end .* must be >= start"),
+        (0, None, 0, "stride must be >= 1"),
+    ],
+)
+def test_video_frame_ranges_are_checked_when_called(
+    tmp_path, start, end, stride, match
+):
+    video = VideoReader(_video(tmp_path / "v.mp4"))
+    with pytest.raises(ValueError, match=match):
+        video.frames(start=start, end=end, stride=stride)  # no next() needed
+    with pytest.raises(ValueError, match=match):
+        extract_frames(
+            video.path, tmp_path / "out", start=start, end=end, stride=stride
+        )
+    assert list(video.frames(start=3, end=3)) == []  # an empty range is not an error
+
+
+def test_video_read_rejects_negative_indices(tmp_path):
+    video = VideoReader(_video(tmp_path / "v.mp4"))
+    with pytest.raises(IndexError, match="-1"):
+        video.read(-1)
+
+
+@pytest.mark.parametrize(
+    ("n", "fractions", "sizes"),
+    [
+        (5, {"train": 0.5, "valid": 0.5}, [2, 3, 0]),
+        (3, {"train": 0.5, "valid": 0.5}, [2, 1, 0]),
+        (7, {"train": 0.9, "valid": 0.1}, [6, 1, 0]),
+        (5, {"train": 0.0, "valid": 0.6, "test": 0.4}, [0, 3, 2]),
+        (10, {"train": 0.6, "valid": 0.2, "test": 0.2}, [6, 2, 2]),
+    ],
+)
+def test_resplit_leaves_zero_fraction_splits_empty(tmp_path, n, fractions, sizes):
+    ds = _dataset(tmp_path, n=n)
+    resplit = ds.resplit(**{"train": 0.0, "valid": 0.0, "test": 0.0} | fractions)
+    assert [len(resplit[s]) for s in ("train", "valid", "test")] == sizes
+    assert len(resplit) == n
+
+
+def test_resplit_rejects_negative_fractions(tmp_path):
+    with pytest.raises(ValueError, match="negative"):
+        _dataset(tmp_path).resplit(train=1.2, valid=-0.2)
+
+
+def test_subset_normalises_numbers(tmp_path):
+    ds = _dataset(tmp_path)  # 8 train, 2 valid
+    assert len(ds.subset(np.float32(0.5))["train"]) == 4  # a fraction
+    assert len(ds.subset(np.int64(3))["train"]) == 3  # a count
+    assert len(ds.subset(1.0)["train"]) == 8
+    assert len(ds.subset({"train": np.float64(0.25)})["train"]) == 2
+    with pytest.raises(ValueError, match="fraction"):
+        ds.subset(1.5)
+    with pytest.raises(ValueError, match="count"):
+        ds.subset(-1)
+    with pytest.raises(ValueError, match="number"):
+        ds.subset("3")
+
+
+def test_yolo_reader_checks_class_ids(tmp_path):
+    data_yaml = _write_yolo(tmp_path)
+    (tmp_path / "train/labels/a.txt").write_text("2 0.5 0.5 0.2 0.2\n")
+    with pytest.raises(ValueError, match=r"a\.txt.*class id 2.*2 classes"):
+        load_dataset(data_yaml)
+    (tmp_path / "train/labels/a.txt").write_text("-1 0.5 0.5 0.2 0.2\n")
+    with pytest.raises(ValueError, match=r"a\.txt.*class id -1"):
+        load_dataset(data_yaml)
+
+
+def test_coco_reader_checks_category_ids(tmp_path):
+    _image(tmp_path / "train" / "x.jpg")
+    coco = {
+        "categories": [{"id": 0, "name": "ball", "supercategory": "objects"}],
+        "images": [{"id": 1, "file_name": "x.jpg", "width": 64, "height": 48}],
+        "annotations": [
+            {"id": 1, "image_id": 1, "category_id": 3, "bbox": [1, 2, 3, 4]}
+        ],
+    }
+    (tmp_path / "train" / "_annotations.coco.json").write_text(json.dumps(coco))
+    with pytest.raises(ValueError, match=r"_annotations\.coco\.json.*category_id 3"):
+        load_dataset(tmp_path)
+
+
+@pytest.mark.parametrize("fmt", ["yolo", "coco"])
+def test_reexport_refuses_to_delete_files_it_did_not_write(tmp_path, fmt):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    export = getattr(ds, f"to_{fmt}")
+    export(tmp_path / "out", link="copy")
+    folder = tmp_path / "out" / "train" / ("images" if fmt == "yolo" else "")
+    note = folder / "notes.txt"
+    note.write_text("keep")
+    with pytest.raises(ValueError, match="notes.txt"):
+        export(tmp_path / "out", link="copy")
+    assert note.read_text() == "keep"
+
+
+@pytest.mark.parametrize("fmt", ["yolo", "coco"])
+def test_reexport_with_fewer_splits_removes_the_old_split(tmp_path, fmt):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    train_only = ds.with_split("valid", [])
+    out = tmp_path / "out"
+    getattr(ds, f"to_{fmt}")(out, link="copy")
+    reloaded = load_dataset(getattr(train_only, f"to_{fmt}")(out, link="copy"))
+    assert reloaded.split_names == ["train"]
+    assert not (out / "valid").exists()
+    # The ownership record survives: the full dataset exports there again.
+    again = load_dataset(getattr(ds, f"to_{fmt}")(out, link="copy"))
+    assert again.split_names == ["train", "valid"]
+
+
+def test_switching_the_export_format_removes_the_old_format(tmp_path):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    ds.to_yolo(tmp_path / "out")
+    root = ds.to_coco(tmp_path / "out")
+    assert not (root / "data.yaml").exists()
+    assert load_dataset(root).split_names == ["train", "valid"]
+
+
+def test_export_checks_its_arguments_before_deleting_anything(tmp_path):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    ds.to_yolo(tmp_path / "out", link="copy")
+    with pytest.raises(ValueError, match="link must be"):
+        ds.to_yolo(tmp_path / "out", link="copi")
+    assert (tmp_path / "out" / "train" / "images" / "a.jpg").is_file()
+    missing = Sample(tmp_path / "gone.jpg", 64, 48, Annotations.empty())
+    with pytest.raises(FileNotFoundError, match="gone.jpg"):
+        ds.with_split("test", [missing]).to_coco(tmp_path / "out")
+    assert (tmp_path / "out" / "train" / "images" / "a.jpg").is_file()

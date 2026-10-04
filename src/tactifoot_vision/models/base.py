@@ -91,6 +91,8 @@ class Model(ABC):
 
     name: ClassVar[str]
     task: ClassVar[Task]
+    # Backend option -> the TrainConfig field that sets it; Model.train refuses the option.
+    _train_config_aliases: ClassVar[dict[str, str]] = {}
 
     def __init__(
         self,
@@ -120,18 +122,30 @@ class Model(ABC):
     ) -> TrainResult:
         """Fine-tune on ``dataset``, writing everything to ``run_dir`` (already created)."""
 
-    def _check_options(self, options: dict[str, Any]) -> None:
-        """Reject bad backend options; called before the run folder is created.
+    def _check_options(self, config: TrainConfig) -> None:
+        """Reject bad training settings; called before the run folder is created.
 
-        Options that would move the run folder are always refused. Backends
-        extend this (calling ``super()``) to reject options they do not know,
-        so a typo costs no run folder.
+        Backend options that would move the run folder, or that are the
+        backend's name for a :class:`TrainConfig` field
+        (:attr:`_train_config_aliases`), are always refused. Backends extend
+        this (calling ``super()``) to reject options they do not know and
+        settings they cannot use, so a typo costs no run folder.
         """
+        options = config.backend_options
         reserved = sorted(set(options) & set(_RUN_FOLDER_OPTIONS))
         if reserved:
             raise ValueError(
                 f"Backend option(s) {', '.join(reserved)} would move the run folder; "
                 "set output_dir, name and exist_ok instead"
+            )
+        aliases = [k for k in options if k in self._train_config_aliases]
+        if aliases:
+            fields = ", ".join(
+                f"{k} -> {self._train_config_aliases[k]}" for k in sorted(aliases)
+            )
+            raise ValueError(
+                f"Set these through the TrainConfig field instead of the {self.name} "
+                f"option: {fields}"
             )
 
     @property
@@ -166,7 +180,7 @@ class Model(ABC):
         cfg = TrainConfig(**(base | overrides))
         if cfg.name is None:
             cfg.name = self.name
-        self._check_options(cfg.backend_options)
+        self._check_options(cfg)
         run_dir = next_run_dir(Path(cfg.output_dir).absolute() / cfg.name, cfg.exist_ok)
         logger.info(
             "Training %s on %r for %d epochs in %s",
@@ -214,10 +228,14 @@ def train(
 ) -> TrainResult:
     """Train a model given by name (``"yolo"``, ``"rfdetr"``, ...) or instance.
 
-    ``weights`` picks the starting checkpoint when ``model`` is a name.
+    ``weights`` picks the starting checkpoint when ``model`` is a name; the
+    model is then loaded on the training ``device`` (from ``overrides`` or
+    ``config``), so nothing is loaded on another GPU first.
     """
     if isinstance(model, str):
-        model = load_model(model, weights)
+        device = overrides.get("device", config.device if config else None)
+        options = {"device": device} if device is not None else {}
+        model = load_model(model, weights, **options)
     elif weights is not None:
         raise ValueError("Pass weights only together with a model name")
     return model.train(dataset, config, **overrides)

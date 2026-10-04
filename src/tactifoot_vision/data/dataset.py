@@ -1,6 +1,7 @@
 """In-memory index of an annotated image dataset (detection or pose)."""
 
 import logging
+import numbers
 import random
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, replace
@@ -157,9 +158,10 @@ class Dataset:
     ) -> "Dataset":
         """Randomly keep ``size`` images per split.
 
-        ``size`` is an image count (int), a fraction (float in ``(0, 1]``) or a
-        mapping ``{split: count_or_fraction}``; splits missing from the mapping
-        are kept whole.
+        ``size`` is an image count (an integer, NumPy integers included), a
+        fraction (a float in ``[0, 1]``) or a mapping
+        ``{split: count_or_fraction}``; splits missing from the mapping are
+        kept whole.
         """
         rng = random.Random(seed)
         sizes = (
@@ -173,26 +175,34 @@ class Dataset:
             if want is None:
                 splits[split] = list(samples)
                 continue
-            count = round(len(samples) * want) if isinstance(want, float) else int(want)
+            count = _subset_count(want, len(samples))
             splits[split] = rng.sample(samples, min(count, len(samples)))
         return replace(self, splits=splits)
 
     def resplit(
         self, train: float = 0.8, valid: float = 0.2, test: float = 0.0, seed: int = 0
     ) -> "Dataset":
-        """Pool every image and split again with the given fractions."""
+        """Pool every image and split again with the given fractions.
+
+        Split boundaries are rounded cumulatively and the rounding remainder
+        goes to the last split with a non-zero fraction, so a split asked to
+        be empty (``test=0``) stays empty.
+        """
+        fractions = {"train": train, "valid": valid, "test": test}
+        if any(f < 0 for f in fractions.values()):
+            raise ValueError(f"Split fractions must not be negative, got {fractions}")
         total = train + valid + test
         if not np.isclose(total, 1.0):
             raise ValueError(f"Split fractions must sum to 1, got {total}")
         pool = list(self)
         random.Random(seed).shuffle(pool)
-        n_train = round(len(pool) * train)
-        n_valid = round(len(pool) * valid)
-        splits = {
-            "train": pool[:n_train],
-            "valid": pool[n_train : n_train + n_valid],
-            "test": pool[n_train + n_valid :],
-        }
+        last = max(i for i, f in enumerate(fractions.values()) if f > 0)
+        splits, begin, cumulative = {}, 0, 0.0
+        for position, (name, fraction) in enumerate(fractions.items()):
+            cumulative += fraction
+            end = len(pool) if position >= last else round(len(pool) * cumulative)
+            splits[name] = pool[begin:end]
+            begin = end
         return replace(self, splits={k: v for k, v in splits.items() if v})
 
     def merge(self, other: "Dataset") -> "Dataset":
@@ -221,6 +231,21 @@ class Dataset:
         from tactifoot_vision.data import coco
 
         return coco.write_dataset(self, Path(out_dir), link=link)
+
+
+def _subset_count(want: object, available: int) -> int:
+    """Images to keep for a ``subset`` size: an integer count or a fraction in ``[0, 1]``."""
+    if isinstance(want, numbers.Integral) and not isinstance(want, bool):
+        if want < 0:
+            raise ValueError(f"A subset count must be >= 0, got {want}")
+        return int(want)
+    if isinstance(want, numbers.Real) and not isinstance(want, bool):
+        if not 0 <= want <= 1:
+            raise ValueError(
+                f"A subset fraction must be in [0, 1], got {want}; pass an int for a count"
+            )
+        return round(available * float(want))
+    raise ValueError(f"A subset size must be a number, got {want!r}")
 
 
 def load_dataset(path: str | Path) -> Dataset:

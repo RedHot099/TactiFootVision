@@ -82,14 +82,16 @@ tactifoot evaluate rfdetr --weights models/football_rfdetr_base.pth --data data/
 tactifoot info
 ```
 
-`run` writes the **run folder**: `result.pkl`, `tracks.csv`, StatsBomb-style
-`freeze_frames.csv` (all three via `PipelineResult.export`) and
-`annotated.mp4` (skip it with `--no-video`). Its flags are the run inputs:
-`--start`, `--end`, `--stride` (`Pipeline.run`) and `--period`,
-`--period-start` (`PipelineResult.export`). `train` has one flag per
-`TrainConfig` field (`tactifoot train --help` lists them with their defaults);
-backend options go through `--set`. `evaluate` passes `--split` and `--set`
-keys to `model.evaluate`.
+`run` is `RunFile.run`: it writes the **run folder**: `result.pkl`,
+`tracks.csv`, StatsBomb-style `freeze_frames.csv` (all three via
+`PipelineResult.export`) and `annotated.mp4` (skip it with `--no-video`). Its
+flags are the run inputs: `--start`, `--end`, `--stride` (`Pipeline.run`) and
+`--period`, `--period-start` (`PipelineResult.export`; left out, the clock
+starts at the period's kick-off: 0', 45', 90' or 105'). `train` has one flag
+per `TrainConfig` field (`tactifoot train --help` lists them with their
+defaults); backend options go through `--set`. `evaluate` passes `--split`
+and `--set` keys to `model.evaluate`, and `--set model.KEY=VALUE` keys
+(`model.device=cuda:1`, `model.imgsz=1280`) to `load_model`.
 
 ### Run files
 
@@ -111,12 +113,13 @@ render:                                               # tv.viz.render_video argu
 ```
 
 Keys are checked against the signatures when the file is loaded (a typo fails
-with the list of valid keys); values are checked by the constructors before the
-first frame. Paths starting with `./` or `../` are relative to the run file.
-`--set dotted.key=value` overrides one value for one run; the value is YAML
-(`null`, `true`, `0.4`, `[a, b]`) and missing keys are created. In Python,
-`tv.run_file.load("configs/pipeline.yaml", ["tracker=null"]).build_pipeline()`
-does the same as the CLI. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#run-files-and-the-cli-tvrun_file-tactifoot)
+with the list of valid keys); values, `render` included, are checked by the
+constructors before the first frame. Paths starting with `./` or `../` are
+relative to the run file. `--set dotted.key=value` overrides one value for one
+run; the value is YAML (`null`, `true`, `0.4`, `[a, b]`) and missing keys are
+created. In Python,
+`tv.run_file.load("configs/pipeline.yaml", ["tracker=null"]).run("match.mp4", "outputs/match", end=500)`
+does the same as the CLI, and `.build_pipeline()` gives just the pipeline. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#run-files-and-the-cli-tvrun_file-tactifoot)
 for every section and [`examples/06_cli.sh`](examples/06_cli.sh) for a runnable tour.
 
 ## Local data layout

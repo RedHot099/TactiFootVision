@@ -290,6 +290,32 @@ _VERTICAL = ("top", "center", "bottom")
 _HORIZONTAL = ("left", "center", "right")
 
 
+def check_overlay(
+    position: str | None = None,
+    width_fraction: float | None = None,
+    alpha: float | None = None,
+    padding: int | None = None,
+) -> None:
+    """Raise ``ValueError`` for an :func:`overlay` setting it would reject.
+
+    Only the settings given are checked, so callers can validate before they
+    have a frame (``render_video`` does, before it opens the output).
+    """
+    if position is not None:
+        vertical, _, horizontal = position.partition("-")
+        if vertical not in _VERTICAL or (horizontal or "center") not in _HORIZONTAL:
+            raise ValueError(
+                f"Unknown position {position!r}; use "
+                f"'<{'|'.join(_VERTICAL)}>-<{'|'.join(_HORIZONTAL)}>' or 'center'"
+            )
+    if width_fraction is not None and not 0 < width_fraction <= 1:
+        raise ValueError(f"width_fraction must be in (0, 1], got {width_fraction}")
+    if alpha is not None and not 0 <= alpha <= 1:
+        raise ValueError(f"alpha must be in [0, 1], got {alpha}")
+    if padding is not None and padding < 0:
+        raise ValueError(f"padding must be >= 0, got {padding}")
+
+
 def overlay(
     frame: np.ndarray,
     image: np.ndarray,
@@ -307,16 +333,9 @@ def overlay(
         alpha: opacity of the overlay (1 = opaque).
         padding: distance in pixels from the frame border.
     """
+    check_overlay(position, width_fraction, alpha, padding)
     vertical, _, horizontal = position.partition("-")
     horizontal = horizontal or "center"
-    if vertical not in _VERTICAL or horizontal not in _HORIZONTAL:
-        raise ValueError(
-            f"Unknown position {position!r}; use '<{'|'.join(_VERTICAL)}>-<{'|'.join(_HORIZONTAL)}>'"
-        )
-    if not 0 < width_fraction <= 1:
-        raise ValueError(f"width_fraction must be in (0, 1], got {width_fraction}")
-    if not 0 <= alpha <= 1:
-        raise ValueError(f"alpha must be in [0, 1], got {alpha}")
     frame_h, frame_w = frame.shape[:2]
     image_h, image_w = image.shape[:2]
     scale = min(frame_w * width_fraction / image_w, frame_h / image_h)

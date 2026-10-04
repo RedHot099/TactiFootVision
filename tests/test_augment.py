@@ -385,3 +385,11 @@ def test_augment_dataset_refuses_an_export_folder(tmp_path):
     with pytest.raises(ValueError, match="export"):
         augment_dataset(dataset, HorizontalFlip(), tmp_path / "export", progress=False)
     assert not list((tmp_path / "export" / "train" / "images").glob("*_aug*"))
+
+
+def test_augment_dataset_progress_false_is_silent_for_every_split(tmp_path, capsys):
+    augment_dataset(
+        make_dataset(tmp_path), Compose([]), tmp_path / "aug",
+        splits=("train", "valid"), progress=False,
+    )  # fmt: skip
+    assert capsys.readouterr().err == ""

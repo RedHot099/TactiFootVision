@@ -311,3 +311,95 @@ def test_object_masks_round_trip_through_crops():
     assert [c.shape for c in compact.crops] == [(16, 31), (0, 0), (1, 1)]
     assert compact.origins.tolist() == [[30, 10], [0, 0], [99, 49]]
     np.testing.assert_array_equal(compact.to_dense(100, 50), masks)
+
+
+# ------------------------------------------------------- review round 2
+@pytest.mark.parametrize(("period", "minute"), [(1, 1), (2, 46), (3, 91), (4, 106)])
+def test_freeze_frames_start_at_the_period_kick_off_by_default(period, minute):
+    frames = _result().to_freeze_frames(period=period)
+    assert (frames["minute"].iloc[0], frames["second"].iloc[0]) == (minute, 5)
+    assert frames["timestamp_seconds"].iloc[0] == pytest.approx(
+        (minute - 1) * 60 + 65.2
+    )
+
+
+def test_freeze_frames_of_an_unknown_period_need_a_period_start():
+    with pytest.raises(ValueError, match="period_start"):
+        _result().to_freeze_frames(period=5)
+    assert _result().to_freeze_frames(period=5, period_start=0.0)["minute"][0] == 1
+
+
+def test_export_uses_the_kick_off_clock(tmp_path):
+    out = _result().export(tmp_path / "run", period=2)
+    import pandas as pd
+
+    assert pd.read_csv(out / "freeze_frames.csv")["minute"].iloc[0] == 46
+
+
+def test_an_empty_result_exports_tables_with_headers(tmp_path):
+    import pandas as pd
+
+    empty = PipelineResult(
+        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        25.0,
+        (64, 48),
+        [],
+    )
+    out = empty.export(tmp_path / "run")
+    tracks = pd.read_csv(out / "tracks.csv")
+    frames = pd.read_csv(out / "freeze_frames.csv")
+    assert len(tracks) == 0 and "pitch_x" in tracks
+    assert len(frames) == 0
+    assert list(frames.columns) == list(_result().to_freeze_frames().columns)
+
+
+def test_freeze_frame_rows_share_one_builder_and_named_constants():
+    from tactifoot_vision.pipeline.result import BALL_PLAYER_ID, UNTRACKED
+
+    result = _result()
+    result.frames[0].ball.data["class_name"] = np.array(["sports ball"])
+    result.frames[0].detections.tracker_id = None
+    frames = result.to_freeze_frames()
+    ball = frames[frames["type"] == "ball"].iloc[0]
+    assert ball["class_name"] == "sports ball"  # the detector's ball class
+    assert ball["player_id"] == BALL_PLAYER_ID == -99
+    assert (frames.loc[frames["type"] != "ball", "player_id"] == UNTRACKED).all()
+    assert UNTRACKED == -1
+    tracks = result.to_dataframe()
+    assert tracks.loc[tracks["object"] == "ball", "class_name"].item() == "sports ball"
+
+
+def test_object_masks_clip_origins_outside_the_frame():
+    masks = ObjectMasks(
+        origins=np.array([[-3, -2], [8, 7], [20, 20]]),
+        crops=[np.ones((5, 5), bool), np.ones((5, 5), bool), np.ones((2, 2), bool)],
+    )
+    dense = masks.to_dense(10, 10)
+    expected = np.zeros((3, 10, 10), bool)
+    expected[0, 0:3, 0:2] = True
+    expected[1, 7:10, 8:10] = True
+    np.testing.assert_array_equal(dense, expected)
+    regions = list(masks.regions(10, 10))
+    assert len(regions) == 3
+    (rows, cols), crop = regions[0]
+    assert (rows, cols) == (slice(0, 3), slice(0, 2)) and crop.shape == (3, 2)
+    assert regions[2][1].size == 0  # entirely outside: an empty crop, not an error
+
+
+def test_homography_used_indices_clear_when_a_fit_fails():
+    pitch = SoccerPitch()
+    estimator = HomographyEstimator(pitch, max_age=5)
+    good = estimator.update(_keypoints(pitch, _homography()))
+    assert estimator.used_indices is not None
+    too_few = _keypoints(pitch, _homography(), drop=range(29))
+    assert estimator.update(too_few) is good  # the matrix is aged ...
+    assert estimator.used_indices is None  # ... but no landmarks were used
+
+
+def test_visible_area_is_none_when_a_corner_lies_beyond_the_horizon():
+    result = _result()
+    # frame -> pitch with the horizon at y = 33: the bottom corners (y = 50) lie behind it.
+    result.frames[0].homography = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
+    assert result.to_freeze_frames()["visible_area"].iloc[0] is None
+    result.frames[0].homography = np.array([[1, 0, 0], [0, 1, 0], [0, 0.001, 1.0]])
+    assert json.loads(result.to_freeze_frames()["visible_area"].iloc[0])

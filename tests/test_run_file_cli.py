@@ -1,5 +1,6 @@
 """Run files and the ``tactifoot`` command, driven by fake registered models."""
 
+import argparse
 import inspect
 import json
 import logging
@@ -245,13 +246,25 @@ def test_unknown_keys_fail_at_load(tmp_path, section, value, bad, valid):
     assert valid in message
 
 
-def test_teams_accept_embedder_options_which_the_embedder_checks(tmp_path):
-    # TeamClassifier takes **embedder_options, so any key passes the load check.
-    loaded = _load(
-        tmp_path, {"detector": DETECTOR, "teams": {"embedder": "resnet", "bogus": 1}}
+def test_teams_keys_are_checked_against_the_classifier_and_its_embedder(tmp_path):
+    with pytest.raises(
+        ValueError, match="Unknown key 'bogus' in section 'teams'"
+    ) as error:
+        _load(
+            tmp_path,
+            {"detector": DETECTOR, "teams": {"embedder": "resnet", "bogus": 1}},
+        )
+    assert "n_teams" in str(error.value) and "batch_size" in str(error.value)
+    # the default embedder (SigLIP) comes from the TeamClassifier signature
+    with pytest.raises(ValueError, match="color_hist_bins"):
+        _load(tmp_path, {"detector": DETECTOR, "teams": {"embeder": "resnet"}})
+    _load(tmp_path, {"detector": DETECTOR, "teams": {"color_hist_bins": 8}})
+    _load(
+        tmp_path,
+        {"detector": DETECTOR, "teams": {"embedder": "resnet", "batch_size": 8}},
     )
-    with pytest.raises(TypeError, match="bogus"):
-        loaded.build_pipeline()
+    with pytest.raises(ValueError, match="Section 'teams'.*Unknown embedder 'nope'"):
+        _load(tmp_path, {"detector": DETECTOR, "teams": {"embedder": "nope"}})
 
 
 @pytest.mark.parametrize(
@@ -337,7 +350,8 @@ def test_relative_paths_resolve_against_the_run_file(tmp_path):
             "detector": DETECTOR | {"weights": "../models/w.pt"},
             "keypoints": DETECTOR | {"weights": "yolov8n-pose.pt"},
             "tracker": {"type": "sam2", "checkpoint": "./ckpt.pt", "config": "/abs/t.yaml"},
-            "teams": {"embedder": "fake", "paths": ["./a", {"deep": "../b"}, "configs/c"]},
+            "pipeline": {"include_classes": ["./a", "configs/c"]},
+            "render": {"annotator": {"style": "../b"}},
         },
     )  # fmt: skip
     sections = run_file.load(path).sections
@@ -345,11 +359,11 @@ def test_relative_paths_resolve_against_the_run_file(tmp_path):
     assert sections["keypoints"]["weights"] == "yolov8n-pose.pt"
     assert sections["tracker"]["checkpoint"] == str(tmp_path / "configs" / "ckpt.pt")
     assert sections["tracker"]["config"] == "/abs/t.yaml"
-    assert sections["teams"]["paths"] == [
+    assert sections["pipeline"]["include_classes"] == [
         str(tmp_path / "configs" / "a"),
-        {"deep": str(tmp_path / "b")},
         "configs/c",
     ]
+    assert sections["render"]["annotator"]["style"] == str(tmp_path / "b")
 
 
 def test_loading_imports_no_heavy_library(tmp_path):
@@ -457,8 +471,9 @@ def test_cli_reports_runtime_errors_in_one_line(tmp_path, capsys):
     assert "Traceback" not in err
 
 
-def test_cli_run_checks_the_video_before_loading_models(tmp_path, capsys):
-    config = _write(tmp_path / "run.yaml", {"detector": {"type": "no_such_model"}})
+def test_cli_run_checks_the_video_before_loading_models(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(BoxDetector, "_load", lambda self, w: pytest.fail("loaded"))
+    config = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
     args = ["run", str(config), "--video", str(tmp_path / "missing.mp4")]
     assert main([*args, "--output-dir", str(tmp_path / "out")]) == 1
     assert "video not found" in capsys.readouterr().err
@@ -567,15 +582,16 @@ def test_cli_evaluate_end_to_end(tmp_path, monkeypatch, capsys):
     original = evaluation.evaluate_detector
 
     def spy(model, dataset, **kwargs):
-        calls.append((model.device, kwargs))
+        calls.append((model.device, model.iou, kwargs))
         return original(model, dataset, **kwargs)
 
     monkeypatch.setattr(evaluation, "evaluate_detector", spy)
     data = _write_dataset(tmp_path / "dataset")
     args = ["evaluate", "test_box_detector", "--weights", "w.pt", "--data", str(data)]
-    args += ["--split", "train", "--device", "cpu:0", "--set", "max_images=1"]
+    args += ["--split", "train", "--set", "model.device=cpu:0", "--set", "max_images=1"]
+    args += ["--set", "model.iou=0.3"]
     assert main(args) == 0
-    assert calls == [("cpu:0", {"split": "train", "max_images": 1})]
+    assert calls == [("cpu:0", 0.3, {"split": "train", "max_images": 1})]
     assert json.loads(capsys.readouterr().out)["map50"] == pytest.approx(1.0)
 
 
@@ -583,3 +599,185 @@ def test_cli_info(capsys):
     assert main(["info"]) == 0
     out = capsys.readouterr().out
     assert "yolo" in out and "bytetrack" in out and "siglip" in out
+
+
+# ------------------------------------------------------- review round 2
+@pytest.fixture
+def predictions(monkeypatch):
+    """Count the detector's predict calls (frames processed)."""
+    calls = []
+    original = BoxDetector.predict
+
+    def predict(self, image):
+        calls.append(1)
+        return original(self, image)
+
+    monkeypatch.setattr(BoxDetector, "predict", predict)
+    return calls
+
+
+def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
+    loaded = _load(tmp_path, {"detector": DETECTOR, "render": {"radar": None}})
+    video = _video(tmp_path / "clip.mp4")
+    result = loaded.run(video, tmp_path / "out", end=4, period=2, progress=False)
+    assert isinstance(result, PipelineResult) and len(result) == 4
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
+        "annotated.mp4",
+        "freeze_frames.csv",
+        "result.pkl",
+        "tracks.csv",
+    ]
+    frames = pd.read_csv(tmp_path / "out" / "freeze_frames.csv")
+    assert (frames["minute"] == 45).all()  # the period's kick-off
+    capture = cv2.VideoCapture(str(tmp_path / "out" / "annotated.mp4"))
+    assert capture.get(cv2.CAP_PROP_FRAME_COUNT) == 4
+    loaded.run(video, tmp_path / "plain", render=False, progress=False)
+    assert not (tmp_path / "plain" / "annotated.mp4").exists()
+
+
+@pytest.mark.parametrize(
+    "render",
+    [
+        {"annotator": {"style": "videogame"}},
+        {"radar": {"width_px": 10}},
+        {"overlay_position": "bottom-middle"},
+        {"overlay_alpha": 2},
+        {"fps": 0},
+    ],
+)
+def test_run_file_run_checks_render_values_before_the_first_frame(
+    tmp_path, predictions, render
+):
+    loaded = _load(tmp_path, {"detector": DETECTOR, "render": render})
+    with pytest.raises(ValueError):
+        loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert predictions == [] and not (tmp_path / "out").exists()
+    # without rendering, the render section is not needed
+    loaded.run(
+        _video(tmp_path / "clip.mp4"), tmp_path / "out", render=False, progress=False
+    )
+
+
+def test_run_file_run_checks_its_inputs_before_loading_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(BoxDetector, "_load", lambda self, w: pytest.fail("loaded"))
+    loaded = _load(tmp_path, {"detector": DETECTOR})
+    with pytest.raises(
+        ValueError, match="Unknown run input 'strat'.*start.*period_start"
+    ):
+        loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", strat=1)
+    with pytest.raises(FileNotFoundError, match="video not found"):
+        loaded.run(tmp_path / "missing.mp4", tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    ("inputs", "match"),
+    [({"start": -1}, "start must be >= 0"), ({"start": 2, "end": 2}, "empty")],
+)
+def test_run_file_run_checks_the_frame_range_before_the_first_frame(
+    tmp_path, predictions, inputs, match
+):
+    loaded = _load(tmp_path, {"detector": DETECTOR})
+    with pytest.raises(ValueError, match=match):
+        loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", **inputs)
+    assert predictions == [] and not (tmp_path / "out").exists()
+
+
+def test_cli_run_reports_a_bad_render_value_before_the_first_frame(
+    tmp_path, capsys, predictions
+):
+    config = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    video = _video(tmp_path / "clip.mp4")
+    args = [
+        "run",
+        str(config),
+        "--video",
+        str(video),
+        "--output-dir",
+        str(tmp_path / "o"),
+    ]
+    assert main([*args, "--set", "render.annotator.style=videogame"]) == 1
+    last = capsys.readouterr().err.strip().splitlines()[-1]
+    assert last.startswith("tactifoot: error:") and "videogame" in last
+    assert predictions == []
+
+
+def test_malformed_yaml_is_a_value_error(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("detector: {type: yolo\n")
+    with pytest.raises(ValueError, match=r"bad\.yaml: invalid YAML"):
+        run_file.load(bad)
+    with pytest.raises(ValueError, match=r"detector\.conf=\[1: invalid YAML"):
+        run_file.parse_override("detector.conf=[1")
+
+
+def _one_line_error(capsys) -> str:
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    lines = err.strip().splitlines()
+    assert len(lines) == 1 and lines[0].startswith("tactifoot: error:")
+    return lines[0]
+
+
+def test_cli_reports_user_errors_in_one_line(tmp_path, capsys, monkeypatch):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("detector: {type: yolo\n")
+    good = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    video = _video(tmp_path / "clip.mp4")
+    rest = ["--video", str(video), "--output-dir", str(tmp_path / "o")]
+    assert main(["run", str(bad), *rest]) == 1
+    assert "invalid YAML" in _one_line_error(capsys)
+    assert main(["run", str(good), *rest, "--set", "detector.conf=[1"]) == 1
+    assert "invalid YAML" in _one_line_error(capsys)
+    assert main(["run", str(good), *rest, "--set", "detector.conf=high"]) == 1
+    assert "not supported" in _one_line_error(capsys)  # a value of the wrong type
+    assert main(["--log-level", "bogus", "info"]) == 1
+    assert "BOGUS" in _one_line_error(capsys)
+
+    def missing_sam2(self):
+        raise ImportError("SAM2 needs hydra; install the sam2 extra")
+
+    monkeypatch.setattr(run_file.RunFile, "build_pipeline", missing_sam2)
+    assert main(["run", str(good), *rest]) == 1
+    assert "hydra" in _one_line_error(capsys)
+
+
+def test_cli_does_not_hide_programming_errors(tmp_path, monkeypatch):
+    good = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    video = _video(tmp_path / "clip.mp4")
+
+    def bug(self):
+        raise KeyError("a bug")
+
+    monkeypatch.setattr(run_file.RunFile, "build_pipeline", bug)
+    with pytest.raises(KeyError):
+        main(["run", str(good), "--video", str(video), "--output-dir", str(tmp_path)])
+
+
+def test_evaluate_has_no_hand_written_device_flag(capsys):
+    with pytest.raises(SystemExit):
+        main(["evaluate", "yolo", "--weights", "w", "--data", "d", "--device", "cpu"])
+    assert "--device" in capsys.readouterr().err
+
+
+def test_flags_of_non_scalar_annotations_take_yaml(monkeypatch):
+    from collections.abc import Sequence
+
+    parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+    names = tv.cli._add_flags(
+        parser,
+        [
+            ("classes", Sequence[str] | None, None, None),
+            ("sizes", dict[str, int], {}, None),
+            ("count", int, 1, None),
+        ],
+    )
+    args = parser.parse_args(
+        ["--classes", "[player, goalkeeper]", "--sizes", "{a: 1}", "--count", "3"]
+    )
+    assert names == ["classes", "sizes", "count"]
+    assert (args.classes, args.sizes, args.count) == (
+        ["player", "goalkeeper"],
+        {"a": 1},
+        3,
+    )

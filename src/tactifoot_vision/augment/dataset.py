@@ -87,13 +87,13 @@ def augment_dataset(
         images_dir = ensure_dir(out_dir / split / "images")
         augmented = []
         stems = unique_stems(s.image_path.stem for s in originals)
-        progress = tqdm(
+        bar = tqdm(
             zip(originals, stems, strict=True),
             total=len(originals),
             desc=f"augment {split}",
             disable=not progress,
         )
-        for index, (sample, stem) in enumerate(progress):
+        for index, (sample, stem) in enumerate(bar):
             image = sample.read_image()
             annotations = sample.annotations
             # Hand-built annotations may lack the dataset's flip_idx; HorizontalFlip needs it.

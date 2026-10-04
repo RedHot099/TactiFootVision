@@ -9,12 +9,12 @@ import yaml
 
 from tactifoot_vision.data._files import (
     IMAGE_SUFFIXES,
+    check_link_mode,
     check_output_location,
     clipped_box,
     image_size,
     link_file,
     prepare_output,
-    record_output,
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
@@ -60,7 +60,8 @@ def read_dataset(data_yaml: Path) -> Dataset:
             continue
         loaded[images] = split
         splits[split] = [
-            _read_sample(image, num_keypoints, kpt_dims, flip_idx) for image in images
+            _read_sample(image, len(class_names), num_keypoints, kpt_dims, flip_idx)
+            for image in images
         ]
 
     return Dataset(
@@ -103,6 +104,7 @@ def label_path(image: Path) -> Path:
 
 def _read_sample(
     image: Path,
+    num_classes: int,
     num_keypoints: int | None,
     kpt_dims: int | None,
     flip_idx: tuple[int, ...] | None,
@@ -117,7 +119,13 @@ def _read_sample(
     scale = np.array([width, height, width, height], dtype=np.float32)
     for row in rows:
         values = np.asarray(row[1:], dtype=np.float32)
-        class_ids.append(int(float(row[0])))
+        class_id = int(float(row[0]))
+        if not 0 <= class_id < num_classes:
+            raise ValueError(
+                f"{labels}: class id {class_id} is out of range for the "
+                f"{num_classes} classes in data.yaml"
+            )
+        class_ids.append(class_id)
         if num_keypoints is not None:
             cx, cy, w, h = values[:4]
             if len(values) != 4 + num_keypoints * kpt_dims:
@@ -156,23 +164,26 @@ def _read_sample(
 
 # ------------------------------------------------------------------- writing
 def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -> Path:
+    check_link_mode(link)
     splits = dataset.split_names
     managed = [
         out_dir / split / sub for split in splits for sub in ("images", "labels")
     ]
     check_output_location(out_dir, managed, (s.image_path for s in dataset))
-    prepare_output(out_dir, managed)
-    written: list[Path] = []
+    targets = {
+        split: [
+            out_dir / split / "images" / name
+            for name in unique_names([s.image_path for s in dataset[split]])
+        ]
+        for split in splits
+    }
+    images = [target for split in splits for target in targets[split]]
+    data_yaml = out_dir / "data.yaml"
+    prepare_output(out_dir, managed, [*images, *map(label_path, images), data_yaml])
     for split in splits:
-        samples = dataset[split]
-        for sample, name in zip(
-            samples, unique_names([s.image_path for s in samples]), strict=True
-        ):
-            target = out_dir / split / "images" / name
+        for sample, target in zip(dataset[split], targets[split], strict=True):
             link_file(sample.image_path, target, link)
-            written.append(target)
             label_path(target).write_text(_format_labels(sample))
-    record_output(out_dir, written)
 
     config: dict = {"path": str(out_dir.resolve())}
     for split, key in (("train", "train"), ("valid", "val"), ("test", "test")):
@@ -183,7 +194,6 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
         config["kpt_shape"] = [dataset.num_keypoints, 3]
         if dataset.flip_idx:
             config["flip_idx"] = list(dataset.flip_idx)
-    data_yaml = out_dir / "data.yaml"
     data_yaml.write_text(yaml.safe_dump(config, sort_keys=False))
     logger.info("Wrote YOLO dataset (%d images) to %s", len(dataset), out_dir)
     return data_yaml

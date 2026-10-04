@@ -59,9 +59,17 @@ class VideoReader:
     def frames(
         self, start: int = 0, end: int | None = None, stride: int = 1
     ) -> Iterator[tuple[int, np.ndarray]]:
-        """Yield ``(frame_index, bgr_frame)`` for ``start <= index < end`` every ``stride`` frames."""
-        if stride < 1:
-            raise ValueError("stride must be >= 1")
+        """Yield ``(frame_index, bgr_frame)`` for ``start <= index < end`` every ``stride`` frames.
+
+        The range is checked when this is called (``ValueError``), not on the
+        first frame; ``end == start`` is an empty range.
+        """
+        check_frame_range(start, end, stride)
+        return self._frames(start, end, stride)
+
+    def _frames(
+        self, start: int, end: int | None, stride: int
+    ) -> Iterator[tuple[int, np.ndarray]]:
         capture = self._open()
         try:
             if start > 0:
@@ -81,8 +89,9 @@ class VideoReader:
 
     def read(self, index: int) -> np.ndarray:
         """Return a single frame by index."""
-        for _, frame in self.frames(start=index, end=index + 1):
-            return frame
+        if index >= 0:
+            for _, frame in self.frames(start=index, end=index + 1):
+                return frame
         raise IndexError(
             f"Frame {index} is out of range for {self.path} ({self.frame_count} frames)"
         )
@@ -92,6 +101,16 @@ class VideoReader:
             f"VideoReader({str(self.path)!r}, {self.width}x{self.height}, "
             f"{self.fps:.2f} fps, {self.frame_count} frames)"
         )
+
+
+def check_frame_range(start: int, end: int | None, stride: int) -> None:
+    """Raise ``ValueError`` unless ``0 <= start <= end`` (``end=None``: to the end) and ``stride >= 1``."""
+    if start < 0:
+        raise ValueError(f"start must be >= 0, got {start}")
+    if end is not None and end < start:
+        raise ValueError(f"end ({end}) must be >= start ({start})")
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1, got {stride}")
 
 
 def extract_frames(

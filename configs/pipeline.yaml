@@ -11,6 +11,7 @@
 #               )
 #               result = pipeline.run("match.mp4", end=500)
 #               tv.viz.render_video(result, "match.mp4", "outputs/match/annotated.mp4")
+#   Both:     tv.run_file.load("configs/pipeline.yaml").run("match.mp4", "outputs/match", end=500)
 #
 # Each section's keys are the keyword arguments of one package call (see
 # docs/ARCHITECTURE.md, "Run files"); a key left out keeps the package default.

@@ -10,6 +10,7 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
+from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.viz.radar import (
     BALL_COLOR,
@@ -73,16 +74,16 @@ def project_to_frame(
     """
     points = np.asarray(points, dtype=float).reshape(-1, 2)
     width, height = frame_size
+    nothing = np.zeros((len(points), 2)), np.zeros(len(points), dtype=bool)
     # The side of the horizon the camera looks at: where the frame centre lands.
     centre = homography @ np.array([width / 2, height / 2, 1.0])
     try:
         inverse = np.linalg.inv(homography)
     except np.linalg.LinAlgError:  # a degenerate fit: nothing can be projected
-        return np.zeros((len(points), 2)), np.zeros(len(points), dtype=bool)
-    projected = np.column_stack([points, np.ones(len(points))]) @ inverse.T
-    w = projected[:, 2] * np.sign(centre[2])
-    valid = w > 1e-9
-    xy = projected[:, :2] / np.where(valid, projected[:, 2], 1.0)[:, None]
+        return nothing
+    if abs(centre[2]) < 1e-12:
+        return nothing
+    xy, valid = project_points(points, inverse, tuple(centre[:2] / centre[2]))
     limit = 4 * max(width, height)
     valid &= (np.abs(xy) < limit).all(axis=1)
     return xy, valid
@@ -225,9 +226,9 @@ class FrameAnnotator:
             return
         tints = np.array([c.as_bgr() for c in self._palette.colors], dtype=np.float32)
         height, width = image.shape[:2]
-        for (x, y), crop, index in zip(masks.origins, masks.crops, lookup, strict=True):
-            crop = crop[: height - y, : width - x]  # a crop may reach past the frame
-            region = image[y : y + crop.shape[0], x : x + crop.shape[1]]
+        regions = masks.regions(width, height)
+        for (region_slices, crop), index in zip(regions, lookup, strict=True):
+            region = image[region_slices]
             region[crop] = (
                 (1 - MASK_OPACITY) * region[crop] + MASK_OPACITY * tints[index]
             ).astype(np.uint8)

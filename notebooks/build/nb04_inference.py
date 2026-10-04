@@ -278,8 +278,9 @@ people.groupby(["class_name", "team_id"])["track_id"].nunique().unstack(fill_val
 StatsBomb 360 shape: one row per object with match-clock time, JSON-encoded
 pitch location and the visible area of the pitch (StatsBomb's flat
 `[x1, y1, x2, y2, ...]` polygon). `period_start` is the match clock at the
-first frame, in seconds; `timestamp` is that match clock too, while
-StatsBomb's own event timestamps restart every period.
+first frame, in seconds; left out, it is the period's kick-off (0', 45', 90'
+or 105'). `timestamp` is that match clock too, while StatsBomb's own event
+timestamps restart every period. This clip starts 17:15 into the first half.
 """)
     nb.code("""
 tracks.head()
@@ -289,10 +290,12 @@ freeze_frames = result.to_freeze_frames(period=1, period_start=17 * 60 + 15)
 freeze_frames[["frame_id", "period", "timestamp", "minute", "second", "player_id", "type", "team_id", "location"]].head()
 """)
     nb.md("""
-`export` writes the run folder, the same files `tactifoot run` writes:
-`result.pkl`, `tracks.csv` and `freeze_frames.csv`. `save` and
-`PipelineResult.load` keep the whole result for later, for example to render
-it again with other settings (see [05_visualisation](05_visualisation.ipynb)).
+`export` writes the run folder's data files: `result.pkl`, `tracks.csv` and
+`freeze_frames.csv`. `tactifoot run` writes them through
+`tv.run_file.load(run_file).run(video, output_dir, ...)`, which also renders
+`annotated.mp4`. `save` and `PipelineResult.load` keep the whole result for
+later, for example to render it again with other settings (see
+[05_visualisation](05_visualisation.ipynb)).
 """)
     nb.code("""
 run_folder = result.export(OUT / "run", period=1, period_start=17 * 60 + 15)
@@ -337,8 +340,10 @@ else:
 ## Comparing with StatsBomb 360
 
 `compare_with_statsbomb(freeze_frames, statsbomb, period)` matches every
-StatsBomb object to the nearest detected object in the same match second and
-reports the distance. Both sides must use the same pitch units, so the
+StatsBomb object to the nearest detected player or goalkeeper (the ball and
+referees never match) and reports the distance. With sub-second times on both
+sides (`timestamp_seconds`) the candidates come from the processed frame
+closest to the event; otherwise from every frame of that second. Both sides must use the same pitch units, so the
 pipeline is built with `pitch=tv.SoccerPitch(120, 80)`, and the video must
 show the match the events describe:
 

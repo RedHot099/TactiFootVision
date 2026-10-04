@@ -11,7 +11,7 @@ import supervision as sv
 from tqdm.auto import tqdm
 
 from tactifoot_vision.data.annotations import Task
-from tactifoot_vision.data.video import VideoReader
+from tactifoot_vision.data.video import VideoReader, check_frame_range
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline.result import (
     NO_TEAM,
@@ -61,6 +61,9 @@ class Pipeline:
             processed frames (plus the first frame of every track).
         team_samples_per_track: votes kept per track (a uniform random sample of
             its crops), which bounds memory on full matches.
+            Both settings only bound the work with a tracker: with
+            ``tracker=None`` every detection is its own "track", so every
+            team-class person is embedded on every frame.
         ball_max_speed: fastest plausible ball, in pitch units per second (m/s
             for the default pitch); faster jumps between kept ball positions
             are outliers whose ``pitch_xy`` becomes NaN (see
@@ -147,11 +150,21 @@ class Pipeline:
         """Process the frames ``start <= index < end`` every ``stride`` frames.
 
         ``end=None`` runs to the end of the video, like :meth:`VideoReader.frames`.
+        The range is checked before any model runs: a negative ``start``, an
+        empty range (``end <= start``) or a ``start`` past the last frame is a
+        ``ValueError``.
         """
         reader = video if isinstance(video, VideoReader) else VideoReader(video)
-        total = len(
-            range(start, min(end or reader.frame_count, reader.frame_count), stride)
-        )
+        check_frame_range(start, end, stride)
+        if end == start:
+            raise ValueError(f"The frame range start={start}, end={end} is empty")
+        if reader.frame_count and start >= reader.frame_count:
+            raise ValueError(
+                f"start={start} is past the end of {reader.path} "
+                f"({reader.frame_count} frames)"
+            )
+        last = reader.frame_count if end is None else min(end, reader.frame_count)
+        total = len(range(start, last, stride))
         if self.tracker is not None:
             self.tracker.reset(fps=reader.fps / stride)
         self.homography.reset()

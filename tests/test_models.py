@@ -318,6 +318,16 @@ def test_ultralytics_replaces_a_dangling_amp_probe_link(
         ("fake_yolo", {"data": "other.yaml"}, "data"),
         ("fake_rfdetr", {"epoch": 5}, "epoch"),
         ("fake_rfdetr", {"dataset_dir": "elsewhere"}, "dataset_dir"),
+        ("fake_yolo", {"batch": 32}, "batch.*batch_size"),
+        ("fake_yolo", {"lr0": 0.01}, "lr0.*lr"),
+        ("fake_rfdetr", {"num_workers": 2}, "num_workers.*workers"),
+        ("fake_rfdetr", {"resolution": 448}, "resolution.*imgsz"),
+        (
+            "fake_rfdetr",
+            {"early_stopping_patience": 3},
+            "early_stopping_patience.*patience",
+        ),
+        ("fake_rfdetr", {"device": "cuda:1"}, "CUDA_VISIBLE_DEVICES"),
     ],
 )
 def test_bad_backend_options_fail_before_the_run_folder_exists(
@@ -497,3 +507,41 @@ def test_yolo_and_rfdetr_score_on_the_same_scale(football):
         assert expected_map50[Path(model.weights).name] < metrics.map50 <= 1.0
         assert list(metrics.per_class.index) == FOOTBALL_CLASSES
         assert model.conf != 0.01  # evaluation threshold was restored
+
+
+# ------------------------------------------------------- review round 2
+def test_train_by_name_loads_the_model_on_the_training_device(monkeypatch):
+    from tactifoot_vision.models import base
+
+    loads = []
+
+    class Loaded:
+        def train(self, dataset, config=None, **overrides):
+            return config, overrides
+
+    def fake_load(name, weights=None, **options):
+        loads.append(options)
+        return Loaded()
+
+    monkeypatch.setattr(base, "load_model", fake_load)
+    assert base.train("rfdetr", "dataset", device="cpu") == (None, {"device": "cpu"})
+    config = tv.TrainConfig(device="cuda:0")
+    base.train("rfdetr", "dataset", config)
+    base.train("rfdetr", "dataset")
+    assert loads == [{"device": "cpu"}, {"device": "cuda:0"}, {}]
+
+
+def test_ultralytics_downloads_only_names_it_knows(monkeypatch, tmp_path):
+    from tactifoot_vision.models.ultralytics import _checkpoint_path
+
+    monkeypatch.setattr(
+        ultralytics_backend, "_cached_asset", lambda name: tmp_path / name
+    )
+    assert _checkpoint_path("yolo11n.pt") == tmp_path / "yolo11n.pt"
+    with pytest.raises(FileNotFoundError, match="Checkpoint not found: footbal.pt"):
+        _checkpoint_path("footbal.pt")
+    with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
+        _checkpoint_path(tmp_path / "missing.pt")
+    local = tmp_path / "mine.pt"
+    local.write_bytes(b"")
+    assert _checkpoint_path(local) == local

@@ -468,3 +468,52 @@ def test_prefitted_classifier_with_no_team_crops(video):
     )
     assert all(set(f.detections.data["class_name"]) == {"referee"} for f in result)
     assert all((f.team_ids == NO_TEAM).all() for f in result)
+
+
+# ------------------------------------------------------- review round 2
+class _ResetSpy(ByteTrackTracker):
+    resets = 0
+
+    def reset(self, fps=None):
+        type(self).resets += 1
+        super().reset(fps=fps)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"start": -2}, "start must be >= 0"),
+        ({"start": 4, "end": 2}, "must be >= start"),
+        ({"start": 3, "end": 3}, "empty"),
+        ({"end": 0}, "empty"),
+        ({"stride": 0}, "stride must be >= 1"),
+        ({"start": FRAMES}, "past the end"),
+    ],
+)
+def test_run_checks_the_frame_range_before_any_work(video, kwargs, match):
+    detector = ColorDetector(device="cpu")
+    detector.predict = lambda image: pytest.fail("the detector ran")
+    pipeline = Pipeline(detector, tracker=_ResetSpy())
+    _ResetSpy.resets = 0
+    with pytest.raises(ValueError, match=match):
+        pipeline.run(video, progress=False, **kwargs)
+    assert _ResetSpy.resets == 0
+
+
+def test_run_carries_the_ball_class_into_the_freeze_frames(video):
+    class SportsBall(ColorDetector):
+        def predict(self, image):
+            detections = super().predict(image)
+            names = detections.data["class_name"]
+            detections.data["class_name"] = np.where(
+                names == "ball", "sports ball", names
+            )
+            return detections
+
+    result = Pipeline(SportsBall(device="cpu"), ball_class="sports ball").run(
+        video, end=1, progress=False
+    )
+    frames = result.to_freeze_frames()
+    assert frames.loc[frames["type"] == "ball", "class_name"].tolist() == [
+        "sports ball"
+    ]

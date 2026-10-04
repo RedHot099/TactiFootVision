@@ -62,6 +62,11 @@ class RFDETRDetector(Model):
 
     name = "rfdetr"
     task = Task.DETECT
+    _train_config_aliases = {
+        "num_workers": "workers",
+        "resolution": "imgsz",
+        "early_stopping_patience": "patience",
+    }
 
     def __init__(
         self,
@@ -153,9 +158,10 @@ class RFDETRDetector(Model):
         return detections
 
     # --------------------------------------------------------------- training
-    def _check_options(self, options: dict[str, Any]) -> None:
-        super()._check_options(options)
-        _check_train_options(options)
+    def _check_options(self, config: TrainConfig) -> None:
+        super()._check_options(config)
+        _check_train_options(config.backend_options)
+        _rfdetr_device(config.device or self.device)
 
     def _train(
         self, dataset: Dataset, config: TrainConfig, run_dir: Path
@@ -172,7 +178,7 @@ class RFDETRDetector(Model):
         model_config = self._rf.model_config
         block = model_config.patch_size * model_config.num_windows
         resolution = max(block, round(config.imgsz / block) * block)
-        if resolution != config.imgsz and "resolution" not in options:
+        if resolution != config.imgsz:
             logger.info(
                 "RF-DETR %s trains at resolution %d (imgsz %d rounded to a multiple of %d)",
                 self.size,

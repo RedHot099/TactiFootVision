@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
-| CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
+| CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
 name registry (`tactifoot_vision/registry.py`):
@@ -56,7 +56,7 @@ src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
   utils.py            setup_logging, resolve_device, ensure_dir
-  run_file.py         run files: load (+ overrides, key checks), RunFile.build_pipeline / render_video
+  run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), video.py, statsbomb.py
@@ -133,18 +133,30 @@ configs/              example run files
   by stem).
 * Writers never touch the source: they refuse an output folder that contains
   source images or lies inside a source image folder, and only clear folders
-  they created earlier (marked with `.tactifoot-export`).
-* A re-export only deletes what an export wrote: symlinks, label files, the
-  COCO json and the copied or hard-linked images listed in the marker. A
-  managed folder holding any other image (augmented images, say) is refused
-  with the file's name, so re-exporting into the same folder works for every
-  link mode and loses nothing else.
+  they created earlier (marked with `.tactifoot-export`). Every argument (the
+  link mode, the source images' existence) is checked before anything is deleted.
+* The marker records the folders an export manages and every file it writes,
+  and a re-export deletes exactly those: the previous export's split folders
+  (a split the new export drops disappears with them, so it is not loaded
+  back) and files such as `data.yaml` (switching between YOLO and COCO leaves
+  no trace of the old format). A recorded folder holding any file the marker
+  does not list (augmented images, a user's notes) is refused with the file's
+  name, so re-exporting into the same folder works for every link mode and
+  loses nothing else.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
 * `VideoReader(path)`: `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
+  `frames` checks the range when called (`start >= 0`, `end >= start`,
+  `stride >= 1`); `read` refuses negative indices.
 * `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths.
   Frame ranges use `start`, `end` (exclusive, `None` = to the end) and
   `stride` everywhere: `VideoReader.frames`, `extract_frames`, `Pipeline.run`.
+* `Dataset.resplit(train, valid, test)` rounds the split boundaries
+  cumulatively and gives the remainder to the last non-zero split, so a zero
+  fraction stays empty. `subset` takes integer counts (NumPy integers too) or
+  fractions in `[0, 1]`.
+* The YOLO and COCO readers refuse class ids outside the dataset's classes,
+  naming the label or annotation file.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
@@ -186,8 +198,14 @@ configs/              example run files
   column names); `TrainResult.load()` rebuilds the model.
 * Backend options are checked before the run folder is created
   (`Model._check_options`: Ultralytics' known arguments, RF-DETR's train
-  config), so a typo costs no run folder. Options that would move the run
-  folder (`output_dir`, `project`, `name`, `dataset_dir`, `data`) are refused.
+  config and device), so a typo costs no run folder. Options that would move
+  the run folder (`output_dir`, `project`, `name`, `dataset_dir`, `data`) are
+  refused, and so are backend names for `TrainConfig` fields (Ultralytics
+  `batch`, `lr0`; RF-DETR `num_workers`, `resolution`,
+  `early_stopping_patience`), with the field to use instead.
+* `train("rfdetr", ..., device=...)` loads the model on the training device.
+  A bare Ultralytics checkpoint name is downloaded only if Ultralytics
+  publishes it; any other missing file is "Checkpoint not found".
 
 ### Evaluation (`tv.evaluation`)
 
@@ -197,10 +215,15 @@ configs/              example run files
   (mean pixel error, PCK at a fraction of the image diagonal).
   Same numbers for every backend, so YOLO and RF-DETR compare fairly.
 * `compare_with_statsbomb(freeze_frames, statsbomb, period=1)` → merged table
-  with the nearest detected object per StatsBomb object and its distance
-  (`euclidean_distance`). Build the pipeline with `SoccerPitch(120, 80)` so both
-  sides use StatsBomb units. A `PipelineResult` is accepted too and is
-  converted assuming the video starts at the period's kick-off (0', 45', 90', 105').
+  with the nearest detected player or goalkeeper per StatsBomb object and its
+  distance (`euclidean_distance`); the ball, referees and other classes never
+  match. The match comes from the processed frame closest in time to the
+  event (`detected_frame_id`) when both tables carry `timestamp_seconds`;
+  otherwise it is the minimum over every frame of that second. Build the
+  pipeline with `SoccerPitch(120, 80)` so both sides use StatsBomb units. A
+  `PipelineResult` is accepted too and goes through `to_freeze_frames(period)`,
+  like the exported CSV, so both routes agree.
+* `evaluate` refuses options its evaluator does not take.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
@@ -215,13 +238,17 @@ configs/              example run files
   `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings and skips UMAP below 30 crops.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
-  `.run(video, start=0, end=None, stride=1) -> PipelineResult`.
-  `PipelineResult.export(out_dir, *, period=1, period_start=0.0)` writes the
-  run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`).
-  `to_freeze_frames(period, period_start)`: `minute` / `second` follow
-  StatsBomb's match clock, `timestamp` is that match clock too (StatsBomb's
-  event timestamp restarts every period), and `visible_area` is StatsBomb's
-  flat `[x1, y1, x2, y2, ...]` polygon.
+  `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
+  checked before any model runs; an empty range is an error.
+  `PipelineResult.export(out_dir, *, period=1, period_start=None)` writes the
+  run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`,
+  with headers even for an empty result).
+  `to_freeze_frames(period, period_start=None)`: `period_start=None` is the
+  period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
+  `second` follow that match clock, `timestamp` is that match clock too
+  (StatsBomb's event timestamp restarts every period), and `visible_area` is
+  StatsBomb's flat `[x1, y1, x2, y2, ...]` polygon (`None` when part of the
+  frame lies beyond the horizon).
   With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
   `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
   covers, so memory grows with the people's area, not the frame area.
@@ -232,7 +259,8 @@ configs/              example run files
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
-  landmarks given to RANSAC in the last fit (not only its inliers). Pitch
+  landmarks given to RANSAC in the current frame's fit (not only its
+  inliers), `None` when the frame gave no fit. Pitch
   vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
@@ -246,16 +274,19 @@ configs/              example run files
 * `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions);
-  `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame.
+  `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame;
+  `tv.viz.check_overlay(...)` checks those settings without a frame.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
 * `render_video(result, source, output, annotator=None, radar=None,
   overlay_position="bottom-center", overlay_width_fraction=0.25,
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True)` → output
-  path; `source=None` uses `result.video_path`. Checks that the source video
-  (header and decoded frame size) and the drawing pitch match the result, and
-  raises `RuntimeError` when the source lacks a result frame.
+  path; `source=None` uses `result.video_path`. Checks its settings and
+  refuses an `output` that is the source before opening anything, checks that
+  the source video (header and decoded frame size) and the drawing pitch
+  match the result, raises `RuntimeError` when the source lacks a result
+  frame, and deletes the partial output when rendering fails.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,
@@ -272,7 +303,7 @@ Each section maps onto exactly one package call:
 | `detector` (required) | `tv.models.load_model(type, weights, **rest)` | keys checked against `MODELS[type]` |
 | `keypoints` | same as `detector` | absent or `null`: no keypoint model |
 | `tracker` | `tv.tracking.create_tracker(type, **rest)` | absent: `Pipeline`'s default; `null`: no tracking |
-| `teams` | `TeamClassifier(**section)` | absent or `null`: no teams; `{}`: defaults; takes embedder options, so any key passes the load check |
+| `teams` | `TeamClassifier(**section)` | absent or `null`: no teams; `{}`: defaults; keys checked against `TeamClassifier` plus the chosen embedder's constructor |
 | `pitch` | `SoccerPitch(**section)` | |
 | `homography` | `HomographyEstimator(pitch, **section)` | gets the pitch built from `pitch` |
 | `pipeline` | `Pipeline(**section)` | the scalar arguments (`include_classes`, `keep_masks`, ...) |
@@ -290,9 +321,16 @@ render: {annotator: {style: video_game}, radar: null}
 
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
   signature and fails with the section, the bad key and the valid keys (an
-  unknown section or `type` fails too). Values are checked by the constructors
-  in `build_pipeline()`, which the CLI calls before the first frame. Loading
-  imports no torch, ultralytics, rfdetr, transformers or sam2.
+  unknown section, `type` or embedder fails too; malformed YAML is a one-line
+  `ValueError`). Loading imports no torch, ultralytics, rfdetr, transformers
+  or sam2.
+* `RunFile.run(video, output_dir, *, render=True, **run_inputs)` is one run:
+  it builds the pipeline and the render objects (constructors and
+  `render_video` settings check every value before the first frame), runs
+  the pipeline, exports the data files and renders `annotated.mp4` unless
+  `render=False`. `run_inputs` are the `Pipeline.run` and
+  `PipelineResult.export` arguments; it returns the `PipelineResult`.
+  `RunFile.render_video(result, source, output)` re-renders a saved result.
 * A key left out is not passed, so the package default applies.
 * Paths: string values starting with `./` or `../` (at any depth, lists
   included) are relative to the run file. Absolute paths and bare names such
@@ -308,13 +346,16 @@ tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
           [--no-video] [--set KEY=VALUE ...]
 tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
           [--set KEY=VALUE ...]
-tactifoot evaluate MODEL --weights W --data D [--split S] [--device DEV] [--set KEY=VALUE ...]
+tactifoot evaluate MODEL --weights W --data D [--split S] [--set KEY=VALUE ...]
 tactifoot info
 ```
 
-* `run`: `run_file.load` → `build_pipeline()` → `pipeline.run(video, ...)` →
-  `result.export(output_dir, ...)` → `run_file.render_video(...)` to
-  `annotated.mp4` unless `--no-video`.
+* `run`: `run_file.load(run_file, overrides).run(video, output_dir,
+  render=not --no-video, **run inputs)`. User errors (bad values, malformed
+  YAML, a missing optional dependency) are reported in one line;
+  `--log-level DEBUG` keeps the traceback.
 * `train`: `--set` keys are `TrainConfig` fields or backend options
   (`mosaic=0.0`, `grad_accum_steps=4`); setting a key by flag and `--set` is an error.
-* `evaluate`: `--device` goes to `load_model`, `--split` and `--set` to `model.evaluate`.
+* `evaluate`: `--set model.KEY=VALUE` goes to `load_model` (`model.device=cuda:1`,
+  `model.imgsz=1280`, RF-DETR `model.resolution=...`), `--split` and the other
+  `--set` keys to `model.evaluate`.

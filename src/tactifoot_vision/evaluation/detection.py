@@ -52,13 +52,14 @@ def evaluate_detector(
         raise ValueError(f"Split {split!r} of {dataset!r} has no images")
 
     metric = MeanAveragePrecision()
+    warned: set[str] = set()  # unknown class names already reported
     previous_conf = model.conf
     model.conf = conf
     try:
         for sample in samples:
             predictions = model.predict(sample.read_image())
             metric.update(
-                _to_dataset_classes(predictions, dataset.class_names),
+                _to_dataset_classes(predictions, dataset.class_names, warned),
                 sample.annotations.to_detections(),
             )
     finally:
@@ -101,13 +102,13 @@ def evaluate_detector(
     return metrics
 
 
-_warned: set[str] = set()  # unknown class names already reported
-
-
 def _to_dataset_classes(
-    predictions: sv.Detections, class_names: Sequence[str]
+    predictions: sv.Detections, class_names: Sequence[str], warned: set[str]
 ) -> sv.Detections:
-    """Re-index predictions to ``class_names`` by name, dropping unknown classes."""
+    """Re-index predictions to ``class_names`` by name, dropping unknown classes.
+
+    Unknown names are logged once, then added to ``warned``.
+    """
     if len(predictions) == 0:
         return sv.Detections.empty()
     names = predictions.data.get("class_name")
@@ -119,9 +120,9 @@ def _to_dataset_classes(
     class_id = np.array([index.get(str(name), -1) for name in names], dtype=int)
     keep = class_id >= 0
     if not keep.all():
-        unknown = sorted({str(n) for n in np.asarray(names)[~keep]} - _warned)
+        unknown = sorted({str(n) for n in np.asarray(names)[~keep]} - warned)
         if unknown:
-            _warned.update(unknown)
+            warned.update(unknown)
             logger.warning(
                 "Ignoring predicted classes that the dataset does not have: %s (dataset: %s)",
                 ", ".join(unknown),

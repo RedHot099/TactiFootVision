@@ -9,6 +9,8 @@ The command only translates its arguments into package calls and declares no
 defaults: an option left out keeps the package default. Training flags come
 from ``TrainConfig`` and run flags from ``Pipeline.run`` and
 ``PipelineResult.export``, so new settings appear here without editing this file.
+``run`` is ``RunFile.run``; ``evaluate`` sends ``--set model.KEY=VALUE`` to
+``load_model`` and the other ``--set`` keys to ``Model.evaluate``.
 """
 
 import argparse
@@ -20,6 +22,8 @@ import types
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
+
+import yaml
 
 import tactifoot_vision as tv
 
@@ -38,21 +42,22 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser(
         "run",
         help="run the pipeline on a video",
-        description="Run a run file on a video and write the run folder. --start, "
-        "--end and --stride go to Pipeline.run, --period and --period-start "
-        "to PipelineResult.export.",
+        description="Run a run file on a video and write the run folder "
+        "(RunFile.run). --start, --end and --stride go to Pipeline.run, --period "
+        "and --period-start to PipelineResult.export; an option left out keeps "
+        "the package default.",
         argument_default=_SUPPRESS,
     )
     run.add_argument("run_file", type=Path, help="run file (YAML)")
     run.add_argument("--video", type=Path, required=True)
     run.add_argument("--output-dir", type=Path, required=True, help="run folder")
-    frame_range = _add_flags(run, _parameters(tv.Pipeline.run, ("video", "progress")))
-    period = _add_flags(run, _parameters(tv.PipelineResult.export, ("out_dir",)))
+    run_inputs = _add_flags(run, _parameters(tv.Pipeline.run, ("video", "progress")))
+    run_inputs += _add_flags(run, _parameters(tv.PipelineResult.export, ("out_dir",)))
     run.add_argument(
         "--no-video", action="store_true", help="skip rendering annotated.mp4"
     )
     _add_overrides(run, "run file value, e.g. detector.conf=0.4")
-    run.set_defaults(handler=functools.partial(_run, frame_range, period))
+    run.set_defaults(handler=functools.partial(_run, run_inputs))
 
     models = tv.models.available_models()
     train = commands.add_parser(
@@ -79,35 +84,41 @@ def main(argv: list[str] | None = None) -> int:
     evaluate.add_argument("model", choices=models)
     evaluate.add_argument("--weights", required=True)
     evaluate.add_argument("--data", type=Path, required=True)
-    evaluate.add_argument("--device", help="torch device, e.g. cpu or cuda:1")
     split = _add_flags(evaluate, _parameters(tv.models.Model.evaluate, ("dataset",)))
-    _add_overrides(evaluate, "evaluation option, e.g. max_images=50")
+    _add_overrides(
+        evaluate,
+        "evaluation option, e.g. max_images=50, or with the prefix 'model.' a "
+        "load_model option, e.g. model.device=cuda:1 or model.imgsz=1280",
+    )
     evaluate.set_defaults(handler=functools.partial(_evaluate, split))
 
     info = commands.add_parser("info", help="show version and available backends")
     info.set_defaults(handler=_info)
 
     args = parser.parse_args(argv)
-    tv.setup_logging(**_given(args, ["level"]))
     try:
+        tv.setup_logging(**_given(args, ["level"]))
         return args.handler(args)
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
+    # TypeError: a run file or --set value of the wrong type (detector.conf=abc)
+    # fails in the constructor's comparisons; KeyError is always a bug.
+    except (OSError, ValueError, TypeError, RuntimeError, ImportError) as error:
         if getattr(args, "level", "").upper() == "DEBUG":
             raise
         print(f"tactifoot: error: {error}", file=sys.stderr)
         return 1
 
 
-def _run(frame_range: list[str], period: list[str], args: argparse.Namespace) -> int:
-    if not args.video.is_file():  # fail before loading the models
-        raise FileNotFoundError(f"video not found: {args.video}")
-    run_file = tv.run_file.load(args.run_file, _overrides(args))
-    pipeline = run_file.build_pipeline()
-    result = pipeline.run(args.video, **_given(args, frame_range))
-    out = result.export(args.output_dir, **_given(args, period))
-    if "no_video" not in args:
-        run_file.render_video(result, args.video, out / "annotated.mp4")
-    print(f"Wrote {len(result)} frames, {len(result.track_ids)} tracks to {out}")
+def _run(run_inputs: list[str], args: argparse.Namespace) -> int:
+    result = tv.run_file.load(args.run_file, _overrides(args)).run(
+        args.video,
+        args.output_dir,
+        render="no_video" not in args,
+        **_given(args, run_inputs),
+    )
+    print(
+        f"Wrote {len(result)} frames, {len(result.track_ids)} tracks "
+        f"to {args.output_dir}"
+    )
     return 0
 
 
@@ -134,8 +145,13 @@ def _train(
 
 
 def _evaluate(split: list[str], args: argparse.Namespace) -> int:
-    model = tv.load_model(args.model, args.weights, **_given(args, ["device"]))
-    options = dict(map(tv.run_file.parse_override, _overrides(args)))
+    model_options, options = {}, {}
+    for key, value in map(tv.run_file.parse_override, _overrides(args)):
+        if key.startswith("model."):
+            model_options[key.removeprefix("model.")] = value
+        else:
+            options[key] = value
+    model = tv.load_model(args.model, args.weights, **model_options)
     metrics = model.evaluate(
         tv.load_dataset(args.data), **_given(args, split), **options
     )
@@ -169,7 +185,8 @@ def _add_flags(parser: argparse.ArgumentParser, fields: Iterable[Field]) -> list
     """Add one ``--kebab-name`` flag per field; return their names.
 
     The type comes from the annotation (``X | None`` becomes ``X``; ``bool``
-    gives ``--flag/--no-flag``) and the help shows the package default.
+    gives ``--flag/--no-flag``; any other non-scalar type takes a YAML value
+    such as ``[a, b]``) and the help shows the package default.
     """
     names = []
     for name, annotation, default, description in fields:
@@ -182,10 +199,18 @@ def _add_flags(parser: argparse.ArgumentParser, fields: Iterable[Field]) -> list
         if kind is bool:
             options["action"] = argparse.BooleanOptionalAction
         else:
-            options |= {"type": kind, "metavar": name.upper()}
+            parse = kind if kind in (int, float, str, Path) else _yaml_value
+            options |= {"type": parse, "metavar": name.upper()}
         parser.add_argument(f"--{_flag(name)}", **options)
         names.append(name)
     return names
+
+
+def _yaml_value(text: str) -> Any:
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise argparse.ArgumentTypeError(f"invalid YAML value {text!r}") from error
 
 
 def _unwrap_optional(annotation: Any) -> Any:

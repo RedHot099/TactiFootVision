@@ -596,3 +596,90 @@ def test_a_singular_homography_draws_no_pitch_lines():
         image, frame_result
     )
     assert out.shape == image.shape
+
+
+# ------------------------------------------------------- review round 2
+def test_render_video_refuses_to_overwrite_its_source(
+    result: PipelineResult, video: Path, tmp_path: Path, monkeypatch
+):
+    before = video.read_bytes()
+    with pytest.raises(ValueError, match="source"):
+        viz.render_video(result, video, video, progress=False)
+    monkeypatch.chdir(video.parent)
+    (tmp_path / "link.mp4").symlink_to(video)
+    with pytest.raises(ValueError, match="source"):
+        viz.render_video(
+            result, Path("clip.mp4"), tmp_path / "link.mp4", progress=False
+        )
+    assert video.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("options", "match"),
+    [
+        ({"position": "bottom-middle"}, "position"),
+        ({"width_fraction": 0}, "width_fraction"),
+        ({"alpha": -0.1}, "alpha"),
+        ({"padding": -1}, "padding"),
+    ],
+)
+def test_overlay_options_have_a_validator(options, match):
+    with pytest.raises(ValueError, match=match):
+        viz.check_overlay(**options)
+    viz.check_overlay()  # nothing given: nothing to check
+
+
+def test_render_video_checks_overlay_options_before_writing(
+    result: PipelineResult, video: Path, tmp_path: Path
+):
+    with pytest.raises(ValueError, match="position"):
+        viz.render_video(
+            result, video, tmp_path / "a.mp4", overlay_position="bottom-middle",
+            radar=False, progress=False,
+        )  # fmt: skip
+    assert not (tmp_path / "a.mp4").exists()
+    with pytest.raises(ValueError, match="fps"):
+        viz.render_video(result, video, tmp_path / "a.mp4", fps=0, progress=False)
+    assert not (tmp_path / "a.mp4").exists()
+
+
+class _FailingAnnotator(viz.FrameAnnotator):
+    def __init__(self, fail_at: int) -> None:
+        super().__init__()
+        self.calls, self.fail_at = 0, fail_at
+
+    def annotate(self, frame, frame_result):
+        self.calls += 1
+        if self.calls == self.fail_at:
+            raise RuntimeError("boom")
+        return super().annotate(frame, frame_result)
+
+
+def test_render_video_deletes_a_partial_output(
+    result: PipelineResult, video: Path, tmp_path: Path
+):
+    output = tmp_path / "annotated.mp4"
+    with pytest.raises(RuntimeError, match="boom"):
+        viz.render_video(
+            result, video, output, annotator=_FailingAnnotator(3), progress=False
+        )
+    assert not output.exists()
+    with pytest.raises(RuntimeError, match="frame 20"):
+        viz.render_video(_empty_frames(0, 4, 20), video, output, progress=False)
+    assert not output.exists()
+
+
+def test_annotator_draws_masks_whose_origin_lies_outside_the_frame():
+    frame_result = _frame_result(0)
+    n = len(frame_result.detections)
+    frame_result.masks = ObjectMasks(
+        origins=np.array([[-5, -4]] * n), crops=[np.ones((10, 10), bool)] * n
+    )
+    annotator = viz.FrameAnnotator(
+        draw_masks=True, draw_boxes=False, draw_labels=False,
+        draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+    out = annotator.annotate(np.zeros((60, 80, 3), np.uint8), frame_result)
+    tinted = np.argwhere(out.any(axis=2))
+    assert tinted[:, 0].max() == 5 and tinted[:, 1].max() == 4
+    assert len(tinted) == 6 * 5

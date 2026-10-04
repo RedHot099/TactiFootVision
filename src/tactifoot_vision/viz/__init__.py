@@ -23,12 +23,13 @@ from tactifoot_vision.viz.plots import (
     show_augmentations,
     show_samples,
 )
-from tactifoot_vision.viz.radar import PitchRadar, overlay
+from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
 from tactifoot_vision.viz.video import render_video
 
 __all__ = [
     "FrameAnnotator",
     "PitchRadar",
+    "check_overlay",
     "draw_annotations",
     "draw_pitch",
     "overlay",

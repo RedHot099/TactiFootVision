@@ -366,3 +366,113 @@ def test_statsbomb_comparison_of_a_second_half_pipeline_result():
     assert merged["euclidean_distance"].tolist()[0] == pytest.approx(0.5)
     assert np.isnan(merged["euclidean_distance"][1])
     assert list(merged["detected_player_id"][:1]) == [4]
+
+
+# ------------------------------------------------------- review round 2
+def test_unknown_class_warning_fires_once_per_evaluation(tmp_path, caplog):
+    dataset = _detection_dataset(tmp_path, LABELS)
+    outputs = {0: _detections([[0, 0, 5, 5]], ["unicorn"]), 1: PERFECT[1]}
+    model = FakeModel(Task.DETECT, outputs, ["unicorn", "ball", "player"])
+    for _ in range(2):
+        evaluate_detector(model, dataset)
+    warnings = [r for r in caplog.records if "unicorn" in r.getMessage()]
+    assert len(warnings) == 2
+
+
+def test_evaluate_rejects_unknown_options(tmp_path):
+    dataset = _detection_dataset(tmp_path, LABELS)
+    model = FakeModel(Task.DETECT, PERFECT, CLASSES)
+    with pytest.raises(ValueError, match="max_imgs.*max_images"):
+        model.evaluate(dataset, max_imgs=1)
+
+
+def _frame(index, timestamp, rows, ball_xy=None):
+    """A FrameResult with people ``rows`` of (class name, pitch xy) and an optional ball."""
+    names = [name for name, _ in rows]
+    people = sv.Detections(
+        xyxy=np.zeros((len(rows), 4), np.float32),
+        confidence=np.full(len(rows), 0.9, np.float32),
+        tracker_id=np.arange(1, len(rows) + 1),
+        data={
+            "class_name": np.array(names, dtype=str),
+            "pitch_xy": np.array([xy for _, xy in rows], dtype=float).reshape(-1, 2),
+            "team_id": np.zeros(len(rows), int),
+        },
+    )
+    ball = sv.Detections.empty()
+    if ball_xy is not None:
+        ball = sv.Detections(
+            xyxy=np.zeros((1, 4), np.float32),
+            confidence=np.ones(1, np.float32),
+            data={"class_name": np.array(["ball"]), "pitch_xy": np.array([ball_xy])},
+        )
+    return FrameResult(index=index, timestamp=timestamp, detections=people, ball=ball)
+
+
+def _one_player_at(xy, **extra):
+    return pd.DataFrame(
+        {"period": [1], "minute": [0], "second": [0], "pitch_location": [xy]}
+        | {"type": ["player"]}
+        | extra
+    )
+
+
+def test_statsbomb_matches_only_players_and_goalkeepers():
+    frame = _frame(
+        0, 0.0, [("referee", [59.0, 40.0]), ("player", [10.0, 10.0])], [60.0, 40.0]
+    )
+    result = PipelineResult([frame], 25.0, (100, 100), ["ball", "player", "referee"])
+    merged = compare_with_statsbomb(result, _one_player_at([60.0, 40.0]))
+    assert merged["detected_type"].tolist() == ["player"]
+    assert merged["euclidean_distance"][0] == pytest.approx(np.hypot(50, 30))
+
+
+def test_statsbomb_matches_the_frame_closest_to_the_event():
+    frames = [
+        _frame(0, 0.0, [("player", [60.0, 40.0])]),  # closer object, earlier frame
+        _frame(12, 0.48, [("player", [65.0, 40.0])]),
+        _frame(24, 0.96, [("player", [61.0, 40.0])]),
+    ]
+    result = PipelineResult(frames, 25.0, (100, 100), ["player"])
+    event = _one_player_at([60.0, 40.0], timestamp_seconds=[0.5])
+    merged = compare_with_statsbomb(result, event)
+    assert merged["detected_frame_id"].tolist() == [12]
+    assert merged["euclidean_distance"][0] == pytest.approx(5.0)
+    # Without the event's sub-second time, every frame of the second competes.
+    pooled = compare_with_statsbomb(result, _one_player_at([60.0, 40.0]))
+    assert pooled["detected_frame_id"].tolist() == [0]
+    assert pooled["euclidean_distance"][0] == pytest.approx(0.0)
+
+
+def test_statsbomb_csv_route_agrees_with_the_result_route(tmp_path):
+    frame = _frame(30, 1.2, [("player", [10.5, 10.0])])
+    result = PipelineResult([frame], 25.0, (100, 100), ["player"])
+    statsbomb = pd.DataFrame(
+        {
+            "period": [2],
+            "minute": [45],
+            "second": [1],
+            "pitch_location": [[10, 10]],
+            "type": ["player"],
+        }
+    )
+    csv = result.export(tmp_path / "run", period=2) / "freeze_frames.csv"
+    routes = [
+        compare_with_statsbomb(result, statsbomb, period=2),
+        compare_with_statsbomb(result.to_freeze_frames(period=2), statsbomb, period=2),
+        compare_with_statsbomb(pd.read_csv(csv), statsbomb, period=2),
+    ]
+    for merged in routes:
+        assert merged["euclidean_distance"].tolist() == pytest.approx([0.5])
+
+
+def test_statsbomb_comparison_of_an_empty_result():
+    empty = PipelineResult(
+        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        25.0,
+        (64, 48),
+        [],
+    )
+    merged = compare_with_statsbomb(empty, _one_player_at([10, 20]))
+    assert len(merged) == 1 and merged["euclidean_distance"].isna().all()
+    assert "detected_location" in merged and "detected_player_id" in merged

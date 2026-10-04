@@ -133,6 +133,7 @@ fig
 * `tv.viz.render_video(result, VIDEO, "annotated.mp4")` writes the annotated
   clip ([05_visualisation](05_visualisation.ipynb)).
 * The command line runs the same steps on whole matches:
-  `tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match`.
+  `tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match`,
+  which is `tv.run_file.load("configs/pipeline.yaml").run("match.mp4", "outputs/match")`.
 """)
     return nb

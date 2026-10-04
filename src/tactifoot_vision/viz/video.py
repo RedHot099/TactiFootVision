@@ -11,7 +11,7 @@ import numpy as np
 from tactifoot_vision.data.video import VideoReader
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.viz.annotate import FrameAnnotator
-from tactifoot_vision.viz.radar import PitchRadar, overlay
+from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ def render_video(
         progress: show a progress bar.
 
     Returns:
-        The written path.
+        The written path. Settings are checked before ``output`` is opened, and
+        a failed render deletes the partial ``output``.
     """
     if not result.frames:
         raise ValueError("The result has no frames to render")
@@ -58,6 +59,12 @@ def render_video(
         if result.video_path is None:
             raise ValueError("The result has no video_path; pass the source video")
         source = result.video_path
+    output = Path(output)
+    if output.resolve() == Path(source).resolve():
+        raise ValueError(f"output {output} is the source video; pick another path")
+    check_render_options(
+        overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding, fps
+    )
     reader = VideoReader(source)
     if reader.size != tuple(result.frame_size):
         raise ValueError(
@@ -90,7 +97,6 @@ def render_video(
                 f"{result.pitch}; pass pitch=result.pitch"
             )
 
-    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     writer = cv2.VideoWriter(
         str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, reader.size
@@ -131,23 +137,45 @@ def render_video(
             written.add(index)
             if bar is not None:
                 bar.update()
+        if not written:
+            raise RuntimeError(
+                f"{reader.path} has no frame of the result (first index {indices[0]})"
+            )
+        if len(written) < len(indices):
+            missing = next(i for i in indices if i not in written)
+            raise RuntimeError(
+                f"{reader.path} ended early: frame {missing} is missing "
+                f"({len(written)} of {len(indices)} result frames were rendered)"
+            )
+    except BaseException:
+        writer.release()
+        output.unlink(missing_ok=True)  # never leave a partial video behind
+        raise
     finally:
         writer.release()
         if bar is not None:
             bar.close()
-    if not written:
-        raise RuntimeError(
-            f"{reader.path} has no frame of the result (first index {indices[0]}); "
-            f"nothing was written to {output}"
-        )
-    if len(written) < len(indices):
-        missing = next(i for i in indices if i not in written)
-        raise RuntimeError(
-            f"{reader.path} ended early: frame {missing} is missing, so {output} holds "
-            f"only {len(written)} of {len(indices)} result frames"
-        )
     logger.info("Wrote %d frames at %.2f fps to %s", len(written), fps, output)
     return output
+
+
+def check_render_options(
+    overlay_position: str | None = None,
+    overlay_width_fraction: float | None = None,
+    overlay_alpha: float | None = None,
+    overlay_padding: int | None = None,
+    fps: float | None = None,
+) -> None:
+    """Raise ``ValueError`` for a :func:`render_video` setting it would reject.
+
+    Only the settings given are checked; a run file uses this to fail before
+    the first frame instead of after the whole run.
+    """
+    check_overlay(
+        overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding
+    )
+    if fps is not None and fps <= 0:
+        raise ValueError(f"fps must be > 0, got {fps}")
 
 
 def _stride(indices: list[int]) -> int:

@@ -11,11 +11,11 @@ from pathlib import Path
 import numpy as np
 
 from tactifoot_vision.data._files import (
+    check_link_mode,
     check_output_location,
     clipped_box,
     link_file,
     prepare_output,
-    record_output,
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations, Task
@@ -48,9 +48,7 @@ def read_dataset(root: Path, flip_idx: tuple[int, ...] | None = None) -> Dataset
             )
         num_keypoints = num_keypoints or _num_keypoints(coco)
         flip_idx = flip_idx or _flip_idx(coco)
-        splits[split] = _read_split(
-            path.parent, coco, category_index, num_keypoints, flip_idx
-        )
+        splits[split] = _read_split(path, coco, category_index, num_keypoints, flip_idx)
     if class_names is None:
         raise FileNotFoundError(f"No <split>/{ANNOTATION_FILE} under {root}")
     return Dataset(
@@ -98,14 +96,21 @@ def _flip_idx(coco: dict) -> tuple[int, ...] | None:
 
 
 def _read_split(
-    folder: Path,
+    path: Path,
     coco: dict,
     category_index: dict[int, int],
     num_keypoints: int | None,
     flip_idx: tuple[int, ...] | None,
 ) -> list[Sample]:
+    folder = path.parent
+    known = {c["id"] for c in coco.get("categories", [])}
     by_image: dict[int, list[dict]] = defaultdict(list)
     for annotation in coco.get("annotations", []):
+        if annotation["category_id"] not in known:
+            raise ValueError(
+                f"{path}: annotation {annotation.get('id')} has category_id "
+                f"{annotation['category_id']}, which is not among its categories"
+            )
         if annotation["category_id"] in category_index:
             by_image[annotation["image_id"]].append(annotation)
 
@@ -142,11 +147,14 @@ def _read_split(
 
 # ------------------------------------------------------------------- writing
 def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -> Path:
+    check_link_mode(link)
     splits = dataset.split_names
     managed = [out_dir / s for s in splits]
     check_output_location(out_dir, managed, (s.image_path for s in dataset))
-    prepare_output(out_dir, managed)
-    written: list[Path] = []
+    names = {s: unique_names([x.image_path for x in dataset[s]]) for s in splits}
+    files = [out_dir / s / name for s in splits for name in names[s]]
+    files += [out_dir / s / ANNOTATION_FILE for s in splits]
+    prepare_output(out_dir, managed, files)
     categories = []
     for i, name in enumerate(dataset.class_names):
         category = {"id": i, "name": name, "supercategory": SUPERCATEGORY}
@@ -162,12 +170,10 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
     for split in splits:
         samples = dataset[split]
         images, annotations = [], []
-        names = unique_names([s.image_path for s in samples])
         # Ids start at 1: pycocotools (RF-DETR's evaluator) treats id 0 as "no match".
-        for image_id, (sample, name) in enumerate(zip(samples, names, strict=True), 1):
-            target = out_dir / split / name
-            link_file(sample.image_path, target, link)
-            written.append(target)
+        pairs = zip(samples, names[split], strict=True)
+        for image_id, (sample, name) in enumerate(pairs, 1):
+            link_file(sample.image_path, out_dir / split / name, link)
             images.append(
                 {
                     "id": image_id,
@@ -185,7 +191,6 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
             "annotations": annotations,
         }
         (out_dir / split / ANNOTATION_FILE).write_text(json.dumps(coco))
-    record_output(out_dir, written)
     logger.info("Wrote COCO dataset (%d images) to %s", len(dataset), out_dir)
     return out_dir
 
