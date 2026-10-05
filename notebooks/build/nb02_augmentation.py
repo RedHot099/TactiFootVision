@@ -230,8 +230,16 @@ next to the originals and returns the bigger dataset. Validation data is left
 alone, so metrics keep measuring performance on real images. The same seed
 gives the same images, and the result exports with `to_yolo` / `to_coco` like
 any dataset.
+
+It never overwrites: an earlier augmented dataset, and any export of it,
+still reads its images, so an image the call would write must not exist yet
+(the error names it). Use a new folder per call; this notebook removes its
+previous run's folder first.
 """)
     nb.code("""
+import shutil
+
+shutil.rmtree(OUT / "augmented", ignore_errors=True)
 augmented = A.augment_dataset(
     detection, recipe, OUT / "augmented", copies=2, seed=0, progress=False
 )

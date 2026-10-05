@@ -5,6 +5,7 @@ subsets for real training. Run from the repository root:
 ``uv run python examples/03_training.py``
 """
 
+import shutil
 from pathlib import Path
 
 import tactifoot_vision as tv
@@ -21,6 +22,7 @@ train_subset = detection.subset({"train": 150, "valid": 40}, seed=0)
 transform = A.Compose(
     [A.HorizontalFlip(), A.RandomAffine(degrees=3, translate=0.05), A.ColorJitter()]
 )
+shutil.rmtree(OUT / "augmented", ignore_errors=True)  # augment_dataset never overwrites
 augmented = A.augment_dataset(train_subset, transform, OUT / "augmented", copies=1)
 
 # Same call for every backend; backend-specific options pass straight through.

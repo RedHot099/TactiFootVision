@@ -1,4 +1,5 @@
 import ast
+import os
 from pathlib import Path
 
 import cv2
@@ -7,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import supervision as sv
+from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 
 import tactifoot_vision.viz as viz
@@ -683,3 +685,95 @@ def test_annotator_draws_masks_whose_origin_lies_outside_the_frame():
     tinted = np.argwhere(out.any(axis=2))
     assert tinted[:, 0].max() == 5 and tinted[:, 1].max() == 4
     assert len(tinted) == 6 * 5
+
+
+# ------------------------------------------------------- review round 3
+def test_render_video_refuses_a_hard_link_to_its_source(
+    result: PipelineResult, video: Path, tmp_path: Path
+):
+    alias = tmp_path / "alias.mp4"
+    os.link(video, alias)  # another name for the same file: resolved paths differ
+    before = video.read_bytes()
+    with pytest.raises(ValueError, match="source"):
+        viz.render_video(result, video, alias, progress=False)
+    assert video.read_bytes() == before
+    assert alias.samefile(video)
+
+
+@pytest.mark.parametrize("size", ["player_radius", "ball_radius", "line_thickness"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_radar_rejects_sizes_below_one_pixel(size: str, value: int) -> None:
+    with pytest.raises(ValueError, match=size):
+        viz.PitchRadar(**{size: value})
+
+
+def test_radar_draw_points_checks_its_radius() -> None:
+    radar = viz.PitchRadar(player_radius=5)
+    xy = np.array([[10.0, 10.0]])
+    for radius in (0, -1):
+        with pytest.raises(ValueError, match="radius"):
+            radar.draw_points(xy, radius=radius)
+    assert (radar.draw_points(xy) == radar.draw_points(xy, radius=5)).all()
+    assert (radar.draw_points(xy, radius=2) != radar.draw_points(xy)).any()
+
+
+def _people(index: int, rows: list[tuple[int, str, int, list[float]]]) -> FrameResult:
+    """A frame whose people are ``(track id, class name, team id, pitch xy)`` rows."""
+    people = sv.Detections(
+        xyxy=np.zeros((len(rows), 4), np.float32),
+        confidence=np.full(len(rows), 0.9, np.float32),
+        class_id=np.zeros(len(rows), int),
+        tracker_id=np.array([track for track, *_ in rows]),
+        data={
+            "class_name": np.array([name for _, name, *_ in rows]),
+            "team_id": np.array([team for _, _, team, _ in rows]),
+            "pitch_xy": np.array([xy for *_, xy in rows], dtype=float),
+        },
+    )
+    return FrameResult(index, index / FPS, people, sv.Detections.empty())
+
+
+@pytest.fixture
+def positions() -> PipelineResult:
+    """Track 1 (team 0) at three positions, track 2 (team 1) at two, a referee."""
+    nan = [np.nan, np.nan]
+    frames = [
+        _people(0, [(1, "player", 0, [10, 20]), (2, "player", 1, [50, 30]),
+                    (3, "referee", -1, [80, 60])]),
+        _people(1, [(1, "player", 0, [12, 21]), (2, "player", 1, nan),
+                    (3, "referee", -1, [80, 60])]),
+        _people(2, [(1, "player", 0, [14, 22]), (2, "player", 1, [49, 31])]),
+    ]  # fmt: skip
+    return PipelineResult(frames, FPS, (W, H), ["player", "referee"])
+
+
+def test_plot_tracks_draws_each_track_at_its_pitch_positions(positions):
+    lines = viz.plot_tracks(positions).axes[0].lines
+    assert [line.get_xydata().tolist() for line in lines] == [
+        [[10, 20], [12, 21], [14, 22]],
+        [[50, 30], [49, 31]],
+    ]
+    colors = [to_rgb(line.get_color()) for line in lines]
+    assert colors == [to_rgb("#00BFFF"), to_rgb("#FF1493")]  # teams 0 and 1
+    (only,) = viz.plot_tracks(positions, track_ids=[2]).axes[0].lines
+    assert only.get_xydata().tolist() == [[50, 30], [49, 31]]
+    (longest,) = viz.plot_tracks(positions, max_tracks=1).axes[0].lines
+    assert len(longest.get_xydata()) == 3
+
+
+@pytest.mark.parametrize(
+    ("team", "cells"),
+    [
+        (0, [[13, 6], [13, 8], [14, 9]]),
+        (1, [[19, 33], [20, 32]]),
+        (None, [[13, 6], [13, 8], [14, 9], [19, 33], [20, 32]]),  # no referee
+    ],
+)
+def test_plot_heatmap_counts_only_the_selected_team(positions, team, cells):
+    # 1.5 m cells on 105 x 68 m: 70 columns of 1.5 m, 45 rows of 68/45 m.
+    ax = viz.plot_heatmap(positions, team=team, cell_m=1.5, smoothing=0).axes[0]
+    hist = np.asarray(ax.images[0].get_array())
+    assert hist.shape == (45, 70)
+    assert np.argwhere(hist > 0).tolist() == cells
+    assert (hist[hist > 0] == 1).all()
+    assert ax.get_title(loc="left") == f"{len(cells)} positions in 3 frames"

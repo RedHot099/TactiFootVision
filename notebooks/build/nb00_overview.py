@@ -43,15 +43,19 @@ tv.viz.show_samples(dataset, "train", n=3)
 ## 2. Augmentation
 
 Transforms move boxes and keypoints with the pixels. `augment_dataset` adds
-augmented copies of the training images; validation images stay real.
+augmented copies of the training images; validation images stay real. It
+never overwrites earlier output, so a re-run starts from an empty folder.
 """)
     nb.code("""
+import shutil
+
 recipe = tv.augment.Compose([
     tv.augment.HorizontalFlip(),
     tv.augment.RandomAffine(degrees=3, translate=0.05),
     tv.augment.ColorJitter(),
 ])
 small = dataset.subset({"train": 100, "valid": 40}, seed=0)
+shutil.rmtree(OUT / "augmented", ignore_errors=True)
 augmented = tv.augment.augment_dataset(small, recipe, OUT / "augmented", copies=1, progress=False)
 augmented.summary()
 """)

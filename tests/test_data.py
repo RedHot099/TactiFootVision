@@ -489,3 +489,71 @@ def test_export_checks_its_arguments_before_deleting_anything(tmp_path):
     with pytest.raises(FileNotFoundError, match="gone.jpg"):
         ds.with_split("test", [missing]).to_coco(tmp_path / "out")
     assert (tmp_path / "out" / "train" / "images" / "a.jpg").is_file()
+
+
+# ------------------------------------------------------- review round 3
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_format_switch_refuses_a_root_file_the_export_did_not_write(tmp_path, kind):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    out = tmp_path / "out"
+    ds.to_coco(out)
+    user = tmp_path / "user.yaml"
+    user.write_text("user_note: preserve me\n")
+    if kind == "file":
+        (out / "data.yaml").write_text(user.read_text())
+    else:
+        (out / "data.yaml").symlink_to(user)
+    marker = (out / ".tactifoot-export").read_text()
+    with pytest.raises(ValueError, match=r"data\.yaml.*did not write"):
+        ds.to_yolo(out)
+    assert (
+        (out / "data.yaml").read_text()
+        == user.read_text()
+        == "user_note: preserve me\n"
+    )
+    assert (out / "data.yaml").is_symlink() == (kind == "symlink")
+    assert (out / ".tactifoot-export").read_text() == marker
+    assert Dataset.from_coco(out).split_names == ["train", "valid"]  # still intact
+
+
+def _pose(path, flip_idx, num_keypoints=2):
+    keypoints = [[[2, 5, 2], [30, 5, 2], [20, 10, 2]][:num_keypoints]]
+    flip_idx = flip_idx[:num_keypoints]
+    annotations = Annotations([[0, 0, 40, 20]], [0], keypoints, flip_idx)
+    sample = Sample(_image(path, width=40, height=20), 40, 20, annotations)
+    return Dataset(Task.POSE, ["pitch"], {"train": [sample]}, num_keypoints, flip_idx)
+
+
+def test_merge_rejects_pose_datasets_with_another_keypoint_layout(tmp_path):
+    swap = _pose(tmp_path / "a.jpg", (1, 0))
+    with pytest.raises(ValueError, match=r"flip_idx.*\(1, 0\).*\(0, 1\)"):
+        swap.merge(_pose(tmp_path / "b.jpg", (0, 1)))
+    with pytest.raises(ValueError, match="2 and 3 keypoints"):
+        swap.merge(_pose(tmp_path / "c.jpg", (1, 0, 2), num_keypoints=3))
+
+
+def test_merged_pose_labels_keep_their_meaning_through_an_export(tmp_path):
+    from tactifoot_vision.augment import HorizontalFlip
+
+    first, second = (
+        _pose(tmp_path / "src" / name, (1, 0)) for name in ("a.jpg", "b.jpg")
+    )
+    merged = first.merge(second)
+    reloaded = load_dataset(merged.to_yolo(tmp_path / "out"))
+    assert reloaded.flip_idx == merged.flip_idx == (1, 0)
+    flip = HorizontalFlip(p=1)
+    for before, after in zip(merged["train"], reloaded["train"], strict=True):
+        assert after.annotations.flip_idx == before.annotations.flip_idx == (1, 0)
+        _, expected = flip(before.read_image(), before.annotations)
+        _, flipped = flip(after.read_image(), after.annotations)
+        np.testing.assert_allclose(flipped.keypoints, expected.keypoints, atol=1e-3)
+
+
+def test_read_takes_one_sample_without_copying_the_split(tmp_path, monkeypatch):
+    ds = _dataset(tmp_path)
+    monkeypatch.setattr(Dataset, "__getitem__", lambda *_: pytest.fail("copied"))
+    image, annotations = ds.read("val", -1)
+    assert image.shape == (48, 64, 3)
+    original = ds.splits["valid"][-1].annotations
+    assert annotations is not original and annotations.boxes is not original.boxes
+    np.testing.assert_array_equal(annotations.boxes, original.boxes)

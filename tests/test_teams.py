@@ -203,3 +203,22 @@ def test_siglip_reads_flat_crops_as_channels_last(height):
     # SigLIP normalises to [-1, 1]: red channel full, green and blue empty.
     means = pixels[0].mean(dim=(1, 2)).tolist()
     assert means == pytest.approx([1.0, -1.0, -1.0], abs=1e-3)
+
+
+# ------------------------------------------------------- review round 3
+def test_a_fit_cap_below_n_teams_fails_before_the_embedder_is_built(monkeypatch):
+    monkeypatch.setitem(
+        EMBEDDERS._factories, "siglip", lambda **_: pytest.fail("embedder built")
+    )
+    with pytest.raises(ValueError, match="max_fit_samples=2 .* n_teams=3"):
+        TeamClassifier("siglip", n_teams=3, max_fit_samples=2)
+    with pytest.raises(ValueError, match="max_fit_samples"):
+        TeamClassifier(MeanColorEmbedder(), max_fit_samples=0)
+
+
+def test_a_fit_cap_of_exactly_n_teams_fits():
+    classifier = TeamClassifier(MeanColorEmbedder(), reducer=None, max_fit_samples=2)
+    embeddings = np.array([[0.0, 0.0], [1.0, 1.0], [0.1, 0.0], [0.9, 1.0]])
+    classifier.fit_embeddings(embeddings)
+    assert classifier._kmeans.labels_.shape == (2,)
+    assert classifier.predict_embeddings(embeddings).shape == (4,)

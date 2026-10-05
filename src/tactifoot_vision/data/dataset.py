@@ -120,7 +120,7 @@ class Dataset:
 
     def read(self, split: str, index: int) -> tuple[np.ndarray, Annotations]:
         """Return ``(image_bgr, annotations)`` of one sample."""
-        sample = self[split][index]
+        sample = self.splits.get(canonical_split(split), [])[index]
         return sample.read_image(), sample.annotations.copy()
 
     def summary(self) -> pd.DataFrame:
@@ -206,13 +206,27 @@ class Dataset:
         return replace(self, splits={k: v for k, v in splits.items() if v})
 
     def merge(self, other: "Dataset") -> "Dataset":
-        """Concatenate the splits of two datasets with identical classes."""
+        """Concatenate the splits of two datasets with identical classes.
+
+        Pose datasets must also share their keypoint layout: the keypoint
+        count and ``flip_idx``. An export writes one ``flip_idx`` for every
+        sample, so a different mapping would change what the other dataset's
+        keypoints mean once reloaded.
+        """
         if other.task != self.task or other.class_names != self.class_names:
             raise ValueError(
                 "Can only merge datasets with the same task and class names"
             )
         if other.num_keypoints != self.num_keypoints:
-            raise ValueError("Can only merge datasets with the same keypoint layout")
+            raise ValueError(
+                "Can only merge datasets with the same keypoint layout, got "
+                f"{self.num_keypoints} and {other.num_keypoints} keypoints"
+            )
+        if other.flip_idx != self.flip_idx:
+            raise ValueError(
+                "Can only merge datasets with the same keypoint layout, got flip_idx "
+                f"{self.flip_idx} and {other.flip_idx}"
+            )
         splits = {s: self[s] + other[s] for s in SPLITS if self[s] or other[s]}
         return replace(self, splits=splits)
 

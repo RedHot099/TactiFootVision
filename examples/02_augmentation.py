@@ -3,6 +3,7 @@
 Run from the repository root: ``uv run python examples/02_augmentation.py``
 """
 
+import shutil
 from pathlib import Path
 
 import tactifoot_vision as tv
@@ -37,6 +38,10 @@ tv.viz.show_augmentations(keypoints, transform, n=3).savefig(
     OUT / "keypoint_augmentations.png"
 )
 
+# augment_dataset never overwrites earlier output (an older dataset or export may
+# still read it), so a re-run of this script starts from empty folders.
+for folder in ("detection", "keypoints"):
+    shutil.rmtree(OUT / folder, ignore_errors=True)
 augmented = A.augment_dataset(detection, transform, OUT / "detection", copies=2, seed=0)
 print(augmented)
 print(augmented.summary())

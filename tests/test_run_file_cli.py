@@ -640,6 +640,8 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
     [
         {"annotator": {"style": "videogame"}},
         {"radar": {"width_px": 10}},
+        {"radar": {"player_radius": -1}},
+        {"radar": {"ball_radius": 0}},
         {"overlay_position": "bottom-middle"},
         {"overlay_alpha": 2},
         {"fps": 0},
@@ -781,3 +783,27 @@ def test_flags_of_non_scalar_annotations_take_yaml(monkeypatch):
         {"a": 1},
         3,
     )
+
+
+# ------------------------------------------------------- review round 3
+def test_run_file_render_video_lets_per_call_options_win(tmp_path, capsys):
+    loaded = _load(
+        tmp_path, {"detector": DETECTOR, "render": {"fps": 25, "radar": None}}
+    )
+    video = _video(tmp_path / "clip.mp4")
+    result = loaded.build_pipeline().run(video, progress=False)
+    capsys.readouterr()
+    out = loaded.render_video(result, video, tmp_path / "a.mp4", fps=30, progress=False)
+    assert cv2.VideoCapture(str(out)).get(cv2.CAP_PROP_FPS) == pytest.approx(30)
+    assert capsys.readouterr().err == ""  # progress=False reached render_video
+    out = loaded.render_video(result, video, tmp_path / "b.mp4", progress=False)
+    assert cv2.VideoCapture(str(out)).get(cv2.CAP_PROP_FPS) == pytest.approx(25)
+    # An annotator or radar the call replaces is not built from the run file.
+    bad_radar = _load(
+        tmp_path, {"detector": DETECTOR, "render": {"radar": {"width_px": 10}}}
+    )
+    bad_radar.render_video(
+        result, video, tmp_path / "c.mp4", radar=False, progress=False
+    )
+    with pytest.raises(ValueError, match="width_px"):
+        bad_radar.render_video(result, video, tmp_path / "d.mp4", progress=False)

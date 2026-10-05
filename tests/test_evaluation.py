@@ -476,3 +476,27 @@ def test_statsbomb_comparison_of_an_empty_result():
     merged = compare_with_statsbomb(empty, _one_player_at([10, 20]))
     assert len(merged) == 1 and merged["euclidean_distance"].isna().all()
     assert "detected_location" in merged and "detected_player_id" in merged
+
+
+# ------------------------------------------------------- review round 3
+@pytest.mark.parametrize(
+    "closest",
+    [("referee", [10.0, 10.0]), ("player", [np.nan, np.nan])],
+    ids=["only a referee", "a player without a pitch location"],
+)
+def test_statsbomb_event_stays_unmatched_when_its_closest_frame_has_no_candidate(
+    tmp_path, closest
+):
+    frames = [_frame(12, 0.48, [closest]), _frame(24, 0.96, [("player", [30.0, 10.0])])]
+    result = PipelineResult(frames, 25.0, (100, 100), ["player", "referee"])
+    csv = result.export(tmp_path / "run") / "freeze_frames.csv"
+    event = _one_player_at([10.0, 10.0], timestamp_seconds=[0.49])
+    for freeze_frames in (result, pd.read_csv(csv)):
+        merged = compare_with_statsbomb(freeze_frames, event)
+        assert len(merged) == 1
+        assert merged["detected_frame_id"].isna().all()
+        assert merged["euclidean_distance"].isna().all()
+        # Without the event's sub-second time, every frame of the second competes.
+        pooled = compare_with_statsbomb(freeze_frames, _one_player_at([10.0, 10.0]))
+        assert pooled["detected_frame_id"].tolist() == [24]
+        assert pooled["euclidean_distance"].tolist() == pytest.approx([20.0])

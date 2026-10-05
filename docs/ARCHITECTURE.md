@@ -140,10 +140,14 @@ configs/              example run files
   (a split the new export drops disappears with them, so it is not loaded
   back) and files such as `data.yaml` (switching between YOLO and COCO leaves
   no trace of the old format). A recorded folder holding any file the marker
-  does not list (augmented images, a user's notes) is refused with the file's
-  name, so re-exporting into the same folder works for every link mode and
-  loses nothing else.
+  does not list (augmented images, a user's notes), and a file the new export
+  would write that exists without being listed (a user's `data.yaml`, or a
+  symlink, at the root of a COCO export), are refused with the file's name
+  before anything changes, so re-exporting into the same folder works for
+  every link mode and loses nothing else.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
+  `merge` needs the same task, classes and keypoint layout (keypoint count
+  and `flip_idx`, which an export writes once for every sample).
 * `VideoReader(path)`: `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
@@ -175,7 +179,10 @@ configs/              example run files
   → new `Dataset` with originals plus `copies` augmented variants per image
   written to `out_dir`; other splits untouched (never augment validation data).
   `out_dir` must not be a `to_yolo` / `to_coco` export folder, which a later
-  export would clear.
+  export would clear. It never overwrites: earlier augmented datasets and their
+  exports still read their images, so an image the call would write must not
+  exist yet (checked for every image before the first is written; use a new
+  folder per call).
 
 ### Training and inference behind one interface (`tv.models`)
 
@@ -216,10 +223,12 @@ configs/              example run files
   Same numbers for every backend, so YOLO and RF-DETR compare fairly.
 * `compare_with_statsbomb(freeze_frames, statsbomb, period=1)` → merged table
   with the nearest detected player or goalkeeper per StatsBomb object and its
-  distance (`euclidean_distance`); the ball, referees and other classes never
-  match. The match comes from the processed frame closest in time to the
-  event (`detected_frame_id`) when both tables carry `timestamp_seconds`;
-  otherwise it is the minimum over every frame of that second. Build the
+  distance (`euclidean_distance`); the ball, referees, other classes and rows
+  without a pitch location never match. The match comes from the processed
+  frame closest in time to the event (`detected_frame_id`) when both tables
+  carry `timestamp_seconds`; that frame is picked among all its rows, so an
+  event whose closest frame holds no candidate stays unmatched. Otherwise the
+  match is the minimum over every frame of that second. Build the
   pipeline with `SoccerPitch(120, 80)` so both sides use StatsBomb units. A
   `PipelineResult` is accepted too and goes through `to_freeze_frames(period)`,
   like the exported CSV, so both routes agree.
@@ -236,7 +245,8 @@ configs/              example run files
   (the pipeline's `ball_max_speed` is the same limit in units per second).
 * `TeamClassifier(embedder="siglip" | "resnet" | Embedder, n_teams=2, reducer="umap" | None)`:
   `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
-  Fits on at most `max_fit_samples` embeddings and skips UMAP below 30 crops.
+  Fits on at most `max_fit_samples` embeddings (at least `n_teams`, checked
+  before the embedder is built) and skips UMAP below 30 crops.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
@@ -273,7 +283,9 @@ configs/              example run files
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
 * `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
-  points (e.g. StatsBomb positions);
+  points (e.g. StatsBomb positions). Radii and line thickness are at least
+  1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
+  for a `radius` override, by `draw_points`;
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame;
   `tv.viz.check_overlay(...)` checks those settings without a frame.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
@@ -283,10 +295,11 @@ configs/              example run files
   overlay_position="bottom-center", overlay_width_fraction=0.25,
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True)` → output
   path; `source=None` uses `result.video_path`. Checks its settings and
-  refuses an `output` that is the source before opening anything, checks that
-  the source video (header and decoded frame size) and the drawing pitch
-  match the result, raises `RuntimeError` when the source lacks a result
-  frame, and deletes the partial output when rendering fails.
+  refuses an `output` that is the source file (same path, symlink or hard
+  link) before opening anything, checks that the source video (header and
+  decoded frame size) and the drawing pitch match the result, raises
+  `RuntimeError` when the source lacks a result frame, and deletes the
+  partial output when rendering fails.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,
@@ -330,7 +343,9 @@ render: {annotator: {style: video_game}, radar: null}
   the pipeline, exports the data files and renders `annotated.mp4` unless
   `render=False`. `run_inputs` are the `Pipeline.run` and
   `PipelineResult.export` arguments; it returns the `PipelineResult`.
-  `RunFile.render_video(result, source, output)` re-renders a saved result.
+  `RunFile.render_video(result, source, output, **options)` re-renders a
+  saved result; `options` (`fps=30`, `progress=False`, `radar=False`, ...)
+  take precedence over the `render` section for that call.
 * A key left out is not passed, so the package default applies.
 * Paths: string values starting with `./` or `../` (at any depth, lists
   included) are relative to the run file. Absolute paths and bare names such

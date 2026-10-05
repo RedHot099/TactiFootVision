@@ -101,12 +101,14 @@ def prepare_output(
     A non-empty ``out_dir`` must be an earlier export (it carries
     :data:`EXPORT_MARKER`); anything else is left alone with an error.
 
-    An export only deletes what an earlier export recorded in the marker: the
-    folders it managed (a split the new export drops is removed with them)
-    and the files it wrote. A recorded folder holding any file the marker does
-    not list (a user's notes, augmented images, ...) is left alone with an
-    error naming the file, before anything is deleted. The marker is updated
-    before the new files are written, so an interrupted export can be redone.
+    An export only deletes or overwrites what an earlier export recorded in
+    the marker: the folders it managed (a split the new export drops is
+    removed with them) and the files it wrote. Before anything changes, a new
+    file that already exists (a user's ``data.yaml`` next to a COCO export, or
+    a symlink there) and a recorded folder holding any file the marker does
+    not list (a user's notes, augmented images, ...) are left alone with an
+    error naming the file. The marker is updated before the new files are
+    written, so an interrupted export can be redone.
     """
     marker = out_dir / EXPORT_MARKER
     if out_dir.is_dir() and any(out_dir.iterdir()) and not marker.is_file():
@@ -114,6 +116,13 @@ def prepare_output(
             f"{out_dir} is not empty and is not a tactifoot export; use a new folder"
         )
     old_folders, old_files = _read_marker(out_dir)
+    files = list(files)
+    for path in files:
+        if (path.exists() or path.is_symlink()) and path not in old_files:
+            raise ValueError(
+                f"Refusing to overwrite {path}, which the export did not write; "
+                "move it or use a new folder"
+            )
     folders = list(dict.fromkeys([*managed, *old_folders]))
     for folder in folders:
         if not folder.is_dir():
@@ -127,7 +136,6 @@ def prepare_output(
                     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    files = list(files)
     # Until the old export is gone, the marker records both.
     _write_marker(out_dir, folders, [*old_files, *files])
     for path in old_files:

@@ -22,6 +22,7 @@ from tactifoot_vision.data import (
     Annotations,
     Dataset,
     Sample,
+    load_dataset,
 )
 
 W, H = 100, 80
@@ -393,3 +394,40 @@ def test_augment_dataset_progress_false_is_silent_for_every_split(tmp_path, caps
         splits=("train", "valid"), progress=False,
     )  # fmt: skip
     assert capsys.readouterr().err == ""
+
+
+# ------------------------------------------------------- review round 3
+def _white_box(image: np.ndarray) -> list[float]:
+    ys, xs = np.nonzero(image[..., 0] > 128)
+    return [xs.min(), ys.min(), xs.max() + 1, ys.max() + 1]
+
+
+def test_augment_dataset_refuses_to_overwrite_an_earlier_augmentation(tmp_path):
+    source = tmp_path / "src" / "player.png"
+    source.parent.mkdir()
+    image = np.zeros((20, 40, 3), np.uint8)
+    image[5:15, 2:10] = 255
+    cv2.imwrite(str(source), image)
+    sample = Sample(source, 40, 20, Annotations([[2, 5, 10, 15]], [0]))
+    dataset = Dataset("detect", ["player"], {"train": [sample]})
+    out = tmp_path / "aug"
+    flipped = augment_dataset(dataset, HorizontalFlip(p=1), out, image_format="png")
+    exported = load_dataset(flipped.to_yolo(tmp_path / "export"))  # symlinks into out
+    zoom = RandomAffine(degrees=0, translate=0, scale=(0.5, 0.5), p=1)
+    with pytest.raises(ValueError, match=r"player_aug0\.png.*new folder"):
+        augment_dataset(dataset, zoom, out, image_format="png")
+    for augmented in (flipped["train"][1], exported["train"][1]):
+        np.testing.assert_allclose(
+            augmented.annotations.boxes, [[30, 5, 38, 15]], atol=1e-3
+        )
+        assert _white_box(augmented.read_image()) == [30, 5, 38, 15]
+
+
+def test_augment_dataset_checks_every_target_before_writing(tmp_path):
+    dataset = make_dataset(tmp_path)
+    augment_dataset(dataset, HorizontalFlip(p=1), tmp_path / "aug", splits=("valid",))
+    with pytest.raises(ValueError, match=r"val0_aug0\.jpg"):
+        augment_dataset(
+            dataset, HorizontalFlip(p=1), tmp_path / "aug", splits=("train", "valid")
+        )
+    assert not list((tmp_path / "aug").glob("train/**/*.jpg"))

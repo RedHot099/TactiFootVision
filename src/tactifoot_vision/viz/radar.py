@@ -114,8 +114,8 @@ class PitchRadar:
             pitch: pitch geometry and units of the positions to draw.
             width_px: image width; the height follows the real pitch proportions.
             padding_px: margin around the touch/goal lines.
-            player_radius, ball_radius, line_thickness: pixels; ``None`` scales
-                them with ``width_px``.
+            player_radius, ball_radius, line_thickness: pixels (at least 1);
+                ``None`` scales them with ``width_px``.
             draw_ids: write each player's track id inside its dot.
         """
         draw_width = width_px - 2 * padding_px
@@ -123,6 +123,9 @@ class PitchRadar:
             raise ValueError(
                 f"width_px={width_px} leaves no room for the pitch with padding_px={padding_px}"
             )
+        _check_pixels("player_radius", player_radius)
+        _check_pixels("ball_radius", ball_radius)
+        _check_pixels("line_thickness", line_thickness)
         self.pitch = pitch or SoccerPitch()
         self.width_px = int(width_px)
         self.padding_px = int(padding_px)
@@ -136,9 +139,15 @@ class PitchRadar:
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
         self.ball_color = as_color(ball_color)
-        self.player_radius = player_radius or max(3, round(width_px / 80))
-        self.ball_radius = ball_radius or max(2, round(self.player_radius * 0.75))
-        self.line_thickness = line_thickness or max(1, round(width_px / 480))
+        if player_radius is None:
+            player_radius = max(3, round(width_px / 80))
+        if ball_radius is None:
+            ball_radius = max(2, round(player_radius * 0.75))
+        if line_thickness is None:
+            line_thickness = max(1, round(width_px / 480))
+        self.player_radius = player_radius
+        self.ball_radius = ball_radius
+        self.line_thickness = line_thickness
         self.draw_ids = draw_ids
         self._background = self._draw_background()
 
@@ -198,9 +207,10 @@ class PitchRadar:
             xy: ``(N, 2)`` pitch coordinates (NaN rows are skipped).
             colors: one colour for all points or one per point; ``None`` uses
                 ``default_color``.
-            radius: dot radius in pixels (default ``player_radius``).
+            radius: dot radius in pixels, at least 1 (default ``player_radius``).
             image: radar image to draw on (not modified); default an empty pitch.
         """
+        _check_pixels("radius", radius)
         xy = np.asarray(xy, dtype=float).reshape(-1, 2)
         if colors is None:
             palette = [self.default_color] * len(xy)
@@ -211,7 +221,8 @@ class PitchRadar:
             if len(palette) != len(xy):
                 raise ValueError(f"Got {len(palette)} colours for {len(xy)} points")
         out = self._background.copy() if image is None else image.copy()
-        self._draw_dots(out, xy, palette, radius or self.player_radius)
+        radius = self.player_radius if radius is None else radius
+        self._draw_dots(out, xy, palette, radius)
         return out
 
     # ------------------------------------------------------------- drawing
@@ -274,6 +285,12 @@ class PitchRadar:
                     image, labels[i], org, cv2.FONT_HERSHEY_SIMPLEX, font_scale,
                     text_color_for(color).as_bgr(), 1, cv2.LINE_AA,
                 )  # fmt: skip
+
+
+def _check_pixels(name: str, value: float | None) -> None:
+    """A size in pixels must be at least 1 (``None``: the default size)."""
+    if value is not None and value < 1:
+        raise ValueError(f"{name} must be at least 1 pixel, got {value}")
 
 
 def _is_single_color(colors: object) -> bool:

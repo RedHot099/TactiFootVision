@@ -34,6 +34,7 @@ class TeamClassifier:
         seed: random state of UMAP, k-means and the fit subsample.
         max_fit_samples: fit on at most this many embeddings (a seeded random
             subset), which keeps UMAP fast on full matches; ``None`` uses all.
+            At least ``n_teams``.
         device: torch device for an embedder created by name.
         **embedder_options: passed to an embedder created by name, e.g.
             ``color_hist_bins=16`` for SigLIP.
@@ -56,6 +57,11 @@ class TeamClassifier:
             raise ValueError("n_teams must be >= 2")
         if reducer not in ("umap", None):
             raise ValueError(f"reducer must be 'umap' or None, got {reducer!r}")
+        if max_fit_samples is not None and max_fit_samples < n_teams:
+            raise ValueError(
+                f"max_fit_samples={max_fit_samples} cannot fit n_teams={n_teams} "
+                "clusters; use at least n_teams, or None for all embeddings"
+            )
         if isinstance(embedder, str):
             embedder = EMBEDDERS.create(embedder, device=device, **embedder_options)
         elif embedder_options or device is not None:

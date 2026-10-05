@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import replace
+from itertools import chain
 from pathlib import Path
 
 import cv2
@@ -47,7 +48,10 @@ def augment_dataset(
         dataset: source dataset (not modified).
         transform: augmentation to apply, e.g. a :class:`Compose`.
         out_dir: folder for the augmented images; not an export folder of
-            ``to_yolo`` / ``to_coco`` (re-exporting would clear it).
+            ``to_yolo`` / ``to_coco`` (re-exporting would clear it). Use a new
+            folder per call: an image this call would write must not exist
+            yet, since earlier augmented datasets and their exports still read
+            it (``ValueError`` naming the file, before anything is written).
         copies: augmented variants per original image.
         splits: splits to augment.
         seed: the output is identical for the same ``seed``, dataset and
@@ -75,38 +79,50 @@ def augment_dataset(
             f"{out_dir} holds a to_yolo / to_coco export, which a later export would "
             "clear; write the augmented images to a folder of their own"
         )
+    images_dirs = {split: out_dir / split / "images" for split in split_names}
     check_output_location(
-        out_dir,
-        [out_dir / split / "images" for split in split_names],
-        (s.image_path for s in dataset),
+        out_dir, images_dirs.values(), (s.image_path for s in dataset)
     )
+    # targets[split][i]: the paths of image i's copies
+    targets = {
+        split: [
+            [images_dirs[split] / f"{stem}_aug{k}.{suffix}" for k in range(copies)]
+            for stem in unique_stems(s.image_path.stem for s in dataset[split])
+        ]
+        for split in split_names
+    }
+    for split_targets in targets.values():
+        for path in chain.from_iterable(split_targets):
+            if path.exists() or path.is_symlink():
+                raise ValueError(
+                    f"{path} already exists: an earlier augmentation, and any dataset "
+                    "or export made from it, still uses it; write to a new folder"
+                )
 
     result = dataset
     for split in split_names:
         originals = dataset[split]
-        images_dir = ensure_dir(out_dir / split / "images")
+        images_dir = ensure_dir(images_dirs[split])
         augmented = []
-        stems = unique_stems(s.image_path.stem for s in originals)
         bar = tqdm(
-            zip(originals, stems, strict=True),
+            zip(originals, targets[split], strict=True),
             total=len(originals),
             desc=f"augment {split}",
             disable=not progress,
         )
-        for index, (sample, stem) in enumerate(bar):
+        for index, (sample, paths) in enumerate(bar):
             image = sample.read_image()
             annotations = sample.annotations
             # Hand-built annotations may lack the dataset's flip_idx; HorizontalFlip needs it.
             if annotations.flip_idx is None and dataset.flip_idx is not None:
                 annotations = replace(annotations, flip_idx=dataset.flip_idx)
-            for k in range(copies):
+            for k, path in enumerate(paths):
                 seed_seq = np.random.SeedSequence(
                     seed, spawn_key=(SPLITS.index(split), index, k)
                 )
                 new_image, new_annotations = transform(
                     image, annotations, np.random.default_rng(seed_seq)
                 )
-                path = images_dir / f"{stem}_aug{k}.{suffix}"
                 if not cv2.imwrite(str(path), new_image):
                     raise RuntimeError(f"Could not write augmented image {path}")
                 augmented.append(

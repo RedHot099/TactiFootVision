@@ -50,8 +50,9 @@ def render_video(
         progress: show a progress bar.
 
     Returns:
-        The written path. Settings are checked before ``output`` is opened, and
-        a failed render deletes the partial ``output``.
+        The written path. Settings are checked before ``output`` is opened, an
+        ``output`` that is the source file (same path, symlink or hard link)
+        is refused, and a failed render deletes the partial ``output``.
     """
     if not result.frames:
         raise ValueError("The result has no frames to render")
@@ -60,7 +61,7 @@ def render_video(
             raise ValueError("The result has no video_path; pass the source video")
         source = result.video_path
     output = Path(output)
-    if output.resolve() == Path(source).resolve():
+    if _same_file(output, Path(source)):
         raise ValueError(f"output {output} is the source video; pick another path")
     check_render_options(
         overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding, fps
@@ -176,6 +177,15 @@ def check_render_options(
     )
     if fps is not None and fps <= 0:
         raise ValueError(f"fps must be > 0, got {fps}")
+
+
+def _same_file(output: Path, source: Path) -> bool:
+    """Whether writing ``output`` would overwrite ``source``.
+
+    Compares file identity, so a symlink or a hard link to the source counts,
+    not only the same path.
+    """
+    return output.exists() and source.exists() and output.samefile(source)
 
 
 def _stride(indices: list[int]) -> int:

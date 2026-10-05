@@ -31,7 +31,7 @@ this module holds no defaults of its own. String values starting with ``./`` or
 import copy
 import inspect
 import os
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -214,24 +214,32 @@ class RunFile:
         """:func:`tactifoot_vision.viz.render_video` with the ``render`` section.
 
         For re-rendering a saved result; :meth:`run` renders a new run itself.
-        ``options`` are further ``render_video`` arguments, e.g. ``progress=False``.
+        ``options`` are ``render_video`` arguments for this call only, e.g.
+        ``fps=30`` or ``progress=False``. They take precedence over the
+        ``render`` section: a key given in both comes from ``options``, and
+        the section's annotator or radar is not built when ``options``
+        replaces it.
         """
         from tactifoot_vision.viz import render_video
 
-        kwargs = self._render_options(result.pitch)
-        return render_video(result, source, output, **kwargs, **options)
+        kwargs = self._render_options(result.pitch, exclude=options.keys())
+        return render_video(result, source, output, **(kwargs | options))
 
-    def _render_options(self, pitch: "SoccerPitch") -> dict[str, Any]:
+    def _render_options(
+        self, pitch: "SoccerPitch", exclude: Collection[str] = ()
+    ) -> dict[str, Any]:
         """``render_video`` keyword arguments from the ``render`` section, checked.
 
         Builds the annotator and the radar (their constructors check the
         values) and checks the overlay settings, so a bad value fails before
-        any frame is processed.
+        any frame is processed. Keys in ``exclude`` are left out.
         """
         from tactifoot_vision.viz import FrameAnnotator, PitchRadar
         from tactifoot_vision.viz.video import check_render_options
 
-        kwargs = self.sections.get("render", {})
+        kwargs = {
+            k: v for k, v in self.sections.get("render", {}).items() if k not in exclude
+        }
         check_render_options(
             **{k: v for k, v in kwargs.items() if k not in ("annotator", "radar")}
         )
