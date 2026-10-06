@@ -39,19 +39,30 @@ saves it with outputs, and prints its run time, size and status.
 
 ## Local data and weights
 
-The notebooks expect the local data layout from the
-[README](../README.md#local-data-layout), symlinked or copied under the
-repository root and kept out of git:
+Datasets, weights and videos are not tracked by git. The notebooks, configs and
+examples expect them under the repository root (symlinks work):
 
-* `data/datasets/football_yolo/`: YOLO detection dataset
-* `data/keypoints/`: YOLO-pose pitch dataset with `flip_idx`
-* `data/statsbomb/`: StatsBomb 360 `*_events.json` and `*_360.json`
-* `data/videos/broadcast_60s.mp4`: one minute of broadcast footage
-* `models/football_yolo11m.pt`, `models/football_rfdetr_base.pth`,
-  `models/pitch_yolov8n_pose.pt`: the trained models
+```
+data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, player, referee)
+data/keypoints/                   YOLO-pose pitch dataset (32 landmarks, flip_idx)
+data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
+data/videos/broadcast_60s.mp4     one minute of match footage
+models/football_yolo11m.pt        trained detector
+models/football_rfdetr_base.pth   trained RF-DETR detector
+models/pitch_yolov8n_pose.pt      trained pitch keypoint model
+external/segment-anything-2-real-time/   optional, for the SAM2 tracker
+```
 
 Starting weights for the demo training runs (`yolo11n.pt`, `yolov8n-pose.pt`,
 RF-DETR base) and the SigLIP and ResNet embedders are downloaded on first
-use. The SAM2 parts need `uv sync --extra sam2` and the SAM2 repository in
-`external/segment-anything-2-real-time/`; without them those cells say so and
-skip.
+use to `~/.cache/tactifoot_vision/`. The SAM2 parts need
+`uv sync --extra sam2` and the SAM2 repository in `external/`; without them
+those cells say so and skip.
+
+## Development
+
+```bash
+uv run pytest                 # fast tests on synthetic data
+uv run pytest -m model        # tests that load real weights / use the GPU
+uv run ruff check src tests examples notebooks/build
+```
