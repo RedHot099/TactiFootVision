@@ -184,8 +184,6 @@ print("original mirrored:              ", mirrored(pitch_labels))
 print("flip with flip_idx mirrored:    ", mirrored(renamed))
 print("flip keeping old names mirrored:", mirrored(not_renamed))
 print("affine mirrored:                ", mirrored(moved))
-flagged = [s for s in pitch_data["train"] if mirrored(s.annotations)]
-print("training images mirrored:       ", len(flagged), "of", len(pitch_data["train"]))
 
 try:
     flip(pitch_image, replace(pitch_labels, flip_idx=None))
@@ -193,14 +191,46 @@ except ValueError as error:
     print("\\nwithout flip_idx:", error)
 """)
     nb.md("""
-The same check runs over a whole dataset. The one training image it flags is a
-labelling error: its touchline keypoints 13 and 16 are swapped compared with
-every other image, so its labels describe a mirrored pitch.
+The same check runs over a whole dataset, so a labelling error cannot slip into
+training unnoticed. Every image in every split of the pitch dataset is tested.
 """)
     nb.code("""
-sample = flagged[0]
-print(sample.image_path.name)
-tv.show(tv.viz.draw_annotations(sample.read_image(), sample.annotations), width=6)
+images = [(split, sample) for split in pitch_data.split_names for sample in pitch_data[split]]
+flagged = [(split, sample.image_path.name) for split, sample in images if mirrored(sample.annotations)]
+print(f"images mirrored: {len(flagged)} of {len(images)}")
+print(flagged)
+""")
+    nb.md("""
+None is flagged: the dataset's labels all describe a real view of the pitch. To
+see what a flagged image looks like, the next cell builds a mirrored labelling
+in memory from one sample. A mirrored labelling flips every labelled keypoint
+from the top touchline to the bottom one, not just one pair: 13 and 16 swap,
+and so do 14 and 15, 17 and 20, and so on. The points stay where they are in
+the image and only their names change.
+""")
+    nb.code("""
+pitch = tv.pitch.SoccerPitch()
+touchline_mirror = [  # the vertex at the same place on the opposite touchline
+    int(np.argmin(np.linalg.norm(pitch.vertices - [x, pitch.width - y], axis=1)))
+    for x, y in pitch.vertices
+]
+print("swapped pairs:", [(i, j) for i, j in enumerate(touchline_mirror) if i < j])
+
+wrong_keypoints = np.zeros_like(pitch_labels.keypoints)
+wrong_keypoints[:, touchline_mirror] = pitch_labels.keypoints
+wrong_labels = replace(pitch_labels, keypoints=wrong_keypoints)
+print("sample mirrored:       ", mirrored(pitch_labels))
+print("mirrored copy mirrored:", mirrored(wrong_labels))
+
+tv.show(
+    [
+        tv.viz.draw_annotations(pitch_image, pitch_labels),
+        tv.viz.draw_annotations(pitch_image, wrong_labels),
+    ],
+    ["sample labels", "same points, names flipped top to bottom"],
+    cols=2,
+    width=12,
+)
 """)
     nb.md("""
 `RandomAffine` moves keypoints with the same matrix as the pixels. Keypoints
