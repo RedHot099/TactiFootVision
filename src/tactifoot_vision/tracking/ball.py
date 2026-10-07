@@ -1,4 +1,8 @@
-"""Ball path post-processing."""
+"""Ball path cleaning: drop positions that move implausibly fast.
+
+``Pipeline.run`` applies :func:`clean_ball_path` at the end of its pass (see
+ADR 0002); it works on any ``(T, 2)`` path, a saved result's included.
+"""
 
 import logging
 

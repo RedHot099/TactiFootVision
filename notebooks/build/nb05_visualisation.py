@@ -96,11 +96,12 @@ are no masks; the annotator then warns once and draws the rest.
 """)
     nb.code("""
 SAM2_REPO = ROOT / "external" / "segment-anything-2-real-time"
-if SAM2_REPO.is_dir() and importlib.util.find_spec("hydra") is not None:
+SAM2_CHECKPOINT = SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt"
+if SAM2_CHECKPOINT.is_file() and importlib.util.find_spec("hydra") is not None:
     warnings.filterwarnings("ignore", message="Falling back to the Python connected-components")
     sam2 = tv.tracking.create_tracker(
         "sam2",
-        checkpoint=SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt",
+        checkpoint=SAM2_CHECKPOINT,
         config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
     )
     masked = tv.Pipeline(detector=detector, keypoint_model=pitch_model, tracker=sam2, keep_masks=True).run(
@@ -153,8 +154,9 @@ tv.show([
 ## Rendering a video
 
 `render_video` re-reads the source video and writes every processed frame,
-annotated and with the radar overlay, to an mp4. It checks that the video and
-the result match (frame size, fps) and that the radar uses the result's pitch.
+annotated and with the radar overlay, to an mp4. It refuses a video whose
+frame size differs from the result's and a radar or annotator drawing another
+pitch, and warns when the frame rates differ.
 Pass your own annotator and radar, or `radar=False` for none.
 """)
     nb.code("""

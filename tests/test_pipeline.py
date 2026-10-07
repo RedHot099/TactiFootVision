@@ -29,17 +29,20 @@ COLORS = {  # BGR kit colour -> detector class
 }
 RED_PLAYERS = [(40, 60), (60, 150), (90, 100)]  # top-left corners at frame 0 (pixels)
 BLUE_PLAYERS = [(180, 50), (210, 140), (240, 90)]
+KITS = ((0, 0, 230), (230, 0, 0))  # BGR kits of the RED_PLAYERS and BLUE_PLAYERS
 GOALKEEPER = (12, 110)
 REFEREE = (150, 190)
 TELEPORT_FRAME = 6  # the ball jumps across the pitch for one frame
 
 
-def _scene(t: int) -> list[tuple[tuple[int, int, int], tuple[int, int, int, int]]]:
+def _scene(
+    t: int, kits=KITS, goalkeeper=GOALKEEPER
+) -> list[tuple[tuple[int, int, int], tuple[int, int, int, int]]]:
     """(colour, xyxy) of every object in frame ``t``; people move 1 px per frame."""
     objects = []
-    for color, corners in (((0, 0, 230), RED_PLAYERS), ((230, 0, 0), BLUE_PLAYERS)):
+    for color, corners in zip(kits, (RED_PLAYERS, BLUE_PLAYERS), strict=True):
         objects += [(color, (x + t, y, x + t + 8, y + 18)) for x, y in corners]
-    gx, gy = GOALKEEPER
+    gx, gy = goalkeeper
     objects.append(((0, 230, 230), (gx, gy + t, gx + 8, gy + t + 18)))
     rx, ry = REFEREE
     objects.append(((0, 0, 0), (rx - t, ry, rx - t + 8, ry + 18)))
@@ -48,19 +51,23 @@ def _scene(t: int) -> list[tuple[tuple[int, int, int], tuple[int, int, int, int]
     return objects
 
 
-@pytest.fixture(scope="module")
-def video(tmp_path_factory) -> Path:
-    path = tmp_path_factory.mktemp("video") / "synthetic.avi"
+def _write_video(path: Path, **scene) -> Path:
+    """The synthetic clip; ``scene`` changes the kits or the goalkeeper's place."""
     writer = cv2.VideoWriter(
         str(path), cv2.VideoWriter_fourcc(*"MJPG"), FPS, (WIDTH, HEIGHT)
     )
     for t in range(FRAMES):
         frame = np.full((HEIGHT, WIDTH, 3), (40, 140, 40), dtype=np.uint8)
-        for color, (x1, y1, x2, y2) in _scene(t):
+        for color, (x1, y1, x2, y2) in _scene(t, **scene):
             cv2.rectangle(frame, (x1, y1), (x2 - 1, y2 - 1), color, thickness=-1)
         writer.write(frame)
     writer.release()
     return path
+
+
+@pytest.fixture(scope="module")
+def video(tmp_path_factory) -> Path:
+    return _write_video(tmp_path_factory.mktemp("video") / "synthetic.avi")
 
 
 class ColorDetector(Model):
@@ -264,14 +271,16 @@ def test_without_tracker_each_detection_gets_a_team(video):
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in BLUE_PLAYERS} == {1}
 
 
-def test_prefitted_classifier_is_reused(video):
+def test_prefitted_classifier_is_reused_when_asked(video):
     classifier = TeamClassifier(MeanColorEmbedder(), reducer=None)
     blue_first = [
         np.full((10, 6, 3), c, np.uint8) for c in [(230, 0, 0)] * 3 + [(0, 0, 230)] * 3
     ]
     classifier.fit(blue_first)
     before = classifier._kmeans
-    result = _pipeline(team_classifier=classifier).run(video, end=2, progress=False)
+    result = _pipeline(team_classifier=classifier, refit_teams=False).run(
+        video, end=2, progress=False
+    )
     assert classifier._kmeans is before
     f = result[0]
     assert (
@@ -463,9 +472,9 @@ def test_prefitted_classifier_with_no_team_crops(video):
     classifier.fit(
         [np.full((10, 6, 3), c, np.uint8) for c in [(230, 0, 0), (0, 0, 230)] * 3]
     )
-    result = _pipeline(team_classifier=classifier, include_classes=["referee"]).run(
-        video, end=3, progress=False
-    )
+    result = _pipeline(
+        team_classifier=classifier, refit_teams=False, include_classes=["referee"]
+    ).run(video, end=3, progress=False)
     assert all(set(f.detections.data["class_name"]) == {"referee"} for f in result)
     assert all((f.team_ids == NO_TEAM).all() for f in result)
 
@@ -517,3 +526,93 @@ def test_run_carries_the_ball_class_into_the_freeze_frames(video):
     assert frames.loc[frames["type"] == "ball", "class_name"].tolist() == [
         "sports ball"
     ]
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+def _player_teams(frame, t: int = 0) -> tuple[set[int], set[int]]:
+    """Team ids of the players at RED_PLAYERS' and at BLUE_PLAYERS' places."""
+    teams = frame.team_ids
+    return (
+        {int(teams[_track_of(frame, x + t, y)]) for x, y in RED_PLAYERS},
+        {int(teams[_track_of(frame, x + t, y)]) for x, y in BLUE_PLAYERS},
+    )
+
+
+def test_each_run_fits_the_teams_again_unless_asked_to_keep_the_fit(video, tmp_path):
+    # Another match: both teams wear red, one dark and one bright. A fit on the
+    # first clip (red against blue) puts every one of them in the red team.
+    reds = _write_video(tmp_path / "reds.avi", kits=((0, 0, 140), (0, 0, 230)))
+
+    pipeline = _pipeline()
+    pipeline.run(video, progress=False)
+    first_fit = pipeline.team_classifier._kmeans
+    dark, bright = _player_teams(pipeline.run(reds, progress=False)[0])
+    assert pipeline.team_classifier._kmeans is not first_fit
+    assert len(dark) == len(bright) == 1 and dark != bright
+
+    keep = _pipeline(refit_teams=False)
+    keep.run(video, progress=False)
+    first_fit = keep.team_classifier._kmeans
+    dark, bright = _player_teams(keep.run(reds, progress=False)[0])
+    assert keep.team_classifier._kmeans is first_fit
+    assert dark == bright == {0}  # the red team of the first clip
+
+
+def test_goalkeeper_team_follows_position_when_the_kit_says_otherwise(tmp_path):
+    # The yellow kit is nearer the red kit (team 0), but this goalkeeper stands
+    # beside the blue team (team 1).
+    clip = _write_video(tmp_path / "keeper.avi", goalkeeper=(270, 110))
+    result = _pipeline().run(clip, progress=False)
+    for t, frame in enumerate(result):
+        assert _player_teams(frame, t) == ({0}, {1})
+        names = frame.detections.data["class_name"]
+        assert frame.team_ids[names == "goalkeeper"].tolist() == [1]
+
+
+def test_ball_speed_limit_scales_with_the_stride(video):
+    # The ball moves ~17 m/s, under the 25 m/s limit: at stride 3 it covers
+    # ~2 m between processed frames, more than the limit allows per source
+    # frame (1 m) but less than per processed frame (3 m).
+    result = _pipeline(ball_max_speed=25).run(video, stride=3, progress=False)
+    assert [f.index for f in result] == [0, 3, 6, 9]
+    for frame in result:
+        if frame.index == TELEPORT_FRAME:
+            assert np.isnan(frame.ball_xy).all()
+        else:
+            assert np.isfinite(frame.ball_xy).all(), frame.index
+
+
+def test_too_few_player_crops_leave_an_unfitted_classifier_alone(video, caplog):
+    classifier = TeamClassifier(MeanColorEmbedder(), n_teams=7, reducer=None)
+    with caplog.at_level("WARNING", logger="tactifoot_vision"):
+        result = _pipeline(team_classifier=classifier).run(video, end=1, progress=False)
+    assert "Only 6 player crops" in caplog.text
+    assert not classifier.is_fitted
+    assert (result[0].team_ids == NO_TEAM).all()
+
+
+class _ThreeBalls(ColorDetector):
+    """Adds two decoy balls around the real one: confidences 0.5, 0.95 (real), 0.7."""
+
+    def predict(self, image):
+        detections = super().predict(image)
+        is_ball = detections.data["class_name"] == "ball"
+        ball = detections[is_ball]
+        decoys = sv.Detections(
+            xyxy=np.float32([[10, 10, 16, 16], [300, 10, 306, 16]]),
+            confidence=np.float32([0.5, 0.7]),
+            class_id=np.array([0, 0]),
+            data={"class_name": np.array(["ball", "ball"])},
+        )
+        ball.confidence = np.full(len(ball), 0.95, np.float32)
+        return sv.Detections.merge([detections[~is_ball], decoys[:1], ball, decoys[1:]])
+
+
+def test_the_most_confident_ball_is_kept(video):
+    result = Pipeline(_ThreeBalls(device="cpu"), tracker=None).run(
+        video, end=3, progress=False
+    )
+    for t, frame in enumerate(result):
+        assert len(frame.ball) == 1
+        assert frame.ball.confidence.tolist() == [pytest.approx(0.95)]
+        assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)

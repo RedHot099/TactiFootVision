@@ -166,20 +166,21 @@ print(f"{len(set.union(*ids_per_frame))} ids over 50 frames; {len(stable)} prese
     nb.md("""
 ByteTrack matches boxes only and is fast. SAM2 tracks segmentation masks,
 which holds identities better through overlaps, and is re-seeded from the
-detector when new people enter. It needs the `sam2` extra and the SAM2
-repository in `external/`; without them the next cell explains how to enable
-it and the SAM2 parts of this notebook are skipped.
+detector when new people enter. It needs the `sam2` extra, the SAM2
+repository in `external/` and its checkpoint; without any of them the next
+cell explains how to enable it and the SAM2 parts of this notebook are skipped.
 """)
     nb.code("""
 SAM2_REPO = ROOT / "external" / "segment-anything-2-real-time"
-sam2_ready = SAM2_REPO.is_dir() and importlib.util.find_spec("hydra") is not None
+SAM2_CHECKPOINT = SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt"
+sam2_ready = SAM2_CHECKPOINT.is_file() and importlib.util.find_spec("hydra") is not None
 if sam2_ready:
     # The checkout's optional compiled extension may not match the installed torch;
     # SAM2 then warns and uses its Python fallback, which is fine here.
     warnings.filterwarnings("ignore", message="Falling back to the Python connected-components")
     sam2_tracker = tv.tracking.create_tracker(
         "sam2",
-        checkpoint=SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt",
+        checkpoint=SAM2_CHECKPOINT,
         config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
     )
     print("SAM2 tracker ready:", type(sam2_tracker).__name__)
@@ -230,11 +231,13 @@ print(f"ResNet and SigLIP agree on {agreement:.0%} of the crops")
 ## The full pipeline
 
 `tv.Pipeline` chains everything per frame: detect, split off the ball, track
-the people, fit the homography and project everyone onto the pitch. After the
-pass each track gets one team by majority vote over its crops, goalkeepers join
-the team whose players are nearest, and ball positions that jump implausibly
-far are dropped. Every part is an object you pass in; a tracker can also be
-given by name.
+the people, fit the homography and project everyone onto the pitch. At the end
+of the pass each track gets one team by majority vote over the crops sampled
+during the pass, goalkeepers join the team whose players are nearest, and ball
+positions that jump implausibly far are dropped. Every run fits the team
+classifier on its own crops, so one pipeline can process several matches;
+`refit_teams=False` keeps a classifier that is already fitted. Every part is
+an object you pass in; a tracker can also be given by name.
 """)
     nb.code("""
 pipeline = tv.Pipeline(
@@ -248,8 +251,9 @@ print(len(result), "frames,", len(result.track_ids), "tracks,", f"{result.fps:.0
 """)
     nb.md("""
 A `PipelineResult` is a list of `FrameResult`s. Each holds the tracked people
-and the ball as `sv.Detections` with `pitch_xy` and `team_id` attached, the
-pitch keypoints and the homography.
+as `sv.Detections` with `pitch_xy` and `team_id` attached, the ball as
+`sv.Detections` with `pitch_xy` (the ball has no team), the pitch keypoints
+and the homography.
 """)
     nb.code("""
 frame_result = result[100]
@@ -357,14 +361,20 @@ comparison = tv.evaluation.compare_with_statsbomb(
 The local StatsBomb data (`data/statsbomb/`) is Lech Poznań vs Zagłębie Lubin,
 while the local video is from a different match, so a real comparison is not
 possible here. The cell below shows what the function returns using a
-stand-in for the detections: StatsBomb's own positions, moved by about one
-unit of noise. A perfect detector would score exactly that noise.
+stand-in for the detections: StatsBomb's own positions, moved by one unit of
+noise (standard deviation per axis), with one frame per event at the event's
+time (`frame_id`, `timestamp_seconds`), as a pipeline running on the match
+would give. Each object is then matched within its own event's frame. The
+noise alone moves a point by a median of about 1.18 units; the nearest
+candidate can be a team-mate who ends up closer, so a perfect detector scores
+a little below that.
 """)
     nb.code("""
 statsbomb = tv.data.load_statsbomb(DATA / "statsbomb")
 reference = statsbomb[(statsbomb["period"] == 1) & (statsbomb["minute"] == 20)]
 rng = np.random.default_rng(0)
-stand_in = reference[["period", "minute", "second", "type"]].assign(
+stand_in = reference[["period", "minute", "second", "timestamp_seconds", "type"]].assign(
+    frame_id=pd.factorize(reference["event_uuid"])[0],
     location=[json.dumps((np.asarray(xy) + rng.normal(0, 1, 2)).tolist()) for xy in reference["pitch_location"]],
 )
 comparison = tv.evaluation.compare_with_statsbomb(stand_in, statsbomb, period=1)

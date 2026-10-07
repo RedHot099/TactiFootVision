@@ -256,7 +256,8 @@ tv.viz.show_augmentations(pitch_data, recipe, n=2, seed=3)
 """)
     nb.md("""
 `augment_dataset` writes `copies` augmented variants of every training image
-next to the originals and returns the bigger dataset. Validation data is left
+to `out_dir/<split>/images/<stem>_aug<k>` (the originals stay where they are)
+and returns the bigger dataset: originals plus variants. Validation data is left
 alone, so metrics keep measuring performance on real images. The same seed
 gives the same images, and the result exports with `to_yolo` / `to_coco` like
 any dataset.

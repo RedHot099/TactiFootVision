@@ -545,3 +545,17 @@ def test_ultralytics_downloads_only_names_it_knows(monkeypatch, tmp_path):
     local = tmp_path / "mine.pt"
     local.write_bytes(b"")
     assert _checkpoint_path(local) == local
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+def test_train_config_is_immutable_and_training_names_the_run_by_copy(
+    fake_yolo, tmp_path
+):
+    from pydantic import ValidationError
+
+    config = tv.TrainConfig(output_dir=tmp_path / "runs", amp=False)
+    with pytest.raises(ValidationError, match="frozen"):
+        config.epochs = 3
+    result = fake_yolo.train(_tiny_dataset(tmp_path), config)
+    assert result.run_dir == tmp_path / "runs" / "yolo"
+    assert config.name is None

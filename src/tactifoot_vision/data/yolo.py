@@ -18,7 +18,13 @@ from tactifoot_vision.data._files import (
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
-from tactifoot_vision.data.dataset import Dataset, LinkMode, Sample, canonical_split
+from tactifoot_vision.data.dataset import (
+    Dataset,
+    LinkMode,
+    Sample,
+    canonical_split,
+    check_flip_idx,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,7 @@ def read_dataset(data_yaml: Path) -> Dataset:
         (int(kpt_shape[0]), int(kpt_shape[1])) if kpt_shape else (None, None)
     )
     flip_idx = tuple(config["flip_idx"]) if config.get("flip_idx") else None
+    check_flip_idx(flip_idx, num_keypoints, str(data_yaml))  # before reading labels
 
     data_yaml = data_yaml.absolute()
     root = Path(config.get("path") or data_yaml.parent)
@@ -113,26 +120,31 @@ def _read_sample(
     labels = label_path(image)
     rows = []
     if labels.is_file():
-        rows = [ln.split() for ln in labels.read_text().splitlines() if ln.strip()]
+        rows = [
+            (number, line.split())
+            for number, line in enumerate(labels.read_text().splitlines(), start=1)
+            if line.strip()
+        ]
 
     boxes, class_ids, keypoints = [], [], []
     scale = np.array([width, height, width, height], dtype=np.float32)
-    for row in rows:
+    for number, row in rows:
         values = np.asarray(row[1:], dtype=np.float32)
         class_id = int(float(row[0]))
         if not 0 <= class_id < num_classes:
             raise ValueError(
-                f"{labels}: class id {class_id} is out of range for the "
+                f"{labels}, line {number}: class id {class_id} is out of range for the "
                 f"{num_classes} classes in data.yaml"
             )
         class_ids.append(class_id)
         if num_keypoints is not None:
-            cx, cy, w, h = values[:4]
             if len(values) != 4 + num_keypoints * kpt_dims:
                 raise ValueError(
-                    f"{labels}: expected {4 + num_keypoints * kpt_dims} values after the class "
-                    f"for kpt_shape [{num_keypoints}, {kpt_dims}], got {len(values)}"
+                    f"{labels}, line {number}: expected {4 + num_keypoints * kpt_dims} "
+                    f"values after the class for kpt_shape [{num_keypoints}, {kpt_dims}], "
+                    f"got {len(values)}"
                 )
+            cx, cy, w, h = values[:4]
             kp = values[4:].reshape(num_keypoints, kpt_dims)
             xy = kp[:, :2] * [width, height]
             if kpt_dims == 3:
@@ -145,6 +157,12 @@ def _read_sample(
         elif len(values) == 4:
             cx, cy, w, h = values
         else:  # segmentation polygon "x1 y1 x2 y2 ..." -> its bounding box
+            if len(values) % 2 or len(values) < 6:
+                raise ValueError(
+                    f"{labels}, line {number}: expected 4 values after the class "
+                    "(a box) or an even number of at least 6 (a polygon), "
+                    f"got {len(values)}"
+                )
             polygon = values.reshape(-1, 2)
             (x1, y1), (x2, y2) = polygon.min(axis=0), polygon.max(axis=0)
             cx, cy, w, h = (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1

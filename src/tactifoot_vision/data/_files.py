@@ -107,8 +107,9 @@ def prepare_output(
     file that already exists (a user's ``data.yaml`` next to a COCO export, or
     a symlink there) and a recorded folder holding any file the marker does
     not list (a user's notes, augmented images, ...) are left alone with an
-    error naming the file. The marker is updated before the new files are
-    written, so an interrupted export can be redone.
+    error naming the file. A marker entry outside ``out_dir`` (absolute, or
+    with ``..``) is an error too. The marker is updated before the new files
+    are written, so an interrupted export can be redone.
     """
     marker = out_dir / EXPORT_MARKER
     if out_dir.is_dir() and any(out_dir.iterdir()) and not marker.is_file():
@@ -154,11 +155,41 @@ def prepare_output(
 
 
 def _read_marker(out_dir: Path) -> tuple[list[Path], set[Path]]:
-    """The folders and files an earlier export in ``out_dir`` recorded."""
+    """The folders and files an earlier export in ``out_dir`` recorded.
+
+    Every entry must lie inside ``out_dir``: an absolute path, a ``..`` part,
+    or a path whose folders resolve elsewhere (through a symlink) is a
+    ``ValueError``, so a corrupt or hand-edited marker never makes an export
+    delete anything outside its folder. A recorded file may itself be a
+    symlink to a source image; only the folder holding it is resolved.
+    """
     marker = out_dir / EXPORT_MARKER
     lines = marker.read_text().splitlines() if marker.is_file() else []
-    folders = [out_dir / line.rstrip("/") for line in lines if line.endswith("/")]
-    files = {out_dir / line for line in lines if line and not line.endswith("/")}
+    root = out_dir.resolve()
+    folders, files = [], set()
+    for number, line in enumerate(lines, start=1):
+        if not line:
+            continue
+        relative = Path(line.rstrip("/"))
+        path = out_dir / relative
+        is_folder = line.endswith("/")
+        # A folder must resolve below out_dir; a file's folder may be out_dir itself.
+        inside = path.resolve() if is_folder else path.parent.resolve()
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or not relative.parts
+            or not inside.is_relative_to(root)
+            or (is_folder and inside == root)
+        ):
+            raise ValueError(
+                f"{marker}, line {number}: {line!r} lies outside {out_dir}; the "
+                "marker is corrupt, so nothing was deleted. Use a new folder"
+            )
+        if is_folder:
+            folders.append(path)
+        else:
+            files.add(path)
     return folders, files
 
 

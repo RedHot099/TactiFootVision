@@ -18,6 +18,12 @@ The package has two independent front-ends
 * **CLI mode**: the `tactifoot` command. `cli.py` and `run_file.py` only
   translate text into calls of the same functions and classes.
 
+Steps that need the whole video are post-processes on a saved
+`PipelineResult`, not a second pass inside `Pipeline.run`
+([ADR 0002](adr/0002-whole-video-steps-are-post-processes-on-a-saved-result.md)).
+`Pipeline.run` makes one pass over the frames and ends with the steps that
+need data only that pass has (the team vote over the sampled crops).
+
 Only the constructors, functions and `TrainConfig` hold default values and
 validate values. The CLI declares no defaults (`argparse.SUPPRESS`; a missing
 option is not passed), `tactifoot train` generates its flags from
@@ -55,7 +61,7 @@ Adding a backend = subclass + `@REGISTRY.register("name")`; nothing else changes
 src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
-  utils.py            setup_logging, resolve_device, ensure_dir
+  utils.py            setup_logging, resolve_device, ensure_dir, cache_dir, next_run_dir
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
@@ -144,7 +150,9 @@ configs/              example run files
   would write that exists without being listed (a user's `data.yaml`, or a
   symlink, at the root of a COCO export), are refused with the file's name
   before anything changes, so re-exporting into the same folder works for
-  every link mode and loses nothing else.
+  every link mode and loses nothing else. A marker entry that does not
+  resolve inside the export folder (an absolute path, `..`, a symlinked
+  folder) is refused, so a corrupt marker deletes nothing.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
@@ -160,7 +168,10 @@ configs/              example run files
   fraction stays empty. `subset` takes integer counts (NumPy integers too) or
   fractions in `[0, 1]`.
 * The YOLO and COCO readers refuse class ids outside the dataset's classes,
-  naming the label or annotation file.
+  naming the label or annotation file (and the label line). A YOLO label row
+  that is neither a box nor a polygon (an odd number of values) fails with
+  its file and line, and a `flip_idx` without one entry per keypoint fails
+  when the dataset is loaded or constructed.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
@@ -198,7 +209,8 @@ configs/              example run files
   An `exist_ok=True` re-run deletes the previous run's `results.csv` /
   `log.txt` first, so history and metrics describe that run only.
 * `TrainConfig.backend_options` holds the keyword arguments that are not
-  `TrainConfig` fields; they go verbatim to the backend.
+  `TrainConfig` fields; they go verbatim to the backend. A `TrainConfig` is
+  immutable; `config.model_copy(update={...})` derives another one.
 * `TrainResult.metrics` uses the same keys for every backend (`map50_95`, `map50`,
   plus `map75`, `precision`, `recall`, `pose_*` when reported);
   `TrainResult.history` is a per-epoch DataFrame (1-based `epoch`, backend
@@ -262,10 +274,15 @@ configs/              example run files
   With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
   `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
   covers, so memory grows with the people's area, not the frame area.
-  Teams are assigned after tracking by majority vote over each track's crops
-  (a bounded random sample of `team_samples_per_track` crops per track), so
-  every frame of a track carries the same team id. Goalkeepers join the team
-  whose players are nearest on the pitch; referees get `NO_TEAM`.
+  At the end of the pass (ADR 0002) every track gets one team by majority
+  vote over its crops (a bounded random sample of `team_samples_per_track`
+  crops per track, taken during the pass), so every frame of a track carries
+  the same team id. Goalkeepers join the team whose players are nearest on
+  the pitch; referees get `NO_TEAM`. Each run fits the team classifier on
+  its own player crops, also when an earlier run (another match) fitted it;
+  `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
+  The ball filter (`ball_max_speed`) also runs at the end of the pass for
+  now; the `ball-tracking` feature moves it into a post-process.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
@@ -299,7 +316,10 @@ configs/              example run files
   link) before opening anything, checks that the source video (header and
   decoded frame size) and the drawing pitch match the result, raises
   `RuntimeError` when the source lacks a result frame, and deletes the
-  partial output when rendering fails.
+  partial output when rendering fails. `viz.video.check_render_options(**options)`
+  takes any `render_video` keyword arguments and checks the overlay settings
+  and `fps` among them, so a new `render_video` parameter reaches run files
+  without edits.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,
@@ -352,7 +372,8 @@ render: {annotator: {style: video_game}, radar: null}
   as `yolo11n.pt` pass through.
 * **Overrides** `dotted.key=value` replace one value for one run. The value is
   YAML (`null`, `true`, `0.4`, `[player, goalkeeper]`), missing mappings are
-  created, and `./` / `../` paths in the value are relative to the current
+  created (a `null` section counts as empty, so `tracker.type=sam2` works on
+  `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
 
 ```
@@ -373,4 +394,4 @@ tactifoot info
   (`mosaic=0.0`, `grad_accum_steps=4`); setting a key by flag and `--set` is an error.
 * `evaluate`: `--set model.KEY=VALUE` goes to `load_model` (`model.device=cuda:1`,
   `model.imgsz=1280`, RF-DETR `model.resolution=...`), `--split` and the other
-  `--set` keys to `model.evaluate`.
+  `--set` keys to `model.evaluate`; setting `split` by flag and `--set` is an error.

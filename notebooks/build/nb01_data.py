@@ -72,14 +72,23 @@ pd.DataFrame(annotations.boxes, columns=["x1", "y1", "x2", "y2"]).assign(
 `subset`, `resplit`, `merge` and `with_split` each return a new dataset. They
 cover the usual chores: a small subset for quick experiments, a fresh
 train/valid/test split, combining two sources, or replacing one split.
+
+`merge` and `with_split` take images from elsewhere and keep every image they
+are given, so the sources should not overlap. Here the second source is a
+`Dataset` built from detection images that `small` left out.
 """)
     nb.code("""
 small = detection.subset({"train": 200, "valid": 40}, seed=0)   # counts per split
 tenth = detection.subset(0.1, seed=0)                           # a fraction of every split
 resplit = small.resplit(train=0.7, valid=0.2, test=0.1, seed=0)  # pool and split again
-merged = small.merge(tenth)                                     # same classes required
-held_out = small.with_split("test", detection.subset(30, seed=1)["valid"])
 
+in_small = {s.image_path for s in small}
+unused = {split: [s for s in detection[split] if s.image_path not in in_small] for split in ("train", "valid")}
+extra = tv.data.Dataset(detection.task, detection.class_names, {"train": unused["train"][:100]})
+merged = small.merge(extra)                                     # same classes required
+held_out = small.with_split("test", unused["valid"][:30])       # a test split small has not seen
+
+print("distinct images in merged:", len({s.image_path for s in merged}), "of", len(merged))
 pd.concat(
     {name: ds.summary()[["images", "objects"]] for name, ds in
      {"small": small, "tenth": tenth, "resplit": resplit, "merged": merged, "held_out": held_out}.items()},

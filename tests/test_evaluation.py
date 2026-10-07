@@ -500,3 +500,14 @@ def test_statsbomb_event_stays_unmatched_when_its_closest_frame_has_no_candidate
         pooled = compare_with_statsbomb(freeze_frames, _one_player_at([10.0, 10.0]))
         assert pooled["detected_frame_id"].tolist() == [24]
         assert pooled["euclidean_distance"].tolist() == pytest.approx([20.0])
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+def test_statsbomb_comparison_assigns_no_column_on_a_slice():
+    # The period filter selects rows; assigning columns on the selection must
+    # not trip pandas' chained-assignment check (or change the caller's table).
+    statsbomb, freeze_frames = _statsbomb(), _freeze_frames()
+    before = statsbomb.copy()
+    with pd.option_context("mode.chained_assignment", "raise"):
+        compare_with_statsbomb(freeze_frames, statsbomb, period=1)
+    pd.testing.assert_frame_equal(statsbomb, before)

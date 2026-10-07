@@ -53,11 +53,14 @@ models/pitch_yolov8n_pose.pt      trained pitch keypoint model
 external/segment-anything-2-real-time/   optional, for the SAM2 tracker
 ```
 
-Starting weights for the demo training runs (`yolo11n.pt`, `yolov8n-pose.pt`,
-RF-DETR base) and the SigLIP and ResNet embedders are downloaded on first
-use to `~/.cache/tactifoot_vision/`. The SAM2 parts need
-`uv sync --extra sam2` and the SAM2 repository in `external/`; without them
-those cells say so and skip.
+Downloads happen on first use. Starting weights for the demo training runs
+(`yolo11n.pt`, `yolov8n-pose.pt`, RF-DETR base) go to
+`~/.cache/tactifoot_vision/`. The team embedders use their libraries' caches:
+SigLIP the Hugging Face cache (`~/.cache/huggingface/`, moved by `HF_HOME`),
+ResNet the torchvision hub cache (`~/.cache/torch/hub/`, moved by
+`TORCH_HOME`). The SAM2 parts need `uv sync --extra sam2`, the SAM2
+repository in `external/` and its `sam2.1_hiera_tiny.pt` checkpoint; without
+any of them those cells say so and skip.
 
 ## Development
 

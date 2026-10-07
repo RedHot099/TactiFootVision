@@ -22,8 +22,10 @@ notebook with the details:
 | Visualisation | `tv.viz` | [05_visualisation](05_visualisation.ipynb) |
 
 Everything is plain Python: build the objects you want and call them. The
-same steps exist as a command line (`tactifoot run`, `tactifoot train`), see
-the README. Requirements and local data are listed in [README.md](README.md).
+same steps exist as a command line (`tactifoot run`, `tactifoot train`,
+`tactifoot evaluate`), described under "Run files and the CLI" in
+[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md). Requirements and local data
+are listed in [README.md](README.md).
 """)
     nb.setup()
 

@@ -28,6 +28,24 @@ def canonical_split(name: str) -> str:
     return name
 
 
+def check_flip_idx(
+    flip_idx: tuple[int, ...] | None, num_keypoints: int | None, source: str = ""
+) -> None:
+    """Refuse a ``flip_idx`` that does not have one entry per keypoint.
+
+    Checked when a dataset is loaded, so a bad ``data.yaml`` fails there and
+    not in :class:`~tactifoot_vision.augment.HorizontalFlip` after an
+    augmentation run has written some images.
+    """
+    if flip_idx is None or num_keypoints is None or len(flip_idx) == num_keypoints:
+        return
+    where = f"{source}: " if source else ""
+    raise ValueError(
+        f"{where}flip_idx has {len(flip_idx)} entries but there are "
+        f"{num_keypoints} keypoints; it needs one entry per keypoint"
+    )
+
+
 @dataclass(frozen=True)
 class Sample:
     """One image on disk with its labels (pixel coordinates)."""
@@ -68,6 +86,7 @@ class Dataset:
         self.splits = {canonical_split(k): list(v) for k, v in self.splits.items()}
         if self.task is Task.POSE and self.num_keypoints is None:
             raise ValueError("Pose datasets need num_keypoints")
+        check_flip_idx(self.flip_idx, self.num_keypoints)
 
     # ------------------------------------------------------------------ loading
     @classmethod

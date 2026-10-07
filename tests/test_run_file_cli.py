@@ -334,7 +334,7 @@ def test_overrides_are_key_checked(tmp_path):
         ("=1", "empty key"),
         ("detector..conf=1", "empty key"),
         ("detector.type.x=1", "'detector.type' is 'test_box_detector', not a mapping"),
-        ("keypoints.conf=0.3", "'keypoints' is None, not a mapping"),
+        ("keypoints.conf=0.3", "Section 'keypoints' needs a 'type' key"),
     ],
 )
 def test_override_errors(tmp_path, override, match):
@@ -807,3 +807,79 @@ def test_run_file_render_video_lets_per_call_options_win(tmp_path, capsys):
     )
     with pytest.raises(ValueError, match="width_px"):
         bad_radar.render_video(result, video, tmp_path / "d.mp4", progress=False)
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+def test_overrides_reach_into_a_null_section(tmp_path):
+    loaded = _load(
+        tmp_path,
+        {"detector": DETECTOR, "tracker": None, "render": {"radar": None}},
+        [
+            "tracker.type=bytetrack",
+            "tracker.lost_track_buffer=5",
+            "render.radar.width_px=300",
+        ],
+    )
+    sections = loaded.sections
+    assert sections["tracker"] == {"type": "bytetrack", "lost_track_buffer": 5}
+    assert sections["render"] == {"radar": {"width_px": 300}}
+    assert isinstance(loaded.build_pipeline().tracker, ByteTrackTracker)
+
+
+def test_evaluate_rejects_a_key_set_by_flag_and_set(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["evaluate", "test_box_detector", "--weights", "w.pt", "--data", "d",
+              "--split", "valid", "--set", "split=test"])  # fmt: skip
+    assert exit_info.value.code == 2
+    last = capsys.readouterr().err.strip().splitlines()[-1]
+    assert last.endswith("split is set both by --split and --set")
+
+
+@MODELS.register("test_open_detector")
+class OpenDetector(BoxDetector):
+    """A backend whose constructor takes any option (``**options``)."""
+
+    name = "test_open_detector"
+
+    def __init__(self, weights=None, **options):
+        self.options = options
+        super().__init__(weights)
+
+
+def test_a_section_whose_target_takes_any_keyword_accepts_any_key(tmp_path):
+    loaded = _load(
+        tmp_path, {"detector": {"type": "test_open_detector", "anything": 1}}
+    )
+    assert loaded.build_pipeline().detector.options == {"anything": 1}
+
+
+def test_a_new_render_video_parameter_reaches_render_without_edits(
+    tmp_path, monkeypatch
+):
+    from tactifoot_vision import viz
+    from tactifoot_vision.viz import video as video_module
+
+    original = video_module.render_video
+    received = []
+
+    def render_video(*args, trail_length=0, **kwargs):
+        received.append(trail_length)
+        return original(*args, **kwargs)
+
+    signature = inspect.signature(original)
+    render_video.__signature__ = signature.replace(
+        parameters=[
+            *signature.parameters.values(),
+            inspect.Parameter(
+                "trail_length", inspect.Parameter.KEYWORD_ONLY, default=0
+            ),
+        ]
+    )
+    monkeypatch.setattr(video_module, "render_video", render_video)
+    monkeypatch.setattr(viz, "render_video", render_video)
+    loaded = _load(
+        tmp_path, {"detector": DETECTOR, "render": {"radar": None, "trail_length": 5}}
+    )
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert received == [5]
+    assert (tmp_path / "out" / "annotated.mp4").is_file()

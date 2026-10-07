@@ -777,3 +777,46 @@ def test_plot_heatmap_counts_only_the_selected_team(positions, team, cells):
     assert np.argwhere(hist > 0).tolist() == cells
     assert (hist[hist > 0] == 1).all()
     assert ax.get_title(loc="left") == f"{len(cells)} positions in 3 frames"
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+class _CountingWriter:
+    """cv2.VideoWriter that counts its ``release`` calls."""
+
+    releases = 0
+
+    def __init__(self, *args) -> None:
+        self._writer = _REAL_WRITER(*args)
+
+    def isOpened(self) -> bool:
+        return self._writer.isOpened()
+
+    def write(self, image) -> None:
+        self._writer.write(image)
+
+    def release(self) -> None:
+        type(self).releases += 1
+        self._writer.release()
+
+
+_REAL_WRITER = cv2.VideoWriter
+
+
+@pytest.mark.parametrize("fail_at", [None, 3])
+def test_render_video_releases_the_writer_once_and_keeps_only_a_full_video(
+    result: PipelineResult, video: Path, tmp_path: Path, monkeypatch, fail_at
+):
+    monkeypatch.setattr(cv2, "VideoWriter", _CountingWriter)
+    _CountingWriter.releases = 0
+    output = tmp_path / "annotated.mp4"
+    if fail_at is None:
+        viz.render_video(result, video, output, progress=False)
+        assert output.is_file()
+    else:
+        with pytest.raises(RuntimeError, match="boom"):
+            viz.render_video(
+                result, video, output, annotator=_FailingAnnotator(fail_at),
+                progress=False,
+            )  # fmt: skip
+        assert not output.exists()
+    assert _CountingWriter.releases == 1

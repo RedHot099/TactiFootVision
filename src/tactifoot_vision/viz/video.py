@@ -1,9 +1,10 @@
 """Writing an annotated video from a pipeline result."""
 
+import inspect
 import logging
 from math import gcd
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -64,7 +65,11 @@ def render_video(
     if _same_file(output, Path(source)):
         raise ValueError(f"output {output} is the source video; pick another path")
     check_render_options(
-        overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding, fps
+        overlay_position=overlay_position,
+        overlay_width_fraction=overlay_width_fraction,
+        overlay_alpha=overlay_alpha,
+        overlay_padding=overlay_padding,
+        fps=fps,
     )
     reader = VideoReader(source)
     if reader.size != tuple(result.frame_size):
@@ -111,6 +116,7 @@ def render_video(
 
         bar = tqdm(total=len(indices), desc="Rendering", unit="frame")
     written: set[int] = set()
+    complete = False
     try:
         for index, frame in reader.frames(
             start=indices[0], end=indices[-1] + 1, stride=step
@@ -148,33 +154,39 @@ def render_video(
                 f"{reader.path} ended early: frame {missing} is missing "
                 f"({len(written)} of {len(indices)} result frames were rendered)"
             )
-    except BaseException:
-        writer.release()
-        output.unlink(missing_ok=True)  # never leave a partial video behind
-        raise
+        complete = True
     finally:
         writer.release()
         if bar is not None:
             bar.close()
+        if not complete:
+            output.unlink(missing_ok=True)  # never leave a partial video behind
     logger.info("Wrote %d frames at %.2f fps to %s", len(written), fps, output)
     return output
 
 
-def check_render_options(
-    overlay_position: str | None = None,
-    overlay_width_fraction: float | None = None,
-    overlay_alpha: float | None = None,
-    overlay_padding: int | None = None,
-    fps: float | None = None,
-) -> None:
+def check_render_options(**options: Any) -> None:
     """Raise ``ValueError`` for a :func:`render_video` setting it would reject.
 
-    Only the settings given are checked; a run file uses this to fail before
-    the first frame instead of after the whole run.
+    Takes any :func:`render_video` keyword arguments (a name it does not take
+    is a ``ValueError``) and checks the values it knows: the overlay settings
+    and ``fps``. The others pass unchecked, so a new ``render_video``
+    parameter needs no change here. A run file uses this to fail before the
+    first frame instead of after the whole run.
     """
+    valid = inspect.signature(render_video).parameters
+    unknown = [name for name in options if name not in valid]
+    if unknown:
+        raise ValueError(
+            f"render_video has no argument {unknown[0]!r}; valid: {', '.join(valid)}"
+        )
     check_overlay(
-        overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding
+        options.get("overlay_position"),
+        options.get("overlay_width_fraction"),
+        options.get("overlay_alpha"),
+        options.get("overlay_padding"),
     )
+    fps = options.get("fps")
     if fps is not None and fps <= 0:
         raise ValueError(f"fps must be > 0, got {fps}")
 

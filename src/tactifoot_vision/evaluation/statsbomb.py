@@ -175,7 +175,7 @@ def _prepare(table: pd.DataFrame, location: str, period: int) -> pd.DataFrame:
     table = table.reset_index(drop=True)
     for column in _TIME:
         table[column] = pd.to_numeric(table[column], errors="coerce")
-    table = table[table["period"] == period].dropna(subset=_TIME)
+    table = table[table["period"] == period].dropna(subset=_TIME).copy()
     table[_TIME] = table[_TIME].astype(int)
     table["_xy"] = table[location].map(_parse_location)
     missing = int(table["_xy"].isna().sum())

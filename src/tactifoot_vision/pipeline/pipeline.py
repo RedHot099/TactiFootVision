@@ -37,9 +37,10 @@ class Pipeline:
     Per frame: detect, split off the ball (best-confidence ``ball_class``
     detection), track the people, detect pitch keypoints, update the
     homography and project everyone onto the pitch (people at the bottom
-    centre of their box, the ball at its centre). After the pass, every track
-    gets one team by majority vote over its crops, and ball positions that
-    jump implausibly far are removed.
+    centre of their box, the ball at its centre). The pass ends with the steps
+    that need data only it has (ADR 0002): every track gets one team by
+    majority vote over the crops sampled during the pass, and ball positions
+    that jump implausibly far are removed.
 
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
@@ -47,9 +48,12 @@ class Pipeline:
             without it there is no homography and ``pitch_xy`` is NaN.
         tracker: a :class:`Tracker`, a registered tracker name, or ``None``
             (no tracking; each detection is then classified on its own).
-        team_classifier: a :class:`TeamClassifier`. An unfitted one is fitted on
-            this video's player crops; a fitted one is reused as is, so give each
-            match a new classifier. ``None`` skips teams.
+        team_classifier: a :class:`TeamClassifier`, fitted on each run's player
+            crops (see ``refit_teams``). ``None`` skips teams.
+        refit_teams: fit the team classifier again on every run, so a run on
+            another match never inherits the previous match's kits. ``False``
+            keeps a classifier that is already fitted (by an earlier run or by
+            :meth:`TeamClassifier.fit`) and only fits an unfitted one.
         pitch: pitch model; defaults to ``homography.pitch`` or ``SoccerPitch()``.
         homography: homography estimator; one is created when omitted.
         ball_class: detector class name of the ball.
@@ -86,6 +90,7 @@ class Pipeline:
         keypoint_model: Model | None = None,
         tracker: Tracker | str | None = "bytetrack",
         team_classifier: TeamClassifier | None = None,
+        refit_teams: bool = True,
         pitch: SoccerPitch | None = None,
         homography: HomographyEstimator | None = None,
         ball_class: str = "ball",
@@ -118,6 +123,7 @@ class Pipeline:
         self.keypoint_model = keypoint_model
         self.tracker = create_tracker(tracker) if isinstance(tracker, str) else tracker
         self.team_classifier = team_classifier
+        self.refit_teams = refit_teams
         self.pitch = pitch or (homography.pitch if homography else SoccerPitch())
         self.homography = homography or HomographyEstimator(self.pitch)
         self.ball_class = ball_class
@@ -287,7 +293,7 @@ class Pipeline:
         for (i, _), embedding in zip(valid, embeddings, strict=True):
             samples.add(int(keys[i]), embedding)
 
-    # ------------------------------------------------------------ after pass
+    # ------------------------------------------------- end of the pass (ADR 0002)
     def _assign_teams(
         self, frames: list[FrameResult], keys: list[np.ndarray], samples: "_TeamSamples"
     ) -> None:
@@ -299,8 +305,8 @@ class Pipeline:
         is_player = np.isin(sample_classes, self.team_classes) & (
             sample_classes != GOALKEEPER
         )
-        if classifier.is_fitted:
-            logger.info("Using the already fitted team classifier")
+        if classifier.is_fitted and not self.refit_teams:
+            logger.info("Keeping the team classifier's earlier fit (refit_teams=False)")
         else:
             if is_player.sum() < classifier.n_teams:
                 logger.warning(

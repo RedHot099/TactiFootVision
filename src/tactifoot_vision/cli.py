@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation option, e.g. max_images=50, or with the prefix 'model.' a "
         "load_model option, e.g. model.device=cuda:1 or model.imgsz=1280",
     )
-    evaluate.set_defaults(handler=functools.partial(_evaluate, split))
+    evaluate.set_defaults(handler=functools.partial(_evaluate, evaluate, split))
 
     info = commands.add_parser("info", help="show version and available backends")
     info.set_defaults(handler=_info)
@@ -144,17 +144,19 @@ def _train(
     return 0
 
 
-def _evaluate(split: list[str], args: argparse.Namespace) -> int:
-    model_options, options = {}, {}
+def _evaluate(
+    parser: argparse.ArgumentParser, split: list[str], args: argparse.Namespace
+) -> int:
+    model_options, options = {}, _given(args, split)
     for key, value in map(tv.run_file.parse_override, _overrides(args)):
         if key.startswith("model."):
             model_options[key.removeprefix("model.")] = value
+        elif key in options:
+            parser.error(f"{key} is set both by --{_flag(key)} and --set")
         else:
             options[key] = value
     model = tv.load_model(args.model, args.weights, **model_options)
-    metrics = model.evaluate(
-        tv.load_dataset(args.data), **_given(args, split), **options
-    )
+    metrics = model.evaluate(tv.load_dataset(args.data), **options)
     print(json.dumps(metrics.as_dict(), indent=2))
     return 0
 

@@ -240,9 +240,7 @@ class RunFile:
         kwargs = {
             k: v for k, v in self.sections.get("render", {}).items() if k not in exclude
         }
-        check_render_options(
-            **{k: v for k, v in kwargs.items() if k not in ("annotator", "radar")}
-        )
+        check_render_options(**kwargs)
         if "annotator" in kwargs:
             kwargs["annotator"] = FrameAnnotator(pitch=pitch, **kwargs["annotator"])
         if "radar" in kwargs:
@@ -413,11 +411,17 @@ def _resolve_paths(value: Any, base: Path) -> Any:
 
 
 def _set(data: dict[str, Any], key: str, value: Any) -> None:
-    """Set ``data["a"]["b"] = value`` for ``key="a.b"``, creating missing mappings."""
+    """Set ``data["a"]["b"] = value`` for ``key="a.b"``, creating missing mappings.
+
+    A ``null`` on the way counts as an empty mapping, so ``tracker.type=sam2``
+    works on ``tracker: null``.
+    """
     *parents, last = key.split(".")
     node = data
     for depth, part in enumerate(parents):
-        child = node.setdefault(part, {})
+        if node.get(part) is None:
+            node[part] = {}
+        child = node[part]
         if not isinstance(child, dict):
             where = ".".join(parents[: depth + 1])
             raise ValueError(

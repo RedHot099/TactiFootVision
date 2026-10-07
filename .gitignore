@@ -15,7 +15,7 @@ dist/
 .ipynb_checkpoints/
 *.log
 
-# Data, weights and run artefacts (kept outside git; see README "Local data layout")
+# Data, weights and run artefacts (kept outside git; see notebooks/README.md "Local data and weights")
 /data/
 /models/
 output/

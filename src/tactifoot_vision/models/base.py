@@ -32,10 +32,11 @@ class TrainConfig(BaseModel):
 
     Unknown keyword arguments are kept (``extra="allow"``) and passed verbatim to
     the backend, e.g. ``mosaic=0.0`` for Ultralytics or ``grad_accum_steps=4``
-    for RF-DETR. Read them with ``config.backend_options``.
+    for RF-DETR. Read them with ``config.backend_options``. A config is
+    immutable; ``config.model_copy(update={...})`` derives another one.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     epochs: int = Field(10, ge=1)
     batch_size: int = Field(8, ge=1)
@@ -179,7 +180,7 @@ class Model(ABC):
         base = config.model_dump() if config is not None else {}
         cfg = TrainConfig(**(base | overrides))
         if cfg.name is None:
-            cfg.name = self.name
+            cfg = cfg.model_copy(update={"name": self.name})
         self._check_options(cfg)
         run_dir = next_run_dir(Path(cfg.output_dir).absolute() / cfg.name, cfg.exist_ok)
         logger.info(

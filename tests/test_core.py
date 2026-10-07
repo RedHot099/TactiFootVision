@@ -403,3 +403,19 @@ def test_visible_area_is_none_when_a_corner_lies_beyond_the_horizon():
     assert result.to_freeze_frames()["visible_area"].iloc[0] is None
     result.frames[0].homography = np.array([[1, 0, 0], [0, 1, 0], [0, 0.001, 1.0]])
     assert json.loads(result.to_freeze_frames()["visible_area"].iloc[0])
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+def test_homography_averages_the_last_smoothing_window_fits():
+    pitch = SoccerPitch()
+    estimator = HomographyEstimator(pitch, smoothing_window=3)
+    fits = []
+    for shift in (0, 10, 20, 30):  # a camera panning 10 px per frame
+        to_frame = _homography() @ np.array(
+            [[1, 0, shift], [0, 1, 0], [0, 0, 1]], dtype=float
+        )
+        fit = np.linalg.inv(to_frame)
+        fits.append(fit / fit[2, 2])
+        matrix = estimator.update(_keypoints(pitch, to_frame))
+    np.testing.assert_allclose(matrix, np.mean(fits[-3:], axis=0), atol=1e-6)
+    assert not np.allclose(matrix, fits[-1], atol=1e-3)

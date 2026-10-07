@@ -557,3 +557,113 @@ def test_read_takes_one_sample_without_copying_the_split(tmp_path, monkeypatch):
     original = ds.splits["valid"][-1].annotations
     assert annotations is not original and annotations.boxes is not original.boxes
     np.testing.assert_array_equal(annotations.boxes, original.boxes)
+
+
+# ------------------------------------------------------- review round 3 (Fable)
+@pytest.mark.parametrize(
+    "entry", ["../victim/", "../victim/notes.txt", "train/../../victim/", "ABSOLUTE"]
+)
+def test_a_marker_entry_outside_the_export_is_refused(tmp_path, entry):
+    from tactifoot_vision.data._files import EXPORT_MARKER
+
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    out = tmp_path / "export"
+    ds.to_yolo(out)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "notes.txt").write_text("keep me")
+    absolute = tmp_path / "absolute.txt"
+    absolute.write_text("keep me too")
+    entry = entry.replace("ABSOLUTE", str(absolute))
+    marker = out / EXPORT_MARKER
+    marker.write_text(marker.read_text() + entry + "\n")
+    with pytest.raises(ValueError, match="lies outside"):
+        ds.to_yolo(out)
+    assert (victim / "notes.txt").read_text() == "keep me"
+    assert absolute.read_text() == "keep me too"
+    assert (out / "train" / "images" / "a.jpg").exists()  # the export is untouched
+
+
+def test_a_marker_folder_reached_through_a_symlink_is_refused(tmp_path):
+    from tactifoot_vision.data._files import EXPORT_MARKER
+
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    out = tmp_path / "export"
+    ds.to_yolo(out)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "notes.txt").write_text("keep me")
+    (out / "elsewhere").symlink_to(victim)
+    marker = out / EXPORT_MARKER
+    marker.write_text(marker.read_text() + "elsewhere/\nelsewhere/notes.txt\n")
+    with pytest.raises(ValueError, match="lies outside"):
+        ds.to_yolo(out)
+    assert (victim / "notes.txt").read_text() == "keep me"
+
+
+@pytest.mark.parametrize("fmt", ["yolo", "coco"])
+def test_each_link_mode_places_its_kind_of_file_and_spares_the_source(tmp_path, fmt):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
+    source = ds["train"][0].image_path
+    original = source.read_bytes()
+    folder = {"yolo": "train/images", "coco": "train"}[fmt]
+    for link in ("symlink", "hardlink", "copy", "hardlink"):  # re-exports included
+        getattr(ds, f"to_{fmt}")(tmp_path / "out", link=link)
+        image = tmp_path / "out" / folder / source.name
+        assert image.is_symlink() == (link == "symlink")
+        assert image.samefile(source) == (link != "copy")
+        if link == "hardlink":
+            assert image.stat().st_nlink >= 2
+        assert image.read_bytes() == original
+    assert source.read_bytes() == original and source.stat().st_nlink == 2
+
+
+def test_a_flip_idx_without_one_entry_per_keypoint_fails_at_load(tmp_path):
+    data_yaml = _write_yolo(tmp_path, pose=True)
+    config = yaml.safe_load(data_yaml.read_text())
+    data_yaml.write_text(yaml.safe_dump(config | {"flip_idx": [1, 0]}))
+    with pytest.raises(
+        ValueError, match=r"data\.yaml.*flip_idx has 2 entries.*3 keypoints"
+    ):
+        load_dataset(data_yaml)
+    with pytest.raises(ValueError, match="flip_idx has 2 entries"):
+        Dataset(Task.POSE, ["pitch"], {}, num_keypoints=3, flip_idx=(1, 0))
+
+
+def test_an_odd_label_row_names_its_file_and_line(tmp_path):
+    data_yaml = _write_yolo(tmp_path)
+    (tmp_path / "train/labels/a.txt").write_text(
+        "1 0.5 0.5 0.2 0.2\n\n0 0.1 0.1 0.5 0.5 0.9\n"
+    )
+    with pytest.raises(ValueError, match=r"a\.txt, line 3: .*got 5"):
+        load_dataset(data_yaml)
+
+
+def test_two_value_keypoints_are_visible_when_either_coordinate_is_set(tmp_path):
+    data_yaml = _write_yolo(tmp_path)
+    config = yaml.safe_load(data_yaml.read_text()) | {"kpt_shape": [3, 2]}
+    data_yaml.write_text(yaml.safe_dump(config))
+    for label in (tmp_path / "train/labels/a.txt", tmp_path / "valid/labels/c.txt"):
+        label.write_text("1 0.5 0.5 0.2 0.2 0.5 0.5 0.25 0 0 0\n")
+    keypoints = load_dataset(data_yaml)["train"][0].annotations.keypoints
+    np.testing.assert_allclose(keypoints[0], [[32, 24, 2], [16, 0, 2], [0, 0, 0]])
+
+
+def test_coco_reader_keeps_a_real_class_whose_supercategory_is_none(tmp_path):
+    _image(tmp_path / "train" / "x.jpg")
+    coco = {
+        "categories": [
+            {"id": 0, "name": "players", "supercategory": "none"},
+            {"id": 1, "name": "ball", "supercategory": "players"},
+            {"id": 2, "name": "player", "supercategory": "players"},
+            {"id": 3, "name": "referee", "supercategory": "none"},
+        ],
+        "images": [{"id": 7, "file_name": "x.jpg", "width": 64, "height": 48}],
+        "annotations": [
+            {"id": 1, "image_id": 7, "category_id": 3, "bbox": [1, 2, 3, 4]}
+        ],
+    }
+    (tmp_path / "train" / "_annotations.coco.json").write_text(json.dumps(coco))
+    ds = load_dataset(tmp_path)
+    assert ds.class_names == ["ball", "player", "referee"]
+    assert ds["train"][0].annotations.class_ids.tolist() == [2]

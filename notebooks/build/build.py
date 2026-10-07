@@ -5,7 +5,8 @@
 Names select notebooks by prefix (``01``, ``01_data``, ``data`` all pick
 ``01_data``); none means all. The cells are formatted with ruff. With
 ``--execute`` each notebook runs with ``nbclient`` (kernel working directory
-``notebooks/``) and is saved with its outputs, also when a cell fails.
+``notebooks/``) and is saved with its outputs, also when a cell fails, times
+out or kills the kernel; the remaining notebooks still run.
 """
 
 import argparse
@@ -94,8 +95,14 @@ def _execute(node: nbformat.NotebookNode) -> tuple[bool, float, str]:
     start = time.perf_counter()
     try:
         client.execute()
-    except nbclient.exceptions.CellExecutionError as error:
-        return False, time.perf_counter() - start, str(error)[-3000:]
+    # CellControlSignal covers a failing cell (CellExecutionError) and a cell
+    # timeout; a dead kernel (e.g. out of memory) is a DeadKernelError.
+    except (
+        nbclient.exceptions.CellControlSignal,
+        nbclient.exceptions.DeadKernelError,
+    ) as error:
+        message = f"{type(error).__name__}: {error}"[-3000:]
+        return False, time.perf_counter() - start, message
     return True, time.perf_counter() - start, ""
 
 

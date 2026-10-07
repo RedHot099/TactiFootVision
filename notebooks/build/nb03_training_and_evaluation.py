@@ -55,8 +55,12 @@ tv.models.available_models()
 """)
     nb.md("""
 `TrainConfig` holds the settings every backend understands, with their
-defaults. Anything else passed to it is a backend option and goes to the
-backend unchanged (`mosaic` for Ultralytics, `grad_accum_steps` for RF-DETR).
+defaults. Anything else passed to it is a backend option (`mosaic` for
+Ultralytics, `grad_accum_steps` for RF-DETR). Training checks the backend
+options before it creates the run folder: an unknown name, an option that
+would move the run folder (`project`, `name`, ...) or the backend's own name
+for a `TrainConfig` field (Ultralytics `batch`) is refused with the field to
+use instead. The rest go to the backend unchanged.
 """)
     nb.code("""
 fields = tv.TrainConfig.model_fields
