@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from tactifoot_vision.geometry.pitch_definitions import SoccerPitchConfiguration
+from xgpoc.features.pitch import pitch_vertices
 
 REPO = Path(os.environ.get("TACTIFOOT_REPO", "/home/kuba/projects/tactifoot_vision"))
 DETECTOR_WEIGHTS = REPO / "results/project/raw/yolo11m/training/detect_yolo11m/weights/best.pt"
@@ -56,8 +56,7 @@ class FreezeFrameExtractor:
         self.detector = YOLO(str(detector_weights))
         self.keypoints = YOLO(str(keypoint_weights), task="pose")
         self.det_conf, self.kp_conf, self.device, self.det_imgsz = det_conf, kp_conf, device, det_imgsz
-        cfg = SoccerPitchConfiguration(length=PITCH_LENGTH, width=PITCH_WIDTH)
-        self.pitch_vertices = np.array(cfg.vertices, dtype=np.float32)
+        self.pitch_vertices = pitch_vertices(PITCH_LENGTH, PITCH_WIDTH)
 
     def homography(self, img: np.ndarray) -> tuple[np.ndarray | None, int]:
         # The keypoint model was trained on frames stretched to 640x640 (Roboflow export),
