@@ -1,76 +1,119 @@
 {
   "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "tf32": true,
+  "weights": "random (fold weights not saved)",
+  "boundary": "decoded BGR frame in host memory -> per-shot output; decoding excluded on every path",
   "batch": 16,
-  "networks_ms_per_image": {
-    "fp32": {
-      "vit_l_full": 13.892529040640511,
-      "vit_l_trunk": 11.524250034381112,
-      "vit_l_tail": 2.3864236656663707,
-      "convnext_t": 1.3082130812108517
-    },
-    "fp16": {
-      "vit_l_full": 7.1584610968784546,
-      "vit_l_trunk": 5.891289918781695,
-      "vit_l_tail": 1.3326367718036636,
-      "convnext_t": 0.8874280719282979
-    }
-  },
-  "positional_ms": 57.114879640284926,
-  "positional_ms_median": 59.46797149954364,
+  "positional_ms": 54.66337973004556,
+  "positional_ms_median": 57.2309894960199,
   "positional_frames": 100,
   "fallback_calls_per_shot": 0.91,
   "configurations_fp32": {
     "g1": {
       "vit_passes": 1,
-      "naive_ms": 13.892529040640511,
-      "shared_ms": 13.910673700047482
+      "naive_ms": 14.100052153139586,
+      "shared_ms": 14.150172199992994
     },
     "g2": {
       "vit_passes": 2,
-      "naive_ms": 27.785058081281022,
-      "shared_ms": 16.297097365713853
+      "naive_ms": 28.074638565635723,
+      "shared_ms": 16.555825665614066
     },
     "g5": {
       "vit_passes": 5,
-      "naive_ms": 69.46264520320256,
-      "shared_ms": 23.456368362712965
+      "naive_ms": 70.03532336875651,
+      "shared_ms": 23.858137528122825
     },
     "g10": {
       "vit_passes": 10,
-      "naive_ms": 138.9252904064051,
-      "shared_ms": 35.38848669104482
+      "naive_ms": 140.36284745939156,
+      "shared_ms": 35.90398799685772
     },
     "ens": {
       "vit_passes": 15,
-      "naive_ms": 272.04388065594685,
-      "shared_ms": 110.97655006571586
+      "naive_ms": 275.2495815269367,
+      "shared_ms": 112.58551579878258
+    }
+  },
+  "latency_batch1_fp32": {
+    "g1": {
+      "vit_passes": 1,
+      "naive_ms": 21.178304999921238,
+      "shared_ms": 21.198297497903695
+    },
+    "g2": {
+      "vit_passes": 2,
+      "naive_ms": 38.2613619985932,
+      "shared_ms": 24.238693000370404
+    },
+    "g5": {
+      "vit_passes": 5,
+      "naive_ms": 89.07685850135749,
+      "shared_ms": 32.94590100267669
+    },
+    "g10": {
+      "vit_passes": 10,
+      "naive_ms": 173.8289774984878,
+      "shared_ms": 47.542487998725846
+    },
+    "ens": {
+      "vit_passes": 15,
+      "naive_ms": 328.3377799925802,
+      "shared_ms": 133.11338299536146
     }
   },
   "configurations_fp16": {
     "g1": {
       "vit_passes": 1,
-      "naive_ms": 7.1584610968784546,
-      "shared_ms": 7.223926690585358
+      "naive_ms": 7.253535931249644,
+      "shared_ms": 7.223169668736773
     },
     "g2": {
       "vit_passes": 2,
-      "naive_ms": 14.316922193756909,
-      "shared_ms": 8.556563462389022
+      "naive_ms": 14.189208787502139,
+      "shared_ms": 8.476366756258358
     },
     "g5": {
       "vit_passes": 5,
-      "naive_ms": 35.79230548439227,
-      "shared_ms": 12.554473777800013
+      "naive_ms": 35.082339481255076,
+      "shared_ms": 12.21327159687462
     },
     "g10": {
       "vit_passes": 10,
-      "naive_ms": 71.58461096878455,
-      "shared_ms": 19.21765763681833
+      "naive_ms": 70.061509546872,
+      "shared_ms": 18.495032431269465
     },
     "ens": {
       "vit_passes": 15,
-      "naive_ms": 168.92893645310323,
-      "shared_ms": 87.43286149576306
+      "naive_ms": 167.42496916128403,
+      "shared_ms": 87.53035883316443
+    }
+  },
+  "latency_batch1_fp16": {
+    "g1": {
+      "vit_passes": 1,
+      "naive_ms": 13.685797002835898,
+      "shared_ms": 13.674712001375156
+    },
+    "g2": {
+      "vit_passes": 2,
+      "naive_ms": 24.25007749479846,
+      "shared_ms": 15.708403501776047
+    },
+    "g5": {
+      "vit_passes": 5,
+      "naive_ms": 54.436191501736175,
+      "shared_ms": 20.323022497905185
+    },
+    "g10": {
+      "vit_passes": 10,
+      "naive_ms": 104.91554750115029,
+      "shared_ms": 29.20085950245266
+    },
+    "ens": {
+      "vit_passes": 15,
+      "naive_ms": 223.4447549963079,
+      "shared_ms": 118.52688749786466
     }
   }
 }

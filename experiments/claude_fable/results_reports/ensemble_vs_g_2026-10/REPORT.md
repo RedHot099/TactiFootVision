@@ -35,8 +35,8 @@ rundach (audyt z 7.09), więc wszystkie liczby tutaj są rozwojowe.
    instancji z 5 modelami traci względem G-combo 0.0006 log-loss [0.0003; 0.0009]. Przedział
    każdej z tych dwóch instancji osobno obejmuje zero.
 4. **Koszt to na razie szacunek przepustowości,** nie zmierzona latencja wdrożenia. Przy
-   batchu 16 i losowych wagach G-combo ze wspólnym zamrożonym trzonem liczy ok. 35 ms na
-   strzał, ensemble 111–272 ms.
+   batchu 16 i losowych wagach G-combo ze wspólnym zamrożonym trzonem liczy ok. 35.9 ms na
+   strzał, ensemble 112.6–275.2 ms. Przy batchu 1 (latencja) to 47.5 ms wobec 133.1–328.3 ms.
 
 **Rekomendacja:** modelem docelowym zostaje G-combo bez stacku. ConvNeXt, G-combo-mix i GBM
 z torem pozycyjnym wypadają. Powód: nie wykazaliśmy, że dają cokolwiek, a ewentualny zysk
@@ -96,7 +96,7 @@ Punkty odniesienia są niezależne od porównania ensemble'u z G-combo:
 - **Przewaga nad stałą prognozą.** Granica to mniej niż 4.5% tego, co G-combo zyskuje nad
   przewidywaniem średniej częstości goli.
 - **Koszt.** Ensemble potrzebuje 15 przebiegów ViT-L, 5 ConvNeXt i toru pozycyjnego. Szacunek
-  przepustowości to 111–272 ms na strzał wobec 35 ms dla G-combo. Szczegóły w sekcji 3.
+  przepustowości to 112.6–275.2 ms na strzał wobec 35.9 ms dla G-combo. Szczegóły w sekcji 3.
 
 ## 2. Kalibracja
 
@@ -223,10 +223,10 @@ modelami i obu wariantów z 5 modelami. Wyraźną stratę widać głównie dla f
 
 | Konfiguracja | przebiegi ViT-L | ms/strzał, pełne / wspólny trzon | redukcja log-loss [95% CI] | jako % przewagi nad stałą | ΔAUC [95% CI] | redukcja Briera ×10⁻³ [95% CI] | log-loss instancji |
 |---|---|---|---|---|---|---|---|
-| 1 model (10 instancji) | 1 | 13.9 / 13.9 | +0.0032 [+0.0029; +0.0035] | 4.8% [4.2; 5.7] | +0.0069 [+0.0057; +0.0082] | +0.93 [+0.80; +1.06] | 0.3252–0.3325 |
-| 2 modele, 1 fold (5) | 2 | 27.8 / 16.3 | +0.0019 [+0.0017; +0.0021] | 2.8% [2.3; 3.5] | +0.0044 [+0.0034; +0.0054] | +0.55 [+0.46; +0.64] | 0.3242–0.3304 |
-| 5 foldów, 1 seed (2) | 5 | 69.5 / 23.5 | +0.0006 [+0.0003; +0.0009] | 0.9% [0.6; 1.2] | +0.0003 [−0.0001; +0.0007] | +0.13 [+0.01; +0.24] | 0.3245–0.3251 |
-| **G-combo** | 10 | 138.9 / 35.4 | odniesienie | | | | 0.3242 |
+| 1 model (10 instancji) | 1 | 14.1 / 14.2 | +0.0032 [+0.0029; +0.0035] | 4.8% [4.2; 5.7] | +0.0069 [+0.0057; +0.0082] | +0.93 [+0.80; +1.06] | 0.3252–0.3325 |
+| 2 modele, 1 fold (5) | 2 | 28.1 / 16.6 | +0.0019 [+0.0017; +0.0021] | 2.8% [2.3; 3.5] | +0.0044 [+0.0034; +0.0054] | +0.55 [+0.46; +0.64] | 0.3242–0.3304 |
+| 5 foldów, 1 seed (2) | 5 | 70.0 / 23.9 | +0.0006 [+0.0003; +0.0009] | 0.9% [0.6; 1.2] | +0.0003 [−0.0001; +0.0007] | +0.13 [+0.01; +0.24] | 0.3245–0.3251 |
+| **G-combo** | 10 | 140.4 / 35.9 | odniesienie | | | | 0.3242 |
 
 Te przedziały opisują średnią wyników tych konkretnych zapisanych instancji na losowanych
 meczach. Nie obejmują zmienności treningu, seeda ani podziału na foldy, więc nie mówią, ile
@@ -238,7 +238,7 @@ wszystkich 400 meczach nie trenowaliśmy.
 
 **5 czy 10 modeli.** Średnia dwóch instancji z 5 modelami traci względem G-combo 0.0006
 log-loss, czyli 0.9% przewagi nad stałą prognozą. Przedział każdej z nich osobno obejmuje zero.
-Według szacunku przepustowości 5 modeli kosztuje 23.5 ms zamiast 35.4 ms. Zostajemy przy 10, bo
+Według szacunku przepustowości 5 modeli kosztuje 23.9 ms zamiast 35.9 ms. Zostajemy przy 10, bo
 czas nie jest teraz wąskim gardłem. Gdy będzie, 5 modeli to rozsądny wybór. Dane nie
 rozstrzygają między nimi.
 
@@ -251,23 +251,20 @@ Czasy w tabeli i na wykresie to szacunek kosztu obliczeń, nie latencja wdrożon
   całego G-combo ze wspólnym trzonem.
 - **Przepustowość, nie latencja.** Czasy pochodzą z batcha 16 podzielonego przez 16. „fp32”
   oznacza fp32 z włączonym TF32. Karta to RTX 4070 Ti SUPER.
-- **Pierwszy pomiar mnożył czasy fragmentów.** 35 ms to 11.5 ms trzonu plus 10 × 2.4 ms
-  końcówki, a nie pomiar całego potoku.
-- **Niespójna granica pomiaru toru pozycyjnego.** 57 ms toru GBM obejmuje odczyt klatek
-  zapasowych −400/−800 ms (średnio 0.91 dodatkowego wywołania na strzał), ale nie odczyt klatki
-  podstawowej. Tor ViT nie obejmował przygotowania obrazu.
+- **Jedna granica pomiaru.** Na każdym torze mierzymy odcinek od zdekodowanej klatki do
+  wyniku, z przygotowaniem obrazu. Dekodowanie, także klatek zapasowych −400/−800 ms (średnio
+  0.91 dodatkowego wywołania na strzał), leży poza pomiarem. Tor pozycyjny z GBM wychodzi
+  54.7 ms (mediana 57.2 ms).
 
 **Wspólny trzon.** W każdym modelu foldowym uczyły się tylko 4 ostatnie bloki, końcowa
 normalizacja i głowa. Pierwsze 20 bloków DINOv2-L, z `patch_embed` i `pos_embed`, jest
 zamrożone, a EMA obejmuje tylko parametry trenowalne. Te bloki można więc policzyć raz na
 klatkę. To wynika z kodu treningu. Obecny kod inferencji jeszcze tego nie robi.
 
-`scripts/bench_inference.py` jest już poprawiony. Wszystkie klatki, także zapasowe, są
-dekodowane przed pomiarem. Mierzony odcinek na każdym torze biegnie od zdekodowanej klatki do
-wyniku i obejmuje przygotowanie obrazu. Każda konfiguracja jest mierzona w całości, z 15
-osobnymi końcówkami. Przepustowość przy batchu 16 i latencję przy batchu 1 skrypt raportuje
-osobno. **Ponowny pomiar czeka**, bo GPU jest zajęte treningiem. Do tego czasu liczby pochodzą
-z pierwszego pomiaru.
+Każda konfiguracja jest mierzona w całości, z 15 osobnymi końcówkami. Przepustowość przy
+batchu 16 i latencję przy batchu 1 raportujemy osobno. Przy batchu 1 G-combo ze wspólnym
+trzonem potrzebuje 47.5 ms na strzał (bez współdzielenia 173.8 ms), ensemble 133.1–328.3 ms.
+Pomiar z 2026-10-09, GPU bez innych procesów obliczeniowych.
 
 ## 4. Podgrupy (eksploracyjnie)
 
@@ -308,8 +305,8 @@ pokazuje przewagi ensemble'u w log-lossie.
 - Krzywa równoważności używa percentylowego bootstrapu ze 100 meczów. Najmniejszy margines
   zależy od siatki co 0.0001 i od szumu Monte Carlo: przy innych seedach bootstrapu przesuwa się
   o jeden krok siatki.
-- Czasy to szacunek przepustowości z losowymi wagami na jednej karcie. Latencja przy batchu 1
-  czeka na ponowny pomiar.
+- Czasy to szacunek z losowymi wagami na jednej karcie. Przepustowość (batch 16) i latencja
+  (batch 1) są osobnymi pomiarami.
 
 ## 6. Szkic odpowiedzi dla recenzenta
 
@@ -332,9 +329,9 @@ pokazuje przewagi ensemble'u w log-lossie.
 > z 10 zapisanych pojedynczych modeli. Dla 7 z 10 z nich osobny przedział obejmuje zero, a
 > część różnicy wynika z Platta dopasowanego na większej próbie. Wybór 10 zamiast 5 modeli
 > (redukcja 0.0006 [0.0003; 0.0009] względem średniej dwóch instancji) traktujemy jako
-> kompromis kosztu. Czas to na razie szacunek przepustowości przy batchu 16 z losowymi wagami:
-> ok. 35 ms na strzał przy wspólnym zamrożonym trzonie wobec 111–272 ms dla ensemble'u.
-> Latencję pojedynczego strzału zmierzymy osobno.
+> kompromis kosztu. Czas to szacunek przepustowości przy batchu 16 z losowymi wagami:
+> ok. 35.9 ms na strzał przy wspólnym zamrożonym trzonie wobec 112.6–275.2 ms dla ensemble'u.
+> Latencja pojedynczego strzału (batch 1) to 47.5 ms wobec 133.1–328.3 ms.
 >
 > Rekalibracja dopasowana na połowie meczów testu poprawia drugą połowę średnio o 0.0002
 > log-lossu, a w co trzecim podziale szkodzi. Kalibrację poprawimy na świeżych meczach
