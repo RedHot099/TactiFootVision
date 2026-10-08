@@ -341,6 +341,65 @@ pokazuje przewagi ensemble'u w log-lossie.
 > odłożonych do kalibracji, nie na obecnym teście. Wszystkie liczby są rozwojowe: ten test był
 > już oglądany. Wykresy i tabele są w załączonym raporcie.
 
+## 7. Czułość na przypisanie bramek
+
+Recenzent pytał, do którego strzału należy gol w seriach dobitek. Indeks v1.2 przypisuje gol do
+najbliższego poprzedzającego strzału tej samej drużyny w oknie 6 s. Przeliczyliśmy porównanie na
+tych samych predykcjach, zmieniając tylko etykiety testu. Modele i ich trening zostają bez zmian.
+Tabela: `attribution_sensitivity.csv`, liczności: `attribution_recount.csv`, kod:
+`xgpoc/eval/attribution.py` i `scripts/report_attribution.py`.
+
+**Seria dobitek** to kolejne strzały jednej drużyny w jednej połowie, każdy najwyżej 6 s po
+poprzednim, bez zmiany posiadania piłki. SoccerNet v2 nie ma zdarzeń posiadania, więc test jest
+operacyjny. Dwa kolejne strzały łączymy, chyba że między nimi jest zdarzenie rywala, gol,
+rozpoczęcie gry, faul albo spalony. Aut, rzut rożny, rzut wolny i wybicie tej samej drużyny serii nie
+przerywają. Na 500 meczach 395 z 399 par strzałów w odstępie do 6 s tworzy serię. Pozostałe 4
+przerywa gol. Zdarzenie rywala nie wystąpiło między żadną taką parą, więc w tych danych o
+seriach decyduje w praktyce tylko odstęp czasu i gol.
+
+W zbiorze testowym są 64 serie: 130 strzałów (z 2 229) i 26 bramek. Wcześniejsze szacunki z
+oknem 6 s dla obu drużyn dawały 133 strzały i 30 bramek. Różnicy nie rozbijaliśmy strzał po strzale. Szacunek wstępny
+nie stosował warunków tej samej drużyny i braku gola w środku. W treningu jest 449 takich
+strzałów i 54 bramki, w walidacji 181 i 17.
+
+Reguły: najbliższy strzał (obecna, odtwarza etykiety indeksu bez jednej różnicy na 11 030
+strzałach), najwcześniejszy w serii, ostatni w serii i pominięcie wszystkich strzałów z serii.
+Ostatni strzał serii przed golem jest zawsze strzałem najbliższym, bo gol kończy serię, więc te
+dwa wiersze są identyczne z konstrukcji. Granice: każdy gol z serii dostaje strzał, który
+maksymalizuje ("worst") albo minimalizuje ("best") log-loss modelu. Granice liczymy dla ensemble'u,
+dla G-combo i dla różnicy między nimi.
+
+| reguła | strzały | bramki | ΔAUC | redukcja log-loss | redukcja Briera | nachylenie G-combo |
+|---|---|---|---|---|---|---|
+| najbliższy (obecna) | 2229 | 296 | +0.0010 | +0.0010 [−0.0006; +0.0026] | +0.0002 | 1.19 [1.07; 1.33] |
+| najwcześniejszy w serii | 2229 | 296 | −0.0001 | +0.0011 [−0.0007; +0.0028] | +0.0004 | 1.00 [0.88; 1.13] |
+| ostatni w serii | 2229 | 296 | +0.0010 | +0.0010 [−0.0006; +0.0026] | +0.0002 | 1.19 [1.07; 1.33] |
+| bez serii | 2099 | 270 | +0.0010 | +0.0011 [−0.0006; +0.0028] | +0.0003 | 1.19 [1.06; 1.34] |
+| najgorzej dla G-combo | 2229 | 296 | 0.0000 | +0.0011 [−0.0006; +0.0028] | +0.0004 | 0.99 [0.87; 1.12] |
+| najlepiej dla G-combo | 2229 | 296 | +0.0009 | +0.0010 [−0.0006; +0.0026] | +0.0002 | 1.20 [1.07; 1.34] |
+| najgorzej dla ensemble'u względem G | 2229 | 296 | −0.0007 | +0.0003 [−0.0014; +0.0021] | +0.0001 | 1.12 [0.99; 1.26] |
+| najlepiej dla ensemble'u względem G | 2229 | 296 | +0.0016 | +0.0018 [+0.0001; +0.0034] | +0.0005 | 1.07 [0.95; 1.20] |
+
+Dodatnie różnice oznaczają przewagę ensemble'u. Pełna tabela ma też przedziały Briera i AUC,
+nachylenie ensemble'u i różnicę nachyleń. Najgorszy i najlepszy przypadek dla samego ensemble'u
+daje te same wyniki co dla samego G-combo.
+
+Wnioski. Wynik porównania nie zależy od reguły: redukcja log-loss mieści się między +0.0003 a
++0.0018 i przedział obejmuje zero wszędzie poza najkorzystniejszą granicą dla ensemble'u
+(+0.0001). Ta granica wybiera dla każdej serii strzał, który najbardziej sprzyja ensemble'owi,
+więc jest szacunkiem z góry i nie zmienia wniosku o braku wykazanej przewagi. Nachylenie
+kalibracji zależy za to od reguły: 1.19 przy obecnej, 1.00 gdy gol należy do najwcześniejszego
+strzału serii. Nachylenie ok. 1.2 zależy więc w dużej mierze od tego, który strzał serii dostaje
+etykietę gola. To pokazuje czułość, nie wyjaśnia przyczyny. Różnica nachylenia
+ensemble'u względem G-combo (+0.04 przy obecnej regule) spada do +0.026 [−0.001; +0.052] przy
+najwcześniejszym strzale.
+
+Ograniczenia. Zmieniamy tylko etykiety ewaluacji. Modele trenowano na etykietach reguły
+najbliższego strzału, więc wpływu reguły na trening nie sprawdzamy. Granice optymalizują log-loss
+na punktowej ocenie, a przedziały bootstrapu liczą się dalej przy stałych etykietach i nie
+obejmują niepewności samego przypisania. Granica 'worst' dla jednego modelu nie jest granicą dla
+AUC ani Briera. W testowych seriach nie ma rzutów karnych, w treningu jest jeden.
+
 ## Odtworzenie
 
 ```bash
@@ -348,6 +407,8 @@ cd experiments/claude_fable
 ./run.sh python scripts/bench_inference.py          # results/v16_complexity/timing.json, GPU, kilka minut
 ./run.sh python scripts/report_complexity.py        # tabele, wykresy, predykcje; ok. 1 min CPU
 ./run.sh pytest -q tests/test_report_complexity.py
+./run.sh python scripts/report_attribution.py        # sekcja 7; ok. 4 min CPU
+./run.sh pytest -q tests/test_attribution.py
 ```
 
 Wyniki: `results/v16_complexity/`, m.in. predykcje każdego wariantu. Kopie tabel,

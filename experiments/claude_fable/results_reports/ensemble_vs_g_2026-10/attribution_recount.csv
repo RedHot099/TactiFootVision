@@ -1,0 +1,4 @@
+split,shots,chain_shots,chains,goals,chain_goals,goals_moved_by_earliest
+test,2229,130,64,296,26,26
+train,6657,449,222,875,54,54
+valid,2144,181,92,320,17,17
