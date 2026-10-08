@@ -9,25 +9,22 @@ venv/
 env/
 *.egg-info/
 dist/
-build/
+/build/
 .pytest_cache/
 .ruff_cache/
+.ipynb_checkpoints/
 *.log
 
-# Data and Models 
-data/
-models/
+# Data, weights and run artefacts (kept outside git; see notebooks/README.md "Local data and weights")
+/data/
+/models/
 output/
-tactifoot_kp_training/
+outputs/
 results/
 external/
 runs/
-*.sh
-*.txt
 *.pt
 *.pth
-*.yaml
-
-# IDE specific
-.idea/
-.vscode/
+*.onnx
+*.safetensors
+*.mp4
