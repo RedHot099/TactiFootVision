@@ -1,70 +1,40 @@
 # TactiFoot Vision
 
-**TactiFoot Vision** is a comprehensive Python toolkit for soccer match video analysis. It provides high-performance detection, keypoint estimation, homography mapping, player & ball tracking, visualization, and data export—all driven by a single, Pydantic-validated YAML configuration.
+![TactiFoot Vision on one attacking move](docs/media/tactifoot_promo.webp)
 
----
+TactiFoot Vision turns football match video into tactical data. It finds and follows every player and the ball, works out who plays for which team, and maps the action onto the pitch in metres.
 
-## 🌟 Features
+- **Data:** load, convert, split and augment annotated football datasets.
+- **Models:** train and evaluate YOLO, RF-DETR and pitch-keypoint models through one interface.
+- **Pipeline:** detection, tracking, team classification and homography to pitch coordinates.
+- **Output:** tracks, StatsBomb-style freeze frames, annotated video and a tactical radar.
 
-- **Object Detection**: YOLO & RF-DETR handlers for player, ball, referee, goalkeeper.
-- **Keypoint Estimation**: YOLO-Pose for pitch landmark detection and homography.
-- **Homography & Mapping**: Smooth RANSAC homographies and transform frame ↔ pitch coordinates.
-- **Tracking**: ByteTrack-based multi-object tracker and raw ball path collection with outlier filtering.
-- **Visualization**: OpenCV `PitchVisualizer` with overlay support; Matplotlib utilities for charts.
-- **Data Export**: Per-frame CSV of freeze frames, homography matrices, timestamps, and more.
-- **Config-Driven**: Single `default_config.yaml` governs all components with sensible defaults.
-- **Scripts**: Ready-to-use scripts for detection and StatsBomb merging.
+## Quick start
 
----
+```bash
+uv sync
+```
 
-## 🚀 Quickstart
+```python
+import tactifoot_vision as tv
 
-1. **Clone & Install**
-   ```bash
-   git clone https://github.com/yourorg/tactifoot_vision.git
-   cd tactifoot_vision
-   # Install dependencies and environment
-   uv sync
-   ```
+pipeline = tv.Pipeline(
+    detector=tv.load_model("yolo", "models/football_yolo11m.pt"),
+    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt"),
+    team_classifier=tv.teams.TeamClassifier("siglip"),
+)
+result = pipeline.run("match.mp4")
+tv.viz.render_video(result, "match.mp4", "annotated.mp4")
+```
 
-2. **Prepare Configuration**
-   Copy and edit `config/default_config.yaml`:
+The same pipeline runs from the command line:
 
-   ```yaml
-   paths:
-     input_video:            /path/to/video.mp4
-     output_video:           /path/to/output.mp4
-     model_dir:              /path/to/models
-     statsbomb_input_csv:    data/statsbomb.csv
-     pipeline_input_csv:     data/pipeline.csv
-     merged_output_csv:      data/merged.csv
+```bash
+tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match
+```
 
-   detection:
-     model_type: yolo
-     # …other sections (keypoints, tracking, geometry, visualization, processing, training)
-   ```
+## Learn more
 
-3. **Run Detection & Tracking**
-   ```bash
-   uv run python scripts/run_detection.py --config config/default_config.yaml
-   ```
-
-4. **Merge with StatsBomb**
-   ```bash
-   uv run python scripts/merge_pipeline_statsbomb.py --config config/default_config.yaml
-   ```
-
-## 🛠 Configuration
-
-All options live in `config/default_config.yaml`.
-
-Pydantic enforces types, ranges, and resolves relative paths.
-
-Change only the settings you need—everything else uses production-grade defaults.
-
-## 📈 Mini Roadmap
-
-- Add support for additional tracking backends (e.g., DeepSORT, OC-SORT)
-- Dockerize the entire pipeline for zero-install, reproducible deployments
-- Integrate alternative detection models (e.g., Detectron2, MMDetection)
-- Add built-in benchmarking & metric reporting (FPS, mAP, tracking metrics)
+- **[Notebooks](notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Start with `00_overview`.
+- **[Architecture](docs/ARCHITECTURE.md):** modules, interfaces, run files and the CLI.
+- **[Examples](examples/):** runnable scripts for each area and the CLI.

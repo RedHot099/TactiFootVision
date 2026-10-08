@@ -1,0 +1,46 @@
+# Run file: how `tactifoot run` processes video (YOLO detector, ByteTrack, SigLIP teams).
+#
+#   CLI:      tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match \
+#                 --end 500 --set detector.conf=0.4
+#   Notebook: no run file, the same objects in plain Python:
+#               pipeline = tv.Pipeline(
+#                   detector=tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3, iou=0.5),
+#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5),
+#                   tracker=tv.tracking.create_tracker("bytetrack", lost_track_buffer=30),
+#                   team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+#               )
+#               result = pipeline.run("match.mp4", end=500)
+#               tv.viz.render_video(result, "match.mp4", "outputs/match/annotated.mp4")
+#   Both:     tv.run_file.load("configs/pipeline.yaml").run("match.mp4", "outputs/match", end=500)
+#
+# Each section's keys are the keyword arguments of one package call (see
+# docs/ARCHITECTURE.md, "Run files"); a key left out keeps the package default.
+# Paths starting with ./ or ../ are relative to this file.
+
+detector:                   # tv.load_model(type, weights, **rest)
+  type: yolo                # yolo | rfdetr  (tactifoot info)
+  weights: ../models/football_yolo11m.pt
+  conf: 0.3
+  iou: 0.5
+
+keypoints:                  # null: no homography, no pitch positions
+  type: yolo_pose
+  weights: ../models/pitch_yolov8n_pose.pt
+  conf: 0.5
+
+tracker:                    # tv.tracking.create_tracker(type, **rest); null: no tracking
+  type: bytetrack           # bytetrack | sam2
+  lost_track_buffer: 30
+
+teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
+  embedder: siglip          # siglip | resnet
+
+# pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
+# homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
+# pipeline:                            # remaining tv.Pipeline(...) arguments
+#   include_classes: [player, goalkeeper]
+#   ball_max_speed: 40.0
+# render:                              # tv.viz.render_video(...) arguments
+#   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)
+#   radar: {draw_ids: true}            # tv.viz.PitchRadar(...); null: no radar
+#   overlay_position: bottom-right
