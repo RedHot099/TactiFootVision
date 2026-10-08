@@ -46,6 +46,15 @@ PRESETS = {
         "Stary ensemble C+D-L": ["results/ensemble/OLD_ensemble_C_DL_test_predictions.csv"],
         "ENSEMBLE finalny": ["results/ensemble/best_ensemble_test_predictions.csv"],
     },
+    # index v1.2, CV-trained final models (results_reports/v12_quality_REPORT.md); use with --index index_v1_2.parquet
+    "v12": {
+        "A pozycyjny (GBM)": ["results/v12_cv_ensemble/gbm_test_predictions.csv"],
+        "C ConvNeXt-T": ["results/v12_cv_ensemble/c_combo_test_predictions.csv"],
+        "D DINOv2-L zamrozony": ["results/v12_cv_ensemble/dl_mask_test_predictions.csv"],
+        "G DINOv2-L dostrajany": ["results/v12_cv_ensemble/g_combo_test_predictions.csv"],
+        "G + mixup": ["results/v12_cv_ensemble/g_combo_mix_test_predictions.csv"],
+        "ENSEMBLE": ["results/v12_cv_ensemble/best_ensemble_test_predictions.csv"],
+    },
 }
 MODELS = PRESETS["architektury"]
 
@@ -73,10 +82,11 @@ def pick_situations(df: pd.DataFrame) -> list[tuple[str, str]]:
             r = cand.iloc[0]
             picks.append((r.name, desc_txt))
             d.drop(index=r.name, inplace=True)
-    take(d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), REF, False, "Gol z bliska (dobitka/sytuacja sam na sam)")
-    take(d.goal & (d.dist_to_goal > 22) & d.has_ball.astype(bool), REF, True, "Gol z dystansu (niska szansa a priori)")
-    take(~d.goal & (d.dist_to_goal < 10) & d.has_ball.astype(bool), REF, False, "Zmarnowana wielka okazja (strzał z pola bramkowego)")
-    take(~d.goal & (d.dist_to_goal > 25) & d.has_ball.astype(bool), REF, True, "Strzał z dużego dystansu (typowe niskie xG)")
+    open_play = ~d.is_penalty.astype(bool) & d.has_ball.astype(bool)  # penalties are routed, so they would win every ranking
+    take(d.goal & (d.dist_to_goal < 10) & open_play, REF, False, "Gol z bliska (dobitka/sytuacja sam na sam)")
+    take(d.goal & (d.dist_to_goal > 22) & open_play, REF, True, "Gol z dystansu (niska szansa a priori)")
+    take(~d.goal & (d.dist_to_goal < 10) & open_play, REF, False, "Zmarnowana wielka okazja (strzał z pola bramkowego)")
+    take(~d.goal & (d.dist_to_goal > 25) & open_play, REF, True, "Strzał z dużego dystansu (typowe niskie xG)")
     take(d.is_penalty.astype(bool), REF, False, "Rzut karny")
     take(d.spread > 0, "spread", False, "Największa niezgoda między modelami")
     return picks
