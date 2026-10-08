@@ -1,0 +1,43 @@
+{
+  "index": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+  "index_sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+  "seed": 0,
+  "n_matches": 300,
+  "role_weights": {
+    "train": 15,
+    "select": 2,
+    "calibration": 3
+  },
+  "leagues": [
+    "england_epl",
+    "france_ligue-1",
+    "germany_bundesliga",
+    "italy_serie-a",
+    "spain_laliga"
+  ],
+  "club_aliases": {},
+  "reviewed_distinct": [
+    [
+      "Atl. Madrid",
+      "Real Madrid"
+    ],
+    [
+      "Dijon",
+      "Gijon"
+    ],
+    [
+      "Everton",
+      "Verona"
+    ],
+    [
+      "Manchester City",
+      "Manchester United"
+    ]
+  ],
+  "sources": {
+    "xgpoc/transfer/plan.py": "5d8ffbf6095b3beccf83c17a39b386fba5cd699b89bbbcfe6c7ef3c0f85c5d7d",
+    "scripts/make_transfer_plan.py": "285dc2de9800bc7fcf3c3a9c6822e8eb26fac4fd30b0fac6fb22e38416beea29"
+  },
+  "plan_rows": 6798,
+  "plan_sha256": "33229bbfd38dcbbdcd2ba33524cdaf2ab5ae766485f6ba7da08e3dda40b7bc88"
+}
