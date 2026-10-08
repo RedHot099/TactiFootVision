@@ -1,0 +1,201 @@
+{
+  "n_test": 2229,
+  "games": 100,
+  "open_play": 2195,
+  "n_boot": 2000,
+  "n_splits": 1000,
+  "g10_reproduction_max_abs_dp": 2.498001805406602e-16,
+  "pooled_rate": 0.1357800249971594,
+  "p_pen": 0.6806451612903226,
+  "equivalence": {
+    "log_loss": {
+      "smallest_margin": 0.0024000000000000002,
+      "reduction": 0.0010168120148972282,
+      "ci90": [
+        -0.0003462717028250961,
+        0.0023691689882316376
+      ],
+      "g5_seed_gap": 0.0005168787985451173,
+      "g5_seed_gap_ci95": [
+        -0.002152347117144446,
+        0.001153955114363711
+      ],
+      "skill": 0.0674657722202125,
+      "constant": 0.3916655120356556,
+      "smallest_margin_range_over_seeds": [
+        0.0024000000000000002,
+        0.0025
+      ],
+      "smallest_margin_most_draws": 0.0024000000000000002,
+      "smallest_margin_most_draws_share_of_skill": 0.03557359415032337
+    },
+    "brier": {
+      "smallest_margin": 0.0007,
+      "reduction": 0.00022214850013192733,
+      "ci90": [
+        -0.000242669751748438,
+        0.0006927541224227347
+      ],
+      "g5_seed_gap": 0.0001946730336105651,
+      "g5_seed_gap_ci95": [
+        -0.0007470765415035719,
+        0.0003409597271403731
+      ],
+      "skill": 0.018508703637445487,
+      "constant": 0.11516046985362209,
+      "smallest_margin_range_over_seeds": [
+        0.0007,
+        0.0008
+      ],
+      "smallest_margin_most_draws": 0.0008,
+      "smallest_margin_most_draws_share_of_skill": 0.04322290829604604
+    }
+  },
+  "oof_diagnostics": {
+    "platt_coefficient": 0.9795569324011031,
+    "platt_intercept": -0.052709697172099564,
+    "post_platt_slope_all": 0.9997290793491642,
+    "post_platt_slope_open_play": 0.965877296057339,
+    "auc_all": 0.7436445792080024,
+    "auc_open_play": 0.730401781155567,
+    "test_auc_all": 0.7923345940353183,
+    "test_auc_open_play": 0.7783115001070631
+  },
+  "g10_lowest_30pct": {
+    "shots": 659,
+    "goals": 9,
+    "sum_xg": 29.8614938636142,
+    "mean_xg": 0.045313344254346286,
+    "share_25m_plus": 0.40364188163884673,
+    "share_25m_plus_open_play": 0.22915717539863326
+  },
+  "recalibration": {
+    "ens": {
+      "in_sample": {
+        "log_loss": 0.31878226954801625,
+        "gain_logistic": 0.0019185514941200132,
+        "gain_isotonic": 0.00894602034882025
+      },
+      "split_half": {
+        "gain_logistic": {
+          "mean": 0.0005196599649950279,
+          "p2.5": -0.004485546218398077,
+          "p97.5": 0.002480412720488459,
+          "share_positive": 0.7205
+        },
+        "gain_isotonic": {
+          "mean": -0.00854652434308187,
+          "p2.5": -0.025229545823819102,
+          "p97.5": 0.0013183931081423854,
+          "share_positive": 0.0655
+        }
+      }
+    },
+    "g10": {
+      "in_sample": {
+        "log_loss": 0.3198148317262422,
+        "gain_logistic": 0.0016167055039362221,
+        "gain_isotonic": 0.009830136795916433
+      },
+      "split_half": {
+        "gain_logistic": {
+          "mean": 0.00021257884812909936,
+          "p2.5": -0.004633508488402878,
+          "p97.5": 0.0020759652698029694,
+          "share_positive": 0.6575
+        },
+        "gain_isotonic": {
+          "mean": -0.006758539950814679,
+          "p2.5": -0.03160525375803054,
+          "p97.5": 0.0031628265085440125,
+          "share_positive": 0.154
+        }
+      }
+    }
+  },
+  "instances_ci_including_zero_log_loss": {
+    "g1": 7,
+    "g2": 4,
+    "g5": 2
+  },
+  "open_play_above_0_5": {
+    "g10": 32,
+    "ens": 22
+  },
+  "timing": {
+    "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "batch": 16,
+    "networks_ms_per_image": {
+      "fp32": {
+        "vit_l_full": 13.892529040640511,
+        "vit_l_trunk": 11.524250034381112,
+        "vit_l_tail": 2.3864236656663707,
+        "convnext_t": 1.3082130812108517
+      },
+      "fp16": {
+        "vit_l_full": 7.1584610968784546,
+        "vit_l_trunk": 5.891289918781695,
+        "vit_l_tail": 1.3326367718036636,
+        "convnext_t": 0.8874280719282979
+      }
+    },
+    "positional_ms": 57.114879640284926,
+    "positional_ms_median": 59.46797149954364,
+    "positional_frames": 100,
+    "fallback_calls_per_shot": 0.91,
+    "configurations_fp32": {
+      "g1": {
+        "vit_passes": 1,
+        "naive_ms": 13.892529040640511,
+        "shared_ms": 13.910673700047482
+      },
+      "g2": {
+        "vit_passes": 2,
+        "naive_ms": 27.785058081281022,
+        "shared_ms": 16.297097365713853
+      },
+      "g5": {
+        "vit_passes": 5,
+        "naive_ms": 69.46264520320256,
+        "shared_ms": 23.456368362712965
+      },
+      "g10": {
+        "vit_passes": 10,
+        "naive_ms": 138.9252904064051,
+        "shared_ms": 35.38848669104482
+      },
+      "ens": {
+        "vit_passes": 15,
+        "naive_ms": 272.04388065594685,
+        "shared_ms": 110.97655006571586
+      }
+    },
+    "configurations_fp16": {
+      "g1": {
+        "vit_passes": 1,
+        "naive_ms": 7.1584610968784546,
+        "shared_ms": 7.223926690585358
+      },
+      "g2": {
+        "vit_passes": 2,
+        "naive_ms": 14.316922193756909,
+        "shared_ms": 8.556563462389022
+      },
+      "g5": {
+        "vit_passes": 5,
+        "naive_ms": 35.79230548439227,
+        "shared_ms": 12.554473777800013
+      },
+      "g10": {
+        "vit_passes": 10,
+        "naive_ms": 71.58461096878455,
+        "shared_ms": 19.21765763681833
+      },
+      "ens": {
+        "vit_passes": 15,
+        "naive_ms": 168.92893645310323,
+        "shared_ms": 87.43286149576306
+      }
+    }
+  }
+}
