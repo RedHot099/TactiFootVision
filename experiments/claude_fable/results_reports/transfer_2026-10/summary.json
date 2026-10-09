@@ -1,0 +1,47 @@
+{
+  "development_result": true,
+  "n_boot": 2000,
+  "bootstrap_seed": 0,
+  "recalibration_draws": 200,
+  "k_cap": {
+    "england_epl": 20,
+    "france_ligue-1": 5,
+    "germany_bundesliga": 10,
+    "italy_serie-a": 20,
+    "spain_laliga": 20
+  },
+  "test_shots": 8897,
+  "test_matches": 399,
+  "test_goals": 1192,
+  "indicative": [
+    "france_ligue-1",
+    "germany_bundesliga"
+  ],
+  "headline": {
+    "group": "pooled",
+    "gap": 0.004108440791714768,
+    "gap_lo": 0.0019914423340354594,
+    "gap_hi": 0.006115559887430867,
+    "gap_seed0": 0.0032884287147554314,
+    "gap_seed1": 0.004928452868674105,
+    "seed_difference": -0.0016400241539186733,
+    "log_loss_without": 0.3520966002651793,
+    "log_loss_with": 0.3479881594734645,
+    "reading": "gap_shown",
+    "relative_gap": 0.011806266046325214,
+    "relative_gap_lo": 0.005675034997241003,
+    "relative_gap_hi": 0.017797933931234144,
+    "shots": 8897,
+    "matches": 399,
+    "goals": 1192,
+    "indicative": false
+  },
+  "noise_reference": {
+    "g5_seed_to_seed": 0.0005,
+    "single_fold_model_vs_g_combo": [
+      0.001,
+      0.0083
+    ]
+  },
+  "recalibration_fallbacks": {}
+}
