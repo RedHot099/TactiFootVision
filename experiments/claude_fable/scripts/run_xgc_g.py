@@ -6,8 +6,8 @@
 The recipe is `run_v12.STAGES["g_combo"]` (DINOv2-L, last 4 blocks + head, overlay mask,
 random resized crop, on-target auxiliary head at weight 0.5, EMA 0.998, 5 epochs, epoch
 selection on calibrated validation log-loss) on the archived home-team five-fold
-assignment of `run_cv.py`; the body of `run_poc.run_g` is repeated here only because that
-function discards the model. The head-free control is the same command with
+assignment of `run_cv.py`; the fit itself is `xgpoc.models.g_fit.fit_g` (shared with
+`run_xgc_transfer.py`), used here because `run_poc.run_g` discards the model. The head-free control is the same command with
 `--aux-weight 0 --name <control name> --out <other dir>`.
 
 Each (fold, seed) writes into <out>/fold<k>/seed<s>/:
@@ -36,22 +36,13 @@ import run_poc as rp
 import torch
 from run_cv import fold_table
 from run_v12 import STAGES
-from torch.utils.data import DataLoader
 from xgpoc.bundle import code_version, make_provenance, save_bundle, sha256_file
-from xgpoc.data.datasets import ImageDataset
 from xgpoc.data.index import load_index
 from xgpoc.eval.calibration import penalty_rate
 from xgpoc.eval.metrics import evaluate
-from xgpoc.models.common import (
-    TrainConfig,
-    _predict_logits,
-    config_dict,
-    n_trainable,
-    seed_all,
-    train_torch,
-)
-from xgpoc.models.d_foundation import FinetuneViTXG
+from xgpoc.models.common import TrainConfig, config_dict
 from xgpoc.models.g_bundle import g_identity, g_spec
+from xgpoc.models.g_fit import fit_g
 from xgpoc.paths import INDEX
 
 STAGE = "g_combo"
@@ -127,21 +118,9 @@ def run_trial(k: int, seed: int, pool: pd.DataFrame, test: pd.DataFrame, out: Pa
     if smoke:
         tr, va, te = tr.head(64), va.head(64), te.head(64)
     print(f"=== {out} ({time.strftime('%H:%M')}) train {len(tr)} oof {len(va)} test {len(te)} ===", flush=True)
-    started = time.time()
-    seed_all(cfg.seed)
-    model = FinetuneViTXG(kw["backbone"], n_blocks=kw["n_blocks"], n_out=2)
-    inp = dict(size_wh=tuple(spec["input"]["size_wh"]), mask=spec["input"]["mask"])
-    fit = train_torch(model, ImageDataset(tr, train=True, **inp, rrc_scale=tuple(kw["rrc"]), aux_col=rp.ON_TARGET),
-                      ImageDataset(va, **inp), cfg, backbone_lr_mult=kw["backbone_lr_mult"])
-    if fit["best_epoch"] < 0:
-        raise ValueError("no epoch was selected (non-finite validation score); refusing to save a bundle")
+    trained = fit_g(tr, va, {"valid": va, "test": te}, cfg, kw, spec, aux_col=rp.ON_TARGET)
+    model, fit, logits, compute = trained.model, trained.fit, trained.logits, trained.compute
     temp = fit["temperature"]  # fitted on the held-out fold's logits of the selected (EMA) weights
-    datasets = {"valid": ImageDataset(va, **inp), "test": ImageDataset(te, **inp)}
-    logits = {role: _predict_logits(model, DataLoader(ds, cfg.batch_size, num_workers=cfg.num_workers), cfg.device)
-              for role, ds in datasets.items()}
-    compute = {"train_minutes": (time.time() - started) / 60, "epochs_run": len(fit["history"]),
-               "trainable_parameters": n_trainable(model),
-               "peak_gpu_gib": torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else None}
     if sources != own_sources():
         raise ValueError("source files changed during training; restart with stable code")
     if pixels != frame_fingerprint(frames):
@@ -175,7 +154,7 @@ def run_trial(k: int, seed: int, pool: pd.DataFrame, test: pd.DataFrame, out: Pa
     (out / "complete.json").write_text(json.dumps(record, indent=2) + "\n")
     print(f"--- {out} done in {compute['train_minutes']:.1f} min, test LL {metrics['log_loss']:.4f} AUC {metrics['auc']:.4f}, "
           f"bundle {saved['bytes'] / 2**20:.0f} MiB", flush=True)
-    del model, fit, datasets
+    del model, fit, trained
     gc.collect()
     torch.cuda.empty_cache()
 
