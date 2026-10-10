@@ -1,0 +1,224 @@
+# Sources of every number in REPORT.md and reply.md (xg-credibility 14).
+# Checked by scripts/check_reviewer_report.py; see its docstring for the scheme.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+
+[report]
+dev_label = "wyniki rozwojowe"
+
+[folders]
+p1 = { path = "results_reports/ensemble_vs_g_2026-10", dev = true }
+rd = { path = "results_reports/readability_2026-10", dev = true }
+pc = { path = "results_reports/post_contact_share_2026-10", dev = true }
+tr = { path = "results_reports/transfer_2026-10", dev = true }
+g = { path = "results/xgc_g_combo", dev = true }
+g0 = { path = "results/xgc_g_combo_no_head", dev = true }
+os = { path = "results/xgc_offset_scores", dev = true }
+res = { path = "research", dev = false }
+
+[reply]
+claims = [
+    "p1.ll", "p1.brier", "p1.games", "p1.margin_ll", "p1.margin_brier", "p1.margin_ll_share",
+    "p1.margin_brier_share", "p1.slope_g10_1d", "p1.slope_diff_plain",
+    "pc.shots", "rd.auc_f800_point", "pc.u_g", "p1.slope_g10_2d", "p1.attr_slope_earliest_2d",
+    "tr.gap", "tr.rel_short", "proto.t_k",
+]
+
+[claims]
+# Protocols: the file as committed at the approved revision, and the hash in the result records.
+"proto.probe.git" = { src = "res:xgc_direction_probe_protocol.md", git = "41dfd12", fmt = "{:.12}" }
+"proto.probe.record" = { src = "pc:complete.json", keys = ["protocol_sha256"], fmt = "{:.12}", dev = false }
+"proto.transfer.git" = { src = "res:xgc_transfer_protocol.md", git = "07dc33f", fmt = "{:.12}" }
+"proto.transfer.record" = { src = "tr:complete.json", keys = ["protocol_sha256"], fmt = "{:.12}", dev = false }
+
+# Constants fixed by the direction-probe protocol (quoted from its text).
+"proto.ci95" = { src = "res:xgc_direction_probe_protocol.md", quote = "Przedziały percentylowe 95%", values = [95], fmt = "{:d}%" }
+"proto.ai_n" = { src = "res:xgc_direction_probe_protocol.md", quote = "Na 17 strzałach z przedziałem kontaktu", values = [17], fmt = "{:d}" }
+"proto.ai_after" = { src = "res:xgc_direction_probe_protocol.md", quote = "po przedziale 3 razy", values = [3], fmt = "{:d}" }
+"proto.half_width" = { src = "res:xgc_direction_probe_protocol.md", quote = "połowa szerokości przedziału 95% U_F ≤ 0,15", values = [0.15], fmt = "{:.2f}" }
+"proto.ka_ratio" = { src = "res:xgc_direction_probe_protocol.md", quote = "0,5 ≤ A / A_pred ≤ 1,5", values = [0.5, 1.5], fmt = "{:.1f} ≤ A/A_pred ≤ {:.1f}" }
+"proto.leak" = { src = "res:xgc_direction_probe_protocol.md", quote = "Dolna granica U_F > 0,10", values = [0.10], fmt = "{:.2f}" }
+"proto.placebo" = { src = "res:xgc_direction_probe_protocol.md", quote = "|π(o)| > 0,10", values = [0.10], fmt = "{:.2f}" }
+"proto.neg" = { src = "res:xgc_direction_probe_protocol.md", quote = "przekracza 0,10·Δ_F", values = [0.10], fmt = "{:.2f}·Δ_F" }
+"proto.sim_auc" = { src = "res:xgc_direction_probe_protocol.md", quote = "AUC 0,69–0,70", values = [0.69, 0.70], fmt = "{:.2f}–{:.2f}" }
+"proto.eff_u" = { src = "res:xgc_direction_probe_protocol.md", quote = "U ≈ 0,37 przy rzeczywistym odsetku klatek po kontakcie 0,50", values = [0.37], fmt = "{:.2f}" }
+"proto.eff_true" = { src = "res:xgc_direction_probe_protocol.md", quote = "U ≈ 0,37 przy rzeczywistym odsetku klatek po kontakcie 0,50", values = [0.50], fmt = "{:.2f}" }
+"proto.windup" = { src = "res:xgc_direction_probe_protocol.md", quote = "zawyża U o 0,04–0,17", values = [0.04, 0.17], fmt = "{:.2f}–{:.2f}" }
+
+# Design constants fixed by the transfer protocol.
+"proto.t_matches" = { src = "res:xgc_transfer_protocol.md", quote = "uczy się na 300 meczach z puli", values = [300], fmt = "{:d}" }
+"proto.t_fits" = { src = "res:xgc_transfer_protocol.md", quote = "2 ziarna = 40 treningów", values = [40], fmt = "{:d}" }
+"proto.t_seasons" = { src = "res:xgc_transfer_protocol.md", quote = "sezony 2014–2017", values = [2014, 2017], fmt = "{:d}–{:d}" }
+"proto.t_k" = { src = "res:xgc_transfer_protocol.md", quote = "k ∈ {0, 5, 10, 20}", values = [5, 20], fmt = "{:d}–{:d}" }
+
+# Point 1 (ticket 02, attribution: ticket 03). Archived fold predictions, official test v1.2.
+"p1.n_test" = { src = "p1:summary.json", keys = ["n_test"], fmt = "{:,d}" }
+"p1.games" = { src = "p1:summary.json", keys = ["games"], fmt = "{:d}" }
+"p1.auc" = { src = "p1:headline_ens_vs_g10.csv", row = { a = "ens", b = "g10" }, cols = ["d_auc", "d_auc_lo", "d_auc_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"p1.ll" = { src = "p1:headline_ens_vs_g10.csv", row = { a = "ens", b = "g10" }, cols = ["d_log_loss", "d_log_loss_lo", "d_log_loss_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"p1.brier" = { src = "p1:headline_ens_vs_g10.csv", row = { a = "ens", b = "g10" }, cols = ["d_brier", "d_brier_lo", "d_brier_hi"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"p1.margin_ll" = { src = "p1:summary.json", keys = ["equivalence.log_loss.smallest_margin_most_draws"], fmt = "{:.4f}" }
+"p1.margin_brier" = { src = "p1:summary.json", keys = ["equivalence.brier.smallest_margin_most_draws"], fmt = "{:.4f}" }
+"p1.margin_ll_range" = { src = "p1:summary.json", keys = ["equivalence.log_loss.smallest_margin_range_over_seeds.0", "equivalence.log_loss.smallest_margin_range_over_seeds.1"], fmt = "{:.4f}–{:.4f}" }
+"p1.margin_brier_range" = { src = "p1:summary.json", keys = ["equivalence.brier.smallest_margin_range_over_seeds.0", "equivalence.brier.smallest_margin_range_over_seeds.1"], fmt = "{:.4f}–{:.4f}" }
+"p1.margin_ll_share" = { src = "p1:summary.json", keys = ["equivalence.log_loss.smallest_margin_most_draws_share_of_skill"], scale = 100, fmt = "{:.1f}%" }
+"p1.margin_brier_share" = { src = "p1:summary.json", keys = ["equivalence.brier.smallest_margin_most_draws_share_of_skill"], scale = 100, fmt = "{:.1f}%" }
+"p1.seed_gap_ll" = { src = "p1:summary.json", keys = ["equivalence.log_loss.g5_seed_gap"], fmt = "{:.5f}" }
+"p1.seed_gap_brier" = { src = "p1:summary.json", keys = ["equivalence.brier.g5_seed_gap"], fmt = "{:.5f}" }
+"p1.seed_gap_ll_ci" = { src = "p1:summary.json", keys = ["equivalence.log_loss.g5_seed_gap_ci95.0", "equivalence.log_loss.g5_seed_gap_ci95.1"], fmt = "[{:+.4f}; {:+.4f}]" }
+"p1.skill_ll" = { src = "p1:summary.json", keys = ["equivalence.log_loss.skill"], fmt = "{:.4f}" }
+"p1.ms_g10" = { src = "p1:summary.json", keys = ["timing.configurations_fp32.g10.shared_ms"], fmt = "{:.1f}", dev = false }
+"p1.ms_ens" = { src = "p1:summary.json", keys = ["timing.configurations_fp32.ens.shared_ms", "timing.configurations_fp32.ens.naive_ms"], fmt = "{:.1f}–{:.1f}", dev = false }
+"p1.slope_g10" = { src = "p1:calibration.csv", row = { variant = "g10" }, cols = ["slope", "slope_lo", "slope_hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"p1.slope_g10_1d" = { src = "p1:calibration.csv", row = { variant = "g10" }, cols = ["slope"], fmt = "{:.1f}" }
+"p1.slope_g10_2d" = { src = "p1:calibration.csv", row = { variant = "g10" }, cols = ["slope"], fmt = "{:.2f}" }
+"p1.slope_ens" = { src = "p1:calibration.csv", row = { variant = "ens" }, cols = ["slope", "slope_lo", "slope_hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"p1.slope_diff" = { src = "p1:calibration_diff.csv", row = { quantity = "slope" }, cols = ["diff", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"p1.slope_diff_plain" = { src = "p1:calibration_diff.csv", row = { quantity = "slope" }, cols = ["diff", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"p1.ece_diff" = { src = "p1:calibration_diff.csv", row = { quantity = "ece" }, cols = ["diff", "lo", "hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"p1.low30_pct" = { src = "p1:REPORT.md", quote = "Najniższe 30% prognoz G-combo to 659 strzałów", values = [30], fmt = "{:d}%" }
+"p1.low30_shots" = { src = "p1:summary.json", keys = ["g10_lowest_30pct.shots"], fmt = "{:d}" }
+"p1.low30_goals" = { src = "p1:summary.json", keys = ["g10_lowest_30pct.goals"], fmt = "{:d}" }
+"p1.low30_xg" = { src = "p1:summary.json", keys = ["g10_lowest_30pct.sum_xg"], fmt = "{:.1f}" }
+"p1.split_half" = { src = "p1:summary.json", keys = ["recalibration.g10.split_half.gain_logistic.mean"], fmt = "{:+.4f}" }
+"p1.split_half_share" = { src = "p1:summary.json", keys = ["recalibration.g10.split_half.gain_logistic.share_positive"], scale = 100, fmt = "{:.0f}%" }
+"p1.g5_vs_g10" = { src = "p1:ladder_vs_g10.csv", row = { rung = "g5" }, cols = ["d_log_loss", "d_log_loss_lo", "d_log_loss_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"p1.attr_ll_worst" = { src = "p1:attribution_sensitivity.csv", row = { rule = "worst for ens vs g10" }, cols = ["d_log_loss"], fmt = "{:+.4f}" }
+"p1.attr_ll_best" = { src = "p1:attribution_sensitivity.csv", row = { rule = "best for ens vs g10" }, cols = ["d_log_loss"], fmt = "{:+.4f}" }
+"p1.attr_ll_best_ci" = { src = "p1:attribution_sensitivity.csv", row = { rule = "best for ens vs g10" }, cols = ["d_log_loss_lo", "d_log_loss_hi"], fmt = "[{:+.4f}; {:+.4f}]" }
+"p1.attr_slope_earliest" = { src = "p1:attribution_sensitivity.csv", row = { rule = "earliest" }, cols = ["slope_g10", "slope_g10_lo", "slope_g10_hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"p1.attr_slope_earliest_1d" = { src = "p1:attribution_sensitivity.csv", row = { rule = "earliest" }, cols = ["slope_g10"], fmt = "{:.1f}" }
+"p1.attr_slope_earliest_2d" = { src = "p1:attribution_sensitivity.csv", row = { rule = "earliest" }, cols = ["slope_g10"], fmt = "{:.2f}" }
+"p1.chains" = { src = "p1:attribution_recount.csv", row = { split = "test" }, cols = ["chains"], fmt = "{:d}" }
+"p1.chain_shots" = { src = "p1:attribution_recount.csv", row = { split = "test" }, cols = ["chain_shots"], fmt = "{:d}" }
+"p1.chain_goals" = { src = "p1:attribution_recount.csv", row = { split = "test" }, cols = ["chain_goals"], fmt = "{:d}" }
+"p1.test_goals" = { src = "p1:attribution_recount.csv", row = { split = "test" }, cols = ["goals"], fmt = "{:d}" }
+
+# Retrained G-combo (ticket 04) and the head-free control (ticket 05); git-ignored result folders.
+"g.gate_ll" = { src = "g:gate.json", keys = ["metrics.log_loss.retrained"], fmt = "{:.4f}" }
+"g.gate_ll_archived" = { src = "g:gate.json", keys = ["metrics.log_loss.archived"], fmt = "{:.4f}" }
+"g.gate_auc" = { src = "g:gate.json", keys = ["metrics.auc.retrained"], fmt = "{:.4f}" }
+"g.gate_auc_archived" = { src = "g:gate.json", keys = ["metrics.auc.archived"], fmt = "{:.4f}" }
+"g0.ll" = { src = "g0:comparison.csv", row = { metric = "log_loss" }, cols = ["diff_no_head_minus_g_combo", "ci_lo", "ci_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"g0.auc" = { src = "g0:comparison.csv", row = { metric = "auc" }, cols = ["diff_no_head_minus_g_combo", "ci_lo", "ci_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+
+# Offset scoring checks (ticket 08).
+"os.jpeg_tv" = { src = "os:complete.json", keys = ["spot_check.index_jpeg_control.g_combo.train_valid.max_abs_dlogit"], fmt = "{:.5f}" }
+"os.jpeg_test" = { src = "os:complete.json", keys = ["spot_check.index_jpeg_control.g_combo.test.max_abs_dlogit"], fmt = "{:.6f}" }
+"os.jpeg_tol" = { src = "os:complete.json", keys = ["spot_check.index_jpeg_control.g_combo.tolerance"], fmt = "{:.3f}" }
+"os.png_tv" = { src = "os:complete.json", keys = ["spot_check.offset0_vs_stored.g_combo.train_valid.mean_abs_dlogit"], fmt = "{:.3f}" }
+"os.png_test" = { src = "os:complete.json", keys = ["spot_check.offset0_vs_stored.g_combo.test.mean_abs_dlogit"], fmt = "{:.3f}" }
+
+# Direction probe: readability curves (ticket 09) and verdict (ticket 10).
+"pc.shots" = { src = "pc:summary.json", keys = ["population.shots"], fmt = "{:,d}" }
+"pc.matches" = { src = "pc:summary.json", keys = ["population.matches"], fmt = "{:d}" }
+"pc.excluded" = { src = "pc:summary.json", keys = ["population.excluded"], fmt = "{:d}" }
+"pc.excluded_pct" = { src = "pc:summary.json", keys = ["population.excluded_fraction"], scale = 100, fmt = "{:.1f}%" }
+"pc.verdict" = { src = "pc:summary.json", keys = ["verdict.verdict"], labels = { inconclusive = "niekonkluzywny" }, fmt = "{}" }
+"pc.rule" = { src = "pc:summary.json", keys = ["verdict.rule"], fmt = "reguła {:d}" }
+"pc.gate_pos" = { src = "pc:summary.json", keys = ["f_gates.positive_control"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+"pc.gate_ka" = { src = "pc:summary.json", keys = ["f_gates.known_answer"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+"pc.gate_placebo" = { src = "pc:summary.json", keys = ["f_gates.placebo"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+"pc.gate_neg" = { src = "pc:summary.json", keys = ["f_gates.negative_control"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+"pc.delta_f" = { src = "pc:summary.json", keys = ["rule_inputs.delta_F.value", "rule_inputs.delta_F.lo", "rule_inputs.delta_F.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.u_f" = { src = "pc:summary.json", keys = ["rule_inputs.U_F.value", "rule_inputs.U_F.lo", "rule_inputs.U_F.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.u_f_point" = { src = "pc:summary.json", keys = ["rule_inputs.U_F.value"], fmt = "{:.3f}" }
+"pc.u_f_hw" = { src = "pc:summary.json", keys = ["rule_inputs.U_F_half_width"], fmt = "{:.3f}" }
+"pc.a" = { src = "pc:summary.json", keys = ["rule_inputs.A.value", "rule_inputs.A.lo", "rule_inputs.A.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.a_pred" = { src = "pc:summary.json", keys = ["rule_inputs.A_pred.value"], fmt = "{:.3f}" }
+"pc.ratio" = { src = "pc:summary.json", keys = ["rule_inputs.A_over_A_pred"], fmt = "{:.2f}" }
+"pc.u_g" = { src = "pc:summary.json", keys = ["rule_inputs.U_G.value", "rule_inputs.U_G.lo", "rule_inputs.U_G.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.u_x" = { src = "pc:summary.json", keys = ["rule_inputs.U_X.value", "rule_inputs.U_X.lo", "rule_inputs.U_X.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.ug_uf" = { src = "pc:summary.json", keys = ["rule_inputs.U_G_minus_U_F.value", "rule_inputs.U_G_minus_U_F.lo", "rule_inputs.U_G_minus_U_F.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.ux_uf" = { src = "pc:summary.json", keys = ["rule_inputs.U_X_minus_U_F.value", "rule_inputs.U_X_minus_U_F.lo", "rule_inputs.U_X_minus_U_F.hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.hw_g" = { src = "pc:summary.json", keys = ["positive_control.G.u_half_width"], fmt = "{:.3f}" }
+"pc.hw_x" = { src = "pc:summary.json", keys = ["positive_control.X.u_half_width"], fmt = "{:.3f}" }
+"pc.ratio_g" = { src = "pc:summary.json", keys = ["known_answer.G.ratio"], fmt = "{:.2f}" }
+"pc.ratio_x" = { src = "pc:summary.json", keys = ["known_answer.X.ratio"], fmt = "{:.2f}" }
+"pc.t50_f" = { src = "pc:shares.csv", row = { reading = "F", stratum = "all" }, cols = ["t50_label"], fmt = "{}" }
+"pc.t50_g" = { src = "pc:shares.csv", row = { reading = "G", stratum = "all" }, cols = ["t50"], fmt = "{:+.0f}" }
+"pc.t50_x" = { src = "pc:shares.csv", row = { reading = "X", stratum = "all" }, cols = ["t50"], fmt = "{:+.0f}" }
+"pc.delta_x" = { src = "pc:shares.csv", row = { reading = "X", stratum = "all" }, cols = ["delta"], fmt = "{:.3f}" }
+"pc.delta_x0" = { src = "pc:shares.csv", row = { reading = "X0", stratum = "all" }, cols = ["delta"], fmt = "{:.3f}" }
+"pc.d_gp_g0p" = { src = "pc:differences.csv", row = { difference = "U_Gp - U_G0p" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.d_x_x0" = { src = "pc:differences.csv", row = { difference = "U_X - U_X0" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.test_shots" = { src = "pc:shares.csv", row = { reading = "F", stratum = "test_split" }, cols = ["shots"], fmt = "{:,d}" }
+"pc.test_matches" = { src = "pc:shares.csv", row = { reading = "F", stratum = "test_split" }, cols = ["matches"], fmt = "{:d}" }
+"pc.test_uf" = { src = "pc:shares.csv", row = { reading = "F", stratum = "test_split" }, cols = ["U", "U_lo", "U_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.test_ug" = { src = "pc:shares.csv", row = { reading = "G", stratum = "test_split" }, cols = ["U", "U_lo", "U_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.test_ux" = { src = "pc:shares.csv", row = { reading = "X", stratum = "test_split" }, cols = ["U", "U_lo", "U_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.test_ux0" = { src = "pc:shares.csv", row = { reading = "X0", stratum = "test_split" }, cols = ["U"], fmt = "{:.3f}" }
+"pc.rb_shots" = { src = "pc:shares.csv", row = { reading = "F", stratum = "rebound_chain" }, cols = ["shots"], fmt = "{:d}" }
+"pc.rb_matches" = { src = "pc:shares.csv", row = { reading = "F", stratum = "rebound_chain" }, cols = ["matches"], fmt = "{:d}" }
+"pc.rb_delta_f" = { src = "pc:shares.csv", row = { reading = "F", stratum = "rebound_chain" }, cols = ["delta", "delta_lo", "delta_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.rb_ug" = { src = "pc:shares.csv", row = { reading = "G", stratum = "rebound_chain" }, cols = ["U", "U_lo", "U_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pc.nocut_shots" = { src = "pc:shares.csv", row = { reading = "F", stratum = "no_cut" }, cols = ["shots"], fmt = "{:,d}" }
+"pc.attr_uf_min" = { src = "pc:sensitivity.csv", row = { rule = "earliest" }, cols = ["U_F"], fmt = "{:.3f}" }
+"pc.attr_uf_max" = { src = "pc:sensitivity.csv", row = { rule = "exclude" }, cols = ["U_F"], fmt = "{:.3f}" }
+"pc.attr_df_min" = { src = "pc:sensitivity.csv", row = { rule = "earliest" }, cols = ["delta_F"], fmt = "{:.3f}" }
+"pc.attr_df_max" = { src = "pc:sensitivity.csv", row = { rule = "exclude" }, cols = ["delta_F"], fmt = "{:.3f}" }
+"rd.auc_f0" = { src = "rd:auc.csv", row = { reading = "F", stratum = "all", offset_ms = 0 }, cols = ["auc", "auc_lo", "auc_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"rd.auc_f800" = { src = "rd:auc.csv", row = { reading = "F", stratum = "all", offset_ms = 800 }, cols = ["auc", "auc_lo", "auc_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"rd.auc_f800_point" = { src = "rd:auc.csv", row = { reading = "F", stratum = "all", offset_ms = 800 }, cols = ["auc"], fmt = "{:.3f}" }
+"rd.dp0_f" = { src = "rd:curves.csv", row = { reading = "F", stratum = "all", offset_ms = 0 }, cols = ["D_minus_P", "D_minus_P_lo", "D_minus_P_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"rd.dp0_g" = { src = "rd:curves.csv", row = { reading = "G", stratum = "all", offset_ms = 0 }, cols = ["D_minus_P", "D_minus_P_lo", "D_minus_P_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"rd.dp0_x" = { src = "rd:curves.csv", row = { reading = "X", stratum = "all", offset_ms = 0 }, cols = ["D_minus_P", "D_minus_P_lo", "D_minus_P_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+# Mean D over the protocol's PRE window (-1600 .. -600 ms) and D at the anchor, G reading.
+"rd.pre_g_test" = { src = "rd:curves.csv", row = { reading = "G", stratum = "test_split", offset_ms = [-1600, -1400, -1200, -1000, -800, -600] }, agg = "mean", cols = ["D"], fmt = "{:.3f}" }
+"rd.pre_g_all" = { src = "rd:curves.csv", row = { reading = "G", stratum = "all", offset_ms = [-1600, -1400, -1200, -1000, -800, -600] }, agg = "mean", cols = ["D"], fmt = "{:.3f}" }
+"rd.d0_g_test" = { src = "rd:curves.csv", row = { reading = "G", stratum = "test_split", offset_ms = 0 }, cols = ["D"], fmt = "{:.3f}" }
+"rd.d0_g_all" = { src = "rd:curves.csv", row = { reading = "G", stratum = "all", offset_ms = 0 }, cols = ["D"], fmt = "{:.3f}" }
+
+# Leave-one-league-out transfer (ticket 13).
+"tr.shots" = { src = "tr:summary.json", keys = ["test_shots"], fmt = "{:,d}" }
+"tr.matches" = { src = "tr:summary.json", keys = ["test_matches"], fmt = "{:d}" }
+"tr.goals" = { src = "tr:summary.json", keys = ["test_goals"], fmt = "{:,d}" }
+"tr.reading" = { src = "tr:summary.json", keys = ["headline.reading"], labels = { gap_shown = "luka transferu wykazana" }, fmt = "{}" }
+"tr.gap" = { src = "tr:gaps.csv", row = { group = "pooled" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.rel" = { src = "tr:gaps.csv", row = { group = "pooled" }, cols = ["relative_gap", "relative_gap_lo", "relative_gap_hi"], scale = 100, fmt = "{:.1f}% [{:.1f}%; {:.1f}%]" }
+"tr.rel_short" = { src = "tr:gaps.csv", row = { group = "pooled" }, cols = ["relative_gap"], scale = 100, fmt = "{:.1f}%" }
+"tr.seed0" = { src = "tr:gaps.csv", row = { group = "pooled" }, cols = ["gap_seed0"], fmt = "{:+.4f}" }
+"tr.seed1" = { src = "tr:gaps.csv", row = { group = "pooled" }, cols = ["gap_seed1"], fmt = "{:+.4f}" }
+"tr.min_seed" = { src = "tr:gaps.csv", row = { group = "spain_laliga" }, cols = ["gap_seed0"], fmt = "{:+.4f}" }
+"tr.noise_g5" = { src = "tr:summary.json", keys = ["noise_reference.g5_seed_to_seed"], fmt = "{:.4f}" }
+"tr.noise_single" = { src = "tr:summary.json", keys = ["noise_reference.single_fold_model_vs_g_combo.0", "noise_reference.single_fold_model_vs_g_combo.1"], fmt = "{:.4f}–{:.4f}" }
+"tr.epl" = { src = "tr:gaps.csv", row = { group = "england_epl" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.epl_shots" = { src = "tr:gaps.csv", row = { group = "england_epl" }, cols = ["shots"], fmt = "{:,d}" }
+"tr.epl_goals" = { src = "tr:gaps.csv", row = { group = "england_epl" }, cols = ["goals"], fmt = "{:d}" }
+"tr.l1" = { src = "tr:gaps.csv", row = { group = "france_ligue-1" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.l1_shots" = { src = "tr:gaps.csv", row = { group = "france_ligue-1" }, cols = ["shots"], fmt = "{:,d}" }
+"tr.l1_goals" = { src = "tr:gaps.csv", row = { group = "france_ligue-1" }, cols = ["goals"], fmt = "{:d}" }
+"tr.bl" = { src = "tr:gaps.csv", row = { group = "germany_bundesliga" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.bl_shots" = { src = "tr:gaps.csv", row = { group = "germany_bundesliga" }, cols = ["shots"], fmt = "{:,d}" }
+"tr.bl_goals" = { src = "tr:gaps.csv", row = { group = "germany_bundesliga" }, cols = ["goals"], fmt = "{:d}" }
+"tr.sa" = { src = "tr:gaps.csv", row = { group = "italy_serie-a" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.sa_shots" = { src = "tr:gaps.csv", row = { group = "italy_serie-a" }, cols = ["shots"], fmt = "{:,d}" }
+"tr.sa_goals" = { src = "tr:gaps.csv", row = { group = "italy_serie-a" }, cols = ["goals"], fmt = "{:d}" }
+"tr.ll" = { src = "tr:gaps.csv", row = { group = "spain_laliga" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.ll_shots" = { src = "tr:gaps.csv", row = { group = "spain_laliga" }, cols = ["shots"], fmt = "{:,d}" }
+"tr.ll_goals" = { src = "tr:gaps.csv", row = { group = "spain_laliga" }, cols = ["goals"], fmt = "{:d}" }
+"tr.auc" = { src = "tr:metrics.csv", row = { group = "pooled", metric = "auc" }, cols = ["diff", "diff_lo", "diff_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.brier" = { src = "tr:metrics.csv", row = { group = "pooled", metric = "brier" }, cols = ["diff", "diff_lo", "diff_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.slope_without" = { src = "tr:metrics.csv", row = { group = "pooled", metric = "slope" }, cols = ["without", "without_lo", "without_hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"tr.slope_with" = { src = "tr:metrics.csv", row = { group = "pooled", metric = "slope" }, cols = ["with", "with_lo", "with_hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"tr.slope_epl_without" = { src = "tr:metrics.csv", row = { group = "england_epl", metric = "slope" }, cols = ["without"], fmt = "{:.2f}" }
+"tr.slope_epl_with" = { src = "tr:metrics.csv", row = { group = "england_epl", metric = "slope" }, cols = ["with"], fmt = "{:.2f}" }
+"tr.eval_shots" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 0 }, cols = ["eval_shots"], fmt = "{:,d}" }
+"tr.rc_p0" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 0 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_p5" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 5 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_p10" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 10 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_p20" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 20 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_p5_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 5 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_p10_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 10 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_p20_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_platt", k = 20 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_i0" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 0 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_i5" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 5 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_i10" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 10 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_i20" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 20 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_i5_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 5 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_i10_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 10 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_i20_rec" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "without_intercept", k = 20 }, cols = ["recovered"], scale = 100, fmt = "{:+.0f}%" }
+"tr.rc_w5" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "with_platt", k = 5 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_w10" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "with_platt", k = 10 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.rc_w20" = { src = "tr:recalibration_curve.csv", row = { group = "main", variant = "with_platt", k = 20 }, cols = ["mean"], fmt = "{:+.4f}" }
+"tr.attr_min" = { src = "tr:attribution_sensitivity.csv", row = { rule = "smallest gap", group = "pooled" }, cols = ["gap", "gap_lo", "gap_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"tr.attr_max" = { src = "tr:attribution_sensitivity.csv", row = { rule = "largest gap", group = "pooled" }, cols = ["gap"], fmt = "{:+.4f}" }
