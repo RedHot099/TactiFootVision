@@ -1,0 +1,59 @@
+{
+  "ticket": "xg-credibility 10",
+  "protocol_sha256": "23c8bd25934a1fd7b63fe6513f9dd425899522641a19b068313981de7b0775a0",
+  "protocol_approval": {
+    "approved_on": "2026-10-09",
+    "commit": "41dfd12",
+    "record": "ticket 06 (xg-credibility), Comments"
+  },
+  "sources": {
+    "scripts/report_post_contact_share.py": "b3d89be5b590de074288d8b01981b0175dfb5dce4bf09c5a27228dbffa1d47ec",
+    "xgpoc/probe/share.py": "7e40a284e62a9df35546a9705e9f76a221012b7782ab20ad81b4652e4dcee4e3",
+    "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+    "scripts/report_readability.py": "04e44ae5d5299951ea33d6c3f23870813026a317f85d5b0ac9a62859628a8b7e",
+    "xgpoc/eval/attribution.py": "190374ad9c58bcee09f63c2985feb25786be2ac70021fb705c0a8e094c4b5633",
+    "scripts/report_complexity.py": "4154ab44235b3c848a6f504f9e0147d8223b2d7ec0db06b1e7517cd4639d386f",
+    "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d"
+  },
+  "commit": {
+    "sha": "3411c6817ce6a96c480bea7f7599fd3e8a3272ec",
+    "dirty": false
+  },
+  "inputs": {
+    "complete.json": "bf0080e0bbdcb6763f15c5b1ec80d6e8e7f9e4cb30be0ef071503b84c2dab657",
+    "embeddings_dinov2_frozen.npy": "1355abd1dfc3ff0690badad7cd203813dee3e695327552586f9ddf8341f78e25",
+    "embeddings_g_combo.npy": "231b7158a6a1a7d4b1b1847bee78256f06a99d76803ccf4fff8c82fb2ae8cc0f",
+    "embeddings_g_combo_no_head.npy": "87db3c2e641d8d10ff8bf765c8b31321e2d14201eb8c815b8b06e146f77e8471",
+    "predictions.parquet": "04cf382dda02c3828eacc095ac1361e6a9f867710fc03abde55393f1867601fb",
+    "index": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+    "folds": "3dd70f92db97049c879a6e1abd7145cc9f7adfdec67b86cfff8731a7e5eb31be"
+  },
+  "inputs_digest": "ad9e89fff5c9f264fbb70226a72f95fb0bb362f5d65c79455493cdbaa6fbae9f",
+  "ticket09": {
+    "complete.json": "3a0d89791b33a8cb3d968dfe5bd35612dd6ab34f6198b46d010749c8264afaf6",
+    "summary.json": "ccc19b0fec23e4329732d59c599b2d3b68598334ad08b8c23189a0619d8e53ea",
+    "curves.csv": "710ca527dfeafec64c05bc72703265cf16c986057a77be23f5d8b61d214b30dd",
+    "work_files": {
+      "logits.parquet": "48b50d2c71b4e3b36d1ed947b41e3a5e0ab9ac58445b1c80bb88958879717cd5",
+      "curves.npz": "587a36b020d602c8245283b781cb29a92d31065ae2cc596994316d3f32ffdbe0"
+    }
+  },
+  "labels_digest": "a1d1244c3b611a36a245eda27c8a42139694c820cf377d4d21b676666cef8dfa",
+  "work_files": {
+    "probe_F_refit.npz": "e43c6373be31b08e18036299290c9048dc31d5c85f0f9b60ced63efe64a174ab",
+    "probe_F_ka.npz": "132596d8735a760695c20cc13b0467c4b278276bb0c7ffb700a04d2159a0ed44"
+  },
+  "files": {
+    "differences.csv": "77a3baecae2a6969e2b202770f749b65d841270f2aed47218ec254f50171070e",
+    "head_free_comparison.png": "e187aec49fee32561e927ab2734ee20a814a6ac22552c5545f1dc6223295428d",
+    "known_answer.csv": "356b5d38b95696d18febfa7f9fbe546202a58a6211f36540fe96d5544f7743c4",
+    "known_answer.png": "6429e732b7152e82a8fa31cc04d97be16dd09c9fdf82efd426fdf299dfbce0c0",
+    "s_curves.csv": "24434b3cef1a5a4151ddb0bf577cb8302d4a8b0517770186a00b7fc5a0f33c07",
+    "s_curves_known_answer.csv": "df0cf956bbdf50cdc74d5f70df642f394f0f8e78412299944bf586210fc9d7d8",
+    "sensitivity.csv": "cf5f2a3b365a9096fd95b5a370603d65c54d90c0358ef5c694dafdf32514b180",
+    "share_curves.png": "2a3e75f7e37f64f025a1cec5dcf49b09bced9e5a5177dcfa1e35bfe8e9fc6889",
+    "shares.csv": "8d5a2871e376241575abc118454790358bb6d294b05cac6bfb5bdcf4edfe3a7f",
+    "summary.json": "c68faad0141d7e702bde2acd04b615316034e5cf38e92737a3dbd94fd7251c50",
+    "u_overview.png": "02f71ca89b3a66680a6e4eb98faf26340ca8b6222390cfdb03b5358b0f18bf64"
+  }
+}

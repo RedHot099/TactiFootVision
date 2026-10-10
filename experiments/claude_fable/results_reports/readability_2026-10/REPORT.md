@@ -83,7 +83,7 @@ Nachylenie plateau `(D(+800) − D(+400)) / Δ`: F 1,16 [0,93; 1,52], G 0,80 [0,
 Gp i G0p: 7 487 strzałów, 555 dobitek, bez warstwy test (2 000 pominiętych losowań z definicji). W pozostałych warstwach żadne losowanie nie zostało pominięte (`strata.csv`, `strata.png`).
 
 - Bez cięć: krzywe pokrywają się z całą populacją.
-- Podział test: G i X leżą w kotwicy powyżej trendu, G +0,040 [+0,013; +0,068], X +0,079 [+0,018; +0,146]. G odstaje od −160 ms. Strzały test ocenia średnia z dziesięciu modeli, a nie para modeli z foldu. Protokół wymienia szczyt G i X w kotwicy wynikający z samej zgodności rozkładu jako ograniczenie. F w tej warstwie nie odstaje: +0,002 [−0,027; +0,029].
+- Podział test: G i X leżą w kotwicy powyżej trendu, G +0,040 [+0,013; +0,068], X +0,079 [+0,018; +0,146]. F w tej warstwie nie odstaje: +0,002 [−0,027; +0,029]. Przegląd ticketu 10 (Fable, 2026-10-10) pokazał, że to nie jest szczyt w kotwicy: G jest powyżej trendu już od −400 ms, bez narastania, bo okno PRE tej warstwy ma niższy i bardziej płaski poziom, a ekstrapolowana prosta P(0) leży nisko. Samo D_G(0) nie jest wyższe niż w całej populacji. Ocena strzałów test średnią z dziesięciu modeli tego nie tłumaczy, bo D jest liniowe w logitach. Szczegóły w `results_reports/post_contact_share_2026-10/REPORT.md`.
 - Dobitki: 653 strzały, przedziały szerokie. G0p ma w kotwicy D − P = −0,103 [−0,180; −0,021], czyli poniżej trendu.
 
 Sparowane różnice U_warstwa − U_całość liczy ticket 10.
