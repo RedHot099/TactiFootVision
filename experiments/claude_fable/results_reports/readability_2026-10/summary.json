@@ -1,0 +1,97 @@
+{
+  "development_result": true,
+  "protocol_sha256": "23c8bd25934a1fd7b63fe6513f9dd425899522641a19b068313981de7b0775a0",
+  "n_boot": 2000,
+  "bootstrap_seed": 0,
+  "negative_control_seed": 2,
+  "population": {
+    "shots": 9307,
+    "matches": 491,
+    "on_target": 4190,
+    "excluded": 184,
+    "excluded_fraction": 0.019386787482878517
+  },
+  "scored_goal_shots": 1366,
+  "selected_C": {
+    "F": 0.0001,
+    "Gp": 0.0001,
+    "G0p": 0.0001,
+    "F_neg": 0.0001
+  },
+  "selected_C_at_grid_edge": {
+    "F": true,
+    "Gp": true,
+    "G0p": true
+  },
+  "xg_logit_column": "xg_logit_raw",
+  "controls": {
+    "placebo": {
+      "pi_-800": {
+        "value": 0.025439631145124066,
+        "lo": -0.13100429859545545,
+        "hi": 0.18326477791033624,
+        "fails": false
+      },
+      "pi_-600": {
+        "value": 0.13170527653442335,
+        "lo": -0.08821328313033172,
+        "hi": 0.3420983728688361,
+        "fails": false
+      },
+      "passed": true,
+      "skipped_draws": 0
+    },
+    "negative": {
+      "delta_neg": {
+        "value": 0.0001747736252703776,
+        "lo": -0.010975285282401567,
+        "hi": 0.011485269792792456,
+        "limit": 0.0060349386905738205,
+        "fails": false,
+        "skipped_draws": 0
+      },
+      "d_neg_0": {
+        "value": 0.003815044960387712,
+        "lo": -0.005109841701799425,
+        "hi": 0.011860472117725765,
+        "limit": 0.0060349386905738205,
+        "fails": false,
+        "skipped_draws": 0
+      },
+      "passed": true
+    },
+    "positive_jump": {
+      "F": {
+        "delta": 0.0603493869057382,
+        "lo": 0.04619213187835231,
+        "hi": 0.07394651322062654,
+        "delta_lower_positive": true,
+        "skipped_draws": 0
+      },
+      "G": {
+        "delta": 0.17294371854393964,
+        "lo": 0.14990101284679552,
+        "hi": 0.19672929725539912,
+        "delta_lower_positive": true,
+        "skipped_draws": 0
+      },
+      "X": {
+        "delta": 0.25812068877488703,
+        "lo": 0.21476924859094768,
+        "hi": 0.30310372437608474,
+        "delta_lower_positive": true,
+        "skipped_draws": 0
+      }
+    }
+  },
+  "gates": {
+    "placebo_passed": true,
+    "negative_passed": true,
+    "positive_delta_lower_positive": {
+      "F": true,
+      "G": true,
+      "X": true
+    }
+  },
+  "not_here": "U, S, t50, the U half-width condition of the positive control, the known-answer test, the verdict and the attribution sensitivity are ticket 10"
+}

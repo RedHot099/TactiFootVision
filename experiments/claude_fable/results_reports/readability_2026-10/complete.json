@@ -1,0 +1,50 @@
+{
+  "ticket": "xg-credibility 09",
+  "protocol_sha256": "23c8bd25934a1fd7b63fe6513f9dd425899522641a19b068313981de7b0775a0",
+  "protocol_approval": {
+    "approved_on": "2026-10-09",
+    "commit": "41dfd12",
+    "record": "ticket 06 (xg-credibility), Comments"
+  },
+  "sources": {
+    "scripts/report_readability.py": "04e44ae5d5299951ea33d6c3f23870813026a317f85d5b0ac9a62859628a8b7e",
+    "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+    "xgpoc/probe/table.py": "d1cc2d77e331cb5d37b898e1694341fbb9973a31a474eff3b3557a586bd58ceb",
+    "xgpoc/data/offset_frames.py": "cefb22618a37d910f1a77fa562abe83598dbfaf0af33b669f69975fcb823d195",
+    "xgpoc/eval/attribution.py": "190374ad9c58bcee09f63c2985feb25786be2ac70021fb705c0a8e094c4b5633",
+    "scripts/report_complexity.py": "4154ab44235b3c848a6f504f9e0147d8223b2d7ec0db06b1e7517cd4639d386f",
+    "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d"
+  },
+  "commit": {
+    "sha": "8be4ce1cab04311b6467e5f4413f2585555d5a16",
+    "dirty": false
+  },
+  "inputs": {
+    "complete.json": "bf0080e0bbdcb6763f15c5b1ec80d6e8e7f9e4cb30be0ef071503b84c2dab657",
+    "embeddings_dinov2_frozen.npy": "1355abd1dfc3ff0690badad7cd203813dee3e695327552586f9ddf8341f78e25",
+    "embeddings_g_combo.npy": "231b7158a6a1a7d4b1b1847bee78256f06a99d76803ccf4fff8c82fb2ae8cc0f",
+    "embeddings_g_combo_no_head.npy": "87db3c2e641d8d10ff8bf765c8b31321e2d14201eb8c815b8b06e146f77e8471",
+    "predictions.parquet": "04cf382dda02c3828eacc095ac1361e6a9f867710fc03abde55393f1867601fb",
+    "index": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+    "folds": "3dd70f92db97049c879a6e1abd7145cc9f7adfdec67b86cfff8731a7e5eb31be"
+  },
+  "inputs_digest": "ad9e89fff5c9f264fbb70226a72f95fb0bb362f5d65c79455493cdbaa6fbae9f",
+  "labels_digest": "ff7a29ec05a70940d80b2ef7db74d2f488fae531255159f96621f8ef59de7d86",
+  "work_files": {
+    "logits.parquet": "48b50d2c71b4e3b36d1ed947b41e3a5e0ab9ac58445b1c80bb88958879717cd5",
+    "curves.npz": "587a36b020d602c8245283b781cb29a92d31065ae2cc596994316d3f32ffdbe0"
+  },
+  "files": {
+    "auc.csv": "d689049fd224846a5d2d2180d8d2f96d56098ddf145c1144f703979fcab8bc2a",
+    "auc_by_offset.png": "a9d538330f577f9cf95c5233b36a5eb0362a8ea4fc3fc0f7506433ad96369fa0",
+    "curves.csv": "710ca527dfeafec64c05bc72703265cf16c986057a77be23f5d8b61d214b30dd",
+    "event_study_xg.png": "403888522472ae9c1b6c7ecc84d7c1b9c1ad78ce10bdd9298b233468fb70e1ec",
+    "exclusions.csv": "aee9b6630900056653151512f5799854bc0f210a91ebdc769bdb8b778394b13b",
+    "jumps.csv": "c5293b16cbccfae3902aed3d361ec357c2683900559ec6904614e5b92c6fb150",
+    "probe_selection.csv": "e898ab0ba0b1f11744907249fce067b8c0ec08d2af39f0632e8e3c32289be542",
+    "readability_curves.png": "f0d42ed54ebe2f280cdf0a2f38b5ecb56f0569a12ea7188b6c2739aa307fcf73",
+    "strata.csv": "d78baa28b63375452c01b2d3d38289edea693479e8c77049a80382002c100933",
+    "strata.png": "03b12f466259010680c694af8be576358d5b86323d5dd588bce2096f73b79f5d",
+    "summary.json": "ccc19b0fec23e4329732d59c599b2d3b68598334ad08b8c23189a0619d8e53ea"
+  }
+}
