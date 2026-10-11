@@ -15,3 +15,6 @@ LABELS_ROOT = DATA_ROOT / "soccernet_labels"
 DATASET_CARD = DATA_ROOT / "dataset_card.md"
 INDEX_V1_1 = SOCCERNET / "index_v1_1.parquet"
 INDEX = Path(os.environ.get("XGPOC_INDEX", str(SOCCERNET / "index_v1_2.parquet")))
+
+# StatsBomb open-data version (scripts/vendor_fetch_statsbomb.py): raw event JSON, derived tables, completion record.
+STATSBOMB = Path(os.environ.get("XGPOC_STATSBOMB", "/home/kuba/projects/football_data/statsbomb_open_v1"))
