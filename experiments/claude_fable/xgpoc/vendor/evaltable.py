@@ -33,7 +33,9 @@ Embedding references (rows of the arrays named in the sidecar's `embedding_sets`
 Pairing data
     timing_residual_ms  SoccerNet anchor minus aligned StatsBomb time (primary rows only, else NaN)
     anchor_convention   soccernet_anchor (primary) | statsbomb_time (secondary populations)
-    table_kind          development | confirmatory (also in the sidecar; the two must agree)
+    table_kind          development | dryrun | confirmatory (also in the sidecar; the two must agree). A dryrun table is
+                        the confirmatory label-free table with labels permuted within matches (ticket 14's dry run):
+                        it runs the confirmatory code path and its numbers are never results.
 
 Labels (absent from a label-free table; added by `join_labels`)
     goal_sn, on_target_sn (primary rows only), sb_outcome, is_penalty
@@ -46,7 +48,9 @@ Writing
     Predictions are written first, without the label columns (`labels_state` "absent"). `join_labels` joins the
     labels in a separate step: it records the sha256 of the label-free table and the time, appends both to a log
     and refuses a confirmatory join that is earlier than the pre-registration record (`PreRegistration`: the
-    pre-registration document's hash, the time it was committed and the hash of the label-free table it pins).
+    pre-registration document's hash, the time it was committed, the hash of the label-free table it pins and the
+    analysis parameters it fixes: margin, bootstrap draws and seeds). A draft record (written from an uncommitted
+    document, for the dry run) never admits a confirmatory join.
     The times are those the caller reports (the commit time ticket 14 records); nothing here anchors them to a clock.
     Analyses open a table with `load_table`, which validates it. `validate_table` rejects duplicate keys,
     missing or unexpected columns, labels in a label-free table, a joined table whose join record does not match
@@ -65,7 +69,9 @@ import pandas as pd
 import pyarrow
 
 SCHEMA_VERSION = "xgv-eval-table-1"
-KINDS = ("development", "confirmatory")
+KINDS = ("development", "dryrun", "confirmatory")
+RUN_LABELS = {"development": "DEVELOPMENT numbers, not results", "dryrun": "DRY RUN on labels permuted within matches, not results",
+              "confirmatory": "confirmatory run"}
 POPULATIONS = ("primary", "recovered_goal", "statsbomb_only")
 SPLITS = ("train", "valid", "test")
 ANCHOR_CONVENTION = {"primary": "soccernet_anchor", "recovered_goal": "statsbomb_time", "statsbomb_only": "statsbomb_time"}
@@ -93,13 +99,20 @@ class EvalTableError(ValueError):
 
 @dataclass(frozen=True)
 class PreRegistration:
-    """The pre-registration record a confirmatory join is checked against: the hash of the pre-registration
-    document, the time it was committed (timezone-aware), the hash of the label-free evaluation table
-    that the document pins and, optionally, the commit."""
+    """The pre-registration record a confirmatory join is checked against and the analyses read their parameters from:
+    the hash of the pre-registration document, the time it was committed (timezone-aware), the hash of the label-free
+    evaluation table that the document pins, the H2 equivalence margin (log-loss), the number of match-bootstrap draws,
+    the cross-fit fold seed and the bootstrap seed, whether the record is a draft (an uncommitted document, dry run
+    only) and, optionally, the commit."""
 
     sha256: str
     recorded_at: datetime
     label_free_table_sha256: str
+    margin: float
+    n_boot: int
+    fold_seed: int
+    boot_seed: int
+    draft: bool
     commit: str | None = None
 
 
@@ -116,17 +129,41 @@ def format_time(when: datetime) -> str:
     return when.astimezone(UTC).isoformat()
 
 
+def is_sha256(text) -> bool:
+    return isinstance(text, str) and len(text) == 64 and set(text) <= set("0123456789abcdef")
+
+
+PREREG_FIELDS = ("sha256", "recorded_at", "label_free_table_sha256", "margin", "n_boot", "fold_seed", "boot_seed", "draft")
+
+
 def load_preregistration(path: Path) -> PreRegistration:
-    """Read `{"sha256": ..., "recorded_at": ISO time with timezone, "label_free_table_sha256": ...[, "commit": ...]}`."""
+    """Read the JSON record `preregistration_record` writes: every field of `PREREG_FIELDS` (`recorded_at` an ISO time
+    with timezone) and optionally `commit`."""
     record = json.loads(Path(path).read_text())
-    for field in ("sha256", "recorded_at", "label_free_table_sha256"):
+    for field in PREREG_FIELDS:
         if field not in record:
             raise EvalTableError(f"pre-registration record lacks {field!r}")
     for field in ("sha256", "label_free_table_sha256"):
-        value = record.get(field)
-        if not (len(value) == 64 and set(value) <= set("0123456789abcdef")):
+        if not is_sha256(record[field]):
             raise EvalTableError(f"pre-registration {field} is not a sha256 hex digest")
-    return PreRegistration(record["sha256"], parse_time(record["recorded_at"]), record["label_free_table_sha256"], record.get("commit"))
+    margin = record["margin"]
+    if isinstance(margin, bool) or not isinstance(margin, int | float) or not 0 < margin <= 0.01:
+        raise EvalTableError(f"pre-registration margin {margin!r} is not a log-loss margin in (0, 0.01]")
+    for field, low in (("n_boot", 1), ("fold_seed", 0), ("boot_seed", 0)):
+        value = record[field]
+        if isinstance(value, bool) or not isinstance(value, int) or value < low:
+            raise EvalTableError(f"pre-registration {field} {value!r} is not an integer >= {low}")
+    if not isinstance(record["draft"], bool):
+        raise EvalTableError("pre-registration draft must be true or false")
+    return PreRegistration(record["sha256"], parse_time(record["recorded_at"]), record["label_free_table_sha256"], float(margin),
+                           record["n_boot"], record["fold_seed"], record["boot_seed"], record["draft"], record.get("commit"))
+
+
+def preregistration_record(prereg: PreRegistration) -> dict:
+    """The JSON object `load_preregistration` reads."""
+    return {"sha256": prereg.sha256, "recorded_at": format_time(prereg.recorded_at), "label_free_table_sha256": prereg.label_free_table_sha256,
+            "margin": prereg.margin, "n_boot": prereg.n_boot, "fold_seed": prereg.fold_seed, "boot_seed": prereg.boot_seed,
+            "draft": prereg.draft, "commit": prereg.commit}
 
 
 # ------------------------------------------------------------------ storage
@@ -235,8 +272,8 @@ def _check_meta(table: pd.DataFrame, meta: dict) -> None:
     kind = meta["table_kind"]
     _require(kind in KINDS, f"unknown table_kind {kind!r}")
     _require(table.table_kind.eq(kind).all(), "table_kind column disagrees with the sidecar")
-    if kind == "confirmatory":
-        _require(not meta["unavailable_columns"], "a confirmatory table has no unavailable columns")
+    if kind != "development":
+        _require(not meta["unavailable_columns"], f"a {kind} table has no unavailable columns")
     _require(set(meta["unavailable_columns"]) <= set(FRAME_LOGIT_COLUMNS), "only frame logit columns can be unavailable")
     for field in ("rows", "by_population", "by_split", "by_population_split"):
         _require(meta[field] == counts(table)[field], f"sidecar count {field} disagrees with the table")
@@ -302,6 +339,7 @@ def _check_labels(table: pd.DataFrame, meta: dict, prereg: PreRegistration | Non
     _require(table.on_target_sn.notna().eq(primary).all(), "on_target_sn belongs to primary rows and only to them")
     if meta["table_kind"] == "confirmatory":
         _require(prereg is not None, "a confirmatory table with labels needs the pre-registration record")
+        _require(not prereg.draft, "a draft pre-registration record cannot admit a confirmatory table")
         _require(parse_time(join["joined_at"]) >= prereg.recorded_at,
                  f"the label join ({join['joined_at']}) predates the pre-registration record ({format_time(prereg.recorded_at)})")
         _require(join["prereg_sha256"] == prereg.sha256, "the label join recorded another pre-registration hash")
@@ -336,6 +374,7 @@ def join_labels(directory: Path, name: str, labels: pd.DataFrame, out_name: str,
     format_time(now)   # a naive time cannot be compared with the pre-registration record
     if meta["table_kind"] == "confirmatory":
         _require(prereg is not None, "a confirmatory join needs the pre-registration record")
+        _require(not prereg.draft, "a draft pre-registration record cannot admit a confirmatory join")
         _require(now >= prereg.recorded_at, f"refusing to join labels at {format_time(now)}, before the pre-registration record at {format_time(prereg.recorded_at)}")
     _require(list(labels.columns) == ["key", *LABEL_COLUMNS], f"labels need the columns {['key', *LABEL_COLUMNS]}")
     _require(not labels.key.duplicated().any(), "duplicate keys in the labels")

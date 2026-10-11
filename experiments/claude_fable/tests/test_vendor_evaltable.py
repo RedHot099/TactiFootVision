@@ -239,7 +239,27 @@ def test_join_refuses_labels_that_do_not_cover_the_keys(tmp_path):
 def confirmatory(tmp_path, recorded_at=T0, sha=DOC_SHA):
     """A written confirmatory label-free table and the pre-registration record that pins it."""
     table = write(tmp_path, make_table("confirmatory"), kind="confirmatory")
-    return table, PreRegistration(sha, recorded_at, et.read_table(tmp_path, "t")[1]["table_sha256"], commit="abc123")
+    return table, PreRegistration(sha, recorded_at, et.read_table(tmp_path, "t")[1]["table_sha256"], margin=0.005, n_boot=5000,
+                                  fold_seed=0, boot_seed=0, draft=False, commit="abc123")
+
+
+def test_a_draft_preregistration_admits_no_confirmatory_join(tmp_path):
+    table, prereg = confirmatory(tmp_path)
+    draft = replace(prereg, draft=True)
+    with pytest.raises(EvalTableError, match="draft pre-registration record cannot admit a confirmatory join"):
+        et.join_labels(tmp_path, "t", make_labels(table), "x", tmp_path / "log", prereg=draft, now=T0)
+    et.join_labels(tmp_path, "t", make_labels(table), "x", tmp_path / "log", prereg=prereg, now=T0)
+    joined, meta = et.read_table(tmp_path, "x")
+    with pytest.raises(EvalTableError, match="draft pre-registration record cannot admit a confirmatory table"):
+        et.validate_table(joined, meta, draft)
+
+
+def test_a_dryrun_table_needs_no_preregistration_and_no_unavailable_columns(tmp_path):
+    table = write(tmp_path, make_table("dryrun"), kind="dryrun")
+    et.join_labels(tmp_path, "t", make_labels(table), "j", tmp_path / "log", now=T0)
+    assert et.load_table(tmp_path, "j")[1]["table_kind"] == "dryrun"
+    with pytest.raises(EvalTableError, match="a dryrun table has no unavailable columns"):
+        et.validate_table(table, meta_for(table, "dryrun", unavailable_columns=["frame_logit_m400"]))
 
 
 def test_confirmatory_join_needs_a_preregistration_not_later_than_the_join(tmp_path):
@@ -307,20 +327,27 @@ def test_on_target_belongs_to_primary_rows(tmp_path):
         et.join_labels(tmp_path, "t", labels, "j", tmp_path / "log", now=T0)
 
 
+PREREG = {"sha256": "d" * 64, "recorded_at": "2026-10-12T11:00:00+02:00", "label_free_table_sha256": "e" * 64, "margin": 0.005,
+          "n_boot": 5000, "fold_seed": 0, "boot_seed": 0, "draft": False, "commit": "abc"}
+
+
 def test_preregistration_file_round_trip(tmp_path):
     path = tmp_path / "prereg.json"
-    path.write_text(json.dumps({"sha256": "d" * 64, "recorded_at": "2026-10-12T11:00:00+02:00", "label_free_table_sha256": "e" * 64,
-                                "commit": "abc"}))
+    path.write_text(json.dumps(PREREG))
     record = et.load_preregistration(path)
     assert record.recorded_at == datetime(2026, 10, 12, 9, 0, tzinfo=UTC) and record.commit == "abc"
-    path.write_text(json.dumps({"sha256": "d" * 64, "recorded_at": "2026-10-12T09:00:00", "label_free_table_sha256": "e" * 64}))
-    with pytest.raises(EvalTableError, match="no timezone"):
-        et.load_preregistration(path)
-    path.write_text(json.dumps({"sha256": "xyz", "recorded_at": "2026-10-12T09:00:00Z", "label_free_table_sha256": "e" * 64}))
-    with pytest.raises(EvalTableError, match="sha256 hex"):
-        et.load_preregistration(path)
-    path.write_text(json.dumps({"sha256": "d" * 64, "recorded_at": "2026-10-12T09:00:00Z"}))
-    with pytest.raises(EvalTableError, match="lacks 'label_free_table_sha256'"):
+    assert (record.margin, record.n_boot, record.fold_seed, record.boot_seed, record.draft) == (0.005, 5000, 0, 0, False)
+    path.write_text(json.dumps(et.preregistration_record(record)))
+    assert et.load_preregistration(path) == record
+    bad = {"recorded_at": "2026-10-12T09:00:00", "sha256": "xyz", "margin": 0.0, "n_boot": 0, "fold_seed": -1, "draft": "no"}
+    messages = {"recorded_at": "no timezone", "sha256": "sha256 hex", "margin": "not a log-loss margin", "n_boot": "n_boot 0 is not an integer",
+                "fold_seed": "fold_seed -1 is not an integer", "draft": "draft must be true or false"}
+    for field, value in bad.items():
+        path.write_text(json.dumps(PREREG | {field: value}))
+        with pytest.raises(EvalTableError, match=messages[field]):
+            et.load_preregistration(path)
+    path.write_text(json.dumps({k: v for k, v in PREREG.items() if k != "margin"}))
+    with pytest.raises(EvalTableError, match="lacks 'margin'"):
         et.load_preregistration(path)
 
 

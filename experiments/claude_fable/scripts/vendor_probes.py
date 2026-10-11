@@ -2,7 +2,9 @@
 
 Opens and validates the table (`evaltable.load_table`; a confirmatory table with labels needs `--prereg`), derives the
 probe targets from the StatsBomb shots table (`probe_targets.probe_targets`, by `statsbomb_event_id`), checks every
-embedding file against the sidecar's sha256, runs the probes of every embedding set the table references and writes:
+embedding file against the sidecar's sha256 (relative files are read from the table directory), runs the probes of
+every embedding set the table references on the primary rows that are not penalties (StatsBomb shot type "Penalty", a
+covariate, so no label is read; the secondary rows' frames sit at StatsBomb time and are not probed) and writes:
 
     probes.csv               metric per encoder x subset x coverage x target, match-bootstrap interval
     probe_differences.csv    G-combo minus frozen DINOv2 on the shots both cover, with the interval
@@ -14,7 +16,8 @@ embedding file against the sidecar's sha256, runs the probes of every embedding 
     ./run.sh python scripts/vendor_probes.py --table results/xgv_eval_dev --name table --out results/xgv_probes_dev \\
         [--shots PATH] [--prereg PATH] [--n-boot 5000] [--seed 0] [--by-split] [--thresholds JSON] [--prototype DIR]
 
-A development table gives development numbers, labelled so in complete.json; they are not results.
+A development table gives development numbers and a dry-run table dry-run numbers, labelled so in complete.json; neither
+are results.
 """
 
 import argparse
@@ -37,22 +40,34 @@ ROOT = Path(__file__).resolve().parents[1]   # experiments/claude_fable
 SHOTS = Path("/home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet")
 SOURCE_FILES = (Path(__file__).resolve(), *(ROOT / "xgpoc/vendor" / f for f in ("probes.py", "probe_targets.py", "draws.py", "evaltable.py")),
                 ROOT / "xgpoc/probe/readability.py")
+PENALTY_SHOT_TYPE = "Penalty"
 PROTOTYPE_ENCODERS = {"emb_g_fold0": "g_combo", "emb_g_fold1": "g_combo", "emb_dinov2": "dinov2_frozen"}
 
 
-def load_all_embeddings(table: pd.DataFrame, meta: dict) -> tuple[dict, dict]:
-    """Embeddings of every set with at least one reference, after checking each file's sha256 once."""
+def load_all_embeddings(table: pd.DataFrame, meta: dict, table_dir: Path) -> tuple[dict, dict]:
+    """Embeddings of every set with at least one reference, after checking each file's sha256 once. A relative file
+    name in the sidecar is relative to the table directory."""
     hashes, embeddings = {}, {}
     for column in et.EMBEDDING_COLUMNS:
         if not (table[column] >= 0).any():
             continue
         entry = meta["embedding_sets"][column]
         if entry["file"] not in hashes:
-            hashes[entry["file"]] = sha256_file(Path(entry["file"]))
+            hashes[entry["file"]] = sha256_file(Path(table_dir) / entry["file"])   # an absolute name stays absolute
         if hashes[entry["file"]] != entry["sha256"]:
             raise et.EvalTableError(f"{entry['file']} does not match the sidecar's sha256")
-        embeddings[column] = et.load_embeddings(table, meta, column)
+        embeddings[column] = et.load_embeddings(table, meta, column, root=table_dir)
     return embeddings, hashes
+
+
+def probe_subsets(table: pd.DataFrame, by_split: bool) -> tuple[dict[str, np.ndarray], dict[str, int]]:
+    """The reported row subsets restricted to primary rows that are not penalties (StatsBomb shot type "Penalty"), and
+    the numbers of rows left out."""
+    penalty = table.sb_shot_type.eq(PENALTY_SHOT_TYPE).to_numpy()
+    primary = table.population.eq("primary").to_numpy()
+    keep = primary & ~penalty
+    left_out = {"penalties": int((primary & penalty).sum()), "secondary_rows": int((~primary).sum())}
+    return {name: mask & keep for name, mask in split_subsets(table, by_split).items()}, left_out
 
 
 def prototype_comparison(metrics: pd.DataFrame, prototype: pd.DataFrame) -> pd.DataFrame:
@@ -105,9 +120,9 @@ def main() -> None:
     shots = pd.read_parquet(args.shots, columns=pt.SHOT_INPUT_COLUMNS)
     derived = pt.probe_targets(shots)
     targets = pt.targets_for_table(table, derived)
-    embeddings, embedding_hashes = load_all_embeddings(table, meta)
+    embeddings, embedding_hashes = load_all_embeddings(table, meta, args.table)
     draws = table_draws(table, args.n_boot, args.seed)
-    subsets = split_subsets(table, args.by_split)
+    subsets, left_out = probe_subsets(table, args.by_split)
     print(f"{kind} table: {len(table)} rows, {len(draws.keys)} matches; encoders "
           f"{ {c: len(p) for c, (p, _) in embeddings.items()} }; {args.n_boot} draws", flush=True)
 
@@ -138,7 +153,7 @@ def main() -> None:
         print(comparison.round(4).to_string(index=False))
 
     headline = metrics[metrics.subset.eq("all") & metrics.coverage.eq("own")]
-    summary = {"table_kind": kind, "development": kind == "development", "rows": len(table),
+    summary = {"table_kind": kind, "development": kind == "development", "rows": len(table), "left_out": left_out,
                "embedding_references": {c: len(p) for c, (p, _) in embeddings.items()},
                "metrics_all_own": {f"{r.encoder}|{r.target}": [*rounded(r.value, r.lo, r.hi), int(r.n)] for r in headline.itertuples()},
                "differences_all": {f"{r.encoder}|{r.target}": [*rounded(r.difference, r.lo, r.hi), int(r.n)]
@@ -148,7 +163,7 @@ def main() -> None:
     print(pd.DataFrame(result.differences).round(4).to_string(index=False))
     names = sorted(p.name for p in args.out.iterdir() if p.is_file())
     record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
-              "label": "DEVELOPMENT numbers, not results" if kind == "development" else "confirmatory run",
+              "label": et.RUN_LABELS[kind],
               "identity": {"analysis": "xg-vendor H3 probes", "table_kind": kind, "inputs": inputs,
                            "parameters": {"n_boot": args.n_boot, "seed": args.seed, "subsets": list(subsets), "alphas": list(probes.ALPHAS),
                                           "n_outer": probes.N_OUTER, "n_inner": probes.N_INNER, "control": probes.CONTROL,

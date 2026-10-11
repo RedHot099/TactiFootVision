@@ -14,7 +14,8 @@ development table without that verdict (refused on a confirmatory table).
         [--offset-logits calibrated|raw] [--timing-verdict PATH [--expected-rule-sha256 HEX]] [--development-override] \\
         [--prereg PATH] [--n-boot 5000] [--seed 0] [--by-split] [--prototype-report PATH]
 
-A development table gives development numbers, labelled so in complete.json; they are not results.
+A development table gives development numbers and a dry-run table dry-run numbers, labelled so in complete.json; neither
+are results.
 """
 
 import argparse
@@ -122,7 +123,7 @@ def main() -> None:
                "checks": checks, "runtime_s": round(time.time() - started, 1)}
     names = sorted(p.name for p in args.out.iterdir() if p.is_file())
     record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
-              "label": "DEVELOPMENT numbers, not results" if kind == "development" else "confirmatory run",
+              "label": et.RUN_LABELS[kind],
               "identity": {"analysis": "xg-vendor H4 leakage diagnostic", "table_kind": kind, "inputs": inputs,
                            "parameters": {"n_boot": args.n_boot, "seed": args.seed, "subsets": list(subsets), "offset_logits": args.offset_logits,
                                           "development_override": args.development_override, "expected_rule_sha256": args.expected_rule_sha256,

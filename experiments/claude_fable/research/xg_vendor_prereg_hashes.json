@@ -1,0 +1,201 @@
+{
+  "code": {
+    "scripts/vendor_dryrun.py": "a5940853a4e7de1b86ba3a469c38dca3456bd863222e863b800545e408d4e87b",
+    "scripts/vendor_ladder.py": "37c46bfffe455f527e330529e5fecd68e8066bef22719e85dced78ed5f683c83",
+    "scripts/vendor_leakage.py": "821e9c94e0c528316d53b7c18245a6b8c3f22897abfe1c61b1391250af2f560d",
+    "scripts/vendor_prereg_hashes.py": "134ec17a531c942d7079310c32c9dd4b59b09fce5a662fd8f7b32e6a308030bc",
+    "scripts/vendor_probes.py": "e6041916ae4f46ea3e1e41efa78b4d334ccae283756a835b5846038d8f446590",
+    "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+    "xgpoc/data/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "xgpoc/data/canonical_frames.py": "4d0c1c03f13e6282f3087877a2369bf9a7077a247ffe6349e8058a84e2bde46b",
+    "xgpoc/data/datasets.py": "ff9bf7bc81491f9e13d4433a8f934e47bead61c85134a2e940b6494e91603c2d",
+    "xgpoc/data/offset_frames.py": "cefb22618a37d910f1a77fa562abe83598dbfaf0af33b669f69975fcb823d195",
+    "xgpoc/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+    "xgpoc/probe/__init__.py": "f651a9148861c806c0a4e3851509d456f3d278593f2b99fba861a08d33ecf4d2",
+    "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+    "xgpoc/probe/table.py": "d1cc2d77e331cb5d37b898e1694341fbb9973a31a474eff3b3557a586bd58ceb",
+    "xgpoc/vendor/__init__.py": "aa7741ce1a94ea50fc915f440569855ed2e33c435c81cb1c47fc0912168ea195",
+    "xgpoc/vendor/draws.py": "fc88a16636cd4e558b5264081a7a6d245d6a4b981f0c1cad7b33ba9649bfe62c",
+    "xgpoc/vendor/dryrun.py": "1074c98257a662c74e87da4f430a0882655c674d115afd5ac6f338cd3f55b8ab",
+    "xgpoc/vendor/evaltable.py": "7cb1d108d9247f8b901208120bd4f95e95487a370ef64407269bc2b36b845157",
+    "xgpoc/vendor/labels.py": "0ac7a6a81b1d0609252e0ff4bcd0fd4634c0c6a37b5c0da7cdae758ea4651421",
+    "xgpoc/vendor/ladder.py": "585ae401fd0a9f9aac50d9395c74c1579da7dceed42b8db67d0ef082e3bf9465",
+    "xgpoc/vendor/ladder_dev.py": "7f8a7404e1bfe9d2f1f4687e49383cd096ddaf318183057d6cfda0b17fb6d525",
+    "xgpoc/vendor/leakage.py": "1206a8c1391f03f9cd3bf0d1b281d6e48899cb9acf6b6b39066f6cc902bf3be8",
+    "xgpoc/vendor/prereg.py": "404380f551c826e7d6f951f675b2834c50a724eddca82f62cfe838511f2e6427",
+    "xgpoc/vendor/probe_targets.py": "e9ec5bb125d9522885c924bd3acfdd76008790c00be97643e2b2d24fdc1e6293",
+    "xgpoc/vendor/probes.py": "405e4b2835dbdd3fdeb1f8b101e6a7cda60d93e6b236aaf2567656c78db12706",
+    "xgpoc/vendor/shells.py": "7cd0526d0d6f6551cf4c9dd264bc3a8f791af4164cc9d84bb1a8526e943f62ea",
+    "xgpoc/vendor/timing_verdict.py": "ba50b1aea4c65ccb137f3c81ed06d301b260a7e48c7ab78c40a83b2d53fc3b02"
+  },
+  "document": "research/xg_vendor_preregistration.md",
+  "evidence": {
+    "dry_run_combined": {
+      "path": "results/xgv_dryrun_combined/complete.json",
+      "sha256": null
+    },
+    "dry_run_primary": {
+      "path": "results/xgv_dryrun_primary/complete.json",
+      "sha256": "66519c7b4f3888b83c9aa9fde09b1f9688e1515d263e519f4f2072ea4c472875"
+    }
+  },
+  "parameters": {
+    "boot_seed": 0,
+    "dry_run_margin": 0.005,
+    "fold_seed": 0,
+    "h3_confirmatory_targets": [
+      "dist",
+      "def_cone_ge1"
+    ],
+    "h3_thresholds": {
+      "angle": 0.25,
+      "def_cone_ge1": 0.7,
+      "def_cone_ge2": 0.7,
+      "dist": 0.5,
+      "ff_def_cone": 0.25,
+      "ff_opp_3m": 0.25,
+      "gk_depth": 0.25,
+      "gk_dist_goal": 0.25,
+      "gk_off_line_abs": 0.25,
+      "head": 0.7
+    },
+    "margin": null,
+    "n_boot": 5000,
+    "offset_logits": "calibrated",
+    "permutation_seed": 0,
+    "pins": {
+      "combined_label_free_table": {
+        "path": null,
+        "sha256": null
+      },
+      "comparator_predictions": {
+        "path": "results/xgv_comparator/predictions.parquet",
+        "sha256": "6c66b2f5d4f25a6b60d4ed167435ecac49a5192e569adfac5f765f82003c1a56"
+      },
+      "comparator_record": {
+        "path": "results/xgv_comparator/complete.json",
+        "sha256": "84f16f555a2c308048a2fad2576c14dde2a1a0d86bb551efcb10869c7c8d2136"
+      },
+      "delta_rule": {
+        "path": "research/xg_vendor_delta_rule.md",
+        "sha256": "766ee11b3ba5ea33d7a6e9dce8bce691fbc9468815cfe5f7b6b320032e5ff30a"
+      },
+      "g_combo_ensemble": {
+        "path": "results/xgv_g_combo/ensemble.json",
+        "sha256": "045542a5439a586eac6c460e9fffe19eab150dd91de52cad92c1130e7f289f15"
+      },
+      "pairing_record": {
+        "path": "results/xgv_pairing/complete.json",
+        "sha256": "8807ee42cba33062a07ca9136faab8b63427e2bd9a2e445ba902716fc14efc75"
+      },
+      "pairs": {
+        "path": "results/xgv_pairing/pairs.parquet",
+        "sha256": "b07be928c8c7d457f80e049a411925234fafca1fe530fbbdcdb5d2b3979a64f5"
+      },
+      "power_decision": {
+        "path": "results/xgv_power/decision.json",
+        "sha256": "af4080beb5100a06fa28accab6663e96200cb9d81a7df458c7b5d979ff1afedf"
+      },
+      "primary_label_free_sidecar": {
+        "path": "results/xgv_eval_primary/eval_table_labels_absent.json",
+        "sha256": "628b8ba7b93528a81eb9c26ad5e67485a4a4090c977e10a3dd3bb902bda438ed"
+      },
+      "primary_label_free_table": {
+        "path": "results/xgv_eval_primary/eval_table_labels_absent.parquet",
+        "sha256": "829aa7edb59e99423cdf379c8cb656c59536a42bea38f4f64bec93cc9fd3c741"
+      },
+      "split_plan": {
+        "path": "results/xgv_split_plan/plan.csv",
+        "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+      },
+      "split_plan_record": {
+        "path": "results/xgv_split_plan/complete.json",
+        "sha256": "9f828694f782a427b8ce6f0abcbf4e5cb439c74b221c34505432f48d7208d64b"
+      },
+      "statsbomb_shots": {
+        "path": "/home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet",
+        "sha256": "c11c77ab58e32924501488a596e88dda0082932b2b445d6e13abc0febbfb4aed"
+      },
+      "timing_rule": {
+        "path": "research/xg_vendor_timing_rule.md",
+        "sha256": "42dcf71018f28c078e5fa6ff83e71f137ac77e13c45fdb2534608314882029c5"
+      },
+      "timing_verdict": {
+        "path": "results/xgv_timing_source/timing_verdict.json",
+        "sha256": "3903e8f7c7f35f2d9059850ec62fa7c69bed74ba597e6f28e2adb83440a66a59"
+      }
+    }
+  },
+  "pins": {
+    "combined_label_free_table": {
+      "path": null,
+      "sha256": null
+    },
+    "comparator_predictions": {
+      "path": "results/xgv_comparator/predictions.parquet",
+      "sha256": "6c66b2f5d4f25a6b60d4ed167435ecac49a5192e569adfac5f765f82003c1a56"
+    },
+    "comparator_record": {
+      "path": "results/xgv_comparator/complete.json",
+      "sha256": "84f16f555a2c308048a2fad2576c14dde2a1a0d86bb551efcb10869c7c8d2136"
+    },
+    "delta_rule": {
+      "path": "research/xg_vendor_delta_rule.md",
+      "sha256": "766ee11b3ba5ea33d7a6e9dce8bce691fbc9468815cfe5f7b6b320032e5ff30a"
+    },
+    "g_combo_ensemble": {
+      "path": "results/xgv_g_combo/ensemble.json",
+      "sha256": "045542a5439a586eac6c460e9fffe19eab150dd91de52cad92c1130e7f289f15"
+    },
+    "pairing_record": {
+      "path": "results/xgv_pairing/complete.json",
+      "sha256": "8807ee42cba33062a07ca9136faab8b63427e2bd9a2e445ba902716fc14efc75"
+    },
+    "pairs": {
+      "path": "results/xgv_pairing/pairs.parquet",
+      "sha256": "b07be928c8c7d457f80e049a411925234fafca1fe530fbbdcdb5d2b3979a64f5"
+    },
+    "power_decision": {
+      "path": "results/xgv_power/decision.json",
+      "sha256": "af4080beb5100a06fa28accab6663e96200cb9d81a7df458c7b5d979ff1afedf"
+    },
+    "primary_label_free_sidecar": {
+      "path": "results/xgv_eval_primary/eval_table_labels_absent.json",
+      "sha256": "628b8ba7b93528a81eb9c26ad5e67485a4a4090c977e10a3dd3bb902bda438ed"
+    },
+    "primary_label_free_table": {
+      "path": "results/xgv_eval_primary/eval_table_labels_absent.parquet",
+      "sha256": "829aa7edb59e99423cdf379c8cb656c59536a42bea38f4f64bec93cc9fd3c741"
+    },
+    "split_plan": {
+      "path": "results/xgv_split_plan/plan.csv",
+      "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+    },
+    "split_plan_record": {
+      "path": "results/xgv_split_plan/complete.json",
+      "sha256": "9f828694f782a427b8ce6f0abcbf4e5cb439c74b221c34505432f48d7208d64b"
+    },
+    "statsbomb_shots": {
+      "path": "/home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet",
+      "sha256": "c11c77ab58e32924501488a596e88dda0082932b2b445d6e13abc0febbfb4aed"
+    },
+    "timing_rule": {
+      "path": "research/xg_vendor_timing_rule.md",
+      "sha256": "42dcf71018f28c078e5fa6ff83e71f137ac77e13c45fdb2534608314882029c5"
+    },
+    "timing_verdict": {
+      "path": "results/xgv_timing_source/timing_verdict.json",
+      "sha256": "3903e8f7c7f35f2d9059850ec62fa7c69bed74ba597e6f28e2adb83440a66a59"
+    }
+  },
+  "placeholders": [
+    "margin",
+    "pin combined_label_free_table",
+    "10 'DO UZUPEŁNIENIA' marks in the document",
+    "evidence dry_run_combined"
+  ],
+  "schema": "xgv-prereg-hashes-1",
+  "status": "draft"
+}

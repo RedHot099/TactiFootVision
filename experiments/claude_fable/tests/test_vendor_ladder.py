@@ -1,6 +1,9 @@
 """Information ladder and H2 (xg-vendor ticket 08) on synthetic evaluation tables whose answer is known by construction."""
 
+import argparse
 import sys
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +12,7 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss, roc_auc_score
 from xgpoc.eval.calibration import logit, sigmoid
+from xgpoc.vendor import evaltable as et
 from xgpoc.vendor import evaltable_dev, ladder_dev
 from xgpoc.vendor import ladder as ld
 from xgpoc.vendor.draws import table_draws
@@ -16,6 +20,7 @@ from xgpoc.vendor.draws import table_draws
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from report_complexity import game_draws  # noqa: E402
 from significance import paired_bootstrap  # noqa: E402
+from vendor_ladder import analysis_parameters  # noqa: E402
 
 
 def synthetic_table(n_matches: int = 100, per_match: int = 25, frame_signal: float = 0.0, seed: int = 0) -> pd.DataFrame:
@@ -236,3 +241,31 @@ def test_prototype_comparison_flags_cells_beyond_one_standard_error():
     proto.loc[proto.rung.eq("r_event"), "log_loss"] += 2 * se[proto.rung.eq("r_event")]
     moved = ladder_dev.compare_metrics(result.metrics, proto)
     assert set(moved[~moved.within_noise].prototype_rung + "/" + moved[~moved.within_noise].metric) == {"r_event/log_loss"}
+
+
+def ladder_args(**given) -> argparse.Namespace:
+    return argparse.Namespace(**({"margin": None, "n_boot": None, "fold_seed": None, "boot_seed": None, "prototype": None,
+                                  "split_groups": False} | given))
+
+
+def test_parameters_come_from_the_preregistration_record_for_confirmatory_and_dryrun_tables():
+    prereg = et.PreRegistration("a" * 64, datetime(2026, 10, 12, tzinfo=UTC), "b" * 64, margin=0.002, n_boot=6000, fold_seed=3,
+                                boot_seed=4, draft=True)
+    for kind in ("confirmatory", "dryrun"):
+        params = analysis_parameters(kind, prereg, ladder_args())
+        assert (params["margin"], params["n_boot"], params["fold_seed"], params["boot_seed"]) == (0.002, 6000, 3, 4)
+        with pytest.raises(ValueError, match="needs --prereg"):
+            analysis_parameters(kind, None, ladder_args(margin=0.005))
+        with pytest.raises(ValueError, match=r"fixes the parameters; drop \['margin'\]"):
+            analysis_parameters(kind, prereg, ladder_args(margin=0.005))
+        with pytest.raises(ValueError, match="no development options"):
+            analysis_parameters(kind, prereg, ladder_args(split_groups=True))
+        with pytest.raises(ValueError, match="at least 5000 draws"):
+            analysis_parameters(kind, replace(prereg, n_boot=1000), ladder_args())
+
+
+def test_a_development_run_takes_the_margin_from_the_command_line():
+    params = analysis_parameters("development", None, ladder_args(margin=0.005, n_boot=200))
+    assert (params["margin"], params["n_boot"], params["fold_seed"], params["boot_seed"]) == (0.005, 200, ld.FOLD_SEED, ld.BOOT_SEED)
+    with pytest.raises(ValueError, match="needs --margin"):
+        analysis_parameters("development", None, ladder_args())

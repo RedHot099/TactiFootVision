@@ -1,11 +1,16 @@
 """Information ladder (H1) and H2 on an evaluation table (xg-vendor ticket 08).
 
-    ./run.sh python scripts/vendor_ladder.py --table-dir DIR --margin DELTA --out DIR [--table-name table] [--prereg FILE]
-        [--n-boot 5000] [--fold-seed 0] [--boot-seed 0] [--split-groups] [--prototype DIR]
+    ./run.sh python scripts/vendor_ladder.py --table-dir DIR --prereg FILE --out DIR [--table-name table]
+    ./run.sh python scripts/vendor_ladder.py --table-dir DIR --margin DELTA --out DIR [--table-name table]
+        [--n-boot 5000] [--fold-seed 0] [--boot-seed 0] [--split-groups] [--prototype DIR]      (development tables only)
 
-Opens the table through `xgpoc.vendor.evaltable.load_table` (validated; a confirmatory table needs `--prereg` and at least
-`ladder.MIN_CONFIRMATORY_BOOT` draws), runs `xgpoc.vendor.ladder.analyse` on the primary and the combined population
-(the combined set is skipped when it holds the same rows as the primary one), and writes:
+Opens the table through `xgpoc.vendor.evaltable.load_table` (validated), runs `xgpoc.vendor.ladder.analyse` on the
+primary and the combined population (the combined set is skipped when it holds the same rows as the primary one), and
+writes the files below. A confirmatory or dry-run table needs `--prereg`: the margin, the number of draws and both seeds
+are read from that record and cannot be given on the command line, the record needs at least
+`ladder.MIN_CONFIRMATORY_BOOT` draws, and the development options are refused. Only a development table takes
+`--margin` and the other parameters as options.
+
     metrics.csv              every rung x variant: n, goals, matches, metrics with 95% match-bootstrap intervals
     contrasts.csv            every rung pair of one variant x (log-loss, Brier, AUC): difference, intervals, superiority,
                              TOST at the margin and the smallest equivalence margin (log-loss)
@@ -52,15 +57,36 @@ def population_sets(table: pd.DataFrame, split_groups: bool) -> tuple[list[tuple
     return sets, notes
 
 
+def analysis_parameters(kind: str, prereg: et.PreRegistration | None, args: argparse.Namespace) -> dict:
+    """Margin, draws and seeds of the run, with their source. Raises `ValueError` for a combination the contract forbids:
+    a confirmatory or dry-run table takes them only from the pre-registration record (at least
+    `ladder.MIN_CONFIRMATORY_BOOT` draws, no development options); a development table takes them from the options."""
+    given = {k: getattr(args, k) for k in ("margin", "n_boot", "fold_seed", "boot_seed") if getattr(args, k) is not None}
+    if prereg is not None:
+        if given:
+            raise ValueError(f"the pre-registration record fixes the parameters; drop {sorted(given)}")
+        params = {"margin": prereg.margin, "n_boot": prereg.n_boot, "fold_seed": prereg.fold_seed, "boot_seed": prereg.boot_seed,
+                  "source": "pre-registration record"}
+    elif kind != "development":
+        raise ValueError(f"a {kind} table needs --prereg; its parameters come from the pre-registration record")
+    elif "margin" not in given:
+        raise ValueError("a development run needs --margin")
+    else:
+        params = {"n_boot": ld.MIN_CONFIRMATORY_BOOT, "fold_seed": ld.FOLD_SEED, "boot_seed": ld.BOOT_SEED, **given, "source": "command line"}
+    if kind != "development" and (params["n_boot"] < ld.MIN_CONFIRMATORY_BOOT or args.prototype or args.split_groups):
+        raise ValueError(f"a {kind} run needs at least {ld.MIN_CONFIRMATORY_BOOT} draws and no development options")
+    return params
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--table-dir", type=Path, required=True)
     parser.add_argument("--table-name", default="table")
     parser.add_argument("--prereg", type=Path, help="pre-registration record (required for a confirmatory table)")
-    parser.add_argument("--margin", type=float, required=True, help="H2 equivalence margin in log-loss (pre-registered)")
-    parser.add_argument("--n-boot", type=int, default=ld.MIN_CONFIRMATORY_BOOT)
-    parser.add_argument("--fold-seed", type=int, default=ld.FOLD_SEED)
-    parser.add_argument("--boot-seed", type=int, default=ld.BOOT_SEED)
+    parser.add_argument("--margin", type=float, help="H2 equivalence margin in log-loss (development tables; else from --prereg)")
+    parser.add_argument("--n-boot", type=int, help=f"development tables only (default {ld.MIN_CONFIRMATORY_BOOT})")
+    parser.add_argument("--fold-seed", type=int, help=f"development tables only (default {ld.FOLD_SEED})")
+    parser.add_argument("--boot-seed", type=int, help=f"development tables only (default {ld.BOOT_SEED})")
     parser.add_argument("--split-groups", action="store_true", help="also analyse the primary test and train/valid matches separately")
     parser.add_argument("--prototype", type=Path, help="prototype folder with ladder_metrics.csv / ladder_pairs.csv (development only)")
     parser.add_argument("--out", type=Path, required=True)
@@ -73,15 +99,18 @@ def main() -> None:
     kind = meta["table_kind"]
     if meta["labels_state"] != "joined":
         sys.exit("the table has no labels")
-    if kind == "confirmatory" and (args.n_boot < ld.MIN_CONFIRMATORY_BOOT or args.prototype or args.split_groups):
-        sys.exit(f"a confirmatory run needs at least {ld.MIN_CONFIRMATORY_BOOT} draws and no development options")
+    try:
+        params = analysis_parameters(kind, prereg, args)
+    except ValueError as refusal:
+        sys.exit(str(refusal))
+    margin, n_boot, fold_seed, boot_seed = (params[k] for k in ("margin", "n_boot", "fold_seed", "boot_seed"))
 
     sets, notes = population_sets(table, args.split_groups)
-    draws = table_draws(table, args.n_boot, args.boot_seed)   # shared by every set and contrast (and tickets 09-15)
+    draws = table_draws(table, n_boot, boot_seed)   # shared by every set and contrast (and tickets 09-15)
     results = {}
     for name, populations, splits in sets:
-        print(f"{name}: ladder with {args.n_boot} draws", flush=True)
-        results[name] = ld.analyse(table, name, populations, args.margin, draws, splits, args.fold_seed)
+        print(f"{name}: ladder with {n_boot} draws", flush=True)
+        results[name] = ld.analyse(table, name, populations, margin, draws, splits, fold_seed)
 
     args.out.mkdir(parents=True, exist_ok=True)
     tag = {"table_kind": kind}
@@ -112,15 +141,14 @@ def main() -> None:
         print(f"prototype comparison: {comparison}")
 
     primary = results["primary"].summary["h2"]
-    print(f"H2 ({kind}): {primary['diff']:+.4f} [{primary['lo95']:+.4f}, {primary['hi95']:+.4f}], TOST p at {args.margin} = {primary['p_tost']:.4f}, "
+    print(f"H2 ({kind}): {primary['diff']:+.4f} [{primary['lo95']:+.4f}, {primary['hi95']:+.4f}], TOST p at {margin} = {primary['p_tost']:.4f}, "
           f"superiority p = {primary['p_superiority']:.4f}, smallest margin {primary['smallest_equivalence_margin']}")
     names = sorted(p.name for p in args.out.iterdir() if p.is_file())
-    record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+    record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"), "label": et.RUN_LABELS[kind],
               "identity": {"table_kind": kind, "table": {"dir": str(args.table_dir), "name": args.table_name, "sha256": meta["table_sha256"],
                                                          "label_join": meta["label_join"]},
-                           "prereg_sha256": prereg.sha256 if prereg else None,
-                           "parameters": {"margin": args.margin, "n_boot": args.n_boot, "fold_seed": args.fold_seed, "boot_seed": args.boot_seed,
-                                          "n_folds": ld.N_FOLDS, "alpha_per_side": ld.ALPHA, "sets": [s[0] for s in sets]},
+                           "prereg": None if prereg is None else {"sha256": prereg.sha256, "draft": prereg.draft, "commit": prereg.commit},
+                           "parameters": {**params, "n_folds": ld.N_FOLDS, "alpha_per_side": ld.ALPHA, "sets": [s[0] for s in sets]},
                            "sources": {str(p.relative_to(ROOT)): sha256_file(p) for p in SOURCE_FILES}, "code": code_version(ROOT)},
               "summary": {"h2": {n: r.summary["h2"] for n, r in results.items()}, "notes": notes, "prototype_comparison": comparison},
               "runtime": {"python": platform.python_version(), "pandas": pd.__version__},
