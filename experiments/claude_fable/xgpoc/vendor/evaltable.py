@@ -1,0 +1,355 @@
+"""The evaluation table of the vendor comparison (xg-vendor ticket 07, test seam 2).
+
+One row per evaluation shot. Every downstream analysis (power, ladder, H2, H3, H4, report numbers) is a pure
+function of this table, the embeddings it references and the pre-registration parameters, so the meaning of each
+column is fixed here. The table is stored as `<name>.parquet` plus a JSON sidecar `<name>.json`.
+
+Keys
+    key                 unique row key: the SoccerNet shot id of a primary row, the StatsBomb event id otherwise
+    soccernet_shot_id   SoccerNet shot id (primary rows only, else null)
+    statsbomb_event_id  StatsBomb event id of the shot (every row; the vendor xG belongs to it)
+    statsbomb_match_id  StatsBomb match id (nullable integer)
+    match, half         SoccerNet game name and half (period 1-4)
+    population          primary | recovered_goal | statsbomb_only
+    split               official split of the match: train | valid | test
+
+Covariates (known before the strike; the H4 controls)
+    sb_body_part, sb_shot_type
+
+Predictions (every probability in [0, 1], one value per row)
+    pred_vendor_xg, pred_constant, pred_dist_angle, pred_event, pred_freeze_frame
+                        vendor xG and the positional-comparator rungs, uncalibrated
+    frame_logit_0, frame_logit_m400
+                        G-combo logit at the shot anchor and at -400 ms after the one calibration of the pool
+    frame_raw_logit_0, frame_raw_logit_m400
+                        the same models' uncalibrated mean logits (the scale cancels in the offset contrast)
+    frame_status        "ok" when the frame was scored; anything else is the listed reason (logits may be NaN)
+    frame_source        which models produced the frame logits (free text, e.g. "ensemble_10")
+
+Embedding references (rows of the arrays named in the sidecar's `embedding_sets`; -1 = no embedding)
+    emb_g_fold0, emb_g_fold1   pooled embedding of the fold-0 / fold-1 seed-0 G-combo model
+    emb_dinov2                 frozen DINOv2 embedding
+
+Pairing data
+    timing_residual_ms  SoccerNet anchor minus aligned StatsBomb time (primary rows only, else NaN)
+    anchor_convention   soccernet_anchor (primary) | statsbomb_time (secondary populations)
+    table_kind          development | confirmatory (also in the sidecar; the two must agree)
+
+Labels (absent from a label-free table; added by `join_labels`)
+    goal_sn, on_target_sn (primary rows only), sb_outcome, is_penalty
+
+Not in the table: the H3 probe targets (distance, angle, defenders in the cone, goalkeeper position, opponents within 3 m,
+header). They are functions of the StatsBomb event and freeze frame, so the probes read them from the derived StatsBomb
+features by `statsbomb_event_id`.
+
+Writing
+    Predictions are written first, without the label columns (`labels_state` "absent"). `join_labels` joins the
+    labels in a separate step: it records the sha256 of the label-free table and the time, appends both to a log
+    and refuses a confirmatory join that is earlier than the pre-registration record (`PreRegistration`: the
+    pre-registration document's hash, the time it was committed and the hash of the label-free table it pins).
+    The times are those the caller reports (the commit time ticket 14 records); nothing here anchors them to a clock.
+    Analyses open a table with `load_table`, which validates it. `validate_table` rejects duplicate keys,
+    missing or unexpected columns, labels in a label-free table, a joined table whose join record does not match
+    its content, and a confirmatory table joined before the pre-registration record.
+"""
+
+import hashlib
+import io
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pyarrow
+
+SCHEMA_VERSION = "xgv-eval-table-1"
+KINDS = ("development", "confirmatory")
+POPULATIONS = ("primary", "recovered_goal", "statsbomb_only")
+SPLITS = ("train", "valid", "test")
+ANCHOR_CONVENTION = {"primary": "soccernet_anchor", "recovered_goal": "statsbomb_time", "statsbomb_only": "statsbomb_time"}
+LABELS_STATES = ("absent", "joined")
+
+KEY_COLUMNS = ["key", "soccernet_shot_id", "statsbomb_event_id", "statsbomb_match_id", "match", "half", "population", "split"]
+COVARIATE_COLUMNS = ["sb_body_part", "sb_shot_type"]
+PROBABILITY_COLUMNS = ["pred_vendor_xg", "pred_constant", "pred_dist_angle", "pred_event", "pred_freeze_frame"]
+FRAME_LOGIT_COLUMNS = ["frame_logit_0", "frame_logit_m400", "frame_raw_logit_0", "frame_raw_logit_m400"]
+FRAME_COLUMNS = [*FRAME_LOGIT_COLUMNS, "frame_status", "frame_source"]
+EMBEDDING_COLUMNS = ["emb_g_fold0", "emb_g_fold1", "emb_dinov2"]
+PAIRING_COLUMNS = ["timing_residual_ms", "anchor_convention", "table_kind"]
+LABEL_COLUMNS = ["goal_sn", "on_target_sn", "sb_outcome", "is_penalty"]
+LABEL_FREE_COLUMNS = [*KEY_COLUMNS, *COVARIATE_COLUMNS, *PROBABILITY_COLUMNS, *FRAME_COLUMNS, *EMBEDDING_COLUMNS, *PAIRING_COLUMNS]
+JOINED_COLUMNS = [*LABEL_FREE_COLUMNS, *LABEL_COLUMNS]
+
+OK = "ok"
+EMBEDDING_SET_FIELDS = ("file", "sha256", "dim", "rows", "model")
+JOIN_FIELDS = ("joined_at", "label_free_sha256", "labels_sha256", "prereg_sha256")
+
+
+class EvalTableError(ValueError):
+    """The table, its sidecar or a join request breaks the evaluation-table contract."""
+
+
+@dataclass(frozen=True)
+class PreRegistration:
+    """The pre-registration record a confirmatory join is checked against: the hash of the pre-registration
+    document, the time it was committed (timezone-aware), the hash of the label-free evaluation table
+    that the document pins and, optionally, the commit."""
+
+    sha256: str
+    recorded_at: datetime
+    label_free_table_sha256: str
+    commit: str | None = None
+
+
+def parse_time(text: str) -> datetime:
+    when = datetime.fromisoformat(text)
+    if when.tzinfo is None:
+        raise EvalTableError(f"time {text!r} has no timezone")
+    return when
+
+
+def format_time(when: datetime) -> str:
+    if when.tzinfo is None:
+        raise EvalTableError("time has no timezone")
+    return when.astimezone(UTC).isoformat()
+
+
+def load_preregistration(path: Path) -> PreRegistration:
+    """Read `{"sha256": ..., "recorded_at": ISO time with timezone, "label_free_table_sha256": ...[, "commit": ...]}`."""
+    record = json.loads(Path(path).read_text())
+    for field in ("sha256", "recorded_at", "label_free_table_sha256"):
+        if field not in record:
+            raise EvalTableError(f"pre-registration record lacks {field!r}")
+    for field in ("sha256", "label_free_table_sha256"):
+        value = record.get(field)
+        if not (len(value) == 64 and set(value) <= set("0123456789abcdef")):
+            raise EvalTableError(f"pre-registration {field} is not a sha256 hex digest")
+    return PreRegistration(record["sha256"], parse_time(record["recorded_at"]), record["label_free_table_sha256"], record.get("commit"))
+
+
+# ------------------------------------------------------------------ storage
+def table_bytes(table: pd.DataFrame) -> bytes:
+    """The one serialisation of a table; the file on disk is exactly these bytes, so a table's hash is its file's."""
+    buffer = io.BytesIO()
+    table.to_parquet(buffer, index=False, compression="zstd")
+    return buffer.getvalue()
+
+
+def table_sha256(table: pd.DataFrame) -> str:
+    return hashlib.sha256(table_bytes(table)).hexdigest()
+
+
+def labels_sha256(table: pd.DataFrame) -> str:
+    """Hash of the label columns of a joined table, by key."""
+    return table_sha256(table[["key", *LABEL_COLUMNS]].sort_values("key").reset_index(drop=True))
+
+
+def counts(table: pd.DataFrame) -> dict:
+    by_both = table.groupby(["population", "split"]).size()
+    return {"rows": int(len(table)), "by_population": {k: int(v) for k, v in table.population.value_counts().sort_index().items()},
+            "by_split": {k: int(v) for k, v in table.split.value_counts().sort_index().items()},
+            "by_population_split": {f"{p}|{s}": int(v) for (p, s), v in by_both.items()}}
+
+
+def labels_state(table: pd.DataFrame) -> str:
+    return "joined" if set(LABEL_COLUMNS) & set(table.columns) else "absent"
+
+
+def write_table(table: pd.DataFrame, directory: Path, name: str, *, kind: str, embedding_sets: dict,
+                unavailable_columns: tuple[str, ...] = (), notes: tuple[str, ...] = (), sources: dict | None = None,
+                label_join: dict | None = None, prereg: PreRegistration | None = None) -> dict:
+    """Write `<name>.parquet` and `<name>.json` into `directory`; return the sidecar. The table is validated first
+    (against `prereg` when it is a confirmatory table with labels)."""
+    directory = Path(directory)
+    meta = {"schema_version": SCHEMA_VERSION, "table_kind": kind, "labels_state": labels_state(table), **counts(table),
+            "table_sha256": table_sha256(table), "columns": list(table.columns), "embedding_sets": embedding_sets,
+            "unavailable_columns": list(unavailable_columns), "notes": list(notes), "sources": sources or {},
+            "label_join": label_join,
+            "writer": {"pandas": pd.__version__, "pyarrow": pyarrow.__version__}}   # the table hash is of the parquet bytes
+    validate_table(table, meta, prereg)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{name}.parquet").write_bytes(table_bytes(table))
+    (directory / f"{name}.json").write_text(json.dumps(meta, sort_keys=True, indent=2, allow_nan=False) + "\n")
+    return meta
+
+
+def read_table(directory: Path, name: str) -> tuple[pd.DataFrame, dict]:
+    """Table and sidecar; raises when the parquet file does not match the hash in its sidecar."""
+    directory = Path(directory)
+    meta = json.loads((directory / f"{name}.json").read_text())
+    payload = (directory / f"{name}.parquet").read_bytes()
+    if hashlib.sha256(payload).hexdigest() != meta["table_sha256"]:
+        raise EvalTableError(f"{name}.parquet does not match the hash in {name}.json")
+    return pd.read_parquet(io.BytesIO(payload)), meta
+
+
+def load_table(directory: Path, name: str, prereg: PreRegistration | None = None) -> tuple[pd.DataFrame, dict]:
+    """`read_table` and `validate_table`: the way analyses open a table. A confirmatory table with labels needs `prereg`."""
+    table, meta = read_table(directory, name)
+    validate_table(table, meta, prereg)
+    return table, meta
+
+
+def load_embeddings(table: pd.DataFrame, meta: dict, column: str, root: Path | None = None, verify_hash: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Embeddings referenced by `column`: (positions of the table rows that have one, matrix in that order).
+    Relative embedding files are read from `root`; `verify_hash` also checks the file against the sidecar's sha256."""
+    if column not in EMBEDDING_COLUMNS:
+        raise EvalTableError(f"{column} is not an embedding column")
+    entry = meta["embedding_sets"][column]
+    path = Path(entry["file"])
+    path = path if path.is_absolute() or root is None else Path(root) / path
+    if verify_hash and hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+        raise EvalTableError(f"{entry['file']} does not match the sidecar's sha256")
+    array = np.load(path, mmap_mode="r")
+    if array.shape != (entry["rows"], entry["dim"]):
+        raise EvalTableError(f"{entry['file']} has shape {array.shape}, the sidecar says {(entry['rows'], entry['dim'])}")
+    refs = table[column].to_numpy()
+    positions = np.flatnonzero(refs >= 0)
+    return positions, np.asarray(array[refs[positions]])
+
+
+# ------------------------------------------------------------------ validation
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise EvalTableError(message)
+
+
+def _check_columns(table: pd.DataFrame, meta: dict) -> None:
+    state = meta["labels_state"]
+    _require(state in LABELS_STATES, f"unknown labels_state {state!r}")
+    present = set(LABEL_COLUMNS) & set(table.columns)
+    if state == "absent":
+        _require(not present, f"labels present in a table marked labels absent: {sorted(present)}")
+    expected = LABEL_FREE_COLUMNS if state == "absent" else JOINED_COLUMNS
+    missing = [c for c in expected if c not in table.columns]
+    _require(not missing, f"missing required columns: {missing}")
+    extra = [c for c in table.columns if c not in expected]
+    _require(not extra, f"unexpected columns: {extra}")
+    _require(list(table.columns) == expected, "columns are not in the schema order")
+
+
+def _check_meta(table: pd.DataFrame, meta: dict) -> None:
+    _require(meta.get("schema_version") == SCHEMA_VERSION, f"schema version {meta.get('schema_version')!r}, expected {SCHEMA_VERSION}")
+    kind = meta["table_kind"]
+    _require(kind in KINDS, f"unknown table_kind {kind!r}")
+    _require(table.table_kind.eq(kind).all(), "table_kind column disagrees with the sidecar")
+    if kind == "confirmatory":
+        _require(not meta["unavailable_columns"], "a confirmatory table has no unavailable columns")
+    _require(set(meta["unavailable_columns"]) <= set(FRAME_LOGIT_COLUMNS), "only frame logit columns can be unavailable")
+    for field in ("rows", "by_population", "by_split", "by_population_split"):
+        _require(meta[field] == counts(table)[field], f"sidecar count {field} disagrees with the table")
+
+
+def _check_keys(table: pd.DataFrame) -> None:
+    _require(not table.key.isna().any() and table.key.ne("").all(), "empty key")
+    duplicated = table.key[table.key.duplicated()]
+    _require(duplicated.empty, f"duplicate keys, e.g. {duplicated.iloc[0] if len(duplicated) else None}")
+    _require(table.statsbomb_event_id.notna().all(), "every row needs a StatsBomb event id")
+    _require(not table.statsbomb_event_id.duplicated().any(), "a StatsBomb event appears in two rows")
+    sn = table.soccernet_shot_id.dropna()
+    _require(not sn.duplicated().any(), "a SoccerNet shot appears in two rows")
+    primary = table.population.eq("primary")
+    _require(table.population.isin(POPULATIONS).all(), "unknown population")
+    _require(table.split.isin(SPLITS).all(), "unknown split")
+    _require(table.half.isin([1, 2, 3, 4]).all(), "half must be a period 1-4")
+    _require(table.soccernet_shot_id.notna().eq(primary).all(), "a SoccerNet shot id belongs to primary rows and only to them")
+    _require(table.key.eq(table.soccernet_shot_id.where(primary, table.statsbomb_event_id)).all(),
+             "key must be the SoccerNet shot id for primary rows and the StatsBomb event id otherwise")
+
+
+def _check_predictions(table: pd.DataFrame, meta: dict) -> None:
+    for column in PROBABILITY_COLUMNS:
+        values = table[column].to_numpy(float)
+        _require(bool(np.all((values >= 0) & (values <= 1))), f"{column} must be a probability in [0, 1] without gaps")
+    unavailable = set(meta["unavailable_columns"])
+    for column in FRAME_LOGIT_COLUMNS:
+        values = table[column].to_numpy(float)
+        _require(not np.isinf(values).any(), f"{column} has infinite values")
+        if column in unavailable:
+            _require(bool(np.isnan(values).all()), f"{column} is declared unavailable but holds values")
+        else:
+            _require(bool(np.isfinite(values[table.frame_status.eq(OK).to_numpy()]).all()), f"{column} is missing where frame_status is ok")
+    _require(table.frame_status.notna().all() and table.frame_status.ne("").all(), "frame_status needs a value or a reason")
+    _require(table.frame_source.notna().all(), "frame_source needs a value")
+    primary = table.population.eq("primary")
+    residual = table.timing_residual_ms
+    _require(residual.notna().eq(primary).all(), "the timing residual belongs to primary rows and only to them")
+    _require(table.anchor_convention.eq(table.population.map(ANCHOR_CONVENTION)).all(), "anchor_convention disagrees with the population")
+
+
+def _check_embeddings(table: pd.DataFrame, meta: dict) -> None:
+    _require(set(meta["embedding_sets"]) == set(EMBEDDING_COLUMNS), "the sidecar must describe exactly the three embedding sets")
+    for column in EMBEDDING_COLUMNS:
+        entry = meta["embedding_sets"][column]
+        _require(all(f in entry for f in EMBEDDING_SET_FIELDS), f"embedding set {column} lacks one of {EMBEDDING_SET_FIELDS}")
+        refs = table[column].to_numpy()
+        kept = refs[refs >= 0]
+        _require(bool((refs >= -1).all()), f"{column}: references below -1")
+        _require(len(np.unique(kept)) == len(kept), f"{column}: two rows reference the same embedding")
+        _require(len(kept) == 0 or kept.max() < entry["rows"], f"{column}: a reference points past the {entry['rows']} stored rows")
+
+
+def _check_labels(table: pd.DataFrame, meta: dict, prereg: PreRegistration | None) -> None:
+    join = meta["label_join"]
+    _require(join is not None and all(f in join for f in JOIN_FIELDS), "a joined table needs the label-join record")
+    _require(table_sha256(table.drop(columns=LABEL_COLUMNS)) == join["label_free_sha256"],
+             "the table without its labels does not match the hash recorded at the label join")
+    _require(labels_sha256(table) == join["labels_sha256"], "the labels do not match the hash recorded at the label join")
+    _require(table.goal_sn.notna().all() and table.sb_outcome.notna().all() and table.is_penalty.notna().all(), "labels have gaps")
+    primary = table.population.eq("primary")
+    _require(table.on_target_sn.notna().eq(primary).all(), "on_target_sn belongs to primary rows and only to them")
+    if meta["table_kind"] == "confirmatory":
+        _require(prereg is not None, "a confirmatory table with labels needs the pre-registration record")
+        _require(parse_time(join["joined_at"]) >= prereg.recorded_at,
+                 f"the label join ({join['joined_at']}) predates the pre-registration record ({format_time(prereg.recorded_at)})")
+        _require(join["prereg_sha256"] == prereg.sha256, "the label join recorded another pre-registration hash")
+        _require(join["label_free_sha256"] == prereg.label_free_table_sha256, "the label-free table is not the one the pre-registration pins")
+
+
+def validate_table(table: pd.DataFrame, meta: dict, prereg: PreRegistration | None = None) -> None:
+    """Raise `EvalTableError` unless `table` and its sidecar `meta` meet the contract (module docstring)."""
+    _check_columns(table, meta)
+    _check_meta(table, meta)
+    _check_keys(table)
+    _check_predictions(table, meta)
+    _check_embeddings(table, meta)
+    if meta["labels_state"] == "joined":
+        _check_labels(table, meta, prereg)
+    else:
+        _require(meta["label_join"] is None, "a label-free table has no label-join record")
+
+
+# ------------------------------------------------------------------ label join
+def join_labels(directory: Path, name: str, labels: pd.DataFrame, out_name: str, log_path: Path, *,
+                prereg: PreRegistration | None = None, now: datetime | None = None) -> dict:
+    """Join `labels` (key + the four label columns, exactly the table's keys) to the label-free table `name`.
+
+    Writes the joined table as `out_name` with a label-join record (time, sha256 of the label-free table, sha256 of the
+    labels, pre-registration hash) in its sidecar and appends the same record to the JSON-lines `log_path`. A
+    confirmatory join needs `prereg` and refuses a `now` earlier than its record."""
+    directory = Path(directory)
+    table, meta = read_table(directory, name)
+    _require(meta["labels_state"] == "absent", f"{name} already has labels")
+    now = now or datetime.now(UTC)
+    format_time(now)   # a naive time cannot be compared with the pre-registration record
+    if meta["table_kind"] == "confirmatory":
+        _require(prereg is not None, "a confirmatory join needs the pre-registration record")
+        _require(now >= prereg.recorded_at, f"refusing to join labels at {format_time(now)}, before the pre-registration record at {format_time(prereg.recorded_at)}")
+    _require(list(labels.columns) == ["key", *LABEL_COLUMNS], f"labels need the columns {['key', *LABEL_COLUMNS]}")
+    _require(not labels.key.duplicated().any(), "duplicate keys in the labels")
+    _require(set(labels.key) == set(table.key), "the labels do not cover exactly the table's keys")
+    joined = table.merge(labels, on="key", how="left", validate="one_to_one")[JOINED_COLUMNS]
+    _require(joined.key.equals(table.key), "the join changed the row order")
+    join = {"joined_at": format_time(now), "label_free_sha256": meta["table_sha256"], "labels_sha256": labels_sha256(joined),
+            "prereg_sha256": prereg.sha256 if prereg else None}
+    result = write_table(joined, directory, out_name, kind=meta["table_kind"], embedding_sets=meta["embedding_sets"],
+                         unavailable_columns=tuple(meta["unavailable_columns"]), notes=tuple(meta["notes"]), sources=meta["sources"],
+                         label_join=join, prereg=prereg)
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a") as log:
+        log.write(json.dumps({**join, "label_free_table": name, "joined_table": out_name, "joined_sha256": result["table_sha256"],
+                              "table_kind": meta["table_kind"]}, sort_keys=True) + "\n")
+    return result
