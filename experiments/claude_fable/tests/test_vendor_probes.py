@@ -133,6 +133,26 @@ def test_probe_table_difference_and_control():
     assert set(res.predictions.coverage) == {"own", "shared_with_emb_g_fold0"}
 
 
+def test_the_control_gate_fails_an_encoder_that_decodes_the_shuffled_target():
+    """Planted leak: one encoder carries the shuffled distance itself, so its negative control decodes far above R^2 = 0
+    and the gate fails it; the clean encoder passes."""
+    table = make_table()
+    rng = np.random.default_rng(4)
+    latent = rng.normal(size=(len(table), 6))
+    targets = make_targets(table, rng, latent)
+    everything = np.arange(len(table))
+    leak = probes.control_target(targets.dist.to_numpy(float))
+    embeddings = {"emb_g_fold0": (everything, np.column_stack([latent, leak])), "emb_dinov2": (everything, latent)}
+    res = probes.probe_table(table, targets, embeddings, table_draws(table, n_boot=50))
+    gate = probes.control_gate(res.metrics)
+    assert gate["encoders"]["emb_g_fold0"]["max_r2"] > 0.5 and not gate["encoders"]["emb_g_fold0"]["passed"]
+    assert gate["encoders"]["emb_dinov2"]["passed"] and not gate["passed"]
+    assert gate["threshold"] == probes.CONTROL_MAX_R2 == 0.0
+    clean = probes.probe_table(table, targets, {"emb_g_fold0": (everything, latent + 0.1), "emb_dinov2": (everything, latent)},
+                               table_draws(table, n_boot=50))
+    assert probes.control_gate(clean.metrics)["passed"]
+
+
 def test_probe_table_full_coverage_reuses_own_runs_and_subsets():
     table = make_table()
     rng = np.random.default_rng(2)

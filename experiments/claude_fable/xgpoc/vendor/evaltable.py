@@ -38,7 +38,16 @@ Pairing data
                         it runs the confirmatory code path and its numbers are never results.
 
 Labels (absent from a label-free table; added by `join_labels`)
-    goal_sn, on_target_sn (primary rows only), sb_outcome, is_penalty
+    goal_sn             SoccerNet goal (decision D4)
+    on_target_sn        SoccerNet "Shots on target" (primary rows only; counts blocked shots)
+    sb_outcome          StatsBomb outcome of the shot
+    is_penalty          a pre-shot condition, not an outcome: the shot is a penalty, known before the strike. It sits
+                        with the labels because it comes from the same sources at the join (index v1.2 for primary
+                        rows, StatsBomb for secondary rows). It is used only for routing: the frame logits of
+                        penalties are the routed penalty rate of the G-combo calibration, and the analyses take
+                        penalties out of H1-H4 and report them apart. No metric uses it as a target.
+    label_exclusion     null for a row that enters the analyses; otherwise the reason code (`LABEL_EXCLUSIONS`) of a
+                        row that stays in the table, listed, and is left out of every analysis (spec user story 74)
 
 Not in the table: the H3 probe targets (distance, angle, defenders in the cone, goalkeeper position, opponents within 3 m,
 header). They are functions of the StatsBomb event and freeze frame, so the probes read them from the derived StatsBomb
@@ -84,7 +93,8 @@ FRAME_LOGIT_COLUMNS = ["frame_logit_0", "frame_logit_m400", "frame_raw_logit_0",
 FRAME_COLUMNS = [*FRAME_LOGIT_COLUMNS, "frame_status", "frame_source"]
 EMBEDDING_COLUMNS = ["emb_g_fold0", "emb_g_fold1", "emb_dinov2"]
 PAIRING_COLUMNS = ["timing_residual_ms", "anchor_convention", "table_kind"]
-LABEL_COLUMNS = ["goal_sn", "on_target_sn", "sb_outcome", "is_penalty"]
+LABEL_COLUMNS = ["goal_sn", "on_target_sn", "sb_outcome", "is_penalty", "label_exclusion"]
+LABEL_EXCLUSIONS = {"sb_goal_without_sn_goal": "a StatsBomb goal of the secondary population without any SoccerNet goal (label conflict)"}
 LABEL_FREE_COLUMNS = [*KEY_COLUMNS, *COVARIATE_COLUMNS, *PROBABILITY_COLUMNS, *FRAME_COLUMNS, *EMBEDDING_COLUMNS, *PAIRING_COLUMNS]
 JOINED_COLUMNS = [*LABEL_FREE_COLUMNS, *LABEL_COLUMNS]
 
@@ -102,8 +112,9 @@ class PreRegistration:
     """The pre-registration record a confirmatory join is checked against and the analyses read their parameters from:
     the hash of the pre-registration document, the time it was committed (timezone-aware), the hash of the label-free
     evaluation table that the document pins, the H2 equivalence margin (log-loss), the number of match-bootstrap draws,
-    the cross-fit fold seed and the bootstrap seed, whether the record is a draft (an uncommitted document, dry run
-    only) and, optionally, the commit."""
+    the cross-fit fold seed and the bootstrap seed, the H4 offset logits ("calibrated" or "raw"), the H3 thresholds
+    {target: threshold} and confirmatory targets, the sha256 of the timing rule the H4 verdict must have been reached
+    under, whether the record is a draft (an uncommitted document, dry run only) and, optionally, the commit."""
 
     sha256: str
     recorded_at: datetime
@@ -112,6 +123,10 @@ class PreRegistration:
     n_boot: int
     fold_seed: int
     boot_seed: int
+    offset_logits: str
+    h3_thresholds: dict
+    h3_confirmatory_targets: tuple[str, ...]
+    timing_rule_sha256: str
     draft: bool
     commit: str | None = None
 
@@ -133,7 +148,8 @@ def is_sha256(text) -> bool:
     return isinstance(text, str) and len(text) == 64 and set(text) <= set("0123456789abcdef")
 
 
-PREREG_FIELDS = ("sha256", "recorded_at", "label_free_table_sha256", "margin", "n_boot", "fold_seed", "boot_seed", "draft")
+PREREG_FIELDS = ("sha256", "recorded_at", "label_free_table_sha256", "margin", "n_boot", "fold_seed", "boot_seed", "offset_logits",
+                 "h3_thresholds", "h3_confirmatory_targets", "timing_rule_sha256", "draft")
 
 
 def load_preregistration(path: Path) -> PreRegistration:
@@ -143,7 +159,7 @@ def load_preregistration(path: Path) -> PreRegistration:
     for field in PREREG_FIELDS:
         if field not in record:
             raise EvalTableError(f"pre-registration record lacks {field!r}")
-    for field in ("sha256", "label_free_table_sha256"):
+    for field in ("sha256", "label_free_table_sha256", "timing_rule_sha256"):
         if not is_sha256(record[field]):
             raise EvalTableError(f"pre-registration {field} is not a sha256 hex digest")
     margin = record["margin"]
@@ -153,16 +169,28 @@ def load_preregistration(path: Path) -> PreRegistration:
         value = record[field]
         if isinstance(value, bool) or not isinstance(value, int) or value < low:
             raise EvalTableError(f"pre-registration {field} {value!r} is not an integer >= {low}")
+    if record["offset_logits"] not in ("calibrated", "raw"):
+        raise EvalTableError(f"pre-registration offset_logits {record['offset_logits']!r} is not calibrated or raw")
+    thresholds, targets = record["h3_thresholds"], record["h3_confirmatory_targets"]
+    if not isinstance(thresholds, dict) or not all(isinstance(v, int | float) and not isinstance(v, bool) for v in thresholds.values()):
+        raise EvalTableError("pre-registration h3_thresholds must map targets to numbers")
+    if not isinstance(targets, list) or not set(targets) <= set(thresholds):
+        raise EvalTableError("pre-registration h3_confirmatory_targets must be a list of thresholded targets")
     if not isinstance(record["draft"], bool):
         raise EvalTableError("pre-registration draft must be true or false")
-    return PreRegistration(record["sha256"], parse_time(record["recorded_at"]), record["label_free_table_sha256"], float(margin),
-                           record["n_boot"], record["fold_seed"], record["boot_seed"], record["draft"], record.get("commit"))
+    return PreRegistration(sha256=record["sha256"], recorded_at=parse_time(record["recorded_at"]),
+                           label_free_table_sha256=record["label_free_table_sha256"], margin=float(margin), n_boot=record["n_boot"],
+                           fold_seed=record["fold_seed"], boot_seed=record["boot_seed"], offset_logits=record["offset_logits"],
+                           h3_thresholds={k: float(v) for k, v in thresholds.items()}, h3_confirmatory_targets=tuple(targets),
+                           timing_rule_sha256=record["timing_rule_sha256"], draft=record["draft"], commit=record.get("commit"))
 
 
 def preregistration_record(prereg: PreRegistration) -> dict:
     """The JSON object `load_preregistration` reads."""
     return {"sha256": prereg.sha256, "recorded_at": format_time(prereg.recorded_at), "label_free_table_sha256": prereg.label_free_table_sha256,
             "margin": prereg.margin, "n_boot": prereg.n_boot, "fold_seed": prereg.fold_seed, "boot_seed": prereg.boot_seed,
+            "offset_logits": prereg.offset_logits, "h3_thresholds": dict(prereg.h3_thresholds),
+            "h3_confirmatory_targets": list(prereg.h3_confirmatory_targets), "timing_rule_sha256": prereg.timing_rule_sha256,
             "draft": prereg.draft, "commit": prereg.commit}
 
 
@@ -335,6 +363,8 @@ def _check_labels(table: pd.DataFrame, meta: dict, prereg: PreRegistration | Non
              "the table without its labels does not match the hash recorded at the label join")
     _require(labels_sha256(table) == join["labels_sha256"], "the labels do not match the hash recorded at the label join")
     _require(table.goal_sn.notna().all() and table.sb_outcome.notna().all() and table.is_penalty.notna().all(), "labels have gaps")
+    unknown = set(table.label_exclusion.dropna()) - set(LABEL_EXCLUSIONS)
+    _require(not unknown, f"unknown label exclusion codes: {sorted(unknown)}")
     primary = table.population.eq("primary")
     _require(table.on_target_sn.notna().eq(primary).all(), "on_target_sn belongs to primary rows and only to them")
     if meta["table_kind"] == "confirmatory":
@@ -362,7 +392,7 @@ def validate_table(table: pd.DataFrame, meta: dict, prereg: PreRegistration | No
 # ------------------------------------------------------------------ label join
 def join_labels(directory: Path, name: str, labels: pd.DataFrame, out_name: str, log_path: Path, *,
                 prereg: PreRegistration | None = None, now: datetime | None = None) -> dict:
-    """Join `labels` (key + the four label columns, exactly the table's keys) to the label-free table `name`.
+    """Join `labels` (key + `LABEL_COLUMNS`, exactly the table's keys) to the label-free table `name`.
 
     Writes the joined table as `out_name` with a label-join record (time, sha256 of the label-free table, sha256 of the
     labels, pre-registration hash) in its sidecar and appends the same record to the JSON-lines `log_path`. A

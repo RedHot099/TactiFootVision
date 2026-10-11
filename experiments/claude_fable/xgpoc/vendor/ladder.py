@@ -4,8 +4,10 @@ Pure functions of the evaluation table (`xgpoc.vendor.evaltable`) and the analys
 seeds). The power simulation (`xgpoc.vendor.power`) runs H2 through `h2_draws`, the same code as the analysis.
 
 Population
-    the rows of the chosen populations (and splits) that are not penalties and have a scored frame (`frame_status`
-    ok and a finite `frame_logit_0`); the label is `goal_sn`. Excluded rows are counted, never replaced.
+    the rows of the chosen populations (and splits) without a label exclusion (`label_exclusion`, e.g. a StatsBomb goal
+    without any SoccerNet goal), that are not penalties and have a scored frame (`frame_status` ok and a finite
+    `frame_logit_0`); the label is `goal_sn`. Excluded rows are counted, never replaced. Penalties are reported apart
+    (`penalty_summary`, spec: penalties reported separately).
 Rungs, in ladder order (`LADDER`)
     constant, dist_angle, event, freeze_frame (the positions rung of H2), vendor, frame (sigmoid of `frame_logit_0`),
     and the stacks frame+positions and frame+vendor.
@@ -20,9 +22,11 @@ Inference
     match-clustered bootstrap with count-weighted draws: the shared draws of the whole table
     (`xgpoc.vendor.draws.table_draws`, i.e. `xgpoc.probe.readability.match_draw_counts`: keys np.unique(matches),
     default_rng(seed), rng.choice(M, M) per draw, the sequence of scripts/significance.py). A population set reads
-    its matches' columns of the counts, so every set, contrast and ticket uses the same draws. The cross-fitted
-    predictions are fixed; each metric is recomputed per draw with the match counts as shot weights. Intervals are
-    percentile intervals.
+    its matches' columns of the counts, so every set, contrast and ticket uses the same draws. Recalibrated variant
+    (single rungs and stacks, so H2): the cross-fitted models are refitted in every draw on the resampled matches
+    (`xgpoc.vendor.refit`, same folds, match counts as weights) and every metric is computed from the refitted
+    out-of-fold predictions. Raw variant: nothing is fitted, the stored probabilities are reweighted per draw.
+    Intervals are percentile intervals.
     TOST at `ALPHA` per side: equivalence at margin d when at most ALPHA of the draws of the difference lie at or
     below -d and at most ALPHA at or above d (the 90% interval inside (-d, d)); equivalence curves over
     `MARGIN_GRID` (0 to 0.01 log-loss). One-sided superiority of a over b: for a loss, p = share of draws >= 0;
@@ -30,10 +34,11 @@ Inference
 H2 (`H2`)
     log-loss of frame+positions minus positions (freeze_frame), both recalibrated; negative = the frame helps.
     Primary population: confirmatory at the pre-registered margin. Combined population: robustness. frame+vendor
-    minus vendor (`H2_VENDOR`) is reported the same way.
+    minus vendor (`H2_VENDOR`) is reported the same way. `h2_draws` is the fixed-prediction version that the frozen
+    ticket-08 power simulation ran; the analysis itself refits per draw.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -43,12 +48,20 @@ from sklearn.linear_model import LogisticRegression
 
 from xgpoc.eval.calibration import EPS, logit, sigmoid
 from xgpoc.vendor import evaltable as et
+from xgpoc.vendor import refit
 from xgpoc.vendor.draws import TableDraws, table_draws
 
 
 class Rung(NamedTuple):
     variant: str
     name: str
+
+
+class CrossFit(NamedTuple):
+    """A cross-fitted logistic model: its inputs (n, k) and the observed sample's coefficients per fold (n_folds, 1 + k)."""
+
+    features: np.ndarray
+    coefficients: np.ndarray
 
 
 N_FOLDS = 5
@@ -72,21 +85,48 @@ NO_CALIBRATION = ("constant",)   # a constant prediction has no calibration slop
 H2 = (Rung("recalibrated", "frame+positions"), Rung("recalibrated", "freeze_frame"))
 H2_VENDOR = (Rung("recalibrated", "frame+vendor"), Rung("recalibrated", "vendor"))
 POPULATION_SETS = {"primary": ("primary",), "combined": et.POPULATIONS}
+BOOTSTRAP_NOTE = "recalibrated variant: cross-fitted models refitted in every match draw; raw variant: stored probabilities reweighted"
+PENALTY_RUNGS = ("vendor", "frame", "freeze_frame")
 
 
 # ------------------------------------------------------------------ population and folds
-def analysis_population(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str] = et.SPLITS) -> tuple[pd.DataFrame, dict]:
-    """(rows of the analysis, exclusion counts) for a table with labels joined. Rows keep the table order."""
+def _chosen(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str]) -> tuple[pd.DataFrame, pd.Series]:
+    """(rows of the chosen populations and splits, their label-exclusion mask) of a table with labels joined."""
     if not set(et.LABEL_COLUMNS) <= set(table.columns):
         raise ValueError("the ladder needs a table with labels joined")
     if set(populations) - set(et.POPULATIONS) or set(splits) - set(et.SPLITS):
         raise ValueError(f"unknown population or split: {populations}, {splits}")
     chosen = table[table.population.isin(populations) & table.split.isin(splits)]
-    penalty = chosen.is_penalty.astype(bool)
-    no_frame = ~penalty & ~(chosen.frame_status.eq(et.OK) & np.isfinite(chosen.frame_logit_0.to_numpy(float)))
-    rows = chosen[~penalty & ~no_frame].reset_index(drop=True)
-    exclusions = {"chosen": int(len(chosen)), "penalty": int(penalty.sum()), "no_frame": int(no_frame.sum()), "analysed": int(len(rows))}
+    return chosen, chosen.label_exclusion.notna()
+
+
+def analysis_population(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str] = et.SPLITS) -> tuple[pd.DataFrame, dict]:
+    """(rows of the analysis, exclusion counts) for a table with labels joined. Rows keep the table order."""
+    chosen, excluded = _chosen(table, populations, splits)
+    penalty = ~excluded & chosen.is_penalty.astype(bool)
+    no_frame = ~excluded & ~penalty & ~(chosen.frame_status.eq(et.OK) & np.isfinite(chosen.frame_logit_0.to_numpy(float)))
+    rows = chosen[~excluded & ~penalty & ~no_frame].reset_index(drop=True)
+    exclusions = {"chosen": int(len(chosen)), "label_excluded": int(excluded.sum()), "penalty": int(penalty.sum()),
+                  "no_frame": int(no_frame.sum()), "analysed": int(len(rows))}
     return rows, exclusions
+
+
+def penalty_summary(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str] = et.SPLITS) -> dict:
+    """The penalties of a population set, reported apart from H1-H4: count, SoccerNet goals, conversion and, per rung of
+    `PENALTY_RUNGS`, the raw mean probability and log-loss over the penalties it scores (the frame: a scored frame; its
+    probability is the routed penalty rate). Descriptive, no interval; NaN when the set has no penalty."""
+    chosen, excluded = _chosen(table, populations, splits)
+    penalties = chosen[~excluded & chosen.is_penalty.astype(bool)]
+    y = penalties.goal_sn.to_numpy(float)
+    out = {"penalties": int(len(penalties)), "goals": int(y.sum()), "conversion": float(y.mean()) if len(y) else float("nan")}
+    raw = raw_rungs(penalties)
+    scored = (penalties.frame_status.eq(et.OK) & np.isfinite(penalties.frame_logit_0.to_numpy(float))).to_numpy()
+    for name in PENALTY_RUNGS:
+        keep = scored if name == "frame" else np.ones(len(penalties), bool)
+        p = raw[name][keep]
+        out[name] = {"n": int(keep.sum()), "mean_p": float(p.mean()) if len(p) else float("nan"),
+                     "log_loss": float(per_shot_log_loss(y[keep], p).mean()) if len(p) else float("nan")}
+    return out
 
 
 def match_folds(matches: np.ndarray, n_folds: int = N_FOLDS, seed: int = FOLD_SEED) -> np.ndarray:
@@ -100,7 +140,8 @@ def match_folds(matches: np.ndarray, n_folds: int = N_FOLDS, seed: int = FOLD_SE
 
 
 def fit_logistic(x: np.ndarray, y: np.ndarray, sample_weight: np.ndarray | None = None) -> LogisticRegression:
-    """The one logistic fit of the analyses: unregularised (C = 1e6), as `xgpoc.eval.calibration.PlattScaler`."""
+    """sklearn's logistic fit with C = 1e6, as `xgpoc.eval.calibration.PlattScaler`; the power simulation's truth fits
+    use it. Its default tolerance stops about 1e-3 short in probability, so the cross-fits use `crossfit` (exact)."""
     return LogisticRegression(C=1e6, max_iter=5000).fit(np.asarray(x, float).reshape(len(y), -1), y, sample_weight=sample_weight)
 
 
@@ -110,16 +151,19 @@ def frame_feature(frame_logit: np.ndarray) -> np.ndarray:
 
 
 def crossfit(features: np.ndarray, y: np.ndarray, folds: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Out-of-fold probabilities of an unregularised logistic regression of `y` on `features` (n, k), and its
-    coefficients per fold (n_folds, 1 + k: intercept first). A shot is scored only by the model of the other folds."""
-    features = np.asarray(features, float).reshape(len(y), -1)
+    """Out-of-fold probabilities of a logistic regression of `y` on `features` (n, k), and its coefficients per fold
+    (n_folds, 1 + k: intercept first, folds in `np.unique` order). A shot is scored only by the model of the other
+    folds. The fit is sklearn's objective with C = 1e6 solved to convergence (`refit.logistic_newton`), the same fit
+    the per-draw refit repeats."""
+    x = np.column_stack([np.ones(len(y)), np.asarray(features, float).reshape(len(y), -1)])
     out = np.full(len(y), np.nan)
     coefficients = []
     for fold in np.unique(folds):
         held_out = folds == fold
-        model = fit_logistic(features[~held_out], y[~held_out])
-        out[held_out] = model.predict_proba(features[held_out])[:, 1]
-        coefficients.append(np.r_[model.intercept_, model.coef_[0]])
+        start = np.r_[logit(np.mean(y[~held_out])), np.zeros(x.shape[1] - 1)]   # from the training rows only
+        beta = refit.logistic_newton(x, y, (~held_out).astype(float)[None], start)[0]
+        out[held_out] = sigmoid(x[held_out] @ beta)
+        coefficients.append(beta)
     return out, np.array(coefficients)
 
 
@@ -130,19 +174,23 @@ def raw_rungs(rows: pd.DataFrame) -> dict[str, np.ndarray]:
     return {**raw, "frame": sigmoid(frame_feature(rows.frame_logit_0.to_numpy(float)))}
 
 
-def rung_predictions(rows: pd.DataFrame, folds: np.ndarray) -> tuple[dict[Rung, np.ndarray], dict[str, list]]:
-    """Every rung's probabilities over `rows` (both variants) and the per-fold coefficients of each cross-fitted model."""
+def rung_predictions(rows: pd.DataFrame, folds: np.ndarray) -> tuple[dict[Rung, np.ndarray], dict[Rung, CrossFit]]:
+    """Every rung's probabilities over `rows` (both variants) and, per recalibrated rung, its cross-fitted model."""
     y = rows.goal_sn.to_numpy(int)
     raw = raw_rungs(rows)
     predictions = {Rung("raw", name): p for name, p in raw.items()}
-    coefficients = {}
-    for name, p in raw.items():
-        predictions[Rung("recalibrated", name)], coefs = crossfit(logit(p), y, folds)
-        coefficients[name] = coefs.round(6).tolist()
-    for name, (a, b) in STACKS.items():
-        predictions[Rung("recalibrated", name)], coefs = crossfit(np.column_stack([logit(raw[a]), logit(raw[b])]), y, folds)
-        coefficients[name] = coefs.round(6).tolist()
-    return predictions, coefficients
+    inputs = {name: logit(p) for name, p in raw.items()} | {name: np.column_stack([logit(raw[a]), logit(raw[b])]) for name, (a, b) in STACKS.items()}
+    fits = {}
+    for name, features in inputs.items():
+        rung = Rung("recalibrated", name)
+        predictions[rung], coefs = crossfit(features, y, folds)
+        fits[rung] = CrossFit(features, coefs)
+    return predictions, fits
+
+
+def refit_predictor(fit: CrossFit, y: np.ndarray, folds: np.ndarray) -> Callable[[np.ndarray], np.ndarray]:
+    """The out-of-fold probabilities of `fit` refitted in each draw of a block of draw weights (b, n) (`xgpoc.vendor.refit`)."""
+    return lambda weights: refit.crossfit_draws(fit.features, y, folds, weights, fit.coefficients)
 
 
 # ------------------------------------------------------------------ count-weighted metrics
@@ -176,7 +224,8 @@ def _match_mean(values: np.ndarray, boot: TableDraws) -> np.ndarray:
 
 
 def _auc(y: np.ndarray, p: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    """Weighted AUC per row of `weights` (b, n); ties count one half (equals roc_auc_score on the resampled shots)."""
+    """Weighted AUC per row of `weights` (b, n) for one prediction vector `p` (n,); ties count one half (equals
+    roc_auc_score on the resampled shots)."""
     order = np.argsort(p, kind="stable")
     ordered, goal = p[order], y[order].astype(bool)
     starts = np.flatnonzero(np.r_[True, ordered[1:] != ordered[:-1]])
@@ -187,14 +236,33 @@ def _auc(y: np.ndarray, p: np.ndarray, weights: np.ndarray) -> np.ndarray:
     return (pos * (below + 0.5 * neg)).sum(1) / (pos.sum(1) * neg.sum(1))
 
 
+def _auc_rows(y: np.ndarray, p: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """`_auc` with one prediction vector per row: `p` and `weights` are (b, n)."""
+    n = p.shape[1]
+    order = np.argsort(p, axis=1, kind="stable")
+    ordered, w = np.take_along_axis(p, order, 1), np.take_along_axis(weights, order, 1)
+    goal = y.astype(bool)[order]
+    pos, neg = np.where(goal, w, 0.0), np.where(goal, 0.0, w)
+    first, last = np.ones(p.shape, bool), np.ones(p.shape, bool)
+    first[:, 1:] = last[:, :-1] = ordered[:, 1:] != ordered[:, :-1]   # a tie group starts / ends here
+    index = np.arange(n)
+    start = np.maximum.accumulate(np.where(first, index, 0), axis=1)
+    end = np.minimum.accumulate(np.where(last, index, n - 1)[:, ::-1], axis=1)[:, ::-1]
+    cumulative = np.cumsum(neg, axis=1)
+    below = np.take_along_axis(cumulative, start, 1) - np.take_along_axis(neg, start, 1)   # negatives below the tie group
+    tied = np.take_along_axis(cumulative, end, 1) - below
+    return (pos * (below + 0.5 * tied)).sum(1) / (pos.sum(1) * neg.sum(1))
+
+
 def _calibration(y: np.ndarray, z: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(intercept, slope) of the weighted logistic recalibration y ~ a + b * z per row of `weights`, by Newton."""
+    """(intercept, slope) of the weighted logistic recalibration y ~ a + b * z per row of `weights` (b, n), by Newton;
+    `z` is (n,) or one row per draw (b, n)."""
     beta = np.tile([0.0, 1.0], (len(weights), 1))
     for _ in range(NEWTON_ITERATIONS):
         q = sigmoid(beta[:, :1] + beta[:, 1:] * z)
         r, v = weights * (y - q), weights * q * (1 - q)
-        g0, g1 = r.sum(1), r @ z
-        h00, h01, h11 = v.sum(1), v @ z, v @ (z * z)
+        g0, g1 = r.sum(1), (r * z).sum(1)
+        h00, h01, h11 = v.sum(1), (v * z).sum(1), (v * z * z).sum(1)
         det = h00 * h11 - h01**2
         step = np.column_stack([(h11 * g0 - h01 * g1) / det, (h00 * g1 - h01 * g0) / det])
         beta += step
@@ -203,31 +271,41 @@ def _calibration(y: np.ndarray, z: np.ndarray, weights: np.ndarray) -> tuple[np.
     raise ValueError("calibration Newton did not converge")
 
 
-def metric_draws(y: np.ndarray, p: np.ndarray, boot: TableDraws, metrics: Sequence[str] = METRICS, calibration: bool = True) -> dict[str, np.ndarray]:
-    """Each metric per draw of `boot` (shot weight = count of its match). `calibration` False gives NaN slope and intercept."""
+def _block_metrics(y: np.ndarray, p: np.ndarray, weights: np.ndarray, metrics: Sequence[str], calibration: bool) -> dict[str, np.ndarray]:
+    """Each metric per row of `weights` (b, n); `p` is (n,) or (b, n), clipped."""
+    total = weights.sum(1)
+    out = {}
+    if "log_loss" in metrics:
+        out["log_loss"] = (weights * per_shot_log_loss(y, p)).sum(1) / total
+    if "brier" in metrics:
+        out["brier"] = (weights * (p - y) ** 2).sum(1) / total
+    if "mean_p_minus_rate" in metrics:
+        out["mean_p_minus_rate"] = (weights * (p - y)).sum(1) / total
+    if "auc" in metrics:
+        out["auc"] = _auc(y, p, weights) if p.ndim == 1 else _auc_rows(y, p, weights)
+    if {"cal_slope", "cal_intercept"} & set(metrics):
+        if calibration:
+            out["cal_intercept"], out["cal_slope"] = _calibration(y, logit(p), weights)
+        else:
+            out["cal_intercept"] = out["cal_slope"] = np.full(len(weights), np.nan)
+    return out
+
+
+def metric_draws(y: np.ndarray, p: np.ndarray | Callable[[np.ndarray], np.ndarray], boot: TableDraws, metrics: Sequence[str] = METRICS,
+                 calibration: bool = True) -> dict[str, np.ndarray]:
+    """Each metric per draw of `boot` (shot weight = count of its match). `p` is either the fixed probabilities (n,) or
+    a function of a block of draw weights (b, n) that returns the probabilities refitted in each of those draws (b, n)
+    (`refit_predictor`). `calibration` False gives NaN slope and intercept."""
     y = np.asarray(y, float)
-    p = np.clip(np.asarray(p, float), EPS, 1 - EPS)
     goals = boot.counts @ np.bincount(boot.match, y, len(boot.keys))
     if (goals == 0).any() or (goals == boot.counts @ np.bincount(boot.match, minlength=len(boot.keys))).any():
         raise ValueError("a bootstrap draw has no goal or only goals; the population is too small for a match bootstrap")
-    out = {}
-    if "log_loss" in metrics:
-        out["log_loss"] = _match_mean(per_shot_log_loss(y, p), boot)
-    if "brier" in metrics:
-        out["brier"] = _match_mean((p - y) ** 2, boot)
-    if "mean_p_minus_rate" in metrics:
-        out["mean_p_minus_rate"] = _match_mean(p - y, boot)
-    blocks = [slice(i, i + CHUNK) for i in range(0, len(boot.counts), CHUNK)]
-    if "auc" in metrics:
-        out["auc"] = np.concatenate([_auc(y, p, boot.counts[b][:, boot.match].astype(float)) for b in blocks])
-    if {"cal_slope", "cal_intercept"} & set(metrics):
-        if calibration:
-            fits = [_calibration(y, logit(p), boot.counts[b][:, boot.match].astype(float)) for b in blocks]
-            intercept, slope = np.concatenate([f[0] for f in fits]), np.concatenate([f[1] for f in fits])
-        else:
-            intercept = slope = np.full(len(boot.counts), np.nan)
-        out["cal_intercept"], out["cal_slope"] = intercept, slope
-    return {k: out[k] for k in metrics}
+    fixed = None if callable(p) else np.asarray(p, float)
+    parts = []
+    for i in range(0, len(boot.counts), CHUNK):
+        weights = boot.counts[i:i + CHUNK][:, boot.match].astype(float)
+        parts.append(_block_metrics(y, np.clip(p(weights) if fixed is None else fixed, EPS, 1 - EPS), weights, metrics, calibration))
+    return {k: np.concatenate([part[k] for part in parts]) for k in metrics}
 
 
 # ------------------------------------------------------------------ contrasts
@@ -283,8 +361,9 @@ def contrast_pairs() -> list[tuple[Rung, Rung]]:
 def h2_draws(y: np.ndarray, positions: np.ndarray, frame_logit: np.ndarray, matches: np.ndarray, boot: TableDraws,
              fold_seed: int = FOLD_SEED) -> tuple[float, np.ndarray]:
     """(point, draws) of the H2 log-loss difference, frame+positions minus positions, both recalibrated on the
-    population's own folds: the computation of `analyse`, without the other rungs. `boot` holds the draws with
-    `match` set for these shots (`draws_for`)."""
+    population's own folds, with the cross-fitted predictions held fixed in the draws. This is what the frozen ticket-08
+    power simulation ran (`xgpoc.vendor.power`); its point is `analyse`'s, its draws are narrower than `analyse`'s, which
+    refits in every draw. `boot` holds the draws with `match` set for these shots (`draws_for`)."""
     y = np.asarray(y, int)
     folds = match_folds(matches, seed=fold_seed)
     z_pos, z_frame = logit(positions), frame_feature(frame_logit)
@@ -304,9 +383,8 @@ def _plain(value):
 @dataclass
 class LadderResult:
     """One population set: metrics (rung x metric, point and 95% interval), contrasts (every pair of `contrast_pairs`
-    x `CONTRAST_METRICS`), log-loss equivalence curves of every pair, a summary with the parameters and the H2 and
-    frame+vendor records, recalibration
-    coefficients, folds per match, exclusion counts."""
+    x `CONTRAST_METRICS`), log-loss equivalence curves of every pair, a summary with the parameters, the H2 and
+    frame+vendor records and the penalty summary, recalibration coefficients, folds per match, exclusion counts."""
 
     metrics: pd.DataFrame
     contrasts: pd.DataFrame
@@ -324,14 +402,15 @@ def analyse(table: pd.DataFrame, name: str, populations: Sequence[str], margin: 
     rows, exclusions = analysis_population(table, populations, splits)
     y, matches = rows.goal_sn.to_numpy(int), rows.match.to_numpy()
     folds = match_folds(matches, seed=fold_seed)
-    predictions, coefficients = rung_predictions(rows, folds)
+    predictions, fits = rung_predictions(rows, folds)
     boot = draws_for(draws, matches)
     point_boot, n_matches = observed(boot), len(np.unique(matches))
     points, rung_draws, metric_rows = {}, {}, []
     for rung in [Rung(v, n) for v in VARIANTS for n in LADDER if Rung(v, n) in predictions]:
         calibration = rung.name not in NO_CALIBRATION
         points[rung] = {k: float(v[0]) for k, v in metric_draws(y, predictions[rung], point_boot, calibration=calibration).items()}
-        rung_draws[rung] = metric_draws(y, predictions[rung], boot, calibration=calibration)
+        sample = refit_predictor(fits[rung], y, folds) if rung in fits else predictions[rung]
+        rung_draws[rung] = metric_draws(y, sample, boot, calibration=calibration)
         row = {"population": name, "variant": rung.variant, "rung": rung.name, "n": len(rows), "goals": int(y.sum()), "matches": n_matches}
         for metric in METRICS:
             lo, hi = np.percentile(rung_draws[rung][metric], [2.5, 97.5])   # NaN for the slope of a constant
@@ -356,7 +435,10 @@ def analyse(table: pd.DataFrame, name: str, populations: Sequence[str], margin: 
 
     keys_fold = pd.DataFrame({"match": matches, "fold": folds}).drop_duplicates("match").sort_values("match").reset_index(drop=True)
     summary = {"population": name, "n": len(rows), "goals": int(y.sum()), "matches": n_matches, "n_boot": len(draws.counts),
-               "fold_seed": fold_seed, "alpha_per_side": ALPHA, "margin": margin,
-               "h2": record(H2), "frame_plus_vendor": record(H2_VENDOR)}
+               "fold_seed": fold_seed, "alpha_per_side": ALPHA, "margin": margin, "bootstrap": BOOTSTRAP_NOTE,
+               "h2": record(H2), "frame_plus_vendor": record(H2_VENDOR),
+               "penalties": {k: _plain(v) if not isinstance(v, dict) else {m: _plain(x) for m, x in v.items()}
+                             for k, v in penalty_summary(table, populations, splits).items()}}
+    coefficients = {rung.name: fit.coefficients.round(6).tolist() for rung, fit in fits.items()}
     return LadderResult(pd.DataFrame(metric_rows), contrasts, pd.concat(curves, ignore_index=True), summary,
                         coefficients, keys_fold, exclusions)

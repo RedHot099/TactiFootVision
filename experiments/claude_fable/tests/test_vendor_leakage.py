@@ -35,7 +35,8 @@ def make_table(n_matches=40, per_match=30, kind="development", seed=0) -> pd.Dat
         "pred_vendor_xg": sigmoid(vendor_logit), "frame_logit_0": vendor_logit + gap, "frame_logit_m400": np.nan,
         "frame_raw_logit_0": raw0, "frame_raw_logit_m400": raw0 - contrast, "frame_status": "ok",
         "timing_residual_ms": residual_ms, "table_kind": kind,
-        "goal_sn": False, "on_target_sn": pd.array(on_target, dtype="boolean"), "is_penalty": False})
+        "goal_sn": False, "on_target_sn": pd.array(on_target, dtype="boolean"), "is_penalty": False,
+        "label_exclusion": None})
     absurd = [0, 1, 2]
     table.loc[absurd, "frame_logit_0"] = 50.0
     table.loc[absurd, "frame_raw_logit_0"] = 50.0

@@ -13,8 +13,15 @@ covariate, so no label is read; the secondary rows' frames sit at StatsBomb time
     prototype_comparison.csv (--prototype) against the prototype's probes.csv
     complete.json            completion record: inputs and code hashes, parameters, key numbers
 
+    ./run.sh python scripts/vendor_probes.py --table DIR --name NAME --prereg FILE --out DIR [--shots PATH]
     ./run.sh python scripts/vendor_probes.py --table results/xgv_eval_dev --name table --out results/xgv_probes_dev \\
-        [--shots PATH] [--prereg PATH] [--n-boot 5000] [--seed 0] [--by-split] [--thresholds JSON] [--prototype DIR]
+        [--shots PATH] [--n-boot 5000] [--seed 0] [--by-split] [--thresholds JSON] [--prototype DIR]      (development tables only)
+
+A dry-run or confirmatory table needs `--prereg`: the number of draws, the bootstrap seed and the H3 thresholds come from
+that record (at least `ladder.MIN_CONFIRMATORY_BOOT` draws) and cannot be given on the command line; the development
+options are refused (`probe_parameters`). The shuffled-target control is a hard gate (`probes.control_gate`): when an
+encoder's control decodes above R^2 = 0, the outputs and the completion record are written with the gate failed and the
+script exits with status `probes.CONTROL_FAILED_EXIT`.
 
 A development table gives development numbers and a dry-run table dry-run numbers, labelled so in complete.json; neither
 are results.
@@ -35,13 +42,36 @@ from xgpoc.vendor import evaltable as et
 from xgpoc.vendor import probe_targets as pt
 from xgpoc.vendor import probes
 from xgpoc.vendor.draws import N_BOOT, SEED, split_subsets, table_draws
+from xgpoc.vendor.ladder import MIN_CONFIRMATORY_BOOT
 
 ROOT = Path(__file__).resolve().parents[1]   # experiments/claude_fable
 SHOTS = Path("/home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet")
-SOURCE_FILES = (Path(__file__).resolve(), *(ROOT / "xgpoc/vendor" / f for f in ("probes.py", "probe_targets.py", "draws.py", "evaltable.py")),
+SOURCE_FILES = (Path(__file__).resolve(), *(ROOT / "xgpoc/vendor" / f for f in ("probes.py", "probe_targets.py", "draws.py", "evaltable.py",
+                                                                              "ladder.py")),
                 ROOT / "xgpoc/probe/readability.py")
 PENALTY_SHOT_TYPE = "Penalty"
 PROTOTYPE_ENCODERS = {"emb_g_fold0": "g_combo", "emb_g_fold1": "g_combo", "emb_dinov2": "dinov2_frozen"}
+
+
+def probe_parameters(kind: str, prereg: et.PreRegistration | None, args: argparse.Namespace) -> dict:
+    """Draws, bootstrap seed and H3 thresholds of the run, with their source. Raises `ValueError` for a combination the
+    contract forbids: a dry-run or confirmatory table takes them only from the pre-registration record (at least
+    `MIN_CONFIRMATORY_BOOT` draws, no development options); a development table takes them from the options."""
+    given = {k: getattr(args, k) for k in ("n_boot", "seed", "thresholds") if getattr(args, k) is not None}
+    if prereg is not None:
+        if given:
+            raise ValueError(f"the pre-registration record fixes the parameters; drop {sorted(given)}")
+        params = {"n_boot": prereg.n_boot, "seed": prereg.boot_seed, "thresholds": dict(prereg.h3_thresholds),
+                  "confirmatory_targets": list(prereg.h3_confirmatory_targets), "source": "pre-registration record"}
+    elif kind != "development":
+        raise ValueError(f"a {kind} table needs --prereg; its parameters come from the pre-registration record")
+    else:
+        params = {"n_boot": N_BOOT if args.n_boot is None else args.n_boot, "seed": SEED if args.seed is None else args.seed,
+                  "thresholds": json.loads(args.thresholds.read_text()) if args.thresholds else None, "confirmatory_targets": None,
+                  "source": "command line"}
+    if kind != "development" and (params["n_boot"] < MIN_CONFIRMATORY_BOOT or args.by_split or args.prototype):
+        raise ValueError(f"a {kind} run needs at least {MIN_CONFIRMATORY_BOOT} draws and no development options")
+    return params
 
 
 def load_all_embeddings(table: pd.DataFrame, meta: dict, table_dir: Path) -> tuple[dict, dict]:
@@ -101,12 +131,12 @@ def main() -> None:
     parser.add_argument("--name", default="table", help="table name inside --table (label-free or joined)")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--shots", type=Path, default=SHOTS, help="derived StatsBomb shots table (freeze frames)")
-    parser.add_argument("--prereg", type=Path, help="pre-registration record (needed for a confirmatory table with labels)")
-    parser.add_argument("--n-boot", type=int, default=N_BOOT)
-    parser.add_argument("--seed", type=int, default=SEED)
-    parser.add_argument("--by-split", action="store_true", help="also report the test and train/valid matches separately")
-    parser.add_argument("--thresholds", type=Path, help="JSON {target: threshold} from the pre-registration")
-    parser.add_argument("--prototype", type=Path, help="prototype directory (development comparison: probes.csv, sb_features.parquet)")
+    parser.add_argument("--prereg", type=Path, help="pre-registration record (required for a dry-run or confirmatory table)")
+    parser.add_argument("--n-boot", type=int, help=f"development tables only (default {N_BOOT})")
+    parser.add_argument("--seed", type=int, help=f"development tables only (default {SEED})")
+    parser.add_argument("--by-split", action="store_true", help="development tables only: also report the test and train/valid matches")
+    parser.add_argument("--thresholds", type=Path, help="development tables only: JSON {target: threshold}")
+    parser.add_argument("--prototype", type=Path, help="development tables only: prototype directory (probes.csv, sb_features.parquet)")
     args = parser.parse_args()
     if (args.out / "complete.json").exists():
         sys.exit(f"{args.out} is complete; delete it to rerun")
@@ -117,17 +147,22 @@ def main() -> None:
     prereg = et.load_preregistration(args.prereg) if args.prereg else None
     table, meta = et.load_table(args.table, args.name, prereg)
     kind = meta["table_kind"]
+    try:
+        params = probe_parameters(kind, prereg, args)
+    except ValueError as refusal:
+        sys.exit(str(refusal))
+    n_boot, seed, thresholds = params["n_boot"], params["seed"], params["thresholds"]
     shots = pd.read_parquet(args.shots, columns=pt.SHOT_INPUT_COLUMNS)
     derived = pt.probe_targets(shots)
     targets = pt.targets_for_table(table, derived)
     embeddings, embedding_hashes = load_all_embeddings(table, meta, args.table)
-    draws = table_draws(table, args.n_boot, args.seed)
+    draws = table_draws(table, n_boot, seed)
     subsets, left_out = probe_subsets(table, args.by_split)
     print(f"{kind} table: {len(table)} rows, {len(draws.keys)} matches; encoders "
-          f"{ {c: len(p) for c, (p, _) in embeddings.items()} }; {args.n_boot} draws", flush=True)
+          f"{ {c: len(p) for c, (p, _) in embeddings.items()} }; {n_boot} draws", flush=True)
 
     result = probes.probe_table(table, targets, embeddings, draws, subsets)
-    thresholds = json.loads(args.thresholds.read_text()) if args.thresholds else None
+    gate = probes.control_gate(result.metrics)
     metrics = probes.apply_thresholds(result.metrics, thresholds) if thresholds else result.metrics
     args.out.mkdir(parents=True, exist_ok=True)
     metrics.to_csv(args.out / "probes.csv", index=False)
@@ -137,7 +172,9 @@ def main() -> None:
     inputs = {"table": {"directory": str(args.table), "name": args.name, "parquet_sha256": meta["table_sha256"], "labels_state": meta["labels_state"]},
               "shots": {"file": str(args.shots), "sha256": sha256_file(args.shots)}, "embeddings": embedding_hashes,
               "prereg": None if prereg is None else {"file": str(args.prereg), "sha256": prereg.sha256},
-              "thresholds": None if thresholds is None else {"file": str(args.thresholds), "sha256": sha256_file(args.thresholds), "values": thresholds}}
+              "thresholds": None if thresholds is None else {"source": params["source"], "values": thresholds,
+                                                             "file": str(args.thresholds) if args.thresholds else None,
+                                                             "sha256": sha256_file(args.thresholds) if args.thresholds else None}}
     checks = {}
     if args.prototype:
         check = pt.compare_with_features(derived, pd.read_parquet(args.prototype / "sb_features.parquet"))
@@ -158,14 +195,17 @@ def main() -> None:
                "metrics_all_own": {f"{r.encoder}|{r.target}": [*rounded(r.value, r.lo, r.hi), int(r.n)] for r in headline.itertuples()},
                "differences_all": {f"{r.encoder}|{r.target}": [*rounded(r.difference, r.lo, r.hi), int(r.n)]
                                    for r in result.differences[result.differences.subset.eq("all")].itertuples()},
-               "negative_control_max": rounded(metrics.loc[metrics.negative_control, "value"].max())[0], "checks": checks,
+               "negative_control_max": rounded(metrics.loc[metrics.negative_control, "value"].max())[0], "control_gate": gate,
+               "checks": checks,
                "runtime_s": round(time.time() - started, 1)}
     print(pd.DataFrame(result.differences).round(4).to_string(index=False))
     names = sorted(p.name for p in args.out.iterdir() if p.is_file())
     record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
               "label": et.RUN_LABELS[kind],
               "identity": {"analysis": "xg-vendor H3 probes", "table_kind": kind, "inputs": inputs,
-                           "parameters": {"n_boot": args.n_boot, "seed": args.seed, "subsets": list(subsets), "alphas": list(probes.ALPHAS),
+                           "parameters": {"n_boot": n_boot, "seed": seed, "source": params["source"],
+                                          "confirmatory_targets": params["confirmatory_targets"], "subsets": list(subsets),
+                                          "alphas": list(probes.ALPHAS),
                                           "n_outer": probes.N_OUTER, "n_inner": probes.N_INNER, "control": probes.CONTROL,
                                           "control_seed": probes.CONTROL_SEED, "reference": probes.REFERENCE},
                            "sources": {str(p.relative_to(ROOT)): sha256_file(p) for p in SOURCE_FILES}, "code": code_version(ROOT)},
@@ -174,6 +214,11 @@ def main() -> None:
               "files": {name: sha256_file(args.out / name) for name in names}}
     (args.out / "complete.json").write_text(json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + "\n")
     print(f"wrote {args.out} ({summary['runtime_s']} s)")
+    if not gate["passed"]:
+        failed = sorted(e for e, g in gate["encoders"].items() if not g["passed"])
+        print(f"H3 CONTROL GATE FAILED: the shuffled-target control decodes above R^2 = {gate['threshold']} for {failed}; "
+              "every H3 reading of these encoders is invalid", file=sys.stderr)
+        sys.exit(probes.CONTROL_FAILED_EXIT)
 
 
 if __name__ == "__main__":

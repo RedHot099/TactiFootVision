@@ -4,7 +4,7 @@ within matches, so the code is shown to work without the real answer.
 Labels (H1, H2, H4)
     Strata: (match, is_penalty), visited in sorted order; rows inside a stratum in key order. Per stratum, one
     permutation moves `goal_sn` and `sb_outcome` together over all its rows, and a second one moves `on_target_sn`
-    over its primary rows (the only rows that carry it). `is_penalty` and the keys stay. Generator
+    over its primary rows (the only rows that carry it). `is_penalty`, `label_exclusion` and the keys stay. Generator
     `numpy.random.default_rng([seed, LABEL_STREAM])`, so goal counts per match and per penalty status are kept and every
     shot-level association with the predictions is destroyed. The second permutation also decouples on-target from
     goal; the dry run needs neither.

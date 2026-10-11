@@ -39,8 +39,8 @@ PARAMETER_FIELDS = ("margin", "n_boot", "fold_seed", "boot_seed", "offset_logits
 REQUIRED_PINS = ("primary_label_free_table", "combined_label_free_table", "split_plan", "comparator_predictions", "timing_verdict",
                  "timing_rule", "delta_rule")
 TABLE_PINS = ("primary_label_free_table", "combined_label_free_table")
-ENTRY_SCRIPTS = ("scripts/vendor_ladder.py", "scripts/vendor_probes.py", "scripts/vendor_leakage.py", "scripts/vendor_dryrun.py",
-                 "scripts/vendor_prereg_hashes.py")
+ENTRY_SCRIPTS = ("scripts/vendor_confirm.py", "scripts/vendor_ladder.py", "scripts/vendor_probes.py", "scripts/vendor_leakage.py",
+                 "scripts/vendor_dryrun.py", "scripts/vendor_prereg_hashes.py")
 EVIDENCE = {"dry_run_primary": "results/xgv_dryrun_primary/complete.json", "dry_run_combined": "results/xgv_dryrun_combined/complete.json"}
 
 
@@ -200,8 +200,13 @@ def replace_hash_block(text: str, block: str) -> str:
 # ------------------------------------------------------------------ records
 def _record(document_sha256: str, recorded_at: datetime, table_sha256: str, margin: float, params: dict, draft: bool,
             commit: str | None) -> et.PreRegistration:
-    return et.PreRegistration(document_sha256, recorded_at, table_sha256, margin, params["n_boot"], params["fold_seed"], params["boot_seed"],
-                              draft, commit)
+    timing_rule = params["pins"]["timing_rule"]["sha256"]
+    _require(timing_rule is not None, "the pin timing_rule is still a placeholder")
+    return et.PreRegistration(sha256=document_sha256, recorded_at=recorded_at, label_free_table_sha256=table_sha256, margin=margin,
+                              n_boot=params["n_boot"], fold_seed=params["fold_seed"], boot_seed=params["boot_seed"],
+                              offset_logits=params["offset_logits"], h3_thresholds=dict(params["h3_thresholds"]),
+                              h3_confirmatory_targets=tuple(params["h3_confirmatory_targets"]), timing_rule_sha256=timing_rule,
+                              draft=draft, commit=commit)
 
 
 def draft_record(document: Path, table_pin: str, now: datetime) -> et.PreRegistration:

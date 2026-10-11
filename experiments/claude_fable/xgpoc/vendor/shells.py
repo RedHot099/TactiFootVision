@@ -4,7 +4,8 @@
 empty number cells, the pre-registered thresholds and roles already in. `render(params, Outputs(...), margin)` fills the
 same shells from the folders `scripts/vendor_ladder.py`, `vendor_probes.py` and `vendor_leakage.py` write. The reading
 columns apply the document's decision rules (`h2_reading`, `h3_reading`, `difference_reading`). Shells S2-S4 repeat
-for each population set; a set the run skipped is printed as such.
+for each population set; a set the run skipped is printed as such. S9 reports the penalties apart from H1-H4 (spec:
+penalties reported separately).
 
 Formats: log-loss, Brier, differences in log-loss and margins 4 decimals; AUC, R2, slopes and coefficients 3; p-values 4;
 intervals are 95% percentile match-bootstrap intervals "[lo, hi]" unless the column says 90%.
@@ -20,7 +21,7 @@ import pandas as pd
 from xgpoc.vendor import ladder as ld
 from xgpoc.vendor import leakage as lk
 from xgpoc.vendor.probe_targets import BINARY_TARGETS, TARGET_COLUMNS
-from xgpoc.vendor.probes import CONTROL
+from xgpoc.vendor.probes import CONTROL, REFERENCE, control_gate
 
 ALPHA = ld.ALPHA
 POPULATIONS = {"primary": "pierwotna", "combined": "łączona"}
@@ -37,6 +38,7 @@ H2_NAMES = {"h2": "klatka + pozycje − pozycje", "frame_plus_vendor": "klatka +
 PROBE_ENCODERS = {"emb_g_fold0": "S6", "emb_g_fold1": "S7"}
 H4_ROWS = tuple((spec, regressor) for spec in lk.SPECS for regressor in (spec.regressors or ("intercept",)))
 H4_PARTS = {"on_target": "celność", "offset": "kontrast offsetów", "residual": "reszta czasowa"}
+INVALID_READING = "nieważny: kontrola negatywna nie przechodzi"
 REGRESSOR_NAMES = {"on_target": "celny (SN)", "intercept": "średnia G(0) − G(−400)", "residual_s": "reszta [s]",
                    "early": "kotwica > 40 ms przed SB", "late": "kotwica > 40 ms po SB"}
 
@@ -90,11 +92,14 @@ def h2_reading(record: dict | None) -> str:
     return "nierozstrzygnięty"
 
 
-def h3_reading(value: float, lo: float, hi: float, threshold: float | None, control: bool = False) -> str:
+def h3_reading(value: float, lo: float, hi: float, threshold: float | None, control: bool = False, gate_passed: bool = True) -> str:
     """Threshold reading of a probe: the lower end of the 95% interval decides "koduje"; the upper end below the threshold
-    gives "nie koduje"; the negative control must have R2 <= 0 (point estimate)."""
+    gives "nie koduje"; the negative control must have R2 <= 0 (point estimate). When the encoder's control gate failed
+    (`probes.control_gate`), no target of that encoder gets a reading."""
     if control:
         return "kontrola przechodzi" if value <= 0 else "kontrola NIE przechodzi"
+    if not gate_passed:
+        return INVALID_READING
     if lo >= threshold:
         return "koduje"
     if hi < threshold:
@@ -102,8 +107,10 @@ def h3_reading(value: float, lo: float, hi: float, threshold: float | None, cont
     return "nierozstrzygnięty"
 
 
-def difference_reading(lo: float, hi: float) -> str:
-    """Reading of G-combo minus frozen DINOv2 on the same rows."""
+def difference_reading(lo: float, hi: float, gate_passed: bool = True) -> str:
+    """Reading of G-combo minus frozen DINOv2 on the same rows; invalid when either encoder failed its control gate."""
+    if not gate_passed:
+        return INVALID_READING
     if lo > 0:
         return "G > DINOv2"
     if hi < 0:
@@ -117,10 +124,26 @@ def _population_rows(ladder: dict | None) -> list[list[str]]:
     for name, label in POPULATIONS.items():
         s = None if ladder is None else ladder["h2"]["sets"].get(name)
         if s is None:
-            rows.append([label, *([""] * 6 if ladder is None else ["pominięta"] + ["—"] * 5)])
+            rows.append([label, *([""] * 7 if ladder is None else ["pominięta"] + ["—"] * 6)])
             continue
         e = s["exclusions"]
-        rows.append([label, str(e["chosen"]), str(e["penalty"]), str(e["no_frame"]), str(e["analysed"]), str(s["goals"]), str(s["matches"])])
+        rows.append([label, str(e["chosen"]), str(e["label_excluded"]), str(e["penalty"]), str(e["no_frame"]), str(e["analysed"]),
+                     str(s["goals"]), str(s["matches"])])
+    return rows
+
+
+def _penalty_rows(ladder: dict | None) -> list[list[str]]:
+    rows = []
+    for name, label in POPULATIONS.items():
+        s = None if ladder is None else ladder["h2"]["sets"].get(name)
+        if s is None:
+            rows.append([label, *([""] * 9 if ladder is None else ["pominięta"] + ["—"] * 8)])
+            continue
+        p = s["penalties"]
+        cells = [str(p["penalties"]), str(p["goals"]), _plain(p["conversion"], 3)]
+        for rung in ld.PENALTY_RUNGS:
+            cells += [_plain(p[rung]["mean_p"], 3), _plain(p[rung]["log_loss"], 4)]
+        rows.append([label, *cells])
     return rows
 
 
@@ -181,6 +204,11 @@ def _h2_rows(ladder: dict | None) -> list[list[str]]:
 
 def _probe_rows(probes: dict | None, encoder: str, params: dict) -> list[list[str]]:
     thresholds, confirmatory = params["h3_thresholds"], set(params["h3_confirmatory_targets"])
+    if probes is not None:
+        m, d = probes["metrics"], probes["differences"]
+        gate = {e: g["passed"] for e, g in control_gate(m)["encoders"].items()}
+        own_gate = gate.get(encoder, False)
+        pair_gate = own_gate and gate.get(REFERENCE, False)
     rows = []
     for target in (CONTROL, *TARGET_COLUMNS):
         control = target == CONTROL
@@ -191,7 +219,6 @@ def _probe_rows(probes: dict | None, encoder: str, params: dict) -> list[list[st
         if probes is None:
             rows.append([*head, "", "", "", "", threshold, role, "", ""])
             continue
-        m, d = probes["metrics"], probes["differences"]
         own = m[m.encoder.eq(encoder) & m.subset.eq("all") & m.coverage.eq("own") & m.target.eq(target)]
         diff = d[d.encoder.eq(encoder) & d.subset.eq("all") & d.target.eq(target)]
         if own.empty or diff.empty:
@@ -204,8 +231,8 @@ def _probe_rows(probes: dict | None, encoder: str, params: dict) -> list[list[st
             raise ValueError(f"{target}: the reference row covers {ref.n} shots, the encoder {g.n}")
         rows.append([*head, str(int(g.n)), _interval(g.value, g.lo, g.hi, 3), _interval(ref.value, ref.lo, ref.hi, 3),
                      _interval(diff.difference, diff.lo, diff.hi, 3, True), threshold, role,
-                     h3_reading(g.value, g.lo, g.hi, None if control else thresholds[target], control),
-                     "—" if control else difference_reading(diff.lo, diff.hi)])
+                     h3_reading(g.value, g.lo, g.hi, None if control else thresholds[target], control, own_gate),
+                     "—" if control else difference_reading(diff.lo, diff.hi, pair_gate)])
     return rows
 
 
@@ -246,15 +273,18 @@ SHELL_TITLES = {
     "S6": "S6. H3, sondy: G-combo fold 0 seed 0 (model rozstrzygający) wobec zamrożonego DINOv2",
     "S7": "S7. H3, wrażliwość: G-combo fold 1 seed 0 wobec zamrożonego DINOv2",
     "S8": "S8. H4, diagnostyka przecieku (opisowa)",
+    "S9": "S9. Rzuty karne, raportowane osobno (poza H1–H4; prawdopodobieństwa surowe, bez przedziałów)",
 }
 HEADERS = {
-    "S1": ["Populacja", "Wybrane", "Karne", "Bez klatki", "Analizowane", "Gole", "Mecze"],
+    "S1": ["Populacja", "Wybrane", "Wykluczone przy etykietach", "Karne", "Bez klatki", "Analizowane", "Gole", "Mecze"],
     "S2": ["Szczebel", *(h for _, _, h in METRIC_COLUMNS)],
     "S4": ["Kontrast (A − B)", "Δ log-loss [95%]", "Δ log-loss, 90%", "Najmniejszy margines równoważności", "Δ AUC [95%]"],
     "S5": ["Kontrast", "Populacja", "Rola", "Log-loss A", "Log-loss B", "Δ [95%]", "Δ, 90%", "p TOST przy δ", "p przewagi",
            "Najmniejszy margines", "Odczyt"],
     "S6": ["Cel", "Metryka", "n", "G-combo [95%]", "DINOv2 [95%]", "G − DINOv2 [95%]", "Próg", "Rola", "Odczyt progu", "Odczyt różnicy"],
     "S8": ["Część", "Specyfikacja", "Regresor", "Kontrole", "Ograniczenie", "n", "Współczynnik [95%]"],
+    "S9": ["Populacja", "Karne", "Gole (SN)", "Skuteczność", "Śr. xG dostawcy", "Log-loss dostawcy", "Śr. p klatki", "Log-loss klatki",
+           "Śr. p pozycji", "Log-loss pozycji"],
 }
 HEADERS["S3"], HEADERS["S7"] = HEADERS["S2"], HEADERS["S6"]
 
@@ -271,6 +301,7 @@ def shell_bodies(params: dict, outputs: Outputs | None = None) -> dict[tuple[str
     for encoder, shell in PROBE_ENCODERS.items():
         bodies[shell, None] = markdown(HEADERS[shell], _probe_rows(probes, encoder, params))
     bodies["S8", None] = markdown(HEADERS["S8"], _h4_rows(leakage))
+    bodies["S9", None] = markdown(HEADERS["S9"], _penalty_rows(ladder))
     return bodies
 
 

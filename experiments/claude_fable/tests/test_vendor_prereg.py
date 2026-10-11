@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from xgpoc.vendor import dryrun, labels, shells
+from xgpoc.vendor import evaltable as et
 from xgpoc.vendor import prereg as pr
 from xgpoc.vendor.prereg import PreRegistrationError
 
@@ -103,8 +104,10 @@ def test_the_real_closure_covers_the_analysis_modules():
 def hashed_tree(tmp_path: Path, margin=None) -> tuple[Path, dict]:
     make_tree(tmp_path)
     (tmp_path / "plan.csv").write_text("match,role\n")
+    (tmp_path / "rule.md").write_text("rule\n")
     params = parameters(margin=margin)
     params["pins"]["split_plan"] = {"path": "plan.csv", "sha256": hashlib.sha256(b"match,role\n").hexdigest()}
+    params["pins"]["timing_rule"] = {"path": "rule.md", "sha256": hashlib.sha256(b"rule\n").hexdigest()}
     doc = tmp_path / "doc.md"
     doc.write_text(document(params))
     return doc, params
@@ -186,6 +189,13 @@ def test_h3_reading_is_decided_by_the_lower_end():
         "G > DINOv2", "G < DINOv2", "brak rozróżnialnej różnicy"]
 
 
+def test_a_failed_control_invalidates_every_h3_reading_of_its_encoder():
+    """The hard gate of the shuffled-target control: no "koduje" and no difference reading once a control decodes."""
+    assert shells.h3_reading(0.70, 0.52, 0.80, 0.50, gate_passed=False) == shells.INVALID_READING
+    assert shells.h3_reading(0.20, 0.10, 0.30, None, control=True, gate_passed=False) == "kontrola NIE przechodzi"
+    assert shells.difference_reading(0.01, 0.1, gate_passed=False) == shells.INVALID_READING
+
+
 # ------------------------------------------------------------------ labels and permutations
 def eval_rows(n_matches=4, per_match=12) -> pd.DataFrame:
     n = n_matches * per_match
@@ -200,7 +210,8 @@ def label_rows(rows: pd.DataFrame) -> pd.DataFrame:
     primary = rows.population.eq("primary").to_numpy()
     return pd.DataFrame({"key": rows.key, "goal_sn": rows.goal.to_numpy(),
                          "on_target_sn": pd.array(np.where(primary, np.arange(len(rows)) % 2 == 0, None), dtype="boolean"),
-                         "sb_outcome": np.where(rows.goal, "Goal", "Saved"), "is_penalty": rows.sb_shot_type.eq("Penalty").to_numpy()})
+                         "sb_outcome": np.where(rows.goal, "Goal", "Saved"), "is_penalty": rows.sb_shot_type.eq("Penalty").to_numpy(),
+                         "label_exclusion": None})
 
 
 def test_labels_are_permuted_within_match_and_penalty_strata():
@@ -249,6 +260,54 @@ def test_primary_labels_follow_decision_d4():
         labels.primary_labels(rows.assign(population="statsbomb_only"), pairs)
 
 
+def secondary_rows() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Four secondary rows (a recovered goal that is a penalty, a StatsBomb-only save, a StatsBomb-only goal without any
+    SoccerNet goal, a StatsBomb-only block) and the pairing's population table for their events, plus an unrelated event."""
+    rows = pd.DataFrame({"key": ["e1", "e2", "e3", "e4"], "statsbomb_event_id": ["e1", "e2", "e3", "e4"], "match": "m0",
+                         "population": ["recovered_goal", "statsbomb_only", "statsbomb_only", "statsbomb_only"]})
+    unpaired = pd.DataFrame({"event_id": ["e3", "e1", "e2", "e4", "e9"],
+                             "population": ["secondary", "recovered_goal", "secondary", "secondary", "possible_mispair"],
+                             "outcome": ["Goal", "Goal", "Saved", "Blocked", "Goal"], "penalty": [False, True, False, False, False],
+                             "sb_goal_without_sn_goal": [True, False, False, False, False]})
+    return rows, unpaired
+
+
+def test_secondary_labels_follow_decision_d4_and_exclude_statsbomb_goals_without_a_soccernet_goal():
+    rows, unpaired = secondary_rows()
+    out = labels.secondary_labels(rows, unpaired)
+    assert out.key.tolist() == ["e1", "e2", "e3", "e4"] and list(out.columns) == ["key", *et.LABEL_COLUMNS]
+    assert out.goal_sn.tolist() == [True, False, False, False]     # only the recovery attributes a SoccerNet goal
+    assert out.sb_outcome.tolist() == ["Goal", "Saved", "Goal", "Blocked"]
+    assert out.is_penalty.tolist() == [True, False, False, False]  # the StatsBomb penalty flag, a pre-shot condition
+    assert out.on_target_sn.isna().all()
+    assert out.label_exclusion.tolist() == [None, None, "sb_goal_without_sn_goal", None]
+    with pytest.raises(ValueError, match="population"):
+        labels.secondary_labels(rows.assign(population="recovered_goal"), unpaired)
+    with pytest.raises(ValueError, match="not in the pairing"):
+        labels.secondary_labels(rows, unpaired[unpaired.event_id.ne("e2")])
+    with pytest.raises(ValueError, match="flag disagrees"):
+        labels.secondary_labels(rows, unpaired.assign(sb_goal_without_sn_goal=False))
+    with pytest.raises(ValueError, match="secondary rows only"):
+        labels.secondary_labels(rows.assign(population="primary"), unpaired)
+
+
+def test_table_labels_join_both_rules_in_table_order():
+    primary = eval_rows(n_matches=1, per_match=2).assign(population="primary")
+    pairs = pd.DataFrame({"shot_id": primary.key, "paired": True, "label": "Shots on target", "goal": [True, False],
+                          "is_penalty": False, "sb_event_id": primary.statsbomb_event_id, "sb_outcome": ["Goal", "Saved"]})
+    secondary, unpaired = secondary_rows()
+    table = pd.concat([secondary.iloc[:2], primary[["key", "statsbomb_event_id", "match", "population"]], secondary.iloc[2:]],
+                      ignore_index=True)
+    out = labels.table_labels(table, pairs, unpaired)
+    assert out.key.tolist() == table.key.tolist()
+    assert out.goal_sn.tolist() == [True, False, True, False, False, False]
+    assert out.on_target_sn.isna().tolist() == [True, True, False, False, True, True]
+    assert out.label_exclusion.notna().tolist() == [False, False, False, False, True, False]
+    assert labels.table_labels(primary, pairs, None).goal_sn.tolist() == [True, False]
+    with pytest.raises(ValueError, match="needs the pairing's population table"):
+        labels.table_labels(table, pairs, None)
+
+
 def test_probes_leave_out_penalties_and_secondary_rows():
     rows = eval_rows().assign(split="train")
     subsets, left_out = probe_subsets(rows, by_split=False)
@@ -261,3 +320,30 @@ def test_probes_leave_out_penalties_and_secondary_rows():
 def test_the_dryrun_table_changes_only_its_kind():
     rows = eval_rows().assign(table_kind="confirmatory")
     assert dryrun_table(rows).table_kind.eq("dryrun").all()
+
+
+def probe_outputs(control_r2: float) -> dict:
+    targets = ["dist_shuffled", *THRESHOLDS]
+    metrics = pd.DataFrame([{"encoder": e, "subset": "all", "coverage": "own", "target": t, "n": 100, "value": control_r2 if t == "dist_shuffled" and
+                             e == "emb_g_fold0" else (-0.001 if t == "dist_shuffled" else 0.8), "lo": 0.75, "hi": 0.85,
+                             "negative_control": t == "dist_shuffled"} for e in ("emb_g_fold0", "emb_dinov2") for t in targets])
+    differences = pd.DataFrame({"encoder": "emb_g_fold0", "subset": "all", "target": targets, "difference": 0.05, "lo": 0.01, "hi": 0.09})
+    return {"metrics": metrics, "differences": differences}
+
+
+def test_filled_probe_shells_obey_the_control_gate():
+    params = parameters()
+    clean = {row[0]: row for row in shells._probe_rows(probe_outputs(-0.002), "emb_g_fold0", params)}
+    assert clean["dist"][8] == "koduje" and clean["dist"][9] == "G > DINOv2" and clean["dist"][7] == "konfirmacyjny"
+    leaky = {row[0]: row for row in shells._probe_rows(probe_outputs(0.3), "emb_g_fold0", params)}
+    assert leaky["dist_shuffled"][8] == "kontrola NIE przechodzi"
+    assert all(leaky[t][8] == leaky[t][9] == shells.INVALID_READING for t in THRESHOLDS)
+
+
+def test_filled_penalty_shell_reports_the_penalties_apart():
+    rung = {"n": 3, "mean_p": 0.76, "log_loss": 0.61}
+    ladder = {"h2": {"sets": {"primary": {"penalties": {"penalties": 3, "goals": 2, "conversion": 2 / 3, "vendor": rung, "frame": rung,
+                                                        "freeze_frame": rung}}}}}
+    primary, combined = shells._penalty_rows(ladder)
+    assert primary == ["pierwotna", "3", "2", "0.667", "0.760", "0.6100", "0.760", "0.6100", "0.760", "0.6100"]
+    assert combined[:2] == ["łączona", "pominięta"]

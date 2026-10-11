@@ -96,7 +96,8 @@ def build_development_tables(ladder: pd.DataFrame, pairs: pd.DataFrame, archive:
     labels = pd.DataFrame({
         "key": ladder.shot_id.to_numpy(), "goal_sn": ladder.goal.to_numpy().astype(bool),
         "on_target_sn": pd.array(ladder.label.eq(ON_TARGET_LABEL).to_numpy(), dtype="boolean"),
-        "sb_outcome": ladder.sb_outcome.to_numpy(), "is_penalty": (extra.pen_v12.astype(bool) | extra.sb_pen.astype(bool)).to_numpy()})
+        "sb_outcome": ladder.sb_outcome.to_numpy(), "is_penalty": (extra.pen_v12.astype(bool) | extra.sb_pen.astype(bool)).to_numpy(),
+        "label_exclusion": None})
     return table[et.LABEL_FREE_COLUMNS], labels
 
 

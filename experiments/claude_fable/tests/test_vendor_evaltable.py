@@ -46,7 +46,7 @@ def make_labels(table: pd.DataFrame) -> pd.DataFrame:
     primary = table.population.eq("primary").to_numpy()
     return pd.DataFrame({"key": table.key, "goal_sn": np.arange(len(table)) % 3 == 0,
                          "on_target_sn": pd.array(np.where(primary, np.arange(len(table)) % 2 == 0, None), dtype="boolean"),
-                         "sb_outcome": "Saved", "is_penalty": False})
+                         "sb_outcome": "Saved", "is_penalty": False, "label_exclusion": None})
 
 
 def meta_for(table: pd.DataFrame, kind="development", **overrides) -> dict:
@@ -240,7 +240,8 @@ def confirmatory(tmp_path, recorded_at=T0, sha=DOC_SHA):
     """A written confirmatory label-free table and the pre-registration record that pins it."""
     table = write(tmp_path, make_table("confirmatory"), kind="confirmatory")
     return table, PreRegistration(sha, recorded_at, et.read_table(tmp_path, "t")[1]["table_sha256"], margin=0.005, n_boot=5000,
-                                  fold_seed=0, boot_seed=0, draft=False, commit="abc123")
+                                  fold_seed=0, boot_seed=0, offset_logits="calibrated", h3_thresholds={"dist": 0.5},
+                                  h3_confirmatory_targets=("dist",), timing_rule_sha256="f" * 64, draft=False, commit="abc123")
 
 
 def test_a_draft_preregistration_admits_no_confirmatory_join(tmp_path):
@@ -327,8 +328,22 @@ def test_on_target_belongs_to_primary_rows(tmp_path):
         et.join_labels(tmp_path, "t", labels, "j", tmp_path / "log", now=T0)
 
 
+def test_a_label_exclusion_needs_a_known_reason_code(tmp_path):
+    table = write(tmp_path)
+    labels = make_labels(table)
+    only = table.population.eq("statsbomb_only").to_numpy()
+    labels.loc[only, ["sb_outcome", "label_exclusion"]] = ["Goal", "sb_goal_without_sn_goal"]
+    meta = et.join_labels(tmp_path, "t", labels, "j", tmp_path / "log", now=T0)
+    joined, _ = et.load_table(tmp_path, "j")
+    assert joined.label_exclusion.notna().sum() == only.sum() == len(table) - meta["by_population"]["primary"] - 1
+    labels.loc[only, "label_exclusion"] = "looks_odd"
+    with pytest.raises(EvalTableError, match=r"unknown label exclusion codes: \['looks_odd'\]"):
+        et.join_labels(tmp_path, "t", labels, "k", tmp_path / "log", now=T0)
+
+
 PREREG = {"sha256": "d" * 64, "recorded_at": "2026-10-12T11:00:00+02:00", "label_free_table_sha256": "e" * 64, "margin": 0.005,
-          "n_boot": 5000, "fold_seed": 0, "boot_seed": 0, "draft": False, "commit": "abc"}
+          "n_boot": 5000, "fold_seed": 0, "boot_seed": 0, "offset_logits": "calibrated", "h3_thresholds": {"dist": 0.5, "head": 0.7},
+          "h3_confirmatory_targets": ["dist"], "timing_rule_sha256": "f" * 64, "draft": False, "commit": "abc"}
 
 
 def test_preregistration_file_round_trip(tmp_path):
@@ -337,11 +352,15 @@ def test_preregistration_file_round_trip(tmp_path):
     record = et.load_preregistration(path)
     assert record.recorded_at == datetime(2026, 10, 12, 9, 0, tzinfo=UTC) and record.commit == "abc"
     assert (record.margin, record.n_boot, record.fold_seed, record.boot_seed, record.draft) == (0.005, 5000, 0, 0, False)
+    assert (record.offset_logits, record.h3_thresholds, record.h3_confirmatory_targets) == ("calibrated", {"dist": 0.5, "head": 0.7}, ("dist",))
     path.write_text(json.dumps(et.preregistration_record(record)))
     assert et.load_preregistration(path) == record
-    bad = {"recorded_at": "2026-10-12T09:00:00", "sha256": "xyz", "margin": 0.0, "n_boot": 0, "fold_seed": -1, "draft": "no"}
+    bad = {"recorded_at": "2026-10-12T09:00:00", "sha256": "xyz", "margin": 0.0, "n_boot": 0, "fold_seed": -1, "draft": "no",
+           "offset_logits": "both", "h3_confirmatory_targets": ["angle"], "timing_rule_sha256": None}
     messages = {"recorded_at": "no timezone", "sha256": "sha256 hex", "margin": "not a log-loss margin", "n_boot": "n_boot 0 is not an integer",
-                "fold_seed": "fold_seed -1 is not an integer", "draft": "draft must be true or false"}
+                "fold_seed": "fold_seed -1 is not an integer", "draft": "draft must be true or false",
+                "offset_logits": "offset_logits 'both'", "h3_confirmatory_targets": "thresholded targets",
+                "timing_rule_sha256": "timing_rule_sha256 is not a sha256"}
     for field, value in bad.items():
         path.write_text(json.dumps(PREREG | {field: value}))
         with pytest.raises(EvalTableError, match=messages[field]):

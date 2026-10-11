@@ -39,7 +39,7 @@ def synthetic_table(n_matches: int = 100, per_match: int = 25, frame_signal: flo
         "frame_logit_0": 0.6 * z_pos + frame_signal * s + rng.normal(0, 0.5, n),
         "pred_constant": 0.12, "pred_dist_angle": sigmoid(0.5 * z_pos - 1.5), "pred_event": sigmoid(z_pos),
         "pred_freeze_frame": sigmoid(z_pos), "pred_vendor_xg": sigmoid(z_pos + rng.normal(0, 0.3, n)),
-        "goal_sn": y, "on_target_sn": y, "sb_outcome": np.where(y, "Goal", "Saved"), "is_penalty": False, "q": q})
+        "goal_sn": y, "on_target_sn": y, "sb_outcome": np.where(y, "Goal", "Saved"), "is_penalty": False, "label_exclusion": None, "q": q})
 
 
 def primary_ladder(table: pd.DataFrame, margin: float, n_boot: int, **kwargs) -> ld.LadderResult:
@@ -200,14 +200,36 @@ def test_h2_concludes_equivalence_for_a_useless_frame_and_not_at_twice_the_margi
     assert not h2["equivalent"] and h2["superior"] and h2["lo95"] < -gain < h2["hi95"]
 
 
-def test_h2_draws_are_the_analysis_numbers():
+def test_h2_draws_give_the_analysis_point_and_the_refit_draws_its_interval():
+    """`h2_draws` (the power simulation's fixed-prediction H2) shares the analysis' point; the analysis' interval comes
+    from the per-draw refit of both cross-fitted models on the same shared draws."""
     table = synthetic_table(n_matches=40, per_match=20, frame_signal=0.3)
     h2 = primary_ladder(table, 0.003, 300, fold_seed=3).summary["h2"]
     boot = ld.bootstrap(table.match.to_numpy(), n_boot=300)
-    point, draws = ld.h2_draws(table.goal_sn.to_numpy(), table.pred_freeze_frame.to_numpy(), table.frame_logit_0.to_numpy(),
-                               table.match.to_numpy(), boot, fold_seed=3)
+    point, _ = ld.h2_draws(table.goal_sn.to_numpy(), table.pred_freeze_frame.to_numpy(), table.frame_logit_0.to_numpy(),
+                           table.match.to_numpy(), boot, fold_seed=3)
     assert point == pytest.approx(h2["diff"], abs=1e-12)
-    np.testing.assert_allclose(np.percentile(draws, [5, 95]), [h2["lo90"], h2["hi90"]], atol=1e-12)
+    rows, _ = ld.analysis_population(table, ("primary",))
+    y, folds = rows.goal_sn.to_numpy(int), ld.match_folds(rows.match.to_numpy(), seed=3)
+    _, fits = ld.rung_predictions(rows, folds)
+    a, b = (ld.metric_draws(y, ld.refit_predictor(fits[r], y, folds), boot, ("log_loss",))["log_loss"] for r in ld.H2)
+    np.testing.assert_allclose(np.percentile(a - b, [5, 95]), [h2["lo90"], h2["hi90"]], atol=1e-12)
+
+
+def test_label_excluded_rows_leave_the_analysis_and_penalties_are_summarised_apart():
+    table = synthetic_table(n_matches=10, per_match=6)
+    table.loc[3, ["population", "goal_sn", "sb_outcome", "label_exclusion"]] = ["statsbomb_only", False, "Goal", "sb_goal_without_sn_goal"]
+    table.loc[[0, 1], "is_penalty"] = True
+    table.loc[[0, 1], "goal_sn"] = [True, False]
+    table.loc[[0, 1], "pred_vendor_xg"] = 0.76
+    rows, exclusions = ld.analysis_population(table, ld.POPULATION_SETS["combined"])
+    assert exclusions == {"chosen": 60, "label_excluded": 1, "penalty": 2, "no_frame": 0, "analysed": 57}
+    assert table.key[3] not in set(rows.key)
+    penalties = ld.penalty_summary(table, ("primary",))
+    assert (penalties["penalties"], penalties["goals"], penalties["conversion"]) == (2, 1, 0.5)
+    assert penalties["vendor"]["mean_p"] == pytest.approx(0.76)
+    assert penalties["vendor"]["log_loss"] == pytest.approx(-(np.log(0.76) + np.log(0.24)) / 2)
+    assert np.isnan(ld.penalty_summary(table.assign(is_penalty=False), ("primary",))["conversion"])
 
 
 def test_analysis_population_drops_penalties_and_unscored_frames():
@@ -216,7 +238,7 @@ def test_analysis_population_drops_penalties_and_unscored_frames():
     table.loc[1, ["frame_status", "frame_logit_0"]] = ["0:anchor_off_tolerance", np.nan]
     table.loc[2, "population"] = "statsbomb_only"
     rows, exclusions = ld.analysis_population(table, ("primary",))
-    assert exclusions == {"chosen": 59, "penalty": 1, "no_frame": 1, "analysed": 57}
+    assert exclusions == {"chosen": 59, "label_excluded": 0, "penalty": 1, "no_frame": 1, "analysed": 57}
     assert ld.analysis_population(table, ld.POPULATION_SETS["combined"])[1]["analysed"] == 58
     assert ld.analysis_population(table, ("primary",), splits=("test",))[0].split.eq("test").all()
     with pytest.raises(ValueError, match="labels joined"):
@@ -250,7 +272,8 @@ def ladder_args(**given) -> argparse.Namespace:
 
 def test_parameters_come_from_the_preregistration_record_for_confirmatory_and_dryrun_tables():
     prereg = et.PreRegistration("a" * 64, datetime(2026, 10, 12, tzinfo=UTC), "b" * 64, margin=0.002, n_boot=6000, fold_seed=3,
-                                boot_seed=4, draft=True)
+                                boot_seed=4, offset_logits="calibrated", h3_thresholds={"dist": 0.5}, h3_confirmatory_targets=("dist",),
+                                timing_rule_sha256="c" * 64, draft=True)
     for kind in ("confirmatory", "dryrun"):
         params = analysis_parameters(kind, prereg, ladder_args())
         assert (params["margin"], params["n_boot"], params["fold_seed"], params["boot_seed"]) == (0.002, 6000, 3, 4)

@@ -3,8 +3,8 @@
 A pure function of the evaluation table with labels joined (`xgpoc.vendor.evaltable`). Descriptive, not a test. The
 logic is the prototype's (`s2_ladder.leakage`), with the fixed definitions of the spec:
 
-Population  primary rows (the SoccerNet on-target label exists only there) that are SoccerNet non-goals (decision D4),
-            not penalties, with frame_status "ok" and a finite frame logit at offset 0.
+Population  primary rows (the SoccerNet on-target label exists only there) without a label exclusion that are SoccerNet
+            non-goals (decision D4), not penalties, with frame_status "ok" and a finite frame logit at offset 0.
 on_target   SoccerNet "Shots on target", which counts blocked shots (decision D4).
 gap         logit(frame) - logit(vendor): frame_logit_0 minus the logit of pred_vendor_xg (clipped to [1e-6, 1 - 1e-6]).
 offset      G(0) - G(-400 ms): the frame logit at the anchor minus at -400 ms on the same shot; `offset_logits` picks the
@@ -75,7 +75,7 @@ def leakage_frame(table: pd.DataFrame, offset_logits: str = "calibrated") -> pd.
     if "goal_sn" not in table.columns:
         raise ValueError("the leakage diagnostic needs a table with labels joined")
     at0, atm400 = OFFSET_LOGITS[offset_logits]
-    keep = (table.population.eq("primary") & ~table.goal_sn.astype(bool) & ~table.is_penalty.astype(bool)
+    keep = (table.population.eq("primary") & table.label_exclusion.isna() & ~table.goal_sn.astype(bool) & ~table.is_penalty.astype(bool)
             & table.frame_status.eq(OK) & np.isfinite(table.frame_logit_0.to_numpy(float)))
     t = table[keep.to_numpy()]
     residual = t.timing_residual_ms.to_numpy(float)
