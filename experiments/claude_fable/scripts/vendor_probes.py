@@ -1,0 +1,165 @@
+"""H3 decoding probes on an evaluation table (xg-vendor ticket 09; `xgpoc.vendor.probes`).
+
+Opens and validates the table (`evaltable.load_table`; a confirmatory table with labels needs `--prereg`), derives the
+probe targets from the StatsBomb shots table (`probe_targets.probe_targets`, by `statsbomb_event_id`), checks every
+embedding file against the sidecar's sha256, runs the probes of every embedding set the table references and writes:
+
+    probes.csv               metric per encoder x subset x coverage x target, match-bootstrap interval
+    probe_differences.csv    G-combo minus frozen DINOv2 on the shots both cover, with the interval
+    probe_predictions.parquet  out-of-fold predictions (long format)
+    targets_check.csv        (--prototype) derived targets against the prototype's sb_features.parquet
+    prototype_comparison.csv (--prototype) against the prototype's probes.csv
+    complete.json            completion record: inputs and code hashes, parameters, key numbers
+
+    ./run.sh python scripts/vendor_probes.py --table results/xgv_eval_dev --name table --out results/xgv_probes_dev \\
+        [--shots PATH] [--prereg PATH] [--n-boot 5000] [--seed 0] [--by-split] [--thresholds JSON] [--prototype DIR]
+
+A development table gives development numbers, labelled so in complete.json; they are not results.
+"""
+
+import argparse
+import json
+import platform
+import sys
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from xgpoc.bundle import code_version, sha256_file
+from xgpoc.vendor import evaltable as et
+from xgpoc.vendor import probe_targets as pt
+from xgpoc.vendor import probes
+from xgpoc.vendor.draws import N_BOOT, SEED, split_subsets, table_draws
+
+ROOT = Path(__file__).resolve().parents[1]   # experiments/claude_fable
+SHOTS = Path("/home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet")
+SOURCE_FILES = (Path(__file__).resolve(), *(ROOT / "xgpoc/vendor" / f for f in ("probes.py", "probe_targets.py", "draws.py", "evaltable.py")),
+                ROOT / "xgpoc/probe/readability.py")
+PROTOTYPE_ENCODERS = {"emb_g_fold0": "g_combo", "emb_g_fold1": "g_combo", "emb_dinov2": "dinov2_frozen"}
+
+
+def load_all_embeddings(table: pd.DataFrame, meta: dict) -> tuple[dict, dict]:
+    """Embeddings of every set with at least one reference, after checking each file's sha256 once."""
+    hashes, embeddings = {}, {}
+    for column in et.EMBEDDING_COLUMNS:
+        if not (table[column] >= 0).any():
+            continue
+        entry = meta["embedding_sets"][column]
+        if entry["file"] not in hashes:
+            hashes[entry["file"]] = sha256_file(Path(entry["file"]))
+        if hashes[entry["file"]] != entry["sha256"]:
+            raise et.EvalTableError(f"{entry['file']} does not match the sidecar's sha256")
+        embeddings[column] = et.load_embeddings(table, meta, column)
+    return embeddings, hashes
+
+
+def prototype_comparison(metrics: pd.DataFrame, prototype: pd.DataFrame) -> pd.DataFrame:
+    """Own-coverage rows of this run next to the prototype's probes.csv (encoder g_combo / dinov2_frozen, population
+    trainvalid / all). The prototype's G-combo rows mix the five fold models over all train/valid shots, so a fold model
+    here is compared on a subset of those shots."""
+    proto = prototype.set_index(["encoder", "population", "target"])
+    rows = []
+    for r in metrics[metrics.coverage.eq("own")].itertuples():
+        population = {"all": "all", "trainvalid": "trainvalid"}.get(r.subset)
+        if population and r.encoder != "emb_dinov2":
+            population = "trainvalid"   # the prototype had G-combo embeddings for train/valid shots only
+        key = (PROTOTYPE_ENCODERS[r.encoder], population, r.target)
+        if population is None or key not in proto.index:
+            continue
+        p = proto.loc[key]
+        rows.append({"encoder": r.encoder, "subset": r.subset, "target": r.target, "metric": r.metric, "n": r.n, "value": r.value,
+                     "lo": r.lo, "hi": r.hi, "prototype_encoder": key[0], "prototype_population": key[1], "prototype_n": int(p.n),
+                     "prototype_value": float(p.value), "difference": r.value - float(p.value), "same_shots": int(p.n) == r.n})
+    return pd.DataFrame(rows)
+
+
+def rounded(*values) -> list:
+    """JSON-safe summary numbers: 4 decimals, None for NaN."""
+    return [round(float(v), 4) if np.isfinite(v) else None for v in values]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--table", type=Path, required=True, help="directory of the evaluation table")
+    parser.add_argument("--name", default="table", help="table name inside --table (label-free or joined)")
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--shots", type=Path, default=SHOTS, help="derived StatsBomb shots table (freeze frames)")
+    parser.add_argument("--prereg", type=Path, help="pre-registration record (needed for a confirmatory table with labels)")
+    parser.add_argument("--n-boot", type=int, default=N_BOOT)
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--by-split", action="store_true", help="also report the test and train/valid matches separately")
+    parser.add_argument("--thresholds", type=Path, help="JSON {target: threshold} from the pre-registration")
+    parser.add_argument("--prototype", type=Path, help="prototype directory (development comparison: probes.csv, sb_features.parquet)")
+    args = parser.parse_args()
+    if (args.out / "complete.json").exists():
+        sys.exit(f"{args.out} is complete; delete it to rerun")
+    if args.out.exists() and any(args.out.iterdir()):
+        sys.exit(f"{args.out} holds files without a completion record; delete it to rerun")
+    started = time.time()
+
+    prereg = et.load_preregistration(args.prereg) if args.prereg else None
+    table, meta = et.load_table(args.table, args.name, prereg)
+    kind = meta["table_kind"]
+    shots = pd.read_parquet(args.shots, columns=pt.SHOT_INPUT_COLUMNS)
+    derived = pt.probe_targets(shots)
+    targets = pt.targets_for_table(table, derived)
+    embeddings, embedding_hashes = load_all_embeddings(table, meta)
+    draws = table_draws(table, args.n_boot, args.seed)
+    subsets = split_subsets(table, args.by_split)
+    print(f"{kind} table: {len(table)} rows, {len(draws.keys)} matches; encoders "
+          f"{ {c: len(p) for c, (p, _) in embeddings.items()} }; {args.n_boot} draws", flush=True)
+
+    result = probes.probe_table(table, targets, embeddings, draws, subsets)
+    thresholds = json.loads(args.thresholds.read_text()) if args.thresholds else None
+    metrics = probes.apply_thresholds(result.metrics, thresholds) if thresholds else result.metrics
+    args.out.mkdir(parents=True, exist_ok=True)
+    metrics.to_csv(args.out / "probes.csv", index=False)
+    result.differences.to_csv(args.out / "probe_differences.csv", index=False)
+    result.predictions.to_parquet(args.out / "probe_predictions.parquet", index=False)
+
+    inputs = {"table": {"directory": str(args.table), "name": args.name, "parquet_sha256": meta["table_sha256"], "labels_state": meta["labels_state"]},
+              "shots": {"file": str(args.shots), "sha256": sha256_file(args.shots)}, "embeddings": embedding_hashes,
+              "prereg": None if prereg is None else {"file": str(args.prereg), "sha256": prereg.sha256},
+              "thresholds": None if thresholds is None else {"file": str(args.thresholds), "sha256": sha256_file(args.thresholds), "values": thresholds}}
+    checks = {}
+    if args.prototype:
+        check = pt.compare_with_features(derived, pd.read_parquet(args.prototype / "sb_features.parquet"))
+        check.to_csv(args.out / "targets_check.csv", index=False)
+        comparison = prototype_comparison(metrics, pd.read_csv(args.prototype / "probes.csv"))
+        comparison.to_csv(args.out / "prototype_comparison.csv", index=False)
+        inputs["prototype"] = {name: sha256_file(args.prototype / name) for name in ("sb_features.parquet", "probes.csv")}
+        same = comparison[comparison.same_shots]
+        checks = {"targets_max_abs_diff": rounded(check.max_abs_diff.max())[0], "targets_nan_mismatch": int(check.nan_mismatch.sum()),
+                  "targets_compared_shots": int(check.shots.iloc[0]),
+                  "prototype_same_shots_max_abs_diff": rounded(same.difference.abs().max())[0] if len(same) else None}
+        print(check.to_string(index=False))
+        print(comparison.round(4).to_string(index=False))
+
+    headline = metrics[metrics.subset.eq("all") & metrics.coverage.eq("own")]
+    summary = {"table_kind": kind, "development": kind == "development", "rows": len(table),
+               "embedding_references": {c: len(p) for c, (p, _) in embeddings.items()},
+               "metrics_all_own": {f"{r.encoder}|{r.target}": [*rounded(r.value, r.lo, r.hi), int(r.n)] for r in headline.itertuples()},
+               "differences_all": {f"{r.encoder}|{r.target}": [*rounded(r.difference, r.lo, r.hi), int(r.n)]
+                                   for r in result.differences[result.differences.subset.eq("all")].itertuples()},
+               "negative_control_max": rounded(metrics.loc[metrics.negative_control, "value"].max())[0], "checks": checks,
+               "runtime_s": round(time.time() - started, 1)}
+    print(pd.DataFrame(result.differences).round(4).to_string(index=False))
+    names = sorted(p.name for p in args.out.iterdir() if p.is_file())
+    record = {"completed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+              "label": "DEVELOPMENT numbers, not results" if kind == "development" else "confirmatory run",
+              "identity": {"analysis": "xg-vendor H3 probes", "table_kind": kind, "inputs": inputs,
+                           "parameters": {"n_boot": args.n_boot, "seed": args.seed, "subsets": list(subsets), "alphas": list(probes.ALPHAS),
+                                          "n_outer": probes.N_OUTER, "n_inner": probes.N_INNER, "control": probes.CONTROL,
+                                          "control_seed": probes.CONTROL_SEED, "reference": probes.REFERENCE},
+                           "sources": {str(p.relative_to(ROOT)): sha256_file(p) for p in SOURCE_FILES}, "code": code_version(ROOT)},
+              "summary": summary,
+              "runtime": {"python": platform.python_version(), "numpy": np.__version__, "pandas": pd.__version__},
+              "files": {name: sha256_file(args.out / name) for name in names}}
+    (args.out / "complete.json").write_text(json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + "\n")
+    print(f"wrote {args.out} ({summary['runtime_s']} s)")
+
+
+if __name__ == "__main__":
+    main()
