@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import supervision as sv
 from xgd_fixtures import frame_with
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import audit
@@ -16,6 +17,7 @@ from xgpoc.detector.conventions import GOAL, YARD
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import xgd_audit  # noqa: E402
+import xgd_kp_diag  # noqa: E402
 
 ATT, DEF = 0, 1
 # Columns of the real tables that carry a goal or an outcome: none may ever be read.
@@ -287,3 +289,37 @@ def test_replayed_features_that_differ_from_the_cache_are_reported():
     replayed = pd.DataFrame({"shot_id": ["b", "a"], "offset_ms": [0, 0], "dist": [np.nan, 1.5], "shot_ok": [0.0, 1.0]})
     assert audit.check_replay(cached, replayed) == {"dist": 1}
     assert audit.check_replay(cached, replayed.assign(dist=[np.nan, 1.0])) == {}
+
+
+# ------------------------------------------------------------ the keypoint-input diagnostic
+
+def test_the_diagnostic_stretches_the_frame_and_scales_the_keypoints_back():
+    class Model:
+        def predict(self, image):
+            self.shape = image.shape
+            return sv.KeyPoints(xy=np.array([[[320.0, 320.0], [640.0, 0.0]]], np.float32), confidence=np.ones((1, 2), np.float32),
+                                data={"box_confidence": np.float32([0.7])})
+    model = Model()
+    keypoints = xgd_kp_diag.stretched_keypoints(model, np.zeros((720, 1280, 3), np.uint8))
+    assert model.shape == (640, 640, 3)
+    np.testing.assert_allclose(keypoints.xy[0], [[640.0, 360.0], [1280.0, 0.0]])
+
+
+def test_the_diagnostic_places_people_at_the_bottom_centre_and_the_ball_at_the_centre():
+    shift = np.array([[1.0, 0, 10], [0, 1.0, 20], [0, 0, 1]])
+    assert xgd_kp_diag.placed([0, 0, 4, 10], shift, bottom=True) == [12.0, 30.0]
+    assert xgd_kp_diag.placed([0, 0, 4, 10], shift, bottom=False) == [12.0, 25.0]
+    assert np.isnan(xgd_kp_diag.placed([0, 0, 4, 10], None, bottom=True)).all()
+    row = {"det_xyxy": [0, 0, 4, 10], "ball_xyxy": [], "homography": None}
+    kp = sv.KeyPoints(xy=np.zeros((1, 32, 2), np.float32), confidence=np.ones((1, 32), np.float32),
+                      data={"box_confidence": np.float32([0.6])})
+    new = xgd_kp_diag.restretched_row(row, kp, shift)
+    assert new["det_pitch_xy"] == [12.0, 30.0] and new["ball_pitch_xy"] == [] and new["kp_instance_conf"] == pytest.approx(0.6)
+
+
+def test_unanalysed_fallback_frames_are_padded_as_frames_without_a_ball():
+    frames = pd.DataFrame({"shot_id": ["a", "b", "b"], "offset_ms": [0, 0, -400], "readable": [True, True, True]})
+    padded, shots = xgd_kp_diag.with_unanalysed_fallbacks(frames)
+    assert shots == 2 and sorted(zip(padded.shot_id, padded.offset_ms, strict=True)) == [("a", -800), ("a", -400), ("a", 0), ("b", -800),
+                                                                              ("b", -400), ("b", 0)]
+    assert not padded.set_index(["shot_id", "offset_ms"]).loc[("a", -400), "readable"]

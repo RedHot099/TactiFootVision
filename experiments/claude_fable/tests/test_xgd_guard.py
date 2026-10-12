@@ -85,7 +85,7 @@ def test_detector_code_imports_no_vendor_module_and_names_no_statsbomb_file(path
     assert named == allowed.get(path.name, []), f"{path.name} names StatsBomb or pairing files: {named}"
 
 
-AUDIT_FILES = ("audit.py", "xgd_audit.py")
+AUDIT_FILES = ("audit.py", "xgd_audit.py", "xgd_kp_diag.py")
 
 
 def _imports_audit(tree: ast.AST) -> bool:
@@ -103,12 +103,13 @@ def test_no_feature_model_or_extraction_code_imports_the_audit(path):
     assert not _imports_audit(ast.parse(path.read_text())), f"{path.name} imports the StatsBomb audit"
 
 
-def test_the_audit_script_is_the_one_that_imports_it():
-    assert _imports_audit(ast.parse((ROOT / "scripts/xgd_audit.py").read_text()))
+@pytest.mark.parametrize("script", ["xgd_audit.py", "xgd_kp_diag.py"])
+def test_the_audit_scripts_are_the_ones_that_import_it(script):
+    assert _imports_audit(ast.parse((ROOT / "scripts" / script).read_text()))
 
 
 @pytest.mark.parametrize("relative", ["results/xgd_audit/per_shot.parquet", "results/xgd_audit/metrics.csv",
-                                      "results/xgv_timing_source/shot_residuals.parquet"])
+                                      "results/xgd_kp_diag/per_shot.parquet", "results/xgv_timing_source/shot_residuals.parquet"])
 def test_the_audit_outputs_and_timing_residuals_are_refused_inside_the_guard(tmp_path, relative):
     path = _forbidden_file(tmp_path, relative)
     with no_statsbomb_reads(), pytest.raises(StatsBombRead):
