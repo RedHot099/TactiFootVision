@@ -4,7 +4,8 @@ Frames: t0 frames of shots in the xg-vendor split plan's **training** matches on
 gate and evaluation matches are never sampled. They are split by the plan's home-team fold: folds 0-2 are `dev`, where
 variants are compared and chosen, and folds 3-4 are `confirm`, where the chosen ones are checked once more.
 
-A variant is the package's keypoint input (letterbox or stretch), the keypoint confidence the homography uses, and the
+A variant is the package's keypoint input (letterbox or stretch), the keypoint confidence and RANSAC limit of the
+homography, and the
 line refinement on or off, all run through
 `tactifoot_vision.pitch.HomographyEstimator.fit` on the cached keypoints of its input. `C4` is the extraction before
 this ticket: the homography cached by ticket 02's full C4 run (letterbox, keypoint confidence 0.5, no refinement).
@@ -36,11 +37,12 @@ class Variant:
     keypoint_input: str                     # "letterbox" | "stretch"
     min_confidence: float = 0.5             # keypoints the homography uses
     refine_with_lines: bool = False
+    ransac_threshold: float = 10.0          # metres (the package default and C1-C4)
 
     def estimator(self):
         from tactifoot_vision.pitch import HomographyEstimator
 
-        return HomographyEstimator(min_confidence=self.min_confidence, ransac_threshold=10.0,
+        return HomographyEstimator(min_confidence=self.min_confidence, ransac_threshold=self.ransac_threshold,
                                    refine_with_lines=self.refine_with_lines)
 
     def settings(self) -> dict:

@@ -45,7 +45,7 @@ def paired_shot_ids(pairs: Path) -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out", type=Path, default=ROOT / "cache/xgd_extract")
-    parser.add_argument("--configs", nargs="+", default=list(ex.CONFIGS), choices=list(ex.CONFIGS))
+    parser.add_argument("--configs", nargs="+", default=list(ex.AUDIT_1), choices=list(ex.CONFIGS))
     parser.add_argument("--index", type=Path, default=INDEX)
     parser.add_argument("--pairs", type=Path, default=PAIRS)
     parser.add_argument("--limit", type=int, help="first N shots only (smoke runs)")
@@ -72,10 +72,10 @@ def main() -> None:
         embedder = tv.teams.SigLIPEmbedder(model_name=ex.SIGLIP, device=args.device)
         groups: dict[tuple, list[ex.ExtractorConfig]] = {}
         for config in configs:
-            groups.setdefault(config.detector, []).append(config)
-        for (imgsz, ball_conf), group in groups.items():
+            groups.setdefault(config.analysis, []).append(config)
+        for group in groups.values():
             names = "+".join(c.name for c in group)
-            analyzer, ball_only = ex.build_analyzers(imgsz, ball_conf, embedder, device=args.device)
+            analyzer, ball_only = ex.build_analyzers(group[0], embedder, device=args.device)
             started, clock = datetime.now(UTC), time.perf_counter()
             results = ex.extract_detector(shots, group, analyzer, ball_only, cv2.imread,
                                           progress=lambda rows, names=names: tqdm(rows, desc=names, mininterval=30))

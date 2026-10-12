@@ -96,7 +96,7 @@ def main() -> None:
                                          "digest": canonical_digest(shot_ids), "limit": args.limit},
                                "choice": choice_input}}
         embedder = tv.teams.SigLIPEmbedder(model_name=ex.SIGLIP, device=args.device)
-        analyzer, ball_only = ex.build_analyzers(config.imgsz, config.ball_conf, embedder, device=args.device)
+        analyzer, ball_only = ex.build_analyzers(config, embedder, device=args.device)
         started, clock = datetime.now(UTC), time.perf_counter()
         result = ex.extract_study(shots, config, analyzer, ball_only, cv2.imread,
                                   progress=lambda rows: tqdm(rows, desc=name, mininterval=60))

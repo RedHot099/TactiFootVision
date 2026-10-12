@@ -14,9 +14,11 @@ PEOPLE = [(93.6, 34.2, 0, "player"), (100.0, 34.0, 1, "player"), (104.0, 34.5, 1
 
 
 def test_the_four_configurations_are_the_declared_ones():
-    table = {name: (c.imgsz, c.ball_conf, c.ball_fallback) for name, c in ex.CONFIGS.items()}
+    table = {name: (c.imgsz, c.ball_conf, c.ball_fallback) for name, c in ex.CONFIGS.items() if name in ex.AUDIT_1}
     assert table == {"C1": (640, 0.30, False), "C2": (640, 0.30, True), "C3": (1920, 0.15, False), "C4": (1920, 0.15, True)}
-    assert ex.CONFIGS["C1"].detector == ex.CONFIGS["C2"].detector != ex.CONFIGS["C3"].detector
+    assert all((c.keypoint_stretch, c.homography_min_confidence, c.refine_with_lines) == (False, 0.5, False)
+               for name, c in ex.CONFIGS.items() if name in ex.AUDIT_1)       # audit 1: letterbox, 0.5, no refinement
+    assert ex.CONFIGS["C1"].analysis == ex.CONFIGS["C2"].analysis != ex.CONFIGS["C3"].analysis
     assert ex.FALLBACK_OFFSETS == (-400, -800) and set(ex.FRAME_COLUMNS) == {0, -400, -800}
     assert ex.settings(ex.CONFIGS["C4"])["team_reducer"] is None
 
@@ -124,7 +126,7 @@ def test_an_unreadable_t0_frame_is_a_missing_row_and_mixed_detectors_are_refused
     row = out["C4"].features[0]
     assert row["frame_readable"] == 0.0 and row["shot_ok"] == 0.0 and np.isnan(row["dist"])
     assert out["C4"].frames == [ex.frame_row("a", 0, "a0", None)]
-    with pytest.raises(ValueError, match="share the detector settings"):
+    with pytest.raises(ValueError, match="share the detector, keypoint and homography settings"):
         ex.extract_detector(shots, [ex.CONFIGS["C1"], ex.CONFIGS["C3"]], Analyser({}), Analyser({}), lambda p: None)
 
 
@@ -143,7 +145,10 @@ def test_real_analysers_share_one_detector_and_only_the_t0_one_has_teams(monkeyp
 
         def embed(self, crops):
             return np.zeros((len(crops), 2), np.float32)
-    analyser, ball_only = ex.build_analyzers(1920, 0.15, Embedder(), device="cpu")
+    analyser, ball_only = ex.build_analyzers(ex.CONFIGS["C4"], Embedder(), device="cpu")
+    d4, _ = ex.build_analyzers(ex.CONFIGS["D4"], Embedder(), device="cpu")
+    assert d4.keypoint_model.stretch and d4.homography.refine_with_lines and d4.homography.min_confidence == 0.3
+    assert not analyser.keypoint_model.stretch and not analyser.homography.refine_with_lines
     assert analyser.detector is ball_only.detector and analyser.detector.imgsz == 1920
     assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.conf == 0.3 and analyser.detector.iou == 0.5
     assert analyser.team_classifier.reducer is None and ball_only.team_classifier is None
@@ -261,3 +266,24 @@ def test_frame_table_refuses_unknown_shots(tmp_path):
     pd.DataFrame({"shot_id": ["s1"], **{c: ["/f.jpg"] for c in ex.FRAME_COLUMNS.values()}}).to_parquet(index)
     with pytest.raises(ValueError, match="not in"):
         ex.frame_table(index, ["s1", "s2"])
+
+
+def test_audit_2_configurations_are_the_committed_declaration():
+    # Ticket 08 declared D1-D4 in a committed file before audit 2 (ticket 09); the extractor runs exactly those.
+    import json
+    from pathlib import Path
+
+    declared = json.loads((Path(__file__).resolve().parents[1] / "research/xg_detector_audit2_configs.json").read_text())
+    common = declared["common"]
+    assert set(declared["configs"]) == set(ex.AUDIT_2)
+    for name, spec in declared["configs"].items():
+        config = ex.CONFIGS[name]
+        assert (config.imgsz, config.ball_conf, config.ball_fallback) == (common["detector"]["imgsz"],
+                                                                            common["detector"]["class_conf"]["ball"], True)
+        assert config.keypoint_stretch == (spec["keypoint_input"] == "stretch")
+        assert config.homography_min_confidence == spec["keypoint_conf"]
+        assert config.refine_with_lines == spec["refine_with_lines"]
+    assert ex.COMMON["keypoint_conf"] == common["keypoints"]["instance_conf"]
+    assert ex.COMMON["homography_ransac_threshold"] == common["homography"]["ransac_threshold_m"]
+    assert (ex.COMMON["detector_conf"], ex.COMMON["detector_iou"]) == (common["detector"]["conf"], common["detector"]["iou"])
+    assert ex.CONFIGS["D1"].analysis != ex.CONFIGS["C4"].analysis      # no shared pass with audit 1

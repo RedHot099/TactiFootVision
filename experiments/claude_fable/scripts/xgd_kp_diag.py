@@ -100,7 +100,7 @@ def main() -> None:
     folder = args.extract / config.name
     frames = pd.read_parquet(folder / "frames.parquet", columns=audit.FRAME_READ_COLUMNS)
     model = tv.load_model("yolo_pose", ex.KEYPOINT_WEIGHTS, conf=ex.COMMON["keypoint_conf"], device=args.device)
-    estimator = HomographyEstimator(min_confidence=ex.COMMON["homography_min_confidence"],
+    estimator = HomographyEstimator(min_confidence=config.homography_min_confidence,
                                     ransac_threshold=ex.COMMON["homography_ransac_threshold"])
     started, clock = datetime.now(UTC), time.perf_counter()
     rows = []

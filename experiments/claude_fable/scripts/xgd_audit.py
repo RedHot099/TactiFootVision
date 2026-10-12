@@ -54,7 +54,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_audit")
     parser.add_argument("--pairs", type=Path, default=audit.PAIRS)
     parser.add_argument("--shots", type=Path, default=audit.SHOTS)
-    parser.add_argument("--configs", nargs="+", default=list(ex.CONFIGS), choices=list(ex.CONFIGS))
+    parser.add_argument("--configs", nargs="+", default=list(ex.AUDIT_1), choices=list(ex.CONFIGS))
     parser.add_argument("--n-boot", type=int, default=audit.N_BOOT)
     parser.add_argument("--seed", type=int, default=audit.SEED)
     args = parser.parse_args()

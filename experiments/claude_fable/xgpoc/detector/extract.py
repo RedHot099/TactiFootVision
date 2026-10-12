@@ -1,4 +1,6 @@
-"""The four declared extractor configurations, run with the package's models on shot frames (xg-detector spec, Extraction).
+"""The declared extractor configurations, run with the package's models on shot frames (xg-detector spec, Extraction).
+
+Audit 1 (ticket 01/02), the pitch keypoints with the package's letterbox input and keypoint threshold 0.5:
 
     config  detector input  ball threshold  ball fallback (-400/-800 ms)
     C1      640             0.30            no
@@ -6,16 +8,25 @@
     C3      1920            0.15            no
     C4      1920            0.15            yes
 
-Common to all four: YOLO11m detector at conf 0.3 and NMS IoU 0.5 for the people (the package's run-file values,
-`configs/pipeline.yaml`), pitch keypoints (YOLOv8n-pose with the package's letterbox input at its training size 640), the
-stateless homography of each frame (`HomographyEstimator.fit`: keypoints with confidence >= 0.5, RANSAC 10 m), SigLIP
+Audit 2 (ticket 09), declared by ticket 08 (`research/xg_detector_audit2_configs.json`): C4's detector and ball
+fallback, the pitch model on the stretched input it was trained on (`stretch=True`), and
+
+    config  keypoint threshold  line refinement (HomographyEstimator(refine_with_lines=True))
+    D1      0.5                 no
+    D2      0.3                 no
+    D3      0.5                 yes
+    D4      0.3                 yes
+
+Common to all: YOLO11m detector at conf 0.3 and NMS IoU 0.5 for the people (the package's run-file values,
+`configs/pipeline.yaml`), pitch keypoints (YOLOv8n-pose at its training size 640), the stateless homography of each
+frame (`HomographyEstimator.fit` with the frame and the people boxes: the configuration's keypoint threshold, RANSAC 10 m), SigLIP
 single-frame teams (k-means k = 2 on the frame's player crops, no UMAP). The package's `FrameAnalyzer` does all of it;
 this module only chooses the settings, reads the frames and turns results into cache rows.
 
 The one departure from the run file: the pitch instance threshold is 0.1, not 0.5 (the research extractor's value).
 On 300 random paired t0 frames the homography fitted on 53% at 0.5 and 61% at 0.1; the per-keypoint threshold of 0.5,
 which decides what the fit uses, is unchanged. Chosen on coverage alone (no position error, no label), before the
-audit, the same in all four configurations; the instance confidence is cached (`kp_instance_conf`) so the audit can
+audit, the same in every configuration; the instance confidence is cached (`kp_instance_conf`) so the audit can
 also report the 0.5 subset.
 
 The ball fallback is the package's `fill_ball`: a t0 frame without a ball on the pitch takes the ball of the -400 ms
@@ -60,16 +71,28 @@ class ExtractorConfig:
     imgsz: int
     ball_conf: float
     ball_fallback: bool
+    keypoint_stretch: bool = False              # the pitch model's input: the package's stretch=True, else the letterbox
+    homography_min_confidence: float = 0.5      # keypoints the homography uses
+    refine_with_lines: bool = False             # HomographyEstimator(refine_with_lines=True)
 
     @property
-    def detector(self) -> tuple[int, float]:
-        """Configurations with the same detector settings share their t0 detections."""
-        return self.imgsz, self.ball_conf
+    def analysis(self) -> tuple:
+        """Configurations with the same detector, keypoint and homography settings share their t0 analysis."""
+        return self.imgsz, self.ball_conf, self.keypoint_stretch, self.homography_min_confidence, self.refine_with_lines
 
 
-CONFIGS = {c.name: c for c in (ExtractorConfig("C1", 640, 0.30, False), ExtractorConfig("C2", 640, 0.30, True),
-                               ExtractorConfig("C3", 1920, 0.15, False), ExtractorConfig("C4", 1920, 0.15, True))}
-COMMON = {"detector_conf": 0.3, "detector_iou": 0.5, "keypoint_conf": 0.1, "homography_min_confidence": 0.5,
+# Audit 1 (ticket 02): the letterbox keypoint input. Audit 2 (ticket 09): D1-D4, declared by ticket 08 in
+# research/xg_detector_audit2_configs.json on the label-free line metric of training-match frames: C4's detector and
+# ball fallback, the stretched keypoint input, keypoint threshold 0.5 / 0.3, line refinement off / on.
+CONFIGS = {c.name: c for c in (
+    ExtractorConfig("C1", 640, 0.30, False), ExtractorConfig("C2", 640, 0.30, True),
+    ExtractorConfig("C3", 1920, 0.15, False), ExtractorConfig("C4", 1920, 0.15, True),
+    ExtractorConfig("D1", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.5),
+    ExtractorConfig("D2", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.3),
+    ExtractorConfig("D3", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.5, refine_with_lines=True),
+    ExtractorConfig("D4", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.3, refine_with_lines=True))}
+AUDIT_1, AUDIT_2 = ("C1", "C2", "C3", "C4"), ("D1", "D2", "D3", "D4")
+COMMON = {"detector_conf": 0.3, "detector_iou": 0.5, "keypoint_conf": 0.1,
           "homography_ransac_threshold": 10.0, "team_embedder": SIGLIP, "team_reducer": None, "n_teams": 2,
           "crop_scale": 0.8, "fallback_offsets_ms": list(FALLBACK_OFFSETS)}
 
@@ -79,15 +102,17 @@ def settings(config: ExtractorConfig) -> dict:
     return asdict(config) | COMMON
 
 
-def build_analyzers(imgsz: int, ball_conf: float, embedder, device: str | None = None) -> tuple[FrameAnalyzer, FrameAnalyzer]:
+def build_analyzers(config: ExtractorConfig, embedder, device: str | None = None) -> tuple[FrameAnalyzer, FrameAnalyzer]:
     """(t0 analyzer with teams, analyzer of the fallback frames without teams), sharing the models."""
     import tactifoot_vision as tv
 
     detector = tv.load_model("yolo", DETECTOR_WEIGHTS, conf=COMMON["detector_conf"], iou=COMMON["detector_iou"],
-                             imgsz=imgsz, class_conf={"ball": ball_conf}, device=device)
-    keypoints = tv.load_model("yolo_pose", KEYPOINT_WEIGHTS, conf=COMMON["keypoint_conf"], device=device)
-    homography = tv.pitch.HomographyEstimator(min_confidence=COMMON["homography_min_confidence"],
-                                              ransac_threshold=COMMON["homography_ransac_threshold"])
+                             imgsz=config.imgsz, class_conf={"ball": config.ball_conf}, device=device)
+    keypoints = tv.load_model("yolo_pose", KEYPOINT_WEIGHTS, conf=COMMON["keypoint_conf"], stretch=config.keypoint_stretch,
+                              device=device)
+    homography = tv.pitch.HomographyEstimator(min_confidence=config.homography_min_confidence,
+                                              ransac_threshold=COMMON["homography_ransac_threshold"],
+                                              refine_with_lines=config.refine_with_lines)
     teams = tv.teams.TeamClassifier(embedder, n_teams=COMMON["n_teams"], reducer=COMMON["team_reducer"])
     with_teams = FrameAnalyzer(detector, keypoints, teams, homography=homography, crop_scale=COMMON["crop_scale"])
     ball_only = FrameAnalyzer(detector, keypoints, None, homography=homography)
@@ -162,8 +187,8 @@ def extract_detector(shots: pd.DataFrame, configs: Sequence[ExtractorConfig], an
     `shots`: `shot_id` and the `FRAME_COLUMNS`. `analyzer` / `ball_only`: frame -> `FrameResult` (with and without
     teams). `read_image`: path -> BGR image or None.
     """
-    if len({c.detector for c in configs}) != 1:
-        raise ValueError("configurations of one pass must share the detector settings")
+    if len({c.analysis for c in configs}) != 1:
+        raise ValueError("configurations of one pass must share the detector, keypoint and homography settings")
     out = {c.name: Extraction(c, [], []) for c in configs}
     for shot in progress(shots.to_dict("records")):
         shot_id, path = shot["shot_id"], shot[FRAME_COLUMNS[0]]
@@ -175,7 +200,7 @@ def extract_detector(shots: pd.DataFrame, configs: Sequence[ExtractorConfig], an
             extraction = out[config.name]
             extraction.frames.append(t0_row)
             lazily = _earlier_frames(shot, read_image, ball_only, earlier, FALLBACK_OFFSETS) if config.ball_fallback else []
-            features = frame_features(t0, lazily)
+            features = frame_features(t0, lazily, config)
             if config.ball_fallback:
                 extraction.frames += [row for row, _ in earlier.values()]
             extraction.features.append({"shot_id": shot_id} | feature_record(0, t0 is not None, features))
@@ -202,18 +227,18 @@ def extract_study(shots: pd.DataFrame, config: ExtractorConfig, analyzer: Callab
             result = analysed[offset][1]
             earlier = fallback_offsets(offset)
             lazily = _earlier_frames(shot, read_image, ball_only, analysed, earlier) if config.ball_fallback else []
-            features = frame_features(result, lazily)
+            features = frame_features(result, lazily, config)
             out.features.append({"shot_id": shot["shot_id"]} | feature_record(offset, result is not None, features))
         out.frames += [row for row, _ in analysed.values()]
     return out
 
 
-def frame_features(result: FrameResult | None, earlier: Iterable[FrameResult]) -> dict[str, float]:
+def frame_features(result: FrameResult | None, earlier: Iterable[FrameResult], config: ExtractorConfig) -> dict[str, float]:
     """`shot_features` of an analysed frame after the ball fallback from `earlier` (empty: no fallback); a missing frame
     gives `missing_features`."""
     if result is None:
         return missing_features()
-    return shot_features(fill_ball(result, earlier), COMMON["homography_min_confidence"])
+    return shot_features(fill_ball(result, earlier), config.homography_min_confidence)
 
 
 def feature_record(offset_ms: int, readable: bool, features: dict[str, float]) -> dict:
@@ -260,7 +285,7 @@ def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequ
                 continue
             result = frame_from_row(cached[offset])
             chain = earlier(fallback_offsets(offset)) if config.ball_fallback else []
-            rows.append({"shot_id": shot_id} | feature_record(offset, result is not None, frame_features(result, chain)))
+            rows.append({"shot_id": shot_id} | feature_record(offset, result is not None, frame_features(result, chain, config)))
     return pd.DataFrame(rows)
 
 

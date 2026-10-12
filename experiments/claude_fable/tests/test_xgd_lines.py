@@ -172,3 +172,14 @@ def test_a_homography_that_squashes_the_pitch_onto_one_line_is_not_scored(view):
     assert len(xy) >= lines.MIN_POINTS and lines.thickness(xy) < lines.MIN_THICKNESS
     assert np.isnan(lines.score(view, flat)["agreement"])
     assert lines.thickness(lines.projected_samples(TRUTH, (720, 1280))) > 100
+
+
+def test_singular_homographies_are_not_used_by_any_check():
+    singular = TRUTH.copy()
+    singular[2] = singular[0]
+    boxes = np.array([[600.0, 300.0, 620.0, 360.0]])
+    assert not lines.usable(singular) and not lines.usable(None) and lines.usable(TRUTH)
+    assert np.isnan(lines.players_on_pitch(singular, boxes)) and np.isnan(lines.height_ratio(singular, boxes))
+    assert np.isnan(lines.mirrored(singular, (720, 1280)))
+    image = np.zeros((720, 1280, 3), np.uint8)
+    assert (lines.draw(image, singular) == image).all()

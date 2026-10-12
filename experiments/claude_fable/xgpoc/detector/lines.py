@@ -68,6 +68,14 @@ def line_mask(image: np.ndarray, grass: np.ndarray | None = None) -> np.ndarray:
     return (tophat > 22) & (hsv[..., 1] < 110) & inside
 
 
+def usable(homography) -> bool:
+    """A homography that maps the frame onto the plane: given and not (numerically) singular."""
+    if homography is None:
+        return False
+    condition = np.linalg.cond(np.asarray(homography, dtype=float))
+    return bool(np.isfinite(condition) and condition < 1e12)
+
+
 @dataclass(frozen=True)
 class LineView:
     """What the score needs from one frame: the grass, the line mask and the distance (px) to the nearest line pixel."""
@@ -99,11 +107,9 @@ def score(view: LineView, homography: np.ndarray | None, tol: float = TOL) -> di
     """`points`, `off_grass`, `agreement` and `recall` of one frame's homography (NaN scores without a homography or
     with fewer than `MIN_POINTS` points)."""
     nan = {"points": 0.0, "off_grass": np.nan, "agreement": np.nan, "recall": np.nan}
-    if homography is None:
-        return nan
+    if not usable(homography):
+        return nan                                    # none, or singular (e.g. collinear keypoints): no frame image
     shape = view.lines.shape
-    if not np.isfinite(np.linalg.cond(homography)) or np.linalg.cond(homography) > 1e12:
-        return nan                                    # a singular fit (e.g. collinear keypoints) has no frame image
     xy = projected_samples(homography, shape)
     if len(xy) == 0:
         return nan
@@ -142,7 +148,7 @@ def render(homography: np.ndarray, shape: tuple[int, int] = (720, 1280), width_p
 def draw(image: np.ndarray, homography: np.ndarray | None, color=(0, 0, 255)) -> np.ndarray:
     """`image` with the projected marking samples drawn on it (for overlays)."""
     out = image.copy()
-    if homography is not None:
+    if usable(homography):
         for x, y in np.round(projected_samples(homography, image.shape[:2])).astype(int):
             cv2.circle(out, (int(x), int(y)), 1, color, -1)
     return out
@@ -158,7 +164,7 @@ def players_on_pitch(homography: np.ndarray | None, boxes: np.ndarray, pitch: So
     or players. Independent of the line mask: a homography metres off puts players outside the pitch."""
     pitch = pitch or SoccerPitch()
     boxes = np.asarray(boxes, dtype=float).reshape(-1, 4)
-    if homography is None or len(boxes) == 0:
+    if not usable(homography) or len(boxes) == 0:
         return np.nan
     feet = np.column_stack([(boxes[:, 0] + boxes[:, 2]) / 2, boxes[:, 3]])
     xy = cv2.perspectiveTransform(feet.reshape(-1, 1, 2), np.asarray(homography, dtype=float)).reshape(-1, 2)
@@ -174,7 +180,7 @@ def height_ratio(homography: np.ndarray | None, boxes: np.ndarray) -> float:
     around them. About 1 on a broadcast view (above 1 by the box margin and the camera tilt), the same bias for every
     homography of the frame; NaN without a homography or players."""
     boxes = np.asarray(boxes, dtype=float).reshape(-1, 4)
-    if homography is None or len(boxes) == 0:
+    if not usable(homography) or len(boxes) == 0:
         return np.nan
     homography = np.asarray(homography, dtype=float)
     to_frame = np.linalg.inv(homography)
@@ -196,7 +202,7 @@ def mirrored(homography: np.ndarray | None, shape: tuple[int, int]) -> float:
     without a homography). With the pitch's far touchline at y = 0, a camera above the pitch never sees a mirror image
     (image and pitch both have y growing towards the camera); keypoints of one end labelled as the other end's give one.
     The sign of the Jacobian determinant of a homography at a point is that of det(H) times the point's w."""
-    if homography is None:
+    if not usable(homography):
         return np.nan
     h, w = shape
     homography = np.asarray(homography, dtype=float)

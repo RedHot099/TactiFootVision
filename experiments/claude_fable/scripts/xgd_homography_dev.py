@@ -53,6 +53,8 @@ VARIANTS = (
     V("letterbox_refined", "letterbox", refine_with_lines=True),
     V("stretch", "stretch"),
     V("stretch_kp03", "stretch", min_confidence=0.3),
+    V("stretch_kp07", "stretch", min_confidence=0.7),                       # thresholds and RANSAC limit (cause 4)
+    V("stretch_ransac2", "stretch", ransac_threshold=2.0),
     V("stretch_refined", "stretch", refine_with_lines=True),
     V("stretch_kp03_refined", "stretch", min_confidence=0.3, refine_with_lines=True),
 )
