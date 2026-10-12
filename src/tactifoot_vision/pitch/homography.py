@@ -66,6 +66,15 @@ class HomographyEstimator:
     ``ransac_threshold`` is the RANSAC reprojection limit in pitch units (metres
     on the default pitch): keypoints further than this from the fitted model are
     ignored. The loose default favours smooth positions over outlier rejection.
+
+    ``refine_with_lines`` refines each frame's keypoint fit on the painted lines
+    of the frame (:func:`tactifoot_vision.pitch.lines.refine_homography`), so
+    :meth:`fit` and :meth:`update` need the frame, and take the people's boxes
+    to keep kits out of the line mask. Keypoint models place landmarks tens of
+    pixels off on footage unlike their training images, metres on the pitch;
+    the lines fix the fit when it is within a few metres. A frame keeps its
+    keypoint fit when too few markings are visible or when the refined
+    markings do not land at least half on painted lines.
     """
 
     def __init__(
@@ -76,6 +85,7 @@ class HomographyEstimator:
         smoothing_window: int = 3,
         ransac_threshold: float = 10.0,
         max_age: int | None = 50,
+        refine_with_lines: bool = False,
     ) -> None:
         if not 0 <= min_confidence <= 1:
             raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
@@ -89,6 +99,7 @@ class HomographyEstimator:
         self.min_confidence = min_confidence
         self.ransac_threshold = ransac_threshold
         self.max_age = max_age
+        self.refine_with_lines = refine_with_lines
         self._history: deque[np.ndarray] = deque(maxlen=smoothing_window)
         self.matrix: np.ndarray | None = None
         # Confident keypoints given to RANSAC in the current frame's fit (not
@@ -102,18 +113,29 @@ class HomographyEstimator:
         self.used_indices = None
         self._age = 0
 
-    def fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
+    def fit(
+        self,
+        keypoints: sv.KeyPoints | None,
+        frame: np.ndarray | None = None,
+        boxes: np.ndarray | None = None,
+    ) -> np.ndarray | None:
         """Frame->pitch matrix of these keypoints alone (first instance), ``None`` without a fit.
 
         Stateless: no smoothing with earlier fits, no reuse of an old matrix,
-        and ``matrix`` / ``used_indices`` keep their values.
+        and ``matrix`` / ``used_indices`` keep their values. ``frame`` (BGR) and
+        ``boxes`` (people, ``(N, 4)`` pixels) are for ``refine_with_lines``.
         """
-        fitted = self._solve(keypoints)
+        fitted = self._solve(keypoints, frame, boxes)
         return None if fitted is None else fitted[0]
 
-    def update(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
+    def update(
+        self,
+        keypoints: sv.KeyPoints | None,
+        frame: np.ndarray | None = None,
+        boxes: np.ndarray | None = None,
+    ) -> np.ndarray | None:
         """Fit on this frame's keypoints (first instance) and return the current matrix."""
-        solved = self._solve(keypoints)
+        solved = self._solve(keypoints, frame, boxes)
         self.used_indices = None if solved is None else solved[1]
         fitted = None if solved is None else solved[0]
         if fitted is not None:
@@ -129,9 +151,14 @@ class HomographyEstimator:
         return self.matrix
 
     def _solve(
-        self, keypoints: sv.KeyPoints | None
+        self,
+        keypoints: sv.KeyPoints | None,
+        frame: np.ndarray | None,
+        boxes: np.ndarray | None,
     ) -> tuple[np.ndarray, np.ndarray] | None:
         """``(matrix, indices of the confident keypoints given to RANSAC)`` or ``None``."""
+        if self.refine_with_lines and frame is None:
+            raise ValueError("refine_with_lines needs the frame: fit(keypoints, frame)")
         vertices = self.pitch.vertices
         if keypoints is None or len(keypoints) == 0 or keypoints.confidence is None:
             return None
@@ -154,7 +181,12 @@ class HomographyEstimator:
             return None
         if not _spans_plane(vertices[indices[inliers.ravel() > 0]]):
             return None
-        return matrix / matrix[2, 2], indices
+        matrix = matrix / matrix[2, 2]
+        if self.refine_with_lines:
+            from tactifoot_vision.pitch.lines import refine_homography
+
+            matrix = refine_homography(frame, matrix, self.pitch, boxes).matrix
+        return matrix, indices
 
 
 def _spans_plane(points: np.ndarray) -> bool:

@@ -113,7 +113,7 @@ class FrameAnalyzer:
         matrix = None
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
-            matrix = self.homography.fit(keypoints)
+            matrix = self.homography.fit(keypoints, frame, people.xyxy)
         people.data["pitch_xy"] = _project(people, sv.Position.BOTTOM_CENTER, matrix)
         ball.data["pitch_xy"] = _project(ball, sv.Position.CENTER, matrix)
         if self.team_classifier is not None and len(people):

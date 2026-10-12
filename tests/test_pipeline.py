@@ -721,3 +721,42 @@ def test_fill_ball_takes_the_first_earlier_ball_on_the_pitch():
     kept = fill_ball(off_pitch, [without])
     assert np.isnan(kept.ball_xy).all() and kept.ball.data["fallback"].tolist() == [0]
     assert len(fill_ball(without, []).ball) == 0
+
+
+class _SeeingEstimator(tv.pitch.HomographyEstimator):
+    """Records the frame and the boxes the pipeline hands to the homography."""
+
+    def __init__(self) -> None:
+        super().__init__(SoccerPitch())
+        self.seen: list[tuple[np.ndarray | None, np.ndarray | None]] = []
+
+    def fit(self, keypoints, frame=None, boxes=None):
+        self.seen.append((frame, boxes))
+        return super().fit(keypoints, frame, boxes)
+
+    def update(self, keypoints, frame=None, boxes=None):
+        self.seen.append((frame, boxes))
+        return super().update(keypoints, frame, boxes)
+
+
+def test_the_homography_gets_the_frame_and_the_people_boxes(video):
+    # Line refinement (refine_with_lines) needs the frame, and the boxes keep
+    # kits out of its line mask.
+    estimator = _SeeingEstimator()
+    image = _frame(3)
+    frame = _analyzer(homography=estimator)(image)
+    seen_frame, seen_boxes = estimator.seen[-1]
+    assert seen_frame is image
+    np.testing.assert_array_equal(seen_boxes, frame.detections.xyxy)
+
+    estimator = _SeeingEstimator()
+    result = Pipeline(
+        ColorDetector(device="cpu"),
+        keypoint_model=KnownHomographyKeypoints(device="cpu"),
+        tracker=None,
+        homography=estimator,
+    ).run(video, end=2, progress=False)
+    assert len(estimator.seen) == 2
+    for (seen_frame, seen_boxes), frame in zip(estimator.seen, result, strict=True):
+        assert seen_frame.shape == (HEIGHT, WIDTH, 3)
+        np.testing.assert_array_equal(seen_boxes, frame.detections.xyxy)

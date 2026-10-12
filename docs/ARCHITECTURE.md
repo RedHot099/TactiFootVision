@@ -71,7 +71,7 @@ src/tactifoot_vision/
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
   evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
-  pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator)
+  pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator), lines.py (line refinement)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), frame.py (FrameAnalyzer, fill_ball),
@@ -328,7 +328,19 @@ configs/              example run files
   exactly on the drawn arcs. `pitch_markings(pitch)` gives the painted
   markings as pitch-unit polylines (lines, centre circle, penalty arcs) and
   spots; `viz` draws them and the pitch module uses them itself, so it does
-  not import `viz`.
+  not import `viz`. A fit whose landmarks (RANSAC inliers) all but one lie on
+  one pitch line gives no homography: OpenCV returns a singular matrix there.
+* `HomographyEstimator(refine_with_lines=True)` refines each frame's keypoint
+  fit on the painted lines (`pitch.lines.refine_homography`, a chamfer fit of
+  the projected `pitch_markings` to a white-line mask without the people's
+  boxes, coarse to fine over four control points); `fit` / `update` then take
+  `(keypoints, frame, boxes)`, which `Pipeline` and `FrameAnalyzer` pass. The
+  refined matrix replaces the keypoint fit only when at least half of the
+  visible marking samples land on a line (3 px at 720 p) and more than before.
+  Off by default.
+  On SoccerNet shot frames the keypoint fits of the pitch model are metres off
+  (its keypoints ~10 px off on its own images, more on unseen broadcasts);
+  the lines bring about half of the frames within a line width.
 
 ### Results visualisation (`tv.viz`)
 

@@ -39,7 +39,7 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
   embedder: siglip          # siglip | resnet
 
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
-# homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
+# homography: {smoothing_window: 5, refine_with_lines: true}  # tv.pitch.HomographyEstimator(pitch, ...)
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
 #   ball_max_speed: 40.0
