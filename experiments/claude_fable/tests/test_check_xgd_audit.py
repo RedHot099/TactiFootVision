@@ -1,4 +1,4 @@
-"""The number check of the xg-detector audit note (xg-detector 02): the real note, and a changed copy."""
+"""The number check of the xg-detector audit note (xg-detector 02 and 09): the real note, and a changed copy."""
 
 import sys
 from pathlib import Path
@@ -11,8 +11,9 @@ from check_vendor_report import EXP, check  # noqa: E402
 from check_xgd_audit import REPORT, main  # noqa: E402
 from test_check_vendor_report import write_tree  # noqa: E402
 
-READY = REPORT.is_file() and (EXP / "results/xgd_audit/complete.json").is_file() and (EXP / "results/xgd_full/complete.json").is_file()
-needs_results = pytest.mark.skipif(not READY, reason="needs the audit note and the xgd_audit / xgd_full results")
+RESULTS = ("results/xgd_audit", "results/xgd_full", "results/xgd_audit2", "results/xgd_audit2_diag", "results/xgd_full2")
+READY = REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in RESULTS)
+needs_results = pytest.mark.skipif(not READY, reason="needs the audit note and the results of both audits")
 
 
 @needs_results
@@ -22,16 +23,17 @@ def test_the_real_audit_note_passes():
 
 
 @needs_results
-def test_a_changed_number_in_the_note_fails(tmp_path, capsys):
+@pytest.mark.parametrize("claim", ["au.c4.median", "a2.d3.median", "dg.src.d3.ball_m400.med", "fu2.evaluation.t0.shot_ok"])
+def test_a_changed_number_in_the_note_fails(tmp_path, capsys, claim):
     text = REPORT.read_text()
-    tag = "<!--n:au.c4.median-->"
+    tag = f"<!--n:{claim}-->"
     assert tag in text
     head, tail = text.split(tag, 1)
     changed = head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail      # the last digit before the tag
     copy = tmp_path / "AUDIT.md"
     copy.write_text(changed)
     errors = check(copy, REPORT.with_name("claims.toml"), EXP)
-    assert any("au.c4.median expects" in e for e in errors)
+    assert any(f"{claim} expects" in e for e in errors)
     assert main([str(copy), "--claims", str(REPORT.with_name("claims.toml"))]) == 1
     assert "FAILED" in capsys.readouterr().out
 
