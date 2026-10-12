@@ -19,7 +19,9 @@ Only samples inside the frame and on the grass count. With fewer than
 than ``min_inliers`` of the samples on a line, or no more than the start: a
 fit that ends between lines has snapped partly onto the wrong ones (on
 SoccerNet frames such fits had a worse scale than the keypoint fit they
-started from). :class:`LineFit` reports the share of samples within
+started from). So it is, too, when the result is a mirror image of the start:
+the markings are symmetric, so a mirrored view fits them perfectly, but no
+camera sees one. :class:`LineFit` reports the share of samples within
 ``inlier_px`` of a painted line (``inliers``), before and after.
 """
 
@@ -35,6 +37,8 @@ from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 _REFERENCE_HEIGHT = 720
 _FINEST_PX = 5.0  # distance cap of the last stage
 _STAGE_RATIO = 2.5  # caps shrink by about this much per stage
+# Frame positions (fractions of width and height) of the four control points.
+_CONTROL = ((0.15, 0.35), (0.85, 0.35), (0.85, 0.9), (0.15, 0.9))
 
 
 @dataclass(frozen=True)
@@ -186,8 +190,7 @@ def refine_homography(
 
     # The homography as four control points: frame positions of four pitch
     # points spread over the view, moved by eight pixel offsets.
-    corners = np.array([[0.15, 0.35], [0.85, 0.35], [0.85, 0.9], [0.15, 0.9]])
-    control_px = corners * np.array([width, height])
+    control_px = np.array(_CONTROL) * np.array([width, height])
     control = _project(control_px, start)
 
     def matrix(offsets: np.ndarray) -> np.ndarray | None:
@@ -221,7 +224,24 @@ def refine_homography(
     refined_inliers, refined_points = inliers(refined_to_frame)
     if not (refined_inliers >= min_inliers and refined_inliers > start_inliers):
         return unchanged
+    # The markings are symmetric about both axes, so a mirror image of the view
+    # can fit the lines perfectly; a camera never sees one, so the refined
+    # matrix must keep the start's orientation where the markings are seen.
+    _, seen = visible(to_frame)
+    centre = seen.mean(axis=0)
+    if _orientation(refined, centre) != _orientation(start, centre):
+        return unchanged
     return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
+
+
+def _orientation(to_pitch: np.ndarray, point: np.ndarray) -> float:
+    """+1 where ``to_pitch`` keeps the orientation at a frame ``point``, -1 where it mirrors.
+
+    The Jacobian determinant of a homography at a point has the sign of
+    ``det(H) * w``, ``w`` the point's homogeneous scale.
+    """
+    w = (to_pitch @ np.array([point[0], point[1], 1.0]))[2]
+    return float(np.sign(np.linalg.det(to_pitch) * w))
 
 
 def _least_squares(residuals, start: np.ndarray, loss_scale: float) -> np.ndarray:

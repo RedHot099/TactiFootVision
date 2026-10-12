@@ -9,6 +9,7 @@ from tactifoot_vision.pitch import (
     HomographyEstimator,
     SoccerPitch,
     frame_to_pitch,
+    lines,
     pitch_markings,
 )
 from tactifoot_vision.pitch.lines import line_mask, refine_homography
@@ -96,18 +97,20 @@ def test_without_visible_lines_the_start_is_kept():
 
 
 def test_a_fit_that_ends_off_the_lines_keeps_the_start():
-    # Lines painted on the left of the frame only: at best about half of the
-    # visible markings can land on a line.
+    # Dashed lines (every other 40-pixel column of the frame painted over): at
+    # best about half of the visible markings can land on a line.
     pitch = SoccerPitch()
     to_frame = _camera(pitch)
     frame = _render(pitch, to_frame)
-    frame[:, 640:] = (40, 130, 50)
+    for x in range(0, SIZE[0], 80):
+        frame[:, x : x + 40] = (40, 130, 50)
     start = _shifted(to_frame, 1.5, -1.0, 1.02)
     strict = refine_homography(frame, start, pitch, min_inliers=0.9)
     assert not strict.refined and strict.inliers == strict.start_inliers
     np.testing.assert_array_equal(strict.matrix, start)
     lenient = refine_homography(frame, start, pitch, min_inliers=0.2)
     assert lenient.refined and 0.2 <= lenient.inliers < 0.9
+    assert _metres_off(pitch, lenient.matrix, to_frame) < 0.3
 
 
 @pytest.mark.parametrize(
@@ -167,3 +170,24 @@ def test_without_lines_the_estimator_keeps_its_keypoint_fit():
     stands = np.full((SIZE[1], SIZE[0], 3), 90, np.uint8)
     refined = HomographyEstimator(pitch, refine_with_lines=True).fit(keypoints, stands)
     np.testing.assert_array_equal(refined, HomographyEstimator(pitch).fit(keypoints))
+
+
+def test_a_refinement_that_ends_in_a_mirror_image_keeps_the_start(monkeypatch):
+    # The markings are symmetric about the long axis, so a mirror image of the
+    # true view (near and far touchline swapped) puts every marking on a line;
+    # no camera above the pitch sees one. On SoccerNet frames 1% of refined fits
+    # ended there from starts that were not mirror images.
+    pitch = SoccerPitch()
+    to_frame = _camera(pitch)
+    frame = _render(pitch, to_frame)
+    start = _shifted(to_frame, 1.5, -1.0, 1.02)
+    flip = np.array([[1, 0, 0], [0, -1, pitch.width], [0, 0, 1.0]])
+    control_px = np.array(lines._CONTROL) * SIZE
+    control = cv2.perspectiveTransform(control_px.reshape(-1, 1, 2), start)
+    mirror_px = cv2.perspectiveTransform(control, to_frame @ flip).reshape(-1, 2)
+    monkeypatch.setattr(
+        lines, "_least_squares", lambda *args: (mirror_px - control_px).ravel()
+    )
+    fit = refine_homography(frame, start, pitch)
+    assert not fit.refined
+    np.testing.assert_array_equal(fit.matrix, start)
