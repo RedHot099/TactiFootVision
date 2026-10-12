@@ -32,7 +32,8 @@ What the detector adds (`shot_features`, decisions of the spec):
                      (in the C4 run, 51% of proxies) so the audit can compare the two kinds.
     referees         never anyone's team, never counted.
 
-Every feature is NaN when its inputs are missing; the flags (`FLAGS`) say which inputs existed.
+Every feature is NaN when its inputs are missing; the flags (`FLAGS`) say which inputs existed. `shot_x/y` and
+`gk_x/y` are the aligned positions themselves (descriptive; the audit compares them with StatsBomb freeze frames).
 """
 
 import numpy as np
@@ -54,7 +55,7 @@ GEOMETRY = ["dist", "angle", "ff_def_cone", "def_cone_ge1", "def_cone_ge2", "ff_
 FLAGS = ["homography_ok", "ball_ok", "ball_fallback", "shot_ok", "shot_from_ball", "shooter_ok", "shooter_by_goal",
          "teams_ok", "gk_ok", "gk_detected", "gk_proxy"]
 DESCRIPTIVE = ["shot_x", "shot_y", "attack_right", "ball_source", "n_keypoints", "n_players", "n_goalkeepers",
-               "n_defenders", "n_attackers", "n_unknown_team", "shooter_ball_dist", "gk_proxy_same_team"]
+               "n_defenders", "n_attackers", "n_unknown_team", "shooter_ball_dist", "gk_proxy_same_team", "gk_x", "gk_y"]
 COLUMNS = [*GEOMETRY, *FLAGS, *DESCRIPTIVE]
 
 
@@ -159,6 +160,8 @@ def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[
         if len(others):
             goalkeeper = proxy = int(others[_nearest(aligned[others], GOAL)])
     out["gk_ok"], out["gk_detected"], out["gk_proxy"] = float(goalkeeper is not None), float(goalkeeper is not None and proxy is None), float(proxy is not None)
+    if goalkeeper is not None:
+        out["gk_x"], out["gk_y"] = (float(v) for v in aligned[goalkeeper])
 
     shooter_team = teams[shooter] if shooter is not None else NO_TEAM
     if proxy is not None and shooter_team != NO_TEAM and teams[proxy] != NO_TEAM:

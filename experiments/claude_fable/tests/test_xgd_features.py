@@ -167,3 +167,14 @@ def test_geometry_without_teams_or_goalkeeper_is_missing():
     assert out["dist"] == pytest.approx(11.0)
     assert all(np.isnan(out[k]) for k in GEOMETRY if k not in ("dist", "angle"))
     assert all(np.isnan(v) for v in geometry(None).values())
+
+
+def test_the_goalkeeper_position_is_recorded_aligned():
+    f = shot_features(frame_with(SCENE, BALL))
+    assert (f["gk_x"], f["gk_y"]) == (104.0, 34.5)
+    mirrored = [(105 - x, 68 - y, t, c) for x, y, t, c in SCENE]
+    g = shot_features(frame_with(mirrored, (105 - BALL[0], 68 - BALL[1])))
+    assert (g["gk_x"], g["gk_y"]) == pytest.approx((104.0, 34.5))
+    proxy = shot_features(frame_with([SCENE[0], (103.5, 30.0, DEF, "player")], BALL))
+    assert (proxy["gk_proxy"], proxy["gk_x"], proxy["gk_y"]) == (1.0, 103.5, 30.0)
+    assert np.isnan(shot_features(frame_with([SCENE[0]], BALL))["gk_x"])

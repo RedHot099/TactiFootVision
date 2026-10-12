@@ -25,7 +25,7 @@ teams, and they never contribute anything but the ball. No frame after t0 is rea
 
 import json
 import os
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -34,7 +34,7 @@ import pandas as pd
 import supervision as sv
 
 from tactifoot_vision.pipeline import FrameAnalyzer, FrameResult, fill_ball
-from xgpoc.detector.features import missing_features, shot_features
+from xgpoc.detector.features import FLAGS, missing_features, shot_features
 
 # The trained weights live in the main checkout's results/ (not in git); models/football_yolo11m.pt, the run file's
 # name, does not exist locally. The completion record pins them by sha256.
@@ -45,6 +45,13 @@ SIGLIP = "google/siglip-base-patch16-224"
 
 FRAME_COLUMNS = {0: "frame_path", -400: "frame_path_-400", -800: "frame_path_-800"}
 FALLBACK_OFFSETS = (-400, -800)
+STUDY_OFFSETS = (0, -400)        # the offsets the models use (spec, story 11); -800 is only ever a ball fallback
+
+
+def fallback_offsets(offset_ms: int) -> tuple[int, ...]:
+    """The earlier frames whose ball a frame at `offset_ms` may take, most recent first: (-400, -800) for t0, (-800,)
+    for -400. Never a frame after the shot's own frame."""
+    return tuple(o for o in FALLBACK_OFFSETS if o < offset_ms)
 
 
 @dataclass(frozen=True)
@@ -126,11 +133,16 @@ def frame_from_row(row) -> FrameResult | None:
     ball = sv.Detections(xyxy=array("ball_xyxy", 4).astype(np.float32), confidence=np.asarray(row["ball_conf"], np.float32),
                          data={"class_name": np.full(len(row["ball_conf"]), "ball", dtype=str), "pitch_xy": array("ball_pitch_xy", 2)})
     keypoints = None
-    if row["kp_xy"] is not None:
-        conf = np.asarray(row["kp_conf"], np.float32)[None] if row["kp_conf"] is not None else None
+    if _listed(row["kp_xy"]):
+        conf = np.asarray(row["kp_conf"], np.float32)[None] if _listed(row["kp_conf"]) else None
         keypoints = sv.KeyPoints(xy=array("kp_xy", 2).astype(np.float32)[None], confidence=conf)
-    homography = array("homography", 3) if row["homography"] is not None else None
+    homography = array("homography", 3) if _listed(row["homography"]) else None
     return FrameResult(index=0, timestamp=0.0, detections=people, ball=ball, keypoints=keypoints, homography=homography)
+
+
+def _listed(value) -> bool:
+    """A cached list value is present: not None, and not the NaN a parquet column of nulls only reads back as."""
+    return value is not None and not (isinstance(value, float) and np.isnan(value))
 
 
 # ------------------------------------------------------------------ extraction
@@ -162,29 +174,64 @@ def extract_detector(shots: pd.DataFrame, configs: Sequence[ExtractorConfig], an
         for config in configs:
             extraction = out[config.name]
             extraction.frames.append(t0_row)
-            if t0 is None:
-                features = missing_features()
-            else:
-                lazily = _earlier_frames(shot, read_image, ball_only, earlier) if config.ball_fallback else []
-                filled = fill_ball(t0, lazily)
-                features = shot_features(filled, COMMON["homography_min_confidence"])
-                if config.ball_fallback:
-                    extraction.frames += [row for row, _ in earlier.values()]
-            source = features["ball_source"]
-            offset = np.nan if np.isnan(source) else ([0, *FALLBACK_OFFSETS])[int(source)]
-            extraction.features.append({"shot_id": shot_id, "frame_readable": float(t0 is not None), "ball_offset_ms": offset}
-                                       | features)
+            lazily = _earlier_frames(shot, read_image, ball_only, earlier, FALLBACK_OFFSETS) if config.ball_fallback else []
+            features = frame_features(t0, lazily)
+            if config.ball_fallback:
+                extraction.frames += [row for row, _ in earlier.values()]
+            extraction.features.append({"shot_id": shot_id} | feature_record(0, t0 is not None, features))
     return out
 
 
-def _earlier_frames(shot: dict, read_image: Callable, ball_only: Callable,
-                    analysed: dict[int, tuple[dict, FrameResult | None]]) -> Iterator[FrameResult]:
-    """The shot's -400 and -800 ms frames, analysed on first use; `analysed` keeps (cache row, result) per offset.
+def extract_study(shots: pd.DataFrame, config: ExtractorConfig, analyzer: Callable, ball_only: Callable,
+                  read_image: Callable, progress: Callable[[Iterator], Iterator] = iter) -> Extraction:
+    """One configuration on the study offsets of every shot (spec, story 11): t0 and -400 ms, each analysed with teams
+    and each a feature row (`offset_ms`); -800 ms only as a ball fallback, analysed without teams and only when needed.
 
-    One result per offset, in `FALLBACK_OFFSETS` order, so `fill_ball`'s k-th frame is always offset k: a missing or
-    unreadable frame is a frame without a ball.
+    With the fallback, t0 takes the ball of -400 (the same analysed frame) and then -800; -400 takes the ball of -800.
+    A shot's t0 features are therefore exactly what `extract_detector` gives for the same configuration.
     """
-    for offset in FALLBACK_OFFSETS:
+    out = Extraction(config, [], [])
+    for shot in progress(shots.to_dict("records")):
+        analysed: dict[int, tuple[dict, FrameResult | None]] = {}
+        for offset in STUDY_OFFSETS:
+            path = shot[FRAME_COLUMNS[offset]]
+            image = read_image(path) if isinstance(path, str) else None
+            result = analyzer(image) if image is not None else None
+            analysed[offset] = (frame_row(shot["shot_id"], offset, path, result), result)
+        for offset in STUDY_OFFSETS:
+            result = analysed[offset][1]
+            earlier = fallback_offsets(offset)
+            lazily = _earlier_frames(shot, read_image, ball_only, analysed, earlier) if config.ball_fallback else []
+            features = frame_features(result, lazily)
+            out.features.append({"shot_id": shot["shot_id"]} | feature_record(offset, result is not None, features))
+        out.frames += [row for row, _ in analysed.values()]
+    return out
+
+
+def frame_features(result: FrameResult | None, earlier: Iterable[FrameResult]) -> dict[str, float]:
+    """`shot_features` of an analysed frame after the ball fallback from `earlier` (empty: no fallback); a missing frame
+    gives `missing_features`."""
+    if result is None:
+        return missing_features()
+    return shot_features(fill_ball(result, earlier), COMMON["homography_min_confidence"])
+
+
+def feature_record(offset_ms: int, readable: bool, features: dict[str, float]) -> dict:
+    """A feature row's bookkeeping columns and features; `ball_offset_ms` is the offset of the frame the ball came from."""
+    source = features["ball_source"]
+    ball_offset = np.nan if np.isnan(source) else (offset_ms, *fallback_offsets(offset_ms))[int(source)]
+    return {"offset_ms": offset_ms, "frame_readable": float(readable), "ball_offset_ms": ball_offset} | features
+
+
+def _earlier_frames(shot: dict, read_image: Callable, ball_only: Callable,
+                    analysed: dict[int, tuple[dict, FrameResult | None]], offsets: Sequence[int]) -> Iterator[FrameResult]:
+    """The shot's frames at `offsets`, analysed (without teams) on first use unless `analysed` already holds them;
+    `analysed` keeps (cache row, result) per offset.
+
+    One result per offset, in order, so `fill_ball`'s k-th frame is always `offsets[k - 1]`: a missing or unreadable
+    frame is a frame without a ball.
+    """
+    for offset in offsets:
         if offset not in analysed:
             path = shot[FRAME_COLUMNS[offset]]
             image = read_image(path) if isinstance(path, str) else None
@@ -193,7 +240,69 @@ def _earlier_frames(shot: dict, read_image: Callable, ball_only: Callable,
         yield analysed[offset][1] or _NOTHING
 
 
+def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequence[int] = (0,)) -> pd.DataFrame:
+    """Feature rows recomputed from a configuration's cached frames, without a GPU (one row per shot and offset).
+
+    The same steps as the extraction (`frame_features`, `feature_record`) on the `frame_from_row` results. A fallback
+    frame that the ball fallback asks for must be in the cache; a frame the fallback never reached may be absent.
+    """
+    rows = []
+    for shot_id, group in frames.groupby("shot_id", sort=True):
+        cached = {int(r["offset_ms"]): r for r in group.to_dict("records")}
+
+        def earlier(chain, cached=cached, shot_id=shot_id):
+            for offset in chain:
+                if offset not in cached:
+                    raise ValueError(f"{shot_id}: the ball fallback needs the {offset} ms frame, which is not cached")
+                yield frame_from_row(cached[offset]) or _NOTHING
+        for offset in offsets:
+            if offset not in cached:
+                continue
+            result = frame_from_row(cached[offset])
+            chain = earlier(fallback_offsets(offset)) if config.ball_fallback else []
+            rows.append({"shot_id": shot_id} | feature_record(offset, result is not None, frame_features(result, chain)))
+    return pd.DataFrame(rows)
+
+
 _NOTHING = FrameResult(index=0, timestamp=0.0, detections=sv.Detections.empty(), ball=sv.Detections.empty())
+
+
+def frame_table(index: Path, shot_ids: list[str]) -> pd.DataFrame:
+    """shot_id and the t0 / -400 / -800 ms frame paths of the given shots, in their order (no other index column)."""
+    frames = pd.read_parquet(index, columns=["shot_id", *FRAME_COLUMNS.values()]).set_index("shot_id")
+    missing = sorted(set(shot_ids) - set(frames.index))
+    if missing:
+        raise SystemExit(f"{len(missing)} shots are not in {index}, e.g. {missing[0]}")
+    return frames.loc[shot_ids].reset_index()
+
+
+def coverage(features: pd.DataFrame) -> dict:
+    """Share of feature rows with each flag, and counts."""
+    return {"shots": len(features), "frames_readable": int(features.frame_readable.sum())} | {
+        flag: round(float(features[flag].mean()), 4) for flag in FLAGS}
+
+
+COVERAGE_COLUMNS = ["frame_readable", "homography_ok", "ball_ok", "ball_fallback", "shot_ok", "shot_from_ball",
+                    "shooter_by_goal", "teams_ok", "gk_ok", "gk_detected", "gk_proxy", "def_cone"]
+
+
+def coverage_by_role(features: pd.DataFrame, shot_games: pd.DataFrame, plan: pd.DataFrame) -> pd.DataFrame:
+    """Coverage of the study feature rows by split role and offset, plus "all": shots, matches and the share of rows
+    with each of `COVERAGE_COLUMNS` (def_cone: a defenders-in-cone count exists).
+
+    `shot_games`: shot_id, game (index); `plan`: game, role (xg-vendor split plan). Every shot must have a role.
+    """
+    roles = shot_games.merge(plan[["game", "role"]], on="game", how="left", validate="many_to_one")
+    if roles.role.isna().any():
+        raise ValueError(f"{int(roles.role.isna().sum())} shots have no role in the split plan")
+    table = features.merge(roles, on="shot_id", how="left", validate="many_to_one")
+    table["def_cone"] = table.ff_def_cone.notna().astype(float)
+    rows = []
+    for role, part in [*table.groupby("role", sort=True), ("all", table)]:
+        for offset, rows_at in part.groupby("offset_ms", sort=False):
+            rows.append({"role": role, "offset_ms": int(offset), "shots": len(rows_at), "matches": int(rows_at.game.nunique())}
+                        | {c: float(rows_at[c].mean()) for c in COVERAGE_COLUMNS})
+    return pd.DataFrame(rows).sort_values(["role", "offset_ms"], ascending=[True, False], kind="stable").reset_index(drop=True)
 
 
 def frames_table(rows: list[dict]) -> pd.DataFrame:

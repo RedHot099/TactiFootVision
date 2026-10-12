@@ -6,6 +6,9 @@ Inside `no_statsbomb_reads()` any read of a path that names StatsBomb data or a 
 the paired shot ids (which frames the audit needs) before it enters the block, and everything that loads models,
 frames or computes features runs inside it. Matching is on the path text, case-insensitive (`FORBIDDEN`); Python
 source and bytecode files are code, not data, and pass.
+
+The audit (`xgpoc.detector.audit`, `scripts/xgd_audit.py`, ticket 02) is the one allowed reader of StatsBomb data and
+the pairing: it never runs inside the block, no feature or model module imports it, and its outputs are refused here.
 """
 
 import contextlib
@@ -21,6 +24,8 @@ FORBIDDEN = re.compile(
     r"|xgv_comparator"       # the positional comparator, a function of StatsBomb data only
     r"|xgv_eval"             # evaluation tables with the vendor's xG
     r"|xgv_confirmatory|xgv_dryrun|xgv_ladder|xgv_leakage"
+    r"|xgv_timing_source"    # per-shot StatsBomb timestamps and residuals
+    r"|xgd_audit"            # the detector audit (ticket 02): StatsBomb positions per shot
     r"|open[-_]data",
     re.IGNORECASE)
 

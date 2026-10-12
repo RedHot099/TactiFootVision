@@ -45,7 +45,7 @@ def test_the_guard_lets_frames_index_and_weights_through(tmp_path):
     index.parent.mkdir(parents=True)
     pd.DataFrame({"shot_id": ["s1"], "goal": [True], **{c: [f"/f/{c}.jpg"] for c in ex.FRAME_COLUMNS.values()}}).to_parquet(index)
     with no_statsbomb_reads():
-        table = xgd_extract.frame_table(index, ["s1"])
+        table = ex.frame_table(index, ["s1"])
         for weights in (ex.DETECTOR_WEIGHTS, ex.KEYPOINT_WEIGHTS):
             with open(weights, "rb") as f:
                 assert f.read(2)
@@ -79,14 +79,62 @@ def test_detector_code_imports_no_vendor_module_and_names_no_statsbomb_file(path
     modules += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
     assert not [m for m in modules if m and m.startswith("xgpoc.vendor")], "xg-vendor code is not an input"
     named = [s for s in _strings(tree) if FORBIDDEN.search(s)]
-    allowed = {"guard.py": None, "xgd_extract.py": ["results/xgv_pairing/pairs.parquet"]}
-    if path.name == "guard.py":
-        return                                                        # the pattern itself
+    if path.name in AUDIT_FILES + ("guard.py",):
+        return                                     # the pattern itself, and the audit: the one allowed StatsBomb reader
+    allowed = {"xgd_extract.py": ["results/xgv_pairing/pairs.parquet"], "xgd_extract_full.py": ["results/xgd_audit/choice.json"]}
     assert named == allowed.get(path.name, []), f"{path.name} names StatsBomb or pairing files: {named}"
 
 
-def test_the_run_script_reads_the_pairing_only_before_the_guard():
-    tree = ast.parse((ROOT / "scripts/xgd_extract.py").read_text())
+AUDIT_FILES = ("audit.py", "xgd_audit.py")
+
+
+def _imports_audit(tree: ast.AST) -> bool:
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and (n.module == "xgpoc.detector.audit"
+                                              or (n.module == "xgpoc.detector" and any(a.name == "audit" for a in n.names))):
+            return True
+        if isinstance(n, ast.Import) and any(a.name.startswith("xgpoc.detector.audit") for a in n.names):
+            return True
+    return False
+
+
+@pytest.mark.parametrize("path", [p for p in CODE if p.name not in AUDIT_FILES], ids=lambda p: p.name)
+def test_no_feature_model_or_extraction_code_imports_the_audit(path):
+    assert not _imports_audit(ast.parse(path.read_text())), f"{path.name} imports the StatsBomb audit"
+
+
+def test_the_audit_script_is_the_one_that_imports_it():
+    assert _imports_audit(ast.parse((ROOT / "scripts/xgd_audit.py").read_text()))
+
+
+@pytest.mark.parametrize("relative", ["results/xgd_audit/per_shot.parquet", "results/xgd_audit/metrics.csv",
+                                      "results/xgv_timing_source/shot_residuals.parquet"])
+def test_the_audit_outputs_and_timing_residuals_are_refused_inside_the_guard(tmp_path, relative):
+    path = _forbidden_file(tmp_path, relative)
+    with no_statsbomb_reads(), pytest.raises(StatsBombRead):
+        pd.read_parquet(path)
+
+
+def test_the_audit_readers_are_refused_inside_the_guard(tmp_path):
+    from xgpoc.detector import audit
+
+    pairs = tmp_path / "results/xgv_pairing/pairs.parquet"
+    pairs.parent.mkdir(parents=True)
+    pd.DataFrame({c: ["x"] for c in audit.PAIR_COLUMNS}).to_parquet(pairs)
+    shots = tmp_path / "statsbomb_open_v1/tables/shots.parquet"
+    shots.parent.mkdir(parents=True)
+    pd.DataFrame({"event_id": ["e"], "freeze_frame_json": ["[]"]}).to_parquet(shots)
+    with no_statsbomb_reads():
+        with pytest.raises(StatsBombRead):
+            audit.read_population(pairs)
+        with pytest.raises(StatsBombRead):
+            audit.read_freeze_frames(shots, ["e"])
+    assert audit.read_freeze_frames(shots, ["e"]).tolist() == ["[]"]   # outside the block the audit reads them
+
+
+def _guarded_main(script: str):
+    """(main, its single `with no_statsbomb_reads()` block, ids of the nodes inside it, call finder)."""
+    tree = ast.parse((ROOT / "scripts" / script).read_text())
     main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
     guarded = [n for n in main.body if isinstance(n, ast.With)
                and any(isinstance(i.context_expr, ast.Call) and getattr(i.context_expr.func, "id", "") == "no_statsbomb_reads"
@@ -97,10 +145,32 @@ def test_the_run_script_reads_the_pairing_only_before_the_guard():
 
     def calls(name):
         return [n for n in ast.walk(main) if isinstance(n, ast.Call) and ast.unparse(n.func).split(".")[-1] == name]
-    assert calls("paired_shot_ids") and all(id(c) not in inside for c in calls("paired_shot_ids"))
     work = [n for n in ast.walk(main) if isinstance(n, ast.Call) and ast.unparse(n.func).split(".")[0] in ("ex", "records", "tv")]
     work += calls("frame_table") + calls("SigLIPEmbedder")
     outside = [ast.unparse(n) for n in work if id(n) not in inside]
     assert work and not outside, f"model or feature work outside the guard: {outside}"
     imports = [n for n in ast.walk(block) if isinstance(n, ast.Import) and any(a.name == "tactifoot_vision" for a in n.names)]
     assert imports, "the package (and the models it loads) is imported inside the guard"
+    return main, inside, calls
+
+
+def test_the_run_script_reads_the_pairing_only_before_the_guard():
+    _, inside, calls = _guarded_main("xgd_extract.py")
+    assert calls("paired_shot_ids") and all(id(c) not in inside for c in calls("paired_shot_ids"))
+
+
+def test_the_full_run_reads_the_audit_choice_only_before_the_guard_and_never_the_pairing():
+    main, inside, calls = _guarded_main("xgd_extract_full.py")
+    assert calls("chosen_config") and all(id(c) not in inside for c in calls("chosen_config"))
+    assert not calls("paired_shot_ids") and "pairs" not in ast.unparse(main)
+    import xgd_extract_full
+
+    assert xgd_extract_full.CHOICE.name == "choice.json" and FORBIDDEN.search(str(xgd_extract_full.CHOICE))
+
+
+def test_the_full_run_reads_the_choice_name_only(tmp_path):
+    import xgd_extract_full
+
+    choice = tmp_path / "choice.json"
+    choice.write_text('{"chosen": "C4", "gate": {"result": "STOP"}}')
+    assert xgd_extract_full.chosen_config(choice) == "C4"

@@ -29,7 +29,6 @@ from tqdm import tqdm
 from xgpoc.bundle import canonical_digest, sha256_file
 from xgpoc.detector import extract as ex
 from xgpoc.detector import records
-from xgpoc.detector.features import FLAGS
 from xgpoc.detector.guard import no_statsbomb_reads
 from xgpoc.paths import INDEX
 
@@ -41,21 +40,6 @@ def paired_shot_ids(pairs: Path) -> list[str]:
     """The paired SoccerNet shot ids, sorted; the only read of the pairing in the detector code."""
     table = pd.read_parquet(pairs, columns=["shot_id", "paired"])
     return sorted(table.shot_id[table.paired.astype(bool)])
-
-
-def frame_table(index: Path, shot_ids: list[str]) -> pd.DataFrame:
-    """shot_id and the t0 / -400 / -800 ms frame paths of the given shots, in their order."""
-    frames = pd.read_parquet(index, columns=["shot_id", *ex.FRAME_COLUMNS.values()]).set_index("shot_id")
-    missing = sorted(set(shot_ids) - set(frames.index))
-    if missing:
-        raise SystemExit(f"{len(missing)} shots are not in {index}, e.g. {missing[0]}")
-    return frames.loc[shot_ids].reset_index()
-
-
-def coverage(features: pd.DataFrame) -> dict:
-    """Share of shots with each flag, and counts."""
-    return {"shots": len(features), "frames_readable": int(features.frame_readable.sum())} | {
-        flag: round(float(features[flag].mean()), 4) for flag in FLAGS}
 
 
 def main() -> None:
@@ -79,7 +63,7 @@ def main() -> None:
     with no_statsbomb_reads():
         import tactifoot_vision as tv
 
-        shots = frame_table(args.index, shot_ids)
+        shots = ex.frame_table(args.index, shot_ids)
         identity = {"models": records.model_hashes(ex.DETECTOR_WEIGHTS, ex.KEYPOINT_WEIGHTS, ex.SIGLIP),
                     "code": records.code_hashes(Path(__file__)), "git": records.git_state(),
                     "libraries": records.library_versions(),
@@ -104,7 +88,7 @@ def main() -> None:
                 ex.frames_table(result.frames).to_parquet(folder / "frames.parquet", index=False)
                 features = pd.DataFrame(result.features)
                 features.to_parquet(folder / "features.parquet", index=False)
-                summary = coverage(features) | {"frames_analysed": len(result.frames),
+                summary = ex.coverage(features) | {"frames_analysed": len(result.frames),
                                                 "fallback_frames": int(sum(r["offset_ms"] != 0 for r in result.frames))}
                 record = {"config": ex.settings(config), "identity": identity,
                           "run": {"pass": names, "started": started.isoformat(timespec="seconds"),
