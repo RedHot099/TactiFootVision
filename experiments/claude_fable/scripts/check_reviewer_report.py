@@ -217,6 +217,12 @@ def transform(value, spec: dict):
 def load_claims(path: Path, root: Path) -> tuple[dict[str, Claim], dict, list[str]]:
     """Every claim rendered from its source, the parsed file, and the claims that failed."""
     config = tomllib.loads(path.read_text())
+    claims, errors = claims_from_config(config, root)
+    return claims, config, errors
+
+
+def claims_from_config(config: dict, root: Path) -> tuple[dict[str, Claim], list[str]]:
+    """Every claim of a parsed claims file rendered from its source, and the claims that failed."""
     folders = config.get("folders", {})
     claims, errors = {}, []
     for cid, spec in config.get("claims", {}).items():
@@ -239,7 +245,7 @@ def load_claims(path: Path, root: Path) -> tuple[dict[str, Claim], dict, list[st
             errors.append(f"claim {cid}: {e}")
             continue
         claims[cid] = Claim(cid, file.resolve(), spec.get("dev", folder.get("dev", False)), text)
-    return claims, config, errors
+    return claims, errors
 
 
 def blank_span(line: str, start: int, end: int) -> str:

@@ -1,0 +1,256 @@
+# Numbers of the xg-vendor paper draft (xg-vendor 17), checked by scripts/check_vendor_paper.py.
+# Each entry names a claim of the report's claims.toml (`from`, default: the same id) and may override only
+# `fmt` (English number style) and `labels`; source, locator and the confirmatory/development flag stay the report's.
+
+[paper]
+report = "results_reports/xg_vendor_2026-10/REPORT.md"
+tex = ["main.tex", "supp.tex"]
+confirmatory_label = "confirmatory results"
+dev_label = "development results"
+# Design constants fixed by the pre-registration, as in the report: the -400 ms frame offset, the +-200 ms residual
+# restriction and the 40 ms early/late threshold of H4 (exact LaTeX spellings); "SHA-256" names the hash.
+untagged = ['$-400$\,ms', '$400$\,ms', '$\pm200$\,ms', '40\,ms', 'SHA-256']
+
+[claims]
+# Pre-registration constants and protocol facts of the run.
+"pg.code_files" = {}
+"run.gate_thr" = {}
+"run.prereg_sha" = {}
+"pg.nf_matches" = {}
+"pg.recovered_pen" = {}
+"pg.ci95" = {}
+"pg.corner_margin" = {}
+"pg.near" = {}
+"run.delta" = {}
+"run.n_boot" = {}
+"pg.alpha" = {}
+"pg.ci90" = {}
+"pg.bonf" = {}
+# Pairing and K0, re-download, timing-source test (frozen before the label join).
+"pa.p_train" = {}
+"pa.p_valid" = {}
+"pa.p_test" = {}
+"pa.secondary" = {}
+"pa.recovered" = {}
+"rd.cut" = {}
+"pa.sb_unpaired" = {}
+"pa.mispairs" = {}
+"pa.mispair_s" = {}
+"ti.unpaired" = {}
+"ti.r_shot" = {}
+"pa.no_sb_10s" = {}
+"pa.window" = {}
+"ti.r_other" = {}
+"ti.r_dead" = {}
+"ti.r_none" = {}
+"ti.verdict" = { fmt = "``{}''" }
+"ti.n_subs" = {}
+"ti.min_subs" = {}
+"ti.agree_ms" = {}
+"ti.subs_share" = {}
+"ti.shared" = {}
+"ti.subs_median" = {}
+"ti.lag" = {}
+"ti.shots" = {}
+"ti.kick" = {}
+"ti.corners" = {}
+"pa.paired" = {}
+"pa.matches" = {}
+"pa.index_shots" = {}
+"pa.sn_matches" = {}
+"pa.rate" = {}
+"pa.k0_rate" = {}
+"pa.goal_rate" = {}
+"pa.k0_goal" = {}
+"pa.blocked" = {}
+"pa.wayward" = {}
+"pa.dropped" = {}
+# Comparator and K1, split plan, retrain gate (frozen before the label join).
+"co.pool_shots" = {}
+"co.pool_matches" = {}
+"co.k1_ff" = {}
+"co.k1_vendor" = {}
+"co.k1_gap" = {}
+"co.k1_margin" = { fmt = "{:.2f}" }
+"co.k1_pass" = { labels = { true = "passed", false = "failed" } }
+"sp.eval_train" = {}
+"sp.eval_valid" = {}
+"gc.matches" = {}
+"gc.pass" = { labels = { true = "passed", false = "failed" } }
+"gc.ll_new" = {}
+"gc.ll_old" = {}
+"gc.ll_diff" = { fmt = "{:+.5f} [{:+.5f}, {:+.5f}]" }
+"gc.tol_ll" = {}
+"gc.auc_new" = {}
+"gc.auc_old" = {}
+"gc.auc_diff" = { fmt = "{:+.5f} [{:+.5f}, {:+.5f}]" }
+"gc.tol_auc" = {}
+"gc.shots" = {}
+"sp.training" = {}
+# Confirmatory run: S1, H1, H2, H3, H4, penalties.
+"cf.s1.p.chosen" = {}
+"cf.s1.p.label" = {}
+"cf.s1.p.pen" = {}
+"cf.s1.p.fx" = {}
+"cf.s1.p.nf" = {}
+"cf.s1.p.n" = {}
+"cf.s1.p.goals" = {}
+"cf.s1.p.matches" = {}
+"cf.s1.c.chosen" = {}
+"cf.s1.c.label" = {}
+"cf.s1.c.pen" = {}
+"cf.s1.c.fx" = {}
+"cf.s1.c.nf" = {}
+"cf.s1.c.n" = {}
+"cf.s1.c.goals" = {}
+"cf.s1.c.matches" = {}
+"cf.c.p.frame_vendor" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.frame_vendor" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.frame_ff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.frame_ff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.frame_da" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.frame_da" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.vendor_ff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.vendor_ff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.ff_event" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.ff_event" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.event_da" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.event_da" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.p.da_const" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.c.c.da_const" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.h3.f0.angle" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.ff_def_cone" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.ge2" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.gk_depth" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.gk_off" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.gk_dist" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.opp" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.head" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.thr.angle" = {}
+"cf.h3.thr.head" = {}
+"cf.h4.slope" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.slope_200" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.early" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.early_200" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.late" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.late_200" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.n" = {}
+"cf.h4.n200" = {}
+"cf.h4.off_on" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.off_on_u" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.pen.p.n" = {}
+"cf.pen.p.goals" = {}
+"cf.pen.p.vp" = {}
+"cf.pen.p.vll" = {}
+"cf.pen.p.fp" = {}
+"cf.pen.p.fll" = {}
+"cf.pen.p.pp" = {}
+"cf.pen.p.pll" = {}
+"cf.pen.c.n" = {}
+"cf.pen.c.goals" = {}
+"cf.pen.c.vp" = {}
+"cf.pen.c.vll" = {}
+"cf.pen.c.fp" = {}
+"cf.pen.c.fll" = {}
+"cf.pen.c.pp" = {}
+"cf.pen.c.pll" = {}
+"cf.h2.p.diff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.h2.p.tost" = {}
+"cf.h3.f0.dist" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f0.cone" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.m.p.constant" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.constant" = {}
+"cf.m.c.constant" = {}
+"cf.m.p.dist_angle" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.dist_angle" = {}
+"cf.m.c.dist_angle" = {}
+"cf.m.p.event" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.event" = {}
+"cf.m.c.event" = {}
+"cf.m.p.freeze_frame" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.freeze_frame" = {}
+"cf.m.c.freeze_frame" = {}
+"cf.m.p.vendor" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.vendor" = {}
+"cf.m.c.vendor" = {}
+"cf.m.p.frame" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.frame" = {}
+"cf.m.c.frame" = {}
+"cf.m.p.frame_ff" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.frame_ff" = {}
+"cf.m.c.frame_ff" = {}
+"cf.m.p.frame_vendor" = { fmt = "{:.4f} [{:.4f}, {:.4f}]" }
+"cf.a.p.frame_vendor" = {}
+"cf.m.c.frame_vendor" = {}
+"cf.c.p.auc_frame_vendor" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.r.p.vendor" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.r.p.ff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.r.p.frame" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.h2.p.ci90" = { fmt = "[{:+.4f}, {:+.4f}]" }
+"cf.h2.p.sup" = {}
+"cf.h2.p.margin" = {}
+"cf.h2.c.diff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.h2.c.ci90" = { fmt = "[{:+.4f}, {:+.4f}]" }
+"cf.h2.c.tost" = {}
+"cf.h2.c.sup" = {}
+"cf.h2.c.margin" = {}
+"cf.fv.p.diff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.fv.p.ci90" = { fmt = "[{:+.4f}, {:+.4f}]" }
+"cf.fv.p.tost" = {}
+"cf.fv.p.sup" = {}
+"cf.fv.p.margin" = {}
+"cf.fv.c.diff" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"cf.fv.c.ci90" = { fmt = "[{:+.4f}, {:+.4f}]" }
+"cf.fv.c.tost" = {}
+"cf.fv.c.sup" = {}
+"cf.fv.c.margin" = {}
+"cf.h2.p.reading" = { fmt = "``equivalent at $\\delta$: the frame adds no more than $\\delta$''" }
+"cf.h2.p.point" = {}
+"cf.h2.p.ci95" = { fmt = "[{:+.4f}, {:+.4f}]" }
+"cf.h2.c.reading" = { fmt = "equivalent at $\\delta$: the frame adds no more than $\\delta$" }
+"cf.h2.p.sd" = {}
+"cf.ctl.f0" = {}
+"cf.ctl.f1" = {}
+"cf.ctl.dino" = {}
+"cf.h3.n" = {}
+"cf.h3.thr.dist" = {}
+"cf.h3.f0.dist.reading" = { fmt = "encodes" }
+"cf.h3.f1.dist" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f1.dist.reading" = { fmt = "encodes" }
+"cf.h3.d.dist" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.d.f0.dist" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h3.thr.cone" = {}
+"cf.h3.f0.cone.reading" = { fmt = "encodes" }
+"cf.h3.f1.cone" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.h3.f1.cone.reading" = { fmt = "encodes" }
+"cf.h3.d.cone" = { fmt = "{:.3f} [{:.3f}, {:.3f}]" }
+"cf.d.f0.cone" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.d.f1.dist" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.d.f1.cone" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.on" = {}
+"cf.h4.main" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.main_u" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+"cf.h4.off_mean" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }
+# Development results.
+"dv.target" = {}
+"dv.pow002" = {}
+"dv.pow003" = {}
+"dv.pow005" = {}
+"dv.margins" = { fmt = "{:.3f}, {:.3f} and {:.3f}" }
+"dv.chosen" = {}
+"dv.m002" = {}
+"dv.pow_null" = {}
+"dv.h2" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"dv.h2_margin" = {}
+"dv.frame_vendor" = { fmt = "{:+.4f} [{:+.4f}, {:+.4f}]" }
+"dv.n_sims" = {}
+"dv.sd_dev" = {}
+"dv.sd_null" = {}
+"dv.rc.sims" = {}
+"dv.rc.dev_refit" = {}
+"dv.rc.null_refit" = {}
+"dv.rc.null_shift" = {}
+"dv.rc.dev_fixed" = {}
+"dv.rc.null_fixed" = {}
+"dv.probe_n" = {}
+"dv.probe_dist" = { fmt = "{:+.3f} [{:+.3f}, {:+.3f}]" }

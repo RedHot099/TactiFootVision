@@ -1,0 +1,312 @@
+% Supplementary material of the xg-vendor paper draft (xg-vendor 17). Every number is \val{id} from numbers.tex.
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage[review]{cvpr}
+
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+\usepackage{tabularx}
+
+\input{numbers}
+\newcommand{\sbattr}{Data: StatsBomb.}
+\newcommand{\Hone}{H1\xspace}\newcommand{\Htwo}{H2\xspace}\newcommand{\Hthree}{H3\xspace}\newcommand{\Hfour}{H4\xspace}
+\renewcommand{\thesection}{\Alph{section}}
+
+\def\paperID{*****}
+\def\confName{CVPR}
+\def\confYear{2027}
+
+\title{What Does One Broadcast Frame Add to Expected Goals?\\A Pre-registered Comparison with Positional and Vendor xG}
+
+\begin{document}
+\maketitlesupplementary
+
+Numbers come from three kinds of results, kept apart as in the main paper: results of the single confirmatory run (sections whose title says
+``confirmatory results''), inputs frozen before the label join (pairing, kill rules, retrain gate, timing test), and
+development results from models that had seen the study matches (\cref{sec:dev} only).
+
+\section{Pre-registration and the confirmatory run}
+\label{sec:prereg}
+
+\paragraph{What was fixed.} The pre-registration (a document in the code release) fixed the hypotheses \Hone--\Hfour,
+the populations and labels, the margin $\delta$, the recalibration and stacking procedure, the bootstrap, the probe
+targets and thresholds, the table shells and, for \Htwo and \Hthree, the narrative for each possible reading. A hash
+list pinned the analysis code (\val{pg.code_files} files), the label-free evaluation tables, the split plan, the
+comparator predictions, the timing verdict and the records of two dry runs on labels permuted within matches. The dry
+runs exercised the whole pipeline without real labels.
+
+\paragraph{Decisions taken before the label join.} The principal investigator approved six decisions as recommended:
+(A) the bootstrap refits recalibration and stacks in every draw; (B) one secondary row whose frame is corrupted at
+decoding (it shows another moment than the shot) is excluded; (C) secondary targets without a frame stay in the table
+and drop out of \Hone and \Htwo; (D) StatsBomb goals without a SoccerNet goal are excluded by a flag of the frozen
+pairing; (F) the probe negative-control gate allows $R^2$ up to \val{run.gate_thr}, set after a dry run in which a
+gate at zero failed on pure noise; (E) approval of the whole document. None of these decisions read a label.
+
+\paragraph{Run.} The pre-registration record was written at 09:08:21 UTC on 2026-10-12. The confirmatory script
+recomputed the hash list, compared it byte for byte with the approved one, and joined the labels once at 11:57:06 UTC;
+the join record carries the pre-registration hash \val{run.prereg_sha}\ldots. The three analysis scripts exited
+without error; there was no rerun and no deviation. The completion record names the pre-registration commit with a
+clean tree.
+
+\paragraph{Disclosed limits of the pre-registration.} The rules for $\delta$ and for the timing test were written
+before the numbers that decided them, but in the same working session, so their precedence rests on the ticket log
+rather than on separate commits. The pre-registration itself has its own commit before the label join.
+
+\section{Population audit (confirmatory results: S1)}
+\label{sec:audit}
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+Population & Chosen & Label-excluded & Penalties & Frame excluded & No frame & Analysed & Goals & Matches \\
+\midrule
+Primary & \val{cf.s1.p.chosen} & \val{cf.s1.p.label} & \val{cf.s1.p.pen} & \val{cf.s1.p.fx} & \val{cf.s1.p.nf} & \val{cf.s1.p.n} & \val{cf.s1.p.goals} & \val{cf.s1.p.matches} \\
+Combined & \val{cf.s1.c.chosen} & \val{cf.s1.c.label} & \val{cf.s1.c.pen} & \val{cf.s1.c.fx} & \val{cf.s1.c.nf} & \val{cf.s1.c.n} & \val{cf.s1.c.goals} & \val{cf.s1.c.matches} \\
+\bottomrule
+\end{tabular}
+\caption{S1, confirmatory run: populations of \Hone and \Htwo with exclusions; each row counts once, under the first
+reason from the left. Combined-population frames outside the primary population are anchored at StatsBomb time plus
+the half offset. \sbattr}
+\label{tab:s1}
+\end{table*}
+
+\paragraph{Primary.} The paired shots lie in matches of SoccerNet's official training, validation and test splits:
+\val{pa.p_train}, \val{pa.p_valid} and \val{pa.p_test}. Without the \val{cf.s1.p.pen} penalties,
+\val{cf.s1.p.n} shots remain (\cref{tab:s1}).
+
+\paragraph{Secondary.} \val{pa.secondary} StatsBomb-only shots and \val{pa.recovered} recovered goals. Their frames were
+cut from \val{rd.cut} re-downloaded SoccerNet half videos, each checked against the checksum recorded when the dataset
+was built; none was refused.
+
+\paragraph{Exclusions.} \val{cf.s1.c.nf} secondary targets, all StatsBomb-only shots from \val{pg.nf_matches} matches,
+lie after the end of the half video: StatsBomb counts stoppage time, and many SoccerNet videos end with the regular
+half. They drop out of every rung. One StatsBomb-only shot has a frame corrupted at decoding (decision B).
+\val{cf.s1.c.label} StatsBomb-only shots are StatsBomb goals without a SoccerNet goal (decision D). The
+\val{cf.s1.p.pen} primary penalties and \val{pg.recovered_pen} penalties among the recovered goals are reported in
+\cref{sec:pen}.
+
+\paragraph{What the primary population misses.} Of the \val{pa.sb_unpaired} StatsBomb shots without a pair,
+\val{pa.secondary} form the secondary population, \val{pa.recovered} are recovered goals, \val{pa.mispairs} lie within
+\val{pa.mispair_s} of an unpaired SoccerNet shot and are dropped as possible mispairs, and two are penalties.
+Conversely, \val{ti.unpaired} SoccerNet shots have no pair. \val{ti.r_shot} of them have a StatsBomb shot within
+\val{pa.mispair_s}. Of the other \val{pa.no_sb_10s}, the nearest StatsBomb event of any type is another on-ball event
+within \val{pa.window} for \val{ti.r_other} (usually a pass or ball receipt, so StatsBomb recorded the action as a
+pass), a dead ball (throw-in, offside or foul) for \val{ti.r_dead}, and nothing within \val{pa.window} for
+\val{ti.r_none}.
+
+\section{Frozen inputs}
+\label{sec:frozen}
+
+\paragraph{Positional comparator.} The comparator learned once on \val{co.pool_shots} shots from \val{co.pool_matches}
+StatsBomb matches outside the study. Its freeze-frame rung reached a pool cross-validated log-loss of \val{co.k1_ff}
+against the vendor's \val{co.k1_vendor} on the same shots, a difference of \val{co.k1_gap}; K1 allowed at most
+\val{co.k1_margin}, so K1 \val{co.k1_pass}. The value is the minimum over a grid of settings and therefore slightly
+optimistic.
+
+\paragraph{Retrain and gate test.} The archived frame model had \val{sp.eval_train} study matches in its training split
+and \val{sp.eval_valid} in its validation split. The retrained model was compared with it on \val{gc.matches} matches
+neither had seen (\cref{tab:gate}). The gate \val{gc.pass}; point estimates decide, intervals inform.
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Metric & Retrained & Archived & Difference [\val{pg.ci95}] & Tolerance \\
+\midrule
+Log-loss & \val{gc.ll_new} & \val{gc.ll_old} & \val{gc.ll_diff} & \val{gc.tol_ll} \\
+AUC & \val{gc.auc_new} & \val{gc.auc_old} & \val{gc.auc_diff} & \val{gc.tol_auc} \\
+\bottomrule
+\end{tabular}
+\caption{Retrain gate on \val{gc.shots} shots, frozen before the label join.}
+\label{tab:gate}
+\end{table*}
+
+\paragraph{Timing-source test.} \label{sec:timing}The rule was written before the comparison. Substitutions, which
+SoccerNet marks when the broadcast shows them, decide between a shared clock and two independent annotations
+(\cref{tab:timing}). The verdict is \val{ti.verdict}. A copied clock would not give substitutions offset by seconds.
+The corner margin over its threshold was thin, \val{pg.corner_margin}. Two consequences follow: the timing-residual
+arm of \Hfour runs, always with the restriction to $\pm200$\,ms as a sensitivity; and secondary frames, cut at
+StatsBomb time, can lie a few hundred milliseconds from the contact.
+
+\begin{table}[t]
+\centering\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xrl@{}}
+\toprule
+Quantity & Value & Rule \\
+\midrule
+Substitutions in the rule set & \val{ti.n_subs} & at least \val{ti.min_subs} \\
+Substitutions within \val{ti.agree_ms} & \val{ti.subs_share} & from \val{ti.shared}: shared clock \\
+Median $|r|$ of substitutions & \val{ti.subs_median} & from \val{ti.lag}: independent \\
+Shots within $\pm200$\,ms, leave-one-out offset & \val{ti.shots} & at least \val{ti.kick} \\
+Corners within $\pm200$\,ms & \val{ti.corners} & at least \val{ti.kick} \\
+\bottomrule
+\end{tabularx}
+\caption{Timing-source test, frozen before the label join; $r$ is the SoccerNet time minus the StatsBomb time after the
+half offset. \sbattr}
+\label{tab:timing}
+\end{table}
+
+\section{Additional confirmatory results}
+\label{sec:moreresults}
+
+\subsection{\Hone: key contrasts (descriptive)}
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Contrast (A $-$ B) & Primary & Combined \\
+\midrule
+Frame $-$ vendor & \val{cf.c.p.frame_vendor} & \val{cf.c.c.frame_vendor} \\
+Frame $-$ positions & \val{cf.c.p.frame_ff} & \val{cf.c.c.frame_ff} \\
+Frame $-$ dist.\ + angle & \val{cf.c.p.frame_da} & \val{cf.c.c.frame_da} \\
+Vendor $-$ positions & \val{cf.c.p.vendor_ff} & \val{cf.c.c.vendor_ff} \\
+Positions $-$ events & \val{cf.c.p.ff_event} & \val{cf.c.c.ff_event} \\
+Events $-$ dist.\ + angle & \val{cf.c.p.event_da} & \val{cf.c.c.event_da} \\
+Dist.\ + angle $-$ constant & \val{cf.c.p.da_const} & \val{cf.c.c.da_const} \\
+\bottomrule
+\end{tabular}
+\caption{\Hone, confirmatory run, descriptive: log-loss differences of recalibrated rungs with \val{pg.ci95}
+intervals. Combined-population frames outside the primary population are anchored at StatsBomb time plus the half
+offset. \sbattr}
+\label{tab:contrasts}
+\end{table*}
+
+\Cref{tab:contrasts} gives the key contrasts of both populations. The largest step is from the constant to distance
+and angle, the smallest from events to positions. Full tables, with Brier score, calibration slope and intercept and
+the raw variants, are in the release.
+
+\subsection{\Hthree: descriptive targets}
+\label{sec:h3more}
+
+\begin{table*}[t]
+\centering\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llllll@{}}
+\toprule
+Target & Metric & G-combo fold 0 [\val{pg.ci95}] & Reading, fold 0 & Reading, fold 1 & G $-$ DINOv2, fold 0 / fold 1 \\
+\midrule
+Angle & $R^2$ & \val{cf.h3.f0.angle} & encodes & encodes & G $>$ DINOv2 / G $>$ DINOv2 \\
+Defenders in cone (count) & $R^2$ & \val{cf.h3.f0.ff_def_cone} & encodes & encodes $\dagger$ & G $>$ DINOv2 / no difference \\
+At least two defenders in cone & AUC & \val{cf.h3.f0.ge2} & encodes & encodes & G $>$ DINOv2 / no difference \\
+Goalkeeper depth & $R^2$ & \val{cf.h3.f0.gk_depth} & encodes $\dagger$ & undecided $\dagger$ & G $>$ DINOv2 / G $>$ DINOv2 \\
+Goalkeeper lateral offset & $R^2$ & \val{cf.h3.f0.gk_off} & does not encode & does not encode & G $>$ DINOv2 / G $>$ DINOv2 \\
+Goalkeeper distance to goal & $R^2$ & \val{cf.h3.f0.gk_dist} & undecided $\dagger$ & undecided & G $>$ DINOv2 / no difference \\
+Opponents near the shooter$^\ast$ & $R^2$ & \val{cf.h3.f0.opp} & does not encode & does not encode & G $>$ DINOv2 / G $>$ DINOv2 \\
+Header & AUC & \val{cf.h3.f0.head} & encodes & encodes & no difference / G $>$ DINOv2 \\
+\bottomrule
+\end{tabular}
+\caption{\Hthree, confirmatory run, descriptive targets. Thresholds: $R^2$ \val{cf.h3.thr.angle}, AUC
+\val{cf.h3.thr.head}; readings follow the lower bound as for the confirmatory targets. $\dagger$: lower bound within
+\val{pg.near} of the threshold. ``No difference'': the interval of G $-$ DINOv2 includes zero. $^\ast$Opponents within three StatsBomb
+pitch units (yards) of the shooter. \sbattr}
+\label{tab:h3desc}
+\end{table*}
+
+\Cref{tab:h3desc} lists the eight descriptive targets. The fold models differ only on descriptive targets and on
+difference readings; the readings of the confirmatory targets agree. The descriptive thresholds were set with the
+prototype's development numbers known. Probe intervals are conditional: the draws reweight fixed out-of-fold
+predictions and the probes are not refitted, so they omit the variability of the regularisation choice and the
+coefficients and are narrower than the full uncertainty.
+
+\subsection{\Hfour: leakage diagnostic (descriptive)}
+\label{sec:h4more}
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Model, with controls & All rows & Within $\pm200$\,ms \\
+\midrule
+Slope of the gap on $r$ [logit/s] & \val{cf.h4.slope} & \val{cf.h4.slope_200} \\
+Anchor more than 40\,ms before StatsBomb & \val{cf.h4.early} & \val{cf.h4.early_200} \\
+Anchor more than 40\,ms after StatsBomb & \val{cf.h4.late} & \val{cf.h4.late_200} \\
+Shots & \val{cf.h4.n} & \val{cf.h4.n200} \\
+\bottomrule
+\end{tabular}
+\caption{\Hfour, confirmatory run, descriptive: timing-residual arm. The gap is logit(frame) $-$ logit(vendor); $r$ is
+the timing residual. \sbattr}
+\label{tab:h4}
+\end{table*}
+
+The offset contrast G(0) $-$ G($-400$\,ms) on on-target shots is \val{cf.h4.off_on} with controls and
+\val{cf.h4.off_on_u} without. A positive contrast on on-target shots has the two explanations of the on-target
+coefficient and a third: play develops during the last $400$\,ms before the anchor. Over all rows the interval of the
+residual slope lies above zero; within $\pm200$\,ms it is wide and includes zero (\cref{tab:h4}).
+
+\subsection{Penalties}
+\label{sec:pen}
+
+Penalties are outside \Hone--\Hfour. The frame model does not score them: it gives every penalty the pool penalty rate
+of its calibration. \Cref{tab:pen} gives raw probabilities, without intervals.
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{@{}lrrcccccc@{}}
+\toprule
+ & & & \multicolumn{2}{c}{Vendor} & \multicolumn{2}{c}{Frame} & \multicolumn{2}{c}{Positions} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & $n$ & Goals & mean $p$ & LL & mean $p$ & LL & mean $p$ & LL \\
+\midrule
+Primary & \val{cf.pen.p.n} & \val{cf.pen.p.goals} & \val{cf.pen.p.vp} & \val{cf.pen.p.vll} & \val{cf.pen.p.fp} & \val{cf.pen.p.fll} & \val{cf.pen.p.pp} & \val{cf.pen.p.pll} \\
+Combined & \val{cf.pen.c.n} & \val{cf.pen.c.goals} & \val{cf.pen.c.vp} & \val{cf.pen.c.vll} & \val{cf.pen.c.fp} & \val{cf.pen.c.fll} & \val{cf.pen.c.pp} & \val{cf.pen.c.pll} \\
+\bottomrule
+\end{tabular}
+\caption{Penalties, confirmatory run, descriptive (S9). \sbattr}
+\label{tab:pen}
+\end{table*}
+
+\section{Context from models that had seen these matches (development results)}
+\label{sec:dev}
+
+These numbers are not results of the study. The archived frame model or the prototype computed them, and the archived
+model had trained on most of these matches. They explain choices of the pre-registration.
+
+\paragraph{Choice of $\delta$.} The rule, written before the power simulation, took the smallest candidate margin with
+power of at least \val{dv.target} under the development truth. TOST power was \val{dv.pow002}, \val{dv.pow003} and
+\val{dv.pow005} at margins \val{dv.margins}, so the rule chose $\delta = \val{dv.chosen}$. The development truth
+assumed a frame gain about twice the one that \Htwo showed on the development table. Had the frame added nothing,
+the margin \val{dv.m002} would already have had power \val{dv.pow_null}. The rule was kept unchanged. Hence
+``equivalent at $\delta$'' is a weak claim, and the smallest equivalence margin is reported next to it.
+
+\paragraph{\Htwo on the development table.} The archived model gave \val{dv.h2} with smallest margin
+\val{dv.h2_margin}; frame $-$ vendor was \val{dv.frame_vendor}.
+
+\paragraph{Bootstrap with refitting.} In the power simulation (\val{dv.n_sims} studies per scenario) the sampling SD
+of the \Htwo difference was \val{dv.sd_dev} under the development truth and \val{dv.sd_null} under the null truth. A
+check on \val{dv.rc.sims} simulated studies gave a mean SD of the refitting bootstrap of \val{dv.rc.dev_refit} under the
+development truth, in line with the spread, and \val{dv.rc.null_refit} under the null truth, clearly too wide; there
+the draws lay on average \val{dv.rc.null_shift} above the estimate. A bootstrap with fixed predictions gave
+\val{dv.rc.dev_fixed} and \val{dv.rc.null_fixed}, too narrow in both scenarios. The refitting bootstrap was chosen
+because a too-wide interval only makes equivalence harder to show, whereas a too-narrow one would make TOST liberal.
+
+\paragraph{Probes on single fold models.} The prototype mixed the embeddings of five fold models in one probe and saw
+no advantage of the fine-tuned model over DINOv2. A probe on the single fold-0 model, on \val{dv.probe_n} shots, gave
+a distance difference of \val{dv.probe_dist}. The pre-registration therefore wrote both fine-tuning narratives
+neutrally.
+
+\section{Release package}
+\label{sec:release}
+
+The package ships five tables and the code archive: the match map (every SoccerNet game with its StatsBomb match
+identifier or the reason it has none), the pair table (every index shot of the paired games with its StatsBomb event
+identifier), the recovered goals, the frame model's calibrated logits and probabilities at offsets 0 and $-400$\,ms for
+every evaluation row, and the split plan of the retrain. A manifest lists each column with its provenance (SoccerNet
+identifier, StatsBomb identifier, or ours) and each source column left out with the reason. Left out are: every
+StatsBomb value, the comparator's predictions (functions of StatsBomb data only; the manifest gives the checksum a
+rebuild must reach), half offsets and timing residuals (with the SoccerNet time they give back the StatsBomb
+timestamp), SoccerNet annotation content, embeddings, probe targets, frames, clips and weights. Frame predictions are
+not penalty-routed, because the penalty flag is a SoccerNet annotation or a StatsBomb value.
+
+\section{Number check}
+\label{sec:numbercheck}
+
+No number in the paper or this supplement is typed by hand. Each is a macro filled from a claim that names a number of
+the study report, which reads it from a result file by a fixed locator (CSV row and column, JSON path, or a quotation
+of the pre-registration). A script renders every claim, rewrites nothing silently and fails when the paper's macros,
+the report's numbers, the figures or the SHA-256 of any result file disagree with the sources, when a number in the
+text is not a macro, or when a confirmatory or development number stands outside a section labelled as such.
+
+\end{document}

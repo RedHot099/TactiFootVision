@@ -53,6 +53,13 @@ def tag_spans_blanked(line: str, claims: dict[str, crr.Claim]) -> str:
     return line
 
 
+def blank_phrases(line: str, phrases: list[str]) -> str:
+    """`line` with each allowed phrase blanked, as a whole only: "400 ms" does not hide the tail of "2400 ms" or "1 400 ms"."""
+    for phrase in phrases:
+        line = re.sub(rf"(?<![\w.,])(?<!\d ){re.escape(phrase)}", lambda m: " " * len(m.group()), line)
+    return line
+
+
 def untagged_integers(lines: list[str], claims: dict[str, crr.Claim], untagged: list[str]) -> list[str]:
     """Integers of two or more digits left outside tags, code, links, comments, dates and the allowed phrases."""
     found, fenced = [], False
@@ -65,8 +72,7 @@ def untagged_integers(lines: list[str], claims: dict[str, crr.Claim], untagged: 
         line = tag_spans_blanked(line, claims)
         for pattern in (crr.COMMENT, crr.CODE_SPAN, crr.LINK_TARGET, crr.SECTION, NOT_RESULTS):
             line = pattern.sub(lambda m: " " * len(m.group()), line)
-        for phrase in untagged:   # a whole phrase only: "400 ms" does not hide the tail of "2400 ms" or "1 400 ms"
-            line = re.sub(rf"(?<![\w.,])(?<!\d ){re.escape(phrase)}", lambda m: " " * len(m.group()), line)
+        line = blank_phrases(line, untagged)
         found += [f"REPORT:{no}: integer {m.group()!r} is not tied to a source" for m in INTEGER.finditer(line)]
     return found
 
@@ -82,6 +88,26 @@ def confirmatory_claims(config: dict) -> set[str]:
     return out
 
 
+def misplaced(cid: str, titles: list[str], *, confirmatory: bool, dev: bool, confirmatory_label: str,
+              dev_label: str) -> list[str]:
+    """Why claim `cid` may not stand under headings `titles` (labels match case-insensitively); empty when it may.
+
+    A confirmatory claim needs a heading with the confirmatory label and none with the development label; a
+    development claim needs a heading with the development label.
+    """
+    lowered = [t.lower() for t in titles]
+    in_conf = any(confirmatory_label.lower() in t for t in lowered)
+    in_dev = any(dev_label.lower() in t for t in lowered)
+    out = []
+    if confirmatory and in_dev:
+        out.append(f"{cid} is a confirmatory result under a '{dev_label}' heading")
+    if confirmatory and not in_conf:
+        out.append(f"{cid} is a confirmatory result outside a '{confirmatory_label}' heading")
+    if dev and not in_dev:
+        out.append(f"{cid} is a development result outside a '{dev_label}' heading")
+    return out
+
+
 def separation(lines: list[str], confirmatory: set[str], dev_label: str, confirmatory_label: str) -> list[str]:
     """A confirmatory claim outside a confirmatory heading, or under a development heading."""
     errors, headings = [], []
@@ -89,15 +115,11 @@ def separation(lines: list[str], confirmatory: set[str], dev_label: str, confirm
         if heading := re.match(r"^(#+)\s+(.*)", line):
             level = len(heading.group(1))
             headings = [h for h in headings if h[0] < level] + [(level, heading.group(2))]
+        titles = [h for _, h in headings]
         for tag in crr.TAG.finditer(line):
-            cid = tag.group(1)
-            if cid not in confirmatory:
-                continue
-            titles = [h for _, h in headings]
-            if any(dev_label in h for h in titles):
-                errors.append(f"REPORT:{no}: {cid} is a confirmatory result under a '{dev_label}' heading")
-            if not any(confirmatory_label in h for h in titles):
-                errors.append(f"REPORT:{no}: {cid} is a confirmatory result outside a '{confirmatory_label}' heading")
+            errors += [f"REPORT:{no}: {e}" for e in misplaced(tag.group(1), titles, confirmatory=tag.group(1) in confirmatory,
+                                                               dev=False, confirmatory_label=confirmatory_label,
+                                                               dev_label=dev_label)]
     return errors
 
 
