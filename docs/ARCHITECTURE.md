@@ -39,7 +39,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
-| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
+| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult`, `FrameAnalyzer` → `FrameResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -74,7 +74,8 @@ src/tactifoot_vision/
   pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
   teams/              crops.py, embedders.py, classifier.py
-  pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult)
+  pipeline/           pipeline.py (Pipeline), frame.py (FrameAnalyzer, fill_ball),
+                      result.py (FrameResult, PipelineResult)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -295,6 +296,16 @@ configs/              example run files
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
   The ball filter (`ball_max_speed`) also runs at the end of the pass for
   now; the `ball-tracking` feature moves it into a post-process.
+* `FrameAnalyzer(detector, keypoint_model=None, team_classifier=None, ...)`
+  `(frame) -> FrameResult` analyses one frame on its own (one frame per
+  shot, frames of different matches): no tracker and no state between
+  calls, the homography is `HomographyEstimator.fit` of this frame, teams
+  come from `assign_frame_teams` with pitch positions. Ball and people are
+  split as in `Pipeline` (the most confident ball). `fill_ball(result,
+  earlier)` is the ball fallback: a frame without a ball on the pitch takes
+  the ball of the first earlier frame that has one (positioned by that
+  frame's own homography), marked in `ball.data["fallback"]` (0 own, `k`
+  the k-th earlier frame); `earlier` is consumed lazily.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident

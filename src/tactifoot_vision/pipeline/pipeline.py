@@ -217,20 +217,9 @@ class Pipeline:
 
     # -------------------------------------------------------------- per frame
     def _process_frame(self, index: int, frame: np.ndarray, fps: float) -> FrameResult:
-        detections = self.detector.predict(frame)
-        if "class_name" not in detections.data:
-            if len(detections):
-                raise ValueError(
-                    f"{type(self.detector).__name__} must fill data['class_name']"
-                )
-            detections.data["class_name"] = np.zeros(0, dtype=str)
-        is_ball = detections.data["class_name"] == self.ball_class
-        ball = detections[is_ball]
-        if len(ball) > 1:
-            ball = ball[[int(np.argmax(ball.confidence))]]
-        people = detections[~is_ball]
-        if self.include_classes is not None:
-            people = people[np.isin(people.data["class_name"], self.include_classes)]
+        ball, people = _detect_ball_and_people(
+            self.detector, frame, self.ball_class, self.include_classes
+        )
         if self.tracker is not None:
             people = self.tracker.update(people, frame)
         # Full-frame masks (SAM2) cost ~2 MB per object per 1080p frame: keep crops only.
@@ -410,6 +399,28 @@ class _TeamSamples:
         return (
             np.stack(rows).astype(np.float32) if rows else np.zeros((0, 0), np.float32)
         )
+
+
+def _detect_ball_and_people(
+    detector: Model,
+    frame: np.ndarray,
+    ball_class: str,
+    include_classes: tuple[str, ...] | None,
+) -> tuple[sv.Detections, sv.Detections]:
+    """``(ball, people)`` of one frame: the most confident ``ball_class`` detection, the kept rest."""
+    detections = detector.predict(frame)
+    if "class_name" not in detections.data:
+        if len(detections):
+            raise ValueError(f"{type(detector).__name__} must fill data['class_name']")
+        detections.data["class_name"] = np.zeros(0, dtype=str)
+    is_ball = detections.data["class_name"] == ball_class
+    ball = detections[is_ball]
+    if len(ball) > 1:
+        ball = ball[[int(np.argmax(ball.confidence))]]
+    people = detections[~is_ball]
+    if include_classes is not None:
+        people = people[np.isin(people.data["class_name"], include_classes)]
+    return ball, people
 
 
 def _object_keys(detections: sv.Detections, samples: _TeamSamples) -> np.ndarray:

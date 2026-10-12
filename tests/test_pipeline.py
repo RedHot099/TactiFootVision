@@ -1,3 +1,4 @@
+import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -10,7 +11,13 @@ import supervision as sv
 import tactifoot_vision as tv
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models.base import Model
-from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult
+from tactifoot_vision.pipeline import (
+    NO_TEAM,
+    FrameAnalyzer,
+    Pipeline,
+    PipelineResult,
+    fill_ball,
+)
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
 from tactifoot_vision.teams import Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker, Tracker
@@ -616,3 +623,101 @@ def test_the_most_confident_ball_is_kept(video):
         assert len(frame.ball) == 1
         assert frame.ball.confidence.tolist() == [pytest.approx(0.95)]
         assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
+
+
+# ------------------------------------------------------------ single frames
+def _frame(t: int = 0, **scene) -> np.ndarray:
+    frame = np.full((HEIGHT, WIDTH, 3), (40, 140, 40), dtype=np.uint8)
+    for color, (x1, y1, x2, y2) in _scene(t, **scene):
+        cv2.rectangle(frame, (x1, y1), (x2 - 1, y2 - 1), color, thickness=-1)
+    return frame
+
+
+def _analyzer(**kwargs) -> FrameAnalyzer:
+    options = {
+        "keypoint_model": KnownHomographyKeypoints(device="cpu"),
+        "team_classifier": TeamClassifier(MeanColorEmbedder(), reducer=None),
+    } | kwargs
+    return FrameAnalyzer(ColorDetector(device="cpu"), **options)
+
+
+def test_frame_analyzer_places_and_splits_one_frame_on_its_own():
+    analyzer = _analyzer()
+    frame = analyzer(_frame(3), index=7, timestamp=1.5)
+    assert (frame.index, frame.timestamp) == (7, 1.5)
+    assert frame.detections.tracker_id is None and len(frame.detections) == 8
+    np.testing.assert_allclose(
+        frame.homography, FRAME_TO_PITCH / FRAME_TO_PITCH[2, 2], atol=1e-5
+    )
+    anchors = frame.detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+    np.testing.assert_allclose(
+        frame.pitch_xy, frame_to_pitch(anchors, FRAME_TO_PITCH), atol=1e-3
+    )
+    assert len(frame.ball) == 1 and np.isfinite(frame.ball_xy).all()
+    teams = frame.team_ids
+    red = {teams[_track_of(frame, x + 3, y)] for x, y in RED_PLAYERS}
+    blue = {teams[_track_of(frame, x + 3, y)] for x, y in BLUE_PLAYERS}
+    assert len(red) == len(blue) == 1 and red != blue and red | blue == {0, 1}
+    names = frame.detections.data["class_name"]
+    assert teams[names == "referee"].tolist() == [NO_TEAM]
+    assert teams[names == "goalkeeper"].tolist() == list(red)  # beside the red team
+    assert analyzer.homography.matrix is None  # no state kept between frames
+
+
+def test_frame_analyzer_without_keypoints_or_teams():
+    frame = _analyzer(keypoint_model=None, team_classifier=None)(_frame())
+    assert frame.homography is None and frame.keypoints is None
+    assert np.isnan(frame.pitch_xy).all() and np.isnan(frame.ball_xy).all()
+    assert (frame.team_ids == NO_TEAM).all()
+    # Teams without a homography: the goalkeeper is placed in frame pixels.
+    frame = _analyzer(keypoint_model=None)(_frame())
+    names = frame.detections.data["class_name"]
+    red = frame.team_ids[_track_of(frame, *RED_PLAYERS[0])]
+    assert frame.team_ids[names == "goalkeeper"].tolist() == [red]
+
+
+def test_frame_analyzer_validation():
+    with pytest.raises(ValueError, match="reducer=None"):
+        _analyzer(team_classifier=TeamClassifier(MeanColorEmbedder()))
+    with pytest.raises(ValueError, match="detector must be a detection model"):
+        FrameAnalyzer(KnownHomographyKeypoints(device="cpu"))
+    with pytest.raises(ValueError, match="keypoint_model must be a pose model"):
+        _analyzer(keypoint_model=ColorDetector(device="cpu"))
+
+
+def _with_ball(frame, xy):
+    ball = sv.Detections(
+        xyxy=np.float32([[1, 1, 3, 3]]),
+        confidence=np.float32([0.5]),
+        data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([xy])},
+    )
+    return dataclasses.replace(frame, ball=ball)
+
+
+def test_fill_ball_takes_the_first_earlier_ball_on_the_pitch():
+    t0 = _analyzer()(_frame())
+    without = dataclasses.replace(t0, ball=sv.Detections.empty())
+    off_pitch = _with_ball(t0, [np.nan, np.nan])
+    earlier = [off_pitch, _with_ball(t0, [30.0, 20.0]), _with_ball(t0, [1.0, 1.0])]
+    consumed = []
+
+    def lazily():
+        for frame in earlier:
+            consumed.append(frame)
+            yield frame
+
+    filled = fill_ball(without, lazily())
+    assert filled.ball_xy.tolist() == [[30.0, 20.0]]
+    assert filled.ball.data["fallback"].tolist() == [2]
+    assert len(consumed) == 2  # the third frame was never needed
+    assert len(without.ball) == 0 and "fallback" not in earlier[1].ball.data
+    assert filled.detections is without.detections  # people stay those of the frame
+
+    own = fill_ball(t0, earlier)
+    np.testing.assert_array_equal(own.ball_xy, t0.ball_xy)
+    assert own.ball.data["fallback"].tolist() == [0] and "fallback" not in t0.ball.data
+    # An off-pitch ball of the frame itself counts as missing; no ball anywhere keeps it.
+    assert fill_ball(off_pitch, earlier[1:]).ball.data["fallback"].tolist() == [1]
+    kept = fill_ball(off_pitch, [without])
+    assert np.isnan(kept.ball_xy).all() and kept.ball.data["fallback"].tolist() == [0]
+    assert len(fill_ball(without, []).ball) == 0
