@@ -1,0 +1,85 @@
+{
+  "title": "xg-detector audit 2: the four extractor configurations D1-D4, declared before the audit (ticket 08)",
+  "declared": "2026-10-12",
+  "ticket": "xg-detector 08 (declaration); xg-detector 09 runs the audit on exactly these, adding nothing after it runs",
+  "rules": "Unchanged and frozen (spec, Audit; ticket 02): the chosen configuration has the lowest median shot-location error among those with shot-location coverage >= 70% of the paired non-penalty shots, ties broken by coverage; approach 2 continues only if that median is <= 3 m at coverage >= 70% and goalkeeper information covers >= 50%. This is the last audit (owner decision Q26).",
+  "package": {
+    "commit": "08c9606",
+    "changes_since_audit_1": [
+      "e927f40 models: stretch=True (the pitch model sees the frame stretched to 640x640, as it was trained)",
+      "8994cc6 pitch: no homography from landmarks that do not span the pitch (singular fits)",
+      "99bd7a0 pitch: pitch_markings in tv.pitch",
+      "4725862, 30702ec, 9a6289b, 639b86f, ec487a6, 0243771 pitch: HomographyEstimator(refine_with_lines=True), the line refinement and its acceptance checks",
+      "08c9606 docs"
+    ]
+  },
+  "common": {
+    "detector": {
+      "weights": "results/project/raw/yolo11m/training/detect_yolo11m/weights/best.pt",
+      "weights_sha256": "7183d342353752a067035bcee46062fc50f81261258257296d7cbc0dd3a5baf7",
+      "imgsz": 1920,
+      "conf": 0.3,
+      "iou": 0.5,
+      "class_conf": {"ball": 0.15},
+      "stretch": false,
+      "note": "C4's detector settings (ticket 02's choice, the only configuration with coverage >= 70% in audit 1); the line metric cannot judge detector settings, so they are not varied"
+    },
+    "ball_fallback_offsets_ms": [-400, -800],
+    "study_offsets_ms": [0, -400],
+    "keypoints": {
+      "weights": "results/project/raw/yolo_pose/training/kp_yolo_pose/weights/best.pt",
+      "weights_sha256": "7462e932b18522c9a80af6f3533b3bbd724efe4cef3a51ce9a6402d64f063fde",
+      "load": "tv.load_model('yolo_pose', weights, conf=0.1, stretch=True)",
+      "instance_conf": 0.1,
+      "input": "stretch"
+    },
+    "homography": {
+      "estimator": "tv.pitch.HomographyEstimator(min_confidence=<keypoint_conf>, ransac_threshold=10.0, refine_with_lines=<refine>)",
+      "ransac_threshold_m": 10.0,
+      "mode": "stateless fit per frame (FrameAnalyzer), which passes the frame and the people boxes of the C4 detector",
+      "refinement_defaults": {"min_points": 80, "min_inliers": 0.5, "inlier_px": 3.0, "search_px": 120.0, "step": 0.4},
+      "applies_to": "every analysed frame: t0, -400 and the -800 ball-fallback frames"
+    },
+    "teams": {"embedder": "google/siglip-base-patch16-224", "n_teams": 2, "reducer": null, "crop_scale": 0.8}
+  },
+  "configs": {
+    "D1": {"keypoint_input": "stretch", "keypoint_conf": 0.5, "refine_with_lines": false,
+           "dev_variant": "stretch", "role": "the keypoint fixes alone (input and degenerate fits), C4's thresholds"},
+    "D2": {"keypoint_input": "stretch", "keypoint_conf": 0.3, "refine_with_lines": false,
+           "dev_variant": "stretch_kp03", "role": "the keypoint fixes with more homographies"},
+    "D3": {"keypoint_input": "stretch", "keypoint_conf": 0.5, "refine_with_lines": true,
+           "dev_variant": "stretch_refined", "role": "line refinement on D1"},
+    "D4": {"keypoint_input": "stretch", "keypoint_conf": 0.3, "refine_with_lines": true,
+           "dev_variant": "stretch_kp03_refined", "role": "line refinement on D2; best on the line metric"}
+  },
+  "selection": {
+    "data": "1,500 random t0 shot frames of the split plan's training matches only (323 matches; dev folds 0-2: 913 frames, confirm folds 3-4: 587); no gate or evaluation match, no StatsBomb data, no label",
+    "run": "scripts/xgd_homography_dev.py at aeb9b2c (clean tree), results/xgd_homography_dev",
+    "summary_csv_sha256": "c145b09923eeb0002cc60f029b9399b7ef84c0153b9e92756cbf7883049fe908",
+    "complete_json_sha256": "9b26826242f5ced9317cd33033ed5eda8d808fdc7004905d3997862f9d53f679",
+    "split_plan_sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a",
+    "metric": "good = share of all frames whose homography puts >= 50% of the projected marking samples within 5 px of the white-line mask; homography = share with a homography; height_log_median = median |log| of the player-height ratio (a check without lines)",
+    "dev": {
+      "C4 (audit 1)": {"homography": 0.635, "good": 0.000, "height_log_median": 0.340},
+      "letterbox": {"homography": 0.622, "good": 0.000, "height_log_median": 0.334},
+      "letterbox_refined": {"homography": 0.622, "good": 0.287, "height_log_median": 0.190},
+      "D1 stretch": {"homography": 0.711, "good": 0.008, "height_log_median": 0.162},
+      "D2 stretch_kp03": {"homography": 0.808, "good": 0.008, "height_log_median": 0.165},
+      "D3 stretch_refined": {"homography": 0.711, "good": 0.386, "height_log_median": 0.119},
+      "D4 stretch_kp03_refined": {"homography": 0.808, "good": 0.445, "height_log_median": 0.120}
+    },
+    "confirm": {
+      "C4 (audit 1)": {"homography": 0.603, "good": 0.000},
+      "D1": {"homography": 0.717, "good": 0.010},
+      "D2": {"homography": 0.831, "good": 0.009},
+      "D3": {"homography": 0.717, "good": 0.329},
+      "D4": {"homography": 0.831, "good": 0.376}
+    },
+    "reasoning": [
+      "All four use the stretched keypoint input: on the model's own labelled images it halves the keypoint error (9.5 vs 25.3 px median at 1280x720) and on the dev frames it beats the letterbox on every score, with and without refinement.",
+      "On the line metric the refined variants rank first (D4, then D3); without refinement no keypoint setting reaches good line agreement (<= 1% of frames), whatever the keypoint threshold or RANSAC limit.",
+      "D1 and D2 are kept although they score far lower: the line metric is close to the refinement's own objective, so it cannot weigh refinement on against off fairly. The check without lines (player height) also favours refinement, but the StatsBomb audit decides.",
+      "Keypoint threshold 0.3 vs 0.5: more homographies (dev 80.8% vs 71.1%) at the same line agreement per fit; both are declared because audit coverage must reach 70%."
+    ]
+  }
+}
