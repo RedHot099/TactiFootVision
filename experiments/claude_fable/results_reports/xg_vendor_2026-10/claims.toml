@@ -1,0 +1,300 @@
+# Sources of every number in REPORT.md (xg-vendor 16).
+# Checked by scripts/check_vendor_report.py (which runs scripts/check_reviewer_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# confirmatory = true: results of the single confirmatory run; dev = true: development numbers.
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wyniki konfirmacyjne"
+# Design constants fixed by the pre-registration and the timing rule; tagged where first stated, free afterwards:
+# the +-200 ms residual restriction, the -400 ms frame offset and the 40 ms early/late threshold of H4;
+# "SHA-256" is the name of the hash in the source table.
+untagged = ["±200 ms", "400 ms", "40 ms", "SHA-256"]
+
+[folders]
+cf = { path = "results/xgv_confirmatory", confirmatory = true }
+cfl = { path = "results/xgv_confirmatory/ladder", confirmatory = true }
+cfp = { path = "results/xgv_confirmatory/probes", confirmatory = true }
+cfk = { path = "results/xgv_confirmatory/leakage", confirmatory = true }
+run = { path = "results/xgv_confirmatory" }   # protocol facts of the run (parameters, hashes), not results
+pa = { path = "results/xgv_pairing" }
+ti = { path = "results/xgv_timing_source" }
+gc = { path = "results/xgv_g_combo" }
+co = { path = "results/xgv_comparator" }
+sp = { path = "results/xgv_split_plan" }
+rs = { path = "results" }
+res = { path = "research" }
+pw = { path = "results/xgv_power", dev = true }
+ld = { path = "results/xgv_ladder_dev", dev = true }
+pd = { path = "results/xgv_probes_dev", dev = true }
+rc = { path = "results/xgv_refit_check", dev = true }
+
+[claims]
+# Constants quoted from the pre-registration.
+"pg.ci95" = { src = "res:xg_vendor_preregistration.md", quote = "Raportujemy przedziały 95%", values = [95], fmt = "{:d}%" }
+"pg.ci90" = { src = "res:xg_vendor_preregistration.md", quote = "czyli gdy przedział 90% mieści się w (−d, d)", values = [90], fmt = "{:d}%" }
+"pg.alpha" = { src = "res:xg_vendor_preregistration.md", quote = "H2 to jeden test TOST na poziomie 5% na stronę", values = [5], fmt = "{:d}%" }
+"pg.bonf" = { src = "res:xg_vendor_preregistration.md", quote = "Każdy rozstrzyga jednostronny test na poziomie 2,5%", values = [2.5], fmt = "{:.1f}%" }
+"pg.code_files" = { src = "res:xg_vendor_preregistration.md", quote = "Kod analizy (32 plików)", values = [32], fmt = "{:d}" }
+"pg.corner_margin" = { src = "res:xg_vendor_preregistration.md", quote = "Margines rogów nad progiem 0,80 w teście źródła czasu jest cienki (0,021)", values = [0.021], fmt = "{:.3f}" }
+"pg.nf_matches" = { src = "res:xg_vendor_preregistration.md", quote = "Leżą w 86 meczach", values = [86], fmt = "{:d}" }
+"pg.recovered_pen" = { src = "res:xg_vendor_preregistration.md", quote = "Karne populacji wtórnej to 7 odzyskanych goli", values = [7], fmt = "{:d}" }
+"pg.near" = { src = "res:xg_vendor_preregistration.md", quote = "leżą w odległości do 0,02 od progu", values = [0.02], fmt = "{:.2f}" }
+
+# Protocol facts of the confirmatory run (its completion record and label-join record).
+"run.n_boot" = { src = "run:complete.json", keys = ["identity.prereg.n_boot"], fmt = "{:,d}" }
+"run.delta" = { src = "run:complete.json", keys = ["identity.prereg.margin"], fmt = "{:.3f}" }
+"run.gate_thr" = { src = "run:complete.json", keys = ["identity.prereg.h3_control_max_r2"], fmt = "{:.3f}" }
+"run.prereg_sha" = { src = "run:label_join_log.jsonl", keys = ["prereg_sha256"], fmt = "{:.12}" }
+
+# Pairing and K0 (ticket 02), frozen before the label join.
+"pa.matches" = { src = "pa:pairing_report.json", keys = ["match_pairing.paired"], fmt = "{:d}" }
+"pa.sn_matches" = { src = "pa:pairing_report.json", keys = ["match_pairing.sn_matches"], fmt = "{:d}" }
+"pa.window" = { src = "pa:pairing_report.json", keys = ["rules.window_ms"], scale = 0.001, fmt = "{:.1f} s" }
+"pa.mispair_s" = { src = "pa:pairing_report.json", keys = ["rules.mispair_ms"], scale = 0.001, fmt = "{:.0f} s" }
+"pa.paired" = { src = "pa:pairing_report.json", keys = ["shot_pairing.paired"], fmt = "{:,d}" }
+"pa.index_shots" = { src = "pa:pairing_report.json", keys = ["shot_pairing.index_shots"], fmt = "{:,d}" }
+"pa.rate" = { src = "pa:pairing_report.json", keys = ["shot_pairing.paired_rate"], scale = 100, fmt = "{:.2f}%" }
+"pa.k0_rate" = { src = "pa:pairing_report.json", keys = ["rules.k0_min_paired"], scale = 100, fmt = "{:.0f}%" }
+"pa.goal_agree" = { src = "pa:pairing_report.json", keys = ["shot_pairing.goal_agree"], fmt = "{}" }
+"pa.goal_rate" = { src = "pa:pairing_report.json", keys = ["shot_pairing.goal_agreement"], scale = 100, fmt = "{:.2f}%" }
+"pa.k0_goal" = { src = "pa:pairing_report.json", keys = ["rules.k0_min_goal_agreement"], scale = 100, fmt = "{:.0f}%" }
+"pa.k0" = { src = "pa:pairing_report.json", keys = ["k0.passed"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+"pa.p_train" = { src = "pa:pairing_report.json", keys = ["shot_pairing.paired_by_split.train"], fmt = "{:,d}" }
+"pa.p_valid" = { src = "pa:pairing_report.json", keys = ["shot_pairing.paired_by_split.valid"], fmt = "{:,d}" }
+"pa.p_test" = { src = "pa:pairing_report.json", keys = ["shot_pairing.paired_by_split.test"], fmt = "{:,d}" }
+"pa.secondary" = { src = "pa:pairing_report.json", keys = ["sb_side.secondary.shots"], fmt = "{:d}" }
+"pa.recovered" = { src = "pa:pairing_report.json", keys = ["sb_side.recovery.recovered"], fmt = "{:d}" }
+"pa.dropped" = { src = "pa:pairing_report.json", keys = ["sb_side.recovery.dropped_goals"], fmt = "{:d}" }
+"pa.blocked" = { src = "pa:pairing_report.json", keys = ["sb_side.pairing_rate_by_outcome.Blocked"], fmt = "{}" }
+"pa.wayward" = { src = "pa:pairing_report.json", keys = ["sb_side.pairing_rate_by_outcome.Wayward"], fmt = "{}" }
+"pa.sb_unpaired" = { src = "pa:pairing_report.json", keys = ["sb_side.unpaired"], fmt = "{:d}" }
+"pa.mispairs" = { src = "pa:pairing_report.json", keys = ["sb_side.unpaired_by_population.possible_mispair"], fmt = "{:d}" }
+"pa.no_sb_10s" = { src = "pa:pairing_report.json", keys = ["shot_pairing.unpaired_no_sb_shot_within_10s"], fmt = "{:d}" }
+
+# Re-download of the secondary halves (ticket 12), its run log.
+"rd.cut" = { src = "rs:xgv_redownload.run.log", quote = "run finished: 209 cut, 0 refused", values = [209], fmt = "{:d}" }
+
+# Positional comparator and K1 (ticket 06).
+"co.pool_shots" = { src = "co:report.json", keys = ["pool.shots"], fmt = "{:,d}" }
+"co.pool_matches" = { src = "co:report.json", keys = ["pool.matches"], fmt = "{:,d}" }
+"co.k1_ff" = { src = "co:report.json", keys = ["k1.comparator_cv_log_loss"], fmt = "{:.5f}" }
+"co.k1_vendor" = { src = "co:report.json", keys = ["k1.vendor_log_loss"], fmt = "{:.5f}" }
+"co.k1_gap" = { src = "co:report.json", keys = ["k1.gap"], fmt = "{:.4f}" }
+"co.k1_margin" = { src = "co:report.json", keys = ["k1.margin"], fmt = "{:+.2f}" }
+"co.k1_pass" = { src = "co:report.json", keys = ["k1.passed"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+
+# Split plan (ticket 05) and the retrain gate (ticket 10).
+"sp.eval_train" = { src = "sp:plan.json", keys = ["counts.by_official_split.evaluation.train"], fmt = "{:d}" }
+"sp.eval_valid" = { src = "sp:plan.json", keys = ["counts.by_official_split.evaluation.valid"], fmt = "{:d}" }
+"sp.training" = { src = "sp:plan.json", keys = ["counts.matches.training"], fmt = "{:d}" }
+"gc.matches" = { src = "gc:gate.json", keys = ["n_matches"], fmt = "{:d}" }
+"gc.shots" = { src = "gc:gate.json", keys = ["n_shots"], fmt = "{:d}" }
+"gc.ll_new" = { src = "gc:gate.json", keys = ["metrics.log_loss.retrained"], fmt = "{:.5f}" }
+"gc.ll_old" = { src = "gc:gate.json", keys = ["metrics.log_loss.archived"], fmt = "{:.5f}" }
+"gc.ll_diff" = { src = "gc:gate.json", keys = ["metrics.log_loss.delta", "metrics.log_loss.bootstrap.lo95", "metrics.log_loss.bootstrap.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"gc.tol_ll" = { src = "gc:gate.json", keys = ["tolerance.log_loss"], fmt = "{:+.3f}" }
+"gc.auc_new" = { src = "gc:gate.json", keys = ["metrics.auc.retrained"], fmt = "{:.5f}" }
+"gc.auc_old" = { src = "gc:gate.json", keys = ["metrics.auc.archived"], fmt = "{:.5f}" }
+"gc.auc_diff" = { src = "gc:gate.json", keys = ["metrics.auc.delta", "metrics.auc.bootstrap.lo95", "metrics.auc.bootstrap.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"gc.tol_auc" = { src = "gc:gate.json", keys = ["tolerance.auc"], scale = -1, fmt = "{:+.3f}" }
+"gc.pass" = { src = "gc:gate.json", keys = ["passed"], labels = { true = "przechodzi", false = "nie przechodzi" }, fmt = "{}" }
+
+# Timing-source test (ticket 04).
+"ti.n_subs" = { src = "ti:timing_verdict.json", keys = ["statistics.n_substitutions"], fmt = "{:d}" }
+"ti.min_subs" = { src = "ti:timing_verdict.json", keys = ["thresholds.min_substitutions"], fmt = "{:d}" }
+"ti.agree_ms" = { src = "ti:timing_verdict.json", keys = ["thresholds.agree_ms"], fmt = "±{:d} ms" }
+"ti.subs_share" = { src = "ti:timing_verdict.json", keys = ["statistics.substitution_share_within_200ms"], scale = 100, fmt = "{:.1f}%" }
+"ti.shared" = { src = "ti:timing_verdict.json", keys = ["thresholds.shared_share"], scale = 100, fmt = "{:.0f}%" }
+"ti.subs_median" = { src = "ti:timing_verdict.json", keys = ["statistics.substitution_median_abs_ms"], fmt = "{:.0f} ms" }
+"ti.lag" = { src = "ti:timing_verdict.json", keys = ["thresholds.lag_ms"], fmt = "{:d} ms" }
+"ti.shots" = { src = "ti:timing_verdict.json", keys = ["statistics.shot_loo_share_within_200ms"], scale = 100, fmt = "{:.1f}%" }
+"ti.kick" = { src = "ti:timing_verdict.json", keys = ["thresholds.kick_share"], scale = 100, fmt = "{:.0f}%" }
+"ti.corners" = { src = "ti:timing_verdict.json", keys = ["statistics.corner_share_within_200ms"], scale = 100, fmt = "{:.1f}%" }
+"ti.verdict" = { src = "ti:timing_verdict.json", keys = ["verdict"], fmt = '"{}"' }
+"ti.unpaired" = { src = "ti:unpaired_reasons.csv", cols = [], agg = "count", fmt = "{:d}" }
+"ti.r_shot" = { src = "ti:unpaired_reasons.csv", row = { reason = "sb_shot_within_10s" }, cols = [], agg = "count", fmt = "{:d}" }
+"ti.r_other" = { src = "ti:unpaired_reasons.csv", row = { reason = "other_event_within_2_5s", no_sb_shot_within_10s = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+"ti.r_dead" = { src = "ti:unpaired_reasons.csv", row = { reason = "dead_ball", no_sb_shot_within_10s = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+"ti.r_none" = { src = "ti:unpaired_reasons.csv", row = { reason = "no_event_within_2_5s", no_sb_shot_within_10s = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+
+# S1 and S9 (confirmatory run, ladder/h2.json).
+"cf.s1.p.chosen" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.chosen"], fmt = "{:,d}" }
+"cf.s1.p.label" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.label_excluded"], fmt = "{:d}" }
+"cf.s1.p.pen" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.penalty"], fmt = "{:d}" }
+"cf.s1.p.fx" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.frame_excluded"], fmt = "{:d}" }
+"cf.s1.p.nf" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.no_frame"], fmt = "{:d}" }
+"cf.s1.p.n" = { src = "cfl:h2.json", keys = ["sets.primary.exclusions.analysed"], fmt = "{:,d}" }
+"cf.s1.p.goals" = { src = "cfl:h2.json", keys = ["sets.primary.goals"], fmt = "{:d}" }
+"cf.s1.p.matches" = { src = "cfl:h2.json", keys = ["sets.primary.matches"], fmt = "{:d}" }
+"cf.s1.c.chosen" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.chosen"], fmt = "{:,d}" }
+"cf.s1.c.label" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.label_excluded"], fmt = "{:d}" }
+"cf.s1.c.pen" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.penalty"], fmt = "{:d}" }
+"cf.s1.c.fx" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.frame_excluded"], fmt = "{:d}" }
+"cf.s1.c.nf" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.no_frame"], fmt = "{:d}" }
+"cf.s1.c.n" = { src = "cfl:h2.json", keys = ["sets.combined.exclusions.analysed"], fmt = "{:,d}" }
+"cf.s1.c.goals" = { src = "cfl:h2.json", keys = ["sets.combined.goals"], fmt = "{:d}" }
+"cf.s1.c.matches" = { src = "cfl:h2.json", keys = ["sets.combined.matches"], fmt = "{:d}" }
+"cf.pen.p.n" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.penalties"], fmt = "{:d}" }
+"cf.pen.p.goals" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.goals"], fmt = "{:d}" }
+"cf.pen.p.vp" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.vendor.mean_p"], fmt = "{:.3f}" }
+"cf.pen.p.vll" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.vendor.log_loss"], fmt = "{:.4f}" }
+"cf.pen.p.fp" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.frame.mean_p"], fmt = "{:.3f}" }
+"cf.pen.p.fll" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.frame.log_loss"], fmt = "{:.4f}" }
+"cf.pen.p.pp" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.freeze_frame.mean_p"], fmt = "{:.3f}" }
+"cf.pen.p.pll" = { src = "cfl:h2.json", keys = ["sets.primary.penalties.freeze_frame.log_loss"], fmt = "{:.4f}" }
+"cf.pen.c.n" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.penalties"], fmt = "{:d}" }
+"cf.pen.c.goals" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.goals"], fmt = "{:d}" }
+"cf.pen.c.vp" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.vendor.mean_p"], fmt = "{:.3f}" }
+"cf.pen.c.vll" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.vendor.log_loss"], fmt = "{:.4f}" }
+"cf.pen.c.fp" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.frame.mean_p"], fmt = "{:.3f}" }
+"cf.pen.c.fll" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.frame.log_loss"], fmt = "{:.4f}" }
+"cf.pen.c.pp" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.freeze_frame.mean_p"], fmt = "{:.3f}" }
+"cf.pen.c.pll" = { src = "cfl:h2.json", keys = ["sets.combined.penalties.freeze_frame.log_loss"], fmt = "{:.4f}" }
+
+# H2 and frame + vendor (S5).
+"cf.h2.p.diff" = { src = "cfl:h2.json", keys = ["sets.primary.h2.diff", "sets.primary.h2.lo95", "sets.primary.h2.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.h2.p.point" = { src = "cfl:h2.json", keys = ["sets.primary.h2.diff"], fmt = "{:+.4f}" }
+"cf.h2.p.ci95" = { src = "cfl:h2.json", keys = ["sets.primary.h2.lo95", "sets.primary.h2.hi95"], fmt = "[{:+.4f}; {:+.4f}]" }
+"cf.h2.p.ci90" = { src = "cfl:h2.json", keys = ["sets.primary.h2.lo90", "sets.primary.h2.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"cf.h2.p.tost" = { src = "cfl:h2.json", keys = ["sets.primary.h2.p_tost"], fmt = "{:.4f}" }
+"cf.h2.p.sup" = { src = "cfl:h2.json", keys = ["sets.primary.h2.p_superiority"], fmt = "{:.4f}" }
+"cf.h2.p.margin" = { src = "cfl:h2.json", keys = ["sets.primary.h2.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"cf.h2.p.sd" = { src = "cfl:h2.json", keys = ["sets.primary.h2.boot_sd"], fmt = "{:.5f}" }
+"cf.h2.c.diff" = { src = "cfl:h2.json", keys = ["sets.combined.h2.diff", "sets.combined.h2.lo95", "sets.combined.h2.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.h2.c.ci90" = { src = "cfl:h2.json", keys = ["sets.combined.h2.lo90", "sets.combined.h2.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"cf.h2.c.tost" = { src = "cfl:h2.json", keys = ["sets.combined.h2.p_tost"], fmt = "{:.4f}" }
+"cf.h2.c.sup" = { src = "cfl:h2.json", keys = ["sets.combined.h2.p_superiority"], fmt = "{:.4f}" }
+"cf.h2.c.margin" = { src = "cfl:h2.json", keys = ["sets.combined.h2.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"cf.fv.p.diff" = { src = "cfl:h2.json", keys = ["sets.primary.frame_plus_vendor.diff", "sets.primary.frame_plus_vendor.lo95", "sets.primary.frame_plus_vendor.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.fv.p.ci90" = { src = "cfl:h2.json", keys = ["sets.primary.frame_plus_vendor.lo90", "sets.primary.frame_plus_vendor.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"cf.fv.p.tost" = { src = "cfl:h2.json", keys = ["sets.primary.frame_plus_vendor.p_tost"], fmt = "{:.4f}" }
+"cf.fv.p.sup" = { src = "cfl:h2.json", keys = ["sets.primary.frame_plus_vendor.p_superiority"], fmt = "{:.4f}" }
+"cf.fv.p.margin" = { src = "cfl:h2.json", keys = ["sets.primary.frame_plus_vendor.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"cf.fv.c.diff" = { src = "cfl:h2.json", keys = ["sets.combined.frame_plus_vendor.diff", "sets.combined.frame_plus_vendor.lo95", "sets.combined.frame_plus_vendor.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.fv.c.ci90" = { src = "cfl:h2.json", keys = ["sets.combined.frame_plus_vendor.lo90", "sets.combined.frame_plus_vendor.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"cf.fv.c.tost" = { src = "cfl:h2.json", keys = ["sets.combined.frame_plus_vendor.p_tost"], fmt = "{:.4f}" }
+"cf.fv.c.sup" = { src = "cfl:h2.json", keys = ["sets.combined.frame_plus_vendor.p_superiority"], fmt = "{:.4f}" }
+"cf.fv.c.margin" = { src = "cfl:h2.json", keys = ["sets.combined.frame_plus_vendor.smallest_equivalence_margin"], fmt = "{:.4f}" }
+# The readings as the pre-registered code wrote them into the filled shells (S5 rows).
+"cf.h2.p.reading" = { src = "cf:shells.md", quote = "| pierwotna | konfirmacyjny | 0.3271 | 0.3275 | -0.0004 [-0.0026, +0.0018] | [-0.0022, +0.0015] | 0.0006 | 0.5274 | 0.0022 | równoważne przy δ: klatka nie dodaje więcej niż δ |", values = [], fmt = '"równoważne przy δ: klatka nie dodaje więcej niż δ"' }
+"cf.h2.c.reading" = { src = "cf:shells.md", quote = "| łączona | odporność | 0.3028 | 0.3033 | -0.0005 [-0.0025, +0.0012] | [-0.0021, +0.0010] | 0.0000 | 0.4030 | 0.0021 | równoważne przy δ: klatka nie dodaje więcej niż δ |", values = [], fmt = "równoważne przy δ: klatka nie dodaje więcej niż δ" }
+
+# H1 ladder (S2, S3), recalibrated unless noted.
+"cf.m.p.constant" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "constant" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.dist_angle" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "dist_angle" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.event" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "event" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.freeze_frame" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "freeze_frame" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.vendor" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "vendor" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.frame" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.frame_ff" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame+positions" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.m.p.frame_vendor" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame+vendor" }, cols = ["log_loss", "log_loss_lo", "log_loss_hi"], fmt = "{:.4f} [{:.4f}; {:.4f}]" }
+"cf.a.p.constant" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "constant" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.dist_angle" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "dist_angle" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.event" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "event" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.freeze_frame" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "freeze_frame" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.vendor" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "vendor" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.frame" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.frame_ff" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame+positions" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.a.p.frame_vendor" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "recalibrated", rung = "frame+vendor" }, cols = ["auc"], fmt = "{:.3f}" }
+"cf.m.c.constant" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "constant" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.dist_angle" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "dist_angle" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.event" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "event" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.freeze_frame" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "freeze_frame" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.vendor" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "vendor" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.frame" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "frame" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.frame_ff" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "frame+positions" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.m.c.frame_vendor" = { src = "cfl:metrics.csv", row = { population = "combined", variant = "recalibrated", rung = "frame+vendor" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"cf.r.p.vendor" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "raw", rung = "vendor" }, cols = ["mean_p_minus_rate", "mean_p_minus_rate_lo", "mean_p_minus_rate_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.r.p.ff" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "raw", rung = "freeze_frame" }, cols = ["mean_p_minus_rate", "mean_p_minus_rate_lo", "mean_p_minus_rate_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.r.p.frame" = { src = "cfl:metrics.csv", row = { population = "primary", variant = "raw", rung = "frame" }, cols = ["mean_p_minus_rate", "mean_p_minus_rate_lo", "mean_p_minus_rate_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+
+# H1 key contrasts (S4), log-loss A - B, recalibrated.
+"cf.c.p.frame_vendor" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "frame", b = "vendor", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.frame_ff" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "frame", b = "freeze_frame", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.frame_da" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "frame", b = "dist_angle", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.vendor_ff" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "vendor", b = "freeze_frame", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.ff_event" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "freeze_frame", b = "event", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.event_da" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "event", b = "dist_angle", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.da_const" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "dist_angle", b = "constant", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.frame_vendor" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "frame", b = "vendor", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.frame_ff" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "frame", b = "freeze_frame", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.frame_da" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "frame", b = "dist_angle", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.vendor_ff" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "vendor", b = "freeze_frame", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.ff_event" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "freeze_frame", b = "event", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.event_da" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "event", b = "dist_angle", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.c.da_const" = { src = "cfl:contrasts.csv", row = { population = "combined", variant_a = "recalibrated", a = "dist_angle", b = "constant", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cf.c.p.auc_frame_vendor" = { src = "cfl:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "frame", b = "vendor", metric = "auc" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+
+# H3 probes (S6, S7).
+"cf.h3.n" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "dist" }, cols = ["n"], fmt = "{:,d}" }
+"cf.ctl.f0" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "dist_shuffled" }, cols = ["value"], fmt = "{:+.4f}" }
+"cf.ctl.f1" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold1", subset = "all", target = "dist_shuffled" }, cols = ["value"], fmt = "{:+.4f}" }
+"cf.ctl.dino" = { src = "cfp:probes.csv", row = { encoder = "emb_dinov2", subset = "all", target = "dist_shuffled" }, cols = ["value"], fmt = "{:+.4f}" }
+"cf.h3.thr.dist" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "dist" }, cols = ["threshold"], fmt = "{:.2f}" }
+"cf.h3.thr.cone" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "def_cone_ge1" }, cols = ["threshold"], fmt = "{:.2f}" }
+"cf.h3.thr.angle" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "angle" }, cols = ["threshold"], fmt = "{:.2f}" }
+"cf.h3.thr.head" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "head" }, cols = ["threshold"], fmt = "{:.2f}" }
+"cf.h3.f0.dist" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "dist" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.cone" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "def_cone_ge1" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f1.dist" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold1", subset = "all", target = "dist" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f1.cone" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold1", subset = "all", target = "def_cone_ge1" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.d.dist" = { src = "cfp:probes.csv", row = { encoder = "emb_dinov2", subset = "all", target = "dist" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.d.cone" = { src = "cfp:probes.csv", row = { encoder = "emb_dinov2", subset = "all", target = "def_cone_ge1" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.angle" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "angle" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.ff_def_cone" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "ff_def_cone" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.ge2" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "def_cone_ge2" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.gk_depth" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "gk_depth" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.gk_off" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "gk_off_line_abs" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.gk_dist" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "gk_dist_goal" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.opp" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "ff_opp_3m" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.h3.f0.head" = { src = "cfp:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "head" }, cols = ["value", "lo", "hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"cf.d.f0.dist" = { src = "cfp:probe_differences.csv", row = { encoder = "emb_g_fold0", reference = "emb_dinov2", subset = "all", target = "dist" }, cols = ["difference", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.d.f0.cone" = { src = "cfp:probe_differences.csv", row = { encoder = "emb_g_fold0", reference = "emb_dinov2", subset = "all", target = "def_cone_ge1" }, cols = ["difference", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.d.f1.dist" = { src = "cfp:probe_differences.csv", row = { encoder = "emb_g_fold1", reference = "emb_dinov2", subset = "all", target = "dist" }, cols = ["difference", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.d.f1.cone" = { src = "cfp:probe_differences.csv", row = { encoder = "emb_g_fold1", reference = "emb_dinov2", subset = "all", target = "def_cone_ge1" }, cols = ["difference", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+# Readings of the confirmatory targets as the shells wrote them (S6 fold 0, S7 fold 1).
+"cf.h3.f0.dist.reading" = { src = "cf:shells.md", quote = "| dist | R2 | 2721 | 0.711 [0.678, 0.739] | 0.684 [0.656, 0.711] | +0.027 [+0.011, +0.042] | 0.50 | konfirmacyjny | koduje | G > DINOv2 |", values = [], fmt = "koduje" }
+"cf.h3.f1.dist.reading" = { src = "cf:shells.md", quote = "| dist | R2 | 2721 | 0.716 [0.685, 0.743] | 0.684 [0.656, 0.711] | +0.032 [+0.018, +0.046] | 0.50 | konfirmacyjny | koduje | G > DINOv2 |", values = [], fmt = "koduje" }
+"cf.h3.f0.cone.reading" = { src = "cf:shells.md", quote = "| def_cone_ge1 | AUC | 2721 | 0.761 [0.743, 0.778] | 0.735 [0.716, 0.754] | +0.025 [+0.013, +0.038] | 0.70 | konfirmacyjny | koduje | G > DINOv2 |", values = [], fmt = "koduje" }
+"cf.h3.f1.cone.reading" = { src = "cf:shells.md", quote = "| def_cone_ge1 | AUC | 2721 | 0.758 [0.741, 0.775] | 0.735 [0.716, 0.754] | +0.023 [+0.010, +0.035] | 0.70 | konfirmacyjny | koduje | G > DINOv2 |", values = [], fmt = "koduje" }
+
+# H4 leakage (S8).
+"cf.h4.n" = { src = "cfk:leakage.csv", row = { spec = "gap_on_target", regressor = "on_target" }, cols = ["n"], fmt = "{:,d}" }
+"cf.h4.on" = { src = "cfk:leakage.csv", row = { spec = "gap_on_target", regressor = "on_target" }, cols = ["on_target_shots"], fmt = "{:,d}" }
+"cf.h4.n200" = { src = "cfk:leakage.csv", row = { spec = "gap_residual_slope_within_200ms", regressor = "residual_s" }, cols = ["n"], fmt = "{:,d}" }
+"cf.h4.main" = { src = "cfk:leakage.csv", row = { spec = "gap_on_target", regressor = "on_target" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.main_u" = { src = "cfk:leakage.csv", row = { spec = "gap_on_target_unadjusted", regressor = "on_target" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.off_mean" = { src = "cfk:leakage.csv", row = { spec = "offset_mean", regressor = "intercept" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.off_on" = { src = "cfk:leakage.csv", row = { spec = "offset_on_target", regressor = "on_target" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.off_on_u" = { src = "cfk:leakage.csv", row = { spec = "offset_on_target_unadjusted", regressor = "on_target" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.slope" = { src = "cfk:leakage.csv", row = { spec = "gap_residual_slope", regressor = "residual_s" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.slope_200" = { src = "cfk:leakage.csv", row = { spec = "gap_residual_slope_within_200ms", regressor = "residual_s" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.early" = { src = "cfk:leakage.csv", row = { spec = "gap_early_late", regressor = "early" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.late" = { src = "cfk:leakage.csv", row = { spec = "gap_early_late", regressor = "late" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.early_200" = { src = "cfk:leakage.csv", row = { spec = "gap_early_late_within_200ms", regressor = "early" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"cf.h4.late_200" = { src = "cfk:leakage.csv", row = { spec = "gap_early_late_within_200ms", regressor = "late" }, cols = ["coef", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+
+# Development numbers (ticket 08 power, development ladder, refit check, ticket 09 probes).
+"dv.target" = { src = "pw:decision.json", keys = ["target"], fmt = "{:.2f}" }
+"dv.margins" = { src = "pw:decision.json", keys = ["margins.0", "margins.1", "margins.2"], fmt = "{:.3f}, {:.3f} i {:.3f}" }
+"dv.m002" = { src = "pw:decision.json", keys = ["margins.0"], fmt = "{:.3f}" }
+"dv.chosen" = { src = "pw:decision.json", keys = ["chosen_margin"], fmt = "{:.3f}" }
+"dv.pow002" = { src = "pw:power.csv", row = { scenario = "primary/development/archived", margin = "0.002" }, cols = ["power_tost"], fmt = "{:.3f}" }
+"dv.pow003" = { src = "pw:power.csv", row = { scenario = "primary/development/archived", margin = "0.003" }, cols = ["power_tost"], fmt = "{:.3f}" }
+"dv.pow005" = { src = "pw:power.csv", row = { scenario = "primary/development/archived", margin = "0.005" }, cols = ["power_tost"], fmt = "{:.3f}" }
+"dv.pow_null" = { src = "pw:power.csv", row = { scenario = "primary/null/archived", margin = "0.002" }, cols = ["power_tost"], fmt = "{:.3f}" }
+"dv.h2" = { src = "ld:h2.json", keys = ["sets.primary.h2.diff", "sets.primary.h2.lo95", "sets.primary.h2.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"dv.h2_margin" = { src = "ld:h2.json", keys = ["sets.primary.h2.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"dv.frame_vendor" = { src = "ld:contrasts.csv", row = { population = "primary", variant_a = "recalibrated", a = "frame", b = "vendor", metric = "log_loss" }, cols = ["diff", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"dv.n_sims" = { src = "pw:power.csv", row = { scenario = "primary/development/archived", margin = "0.002" }, cols = ["n_sims"], fmt = "{:,d}" }
+"dv.sd_dev" = { src = "pw:decision.json", keys = ["design_check.simulated_sd_diff"], fmt = "{:.5f}" }
+"dv.sd_null" = { src = "pw:power.csv", row = { scenario = "primary/null/archived", margin = "0.002" }, cols = ["sd_diff"], fmt = "{:.5f}" }
+"dv.rc.sims" = { src = "rc:refit_check.json", keys = ["null.sims"], fmt = "{:d}" }
+"dv.rc.dev_refit" = { src = "rc:refit_check.json", keys = ["development.mean_refit_boot_sd"], fmt = "{:.5f}" }
+"dv.rc.dev_fixed" = { src = "rc:refit_check.json", keys = ["development.mean_fixed_boot_sd"], fmt = "{:.5f}" }
+"dv.rc.null_fixed" = { src = "rc:refit_check.json", keys = ["null.mean_fixed_boot_sd"], fmt = "{:.5f}" }
+"dv.rc.null_refit" = { src = "rc:refit_check.json", keys = ["null.mean_refit_boot_sd"], fmt = "{:.5f}" }
+"dv.rc.null_shift" = { src = "rc:refit_check.json", keys = ["null.mean_refit_draw_minus_point"], fmt = "{:+.5f}" }
+"dv.probe_n" = { src = "pd:probe_differences.csv", row = { encoder = "emb_g_fold0", reference = "emb_dinov2", subset = "all", target = "dist" }, cols = ["n"], fmt = "{:d}" }
+"dv.probe_dist" = { src = "pd:probe_differences.csv", row = { encoder = "emb_g_fold0", reference = "emb_dinov2", subset = "all", target = "dist" }, cols = ["difference", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }

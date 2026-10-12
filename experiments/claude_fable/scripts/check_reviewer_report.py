@@ -17,7 +17,8 @@ How a number is tied to its source:
   it. The character before the rendered text must not be a digit, sign or decimal point, so
   a dropped minus sign or digit is caught.
 - Locators: `cols` (CSV columns, one row chosen by `row`, or several averaged with
-  `agg = "mean"`), `keys` (dotted JSON paths, list indices allowed), `quote` + `values`
+  `agg = "mean"`, or the number of rows `row` matches with `agg = "count"` and
+  `cols = []`), `keys` (dotted JSON paths, list indices allowed), `quote` + `values`
   (the source text must contain the quote and the quote each value; used for protocol
   constants) and `git` (the
   SHA-256 of the source file as committed at that revision).
@@ -133,6 +134,12 @@ def csv_values(path: Path, spec: dict) -> list:
         if rows and column not in rows[0]:
             raise ClaimError(f"{path.name} has no column {column!r}")
     hits = [r for r in rows if all(r[k] in vs for k, vs in wanted.items())]
+    if spec.get("agg") == "count":
+        if spec["cols"]:
+            raise ClaimError(f"{path.name}: agg = count takes cols = []")
+        if absent := [f"{k}={v}" for k, vs in wanted.items() for v in vs if v not in {r[k] for r in rows}]:
+            raise ClaimError(f"{path.name}: no row with {absent}")   # a misspelt value is not a count of 0
+        return [len(hits)]
     if not hits:
         raise ClaimError(f"{path.name}: no row matches {wanted}")
     for k, vs in wanted.items():
