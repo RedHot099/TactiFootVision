@@ -342,10 +342,10 @@ configs/              example run files
   them perfectly) and no horizon across the seen markings or the lower half's
   grass (a fit that shrank the markings into a corner of the frame), and its
   markings did not shrink onto one painted line. Off by default.
-  On SoccerNet shot frames the pitch model's keypoints are ~50 px off at
-  720 p even with `stretch=True` (~10 px on its own images), and only ~1% of
-  its fits put half of the projected markings within 5 px of a painted line;
-  with the refinement 41-48% of all frames do.
+  On 1,500 SoccerNet shot frames the pitch model's keypoints are ~50 px off
+  at 720 p even with `stretch=True` (~10 px on its own images), and ~1% of the
+  frames get a fit that puts half of the projected markings within 5 px of a
+  painted line; with the refinement 36-42% do.
 
 ### Results visualisation (`tv.viz`)
 
