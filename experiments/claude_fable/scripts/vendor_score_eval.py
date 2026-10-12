@@ -119,9 +119,9 @@ def score_member(args, shots: pd.DataFrame, fold: int, seed: int, bundle_sha: st
     keep_embedding = seed == 0 and fold in es.EMBEDDING_FOLDS
     xg, on_target = np.full((2, len(shots)), np.nan), np.full((2, len(shots)), np.nan)
     for i, name in enumerate(es.OFFSETS):
-        for role in (es.PRIMARY, es.GATE):   # separate calls: the gate shots keep the batches of the retrain
+        for role in es.scoring_roles(shots):   # separate calls: the gate shots keep the batches of the retrain
             rows = shots.role.eq(role).to_numpy()
-            wanted = keep_embedding and name == "0" and role == es.PRIMARY
+            wanted = keep_embedding and name == "0" and role != es.GATE
             z, o, e = es.score_rows(loaded.model, loaded.spec, shots[rows], name, batch_size=batch, num_workers=NUM_WORKERS, embedding=wanted)
             xg[i, rows], on_target[i, rows] = z, o
             if wanted:
@@ -139,20 +139,26 @@ def score_dino(args, shots: pd.DataFrame, spec: dict) -> None:
         return
     pretrained, _ = build_g(spec)   # the untouched pretrained network: the frozen encoder
     scorer = SharedScorer(pretrained.eval(), spec["model"]["n_blocks"], "cuda")
-    rows = shots[shots.role.eq(es.PRIMARY)]
+    rows = es.embedding_rows(shots)
     embedding = es.frozen_embeddings(scorer, spec, rows, "0", num_workers=NUM_WORKERS)
     np.save(path, embedding)
     print(f"{path.name}: {embedding.shape}", flush=True)
 
 
 def stage_score(args) -> None:
+    run_score(args, inputs)
+
+
+def run_score(args, read_inputs) -> None:
+    """The score stage for the rows `read_inputs(args)` returns ({"shots", "ensemble", ...}); ticket 13 passes its own."""
     if not args.gpu_approved:
         raise SystemExit("this stage uses the GPU: pass --gpu-approved (decision D2, scoring only)")
     check_gpu_free()
     args.out.mkdir(parents=True, exist_ok=True)
     member_dir(args).mkdir(exist_ok=True)
-    state = inputs(args)
+    state = read_inputs(args)
     shots = state["shots"]
+    es.embedding_rows(shots)   # refuses two evaluation roles before any GPU time is spent
     stored = args.out / "shots.parquet"
     if stored.exists():
         if not pd.read_parquet(stored).equals(shots):
@@ -174,7 +180,7 @@ def stage_replay(args) -> None:
     shots = pd.read_parquet(args.out / "shots.parquet")
     ensemble = read_ensemble(args.g_root)
     rows = {}
-    for role in (es.PRIMARY, es.GATE):
+    for role in es.scoring_roles(shots):
         for name in es.OFFSETS:
             sub = shots[shots.role.eq(role) & es.scored_mask(shots, name)].head(es.REPLAY_ROWS)
             rows[role, name] = sub
@@ -191,10 +197,10 @@ def stage_replay(args) -> None:
             i = list(es.OFFSETS).index(name)
             positions = sub.index.to_numpy()
             z, o, e = es.score_rows(loaded.model, loaded.spec, sub, name, batch_size=loaded.recipe["cfg"]["batch_size"],
-                                    num_workers=NUM_WORKERS, embedding=embeddings is not None and role == es.PRIMARY and name == "0")
+                                    num_workers=NUM_WORKERS, embedding=embeddings is not None and role != es.GATE and name == "0")
             dlogit = max(dlogit, float(np.abs(z - stored["xg"][i, positions]).max()), float(np.abs(o - stored["on_target"][i, positions]).max()))
             dp = max(dp, float(np.abs(sigmoid(z / t) - sigmoid(stored["xg"][i, positions] / t)).max()))
-            if e is not None:   # the first rows of the primary role are the first rows of the embedding matrix
+            if e is not None:   # the first rows of the evaluation role are the first rows of the embedding matrix
                 demb = float(np.abs(e.astype(np.float32) - embeddings[: len(e)].astype(np.float32)).max())
         worst[es.member_name(fold, seed)] = {"max_abs_dlogit": dlogit, "max_abs_dp": dp, "max_abs_d_embedding": demb}
         print(es.member_name(fold, seed), worst[es.member_name(fold, seed)], flush=True)
@@ -203,7 +209,7 @@ def stage_replay(args) -> None:
     spec = read_bundle(bundle_path(args, 0, 0))["spec"]
     pretrained, _ = build_g(spec)
     scorer = SharedScorer(pretrained.eval(), spec["model"]["n_blocks"], "cuda")
-    sub = rows[es.PRIMARY, "0"]
+    sub = rows[es.scoring_roles(shots)[0], "0"]   # the first role holds the first rows of the embedding matrices
     fresh = es.frozen_embeddings(scorer, spec, sub, "0", num_workers=NUM_WORKERS).astype(np.float32)
     dino = float(np.abs(fresh - np.load(args.out / "emb_dinov2.npy", mmap_mode="r")[: len(fresh)].astype(np.float32)).max())
     result = {"rows_per_role_offset": es.REPLAY_ROWS, "members": worst, "dinov2_max_abs_d_embedding": dino,

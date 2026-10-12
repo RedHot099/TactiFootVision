@@ -47,7 +47,7 @@ OFFSET_MS = {"0": 0, "m400": -400}
 MEMBERS = tuple((fold, seed) for fold in range(5) for seed in (0, 1))
 EMBEDDING_FOLDS = (0, 1)   # the pre-specified and the sensitivity model, seed 0
 NO_PATH, MISSING, UNREADABLE = "no_frame_path", "file_missing", "undecodable"
-PRIMARY, GATE = "primary", "gate"
+PRIMARY, SECONDARY, GATE = "primary", "secondary", "gate"   # role of a row = which scoring call it belongs to
 REPLAY_ROWS = 64   # a multiple of the batch size: the first batches of the original run, in the same composition
 FRAME_SOURCE = "ensemble_10_xgv_g_combo"
 
@@ -111,12 +111,28 @@ def shots_fingerprint(shots: pd.DataFrame) -> dict:
 
 
 def frames_unchanged(shots: pd.DataFrame) -> bool:
-    """True when every frame of `shots` has now the status and file hash recorded in it (re-reads all frames)."""
+    """True when every frame of `shots` has now the status and file hash recorded in it (re-reads all frames). A row
+    without a path keeps the status recorded in it (the secondary population records why a frame was never cut)."""
     now = shots.copy()
     for name, column in OFFSETS.items():
-        found = inspect_frames(shots[column].tolist())
-        now[f"status_{name}"], now[f"sha256_{name}"] = found.status.to_numpy(), found.sha256.to_numpy()
+        has_path = shots[column].map(bool).to_numpy()
+        found = inspect_frames(shots.loc[has_path, column].tolist())
+        now.loc[has_path, f"status_{name}"], now.loc[has_path, f"sha256_{name}"] = found.status.to_numpy(), found.sha256.to_numpy()
     return bool(now.equals(shots))
+
+
+def scoring_roles(shots: pd.DataFrame) -> list[str]:
+    """The roles present in `shots`, in scoring order; each role is scored in its own calls (batch composition)."""
+    return [role for role in (PRIMARY, SECONDARY, GATE) if shots.role.eq(role).any()]
+
+
+def embedding_rows(shots: pd.DataFrame) -> pd.DataFrame:
+    """The rows that get embeddings: those of the one role that is not the gate, in table order. A table with two such
+    roles is refused (their embeddings would overwrite each other)."""
+    roles = [role for role in scoring_roles(shots) if role != GATE]
+    if len(roles) > 1:
+        raise ValueError(f"embeddings are written for one evaluation role per table, got {roles}")
+    return shots[shots.role.ne(GATE)]
 
 
 def scored_mask(shots: pd.DataFrame, name: str) -> np.ndarray:
