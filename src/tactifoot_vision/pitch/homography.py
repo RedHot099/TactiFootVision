@@ -49,6 +49,10 @@ def project_points(
 class HomographyEstimator:
     """Fits a frame->pitch homography per frame and smooths it over time.
 
+    :meth:`update` is the video mode (smoothed, stateful); :meth:`fit` fits
+    one frame on its own and leaves the estimator unchanged, for frames that
+    are not consecutive (single shot frames, frames from different matches).
+
     Keypoints below ``min_confidence`` are ignored; at least four are needed.
     Averaging the last ``smoothing_window`` fits steadies pitch positions but lags
     behind camera pans: on broadcast footage 3 frames cut position jitter in half
@@ -97,9 +101,20 @@ class HomographyEstimator:
         self.used_indices = None
         self._age = 0
 
+    def fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
+        """Frame->pitch matrix of these keypoints alone (first instance), ``None`` without a fit.
+
+        Stateless: no smoothing with earlier fits, no reuse of an old matrix,
+        and ``matrix`` / ``used_indices`` keep their values.
+        """
+        fitted = self._solve(keypoints)
+        return None if fitted is None else fitted[0]
+
     def update(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
         """Fit on this frame's keypoints (first instance) and return the current matrix."""
-        fitted = self._fit(keypoints)
+        solved = self._solve(keypoints)
+        self.used_indices = None if solved is None else solved[1]
+        fitted = None if solved is None else solved[0]
         if fitted is not None:
             if self._age:
                 self._history.clear()
@@ -112,8 +127,10 @@ class HomographyEstimator:
                 self.reset()
         return self.matrix
 
-    def _fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
-        self.used_indices = None
+    def _solve(
+        self, keypoints: sv.KeyPoints | None
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """``(matrix, indices of the confident keypoints given to RANSAC)`` or ``None``."""
         vertices = self.pitch.vertices
         if keypoints is None or len(keypoints) == 0 or keypoints.confidence is None:
             return None
@@ -134,5 +151,4 @@ class HomographyEstimator:
         )
         if matrix is None or not np.isfinite(matrix).all() or abs(matrix[2, 2]) < 1e-12:
             return None
-        self.used_indices = indices
-        return matrix / matrix[2, 2]
+        return matrix / matrix[2, 2], indices

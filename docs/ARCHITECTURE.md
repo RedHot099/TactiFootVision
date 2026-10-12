@@ -287,7 +287,12 @@ configs/              example run files
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
   landmarks given to RANSAC in the current frame's fit (not only its
-  inliers), `None` when the frame gave no fit. Pitch
+  inliers), `None` when the frame gave no fit. `fit(keypoints)` is the
+  stateless call: the matrix of one frame alone (no smoothing, no reuse of an
+  old matrix), leaving the estimator unchanged, for frames that are not
+  consecutive. Tests pin the metre convention: a perfect fit maps frame
+  points back with 0 m error, and landmarks shifted on the pitch move every
+  position by exactly that shift. Pitch
   vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same

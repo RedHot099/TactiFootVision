@@ -419,3 +419,65 @@ def test_homography_averages_the_last_smoothing_window_fits():
         matrix = estimator.update(_keypoints(pitch, to_frame))
     np.testing.assert_allclose(matrix, np.mean(fits[-3:], axis=0), atol=1e-6)
     assert not np.allclose(matrix, fits[-1], atol=1e-3)
+
+
+# --------------------------------------- stateless fit and the metre convention
+def _pitch_grid(pitch):
+    xs, ys = np.meshgrid(
+        np.linspace(0, pitch.length, 8), np.linspace(0, pitch.width, 6)
+    )
+    return np.column_stack([xs.ravel(), ys.ravel()]).astype(np.float32)
+
+
+def test_fit_is_one_frame_alone_and_leaves_the_estimator_unchanged():
+    pitch = SoccerPitch()
+    estimator = HomographyEstimator(pitch, smoothing_window=3)
+    smoothed = estimator.update(_keypoints(pitch, _homography()))
+    used = estimator.used_indices
+    panned = _homography() @ np.array([[1, 0, 40], [0, 1, 0], [0, 0, 1]], dtype=float)
+    single = estimator.fit(_keypoints(pitch, panned))
+    expected = np.linalg.inv(panned)
+    np.testing.assert_allclose(single, expected / expected[2, 2], atol=1e-6)
+    assert estimator.matrix is smoothed and estimator.used_indices is used
+    assert estimator.fit(_keypoints(pitch, panned, drop=range(29))) is None
+    assert estimator.fit(None) is None and estimator.matrix is smoothed
+
+
+def test_a_perfect_fit_maps_frame_points_back_with_zero_metres_error():
+    pitch = SoccerPitch()
+    to_frame = _homography()
+    matrix = HomographyEstimator(pitch).fit(_keypoints(pitch, to_frame))
+    truth = _pitch_grid(pitch)
+    frame_points = cv2.perspectiveTransform(truth.reshape(-1, 1, 2), to_frame)
+    errors = np.linalg.norm(frame_to_pitch(frame_points, matrix) - truth, axis=1)
+    assert errors.max() < 1e-3  # metres
+    # Corner origin, x along the length: landmark 0 is (0, 0), landmark 29 is (105, 68).
+    corners = cv2.perspectiveTransform(
+        pitch.vertices[[0, 29]].reshape(-1, 1, 2), to_frame
+    )
+    np.testing.assert_allclose(
+        frame_to_pitch(corners, matrix), [[0, 0], [105, 68]], atol=1e-3
+    )
+
+
+@pytest.mark.parametrize("shift", [(2.5, 0.0), (0.0, -1.5), (3.0, 4.0)])
+def test_landmarks_shifted_on_the_pitch_shift_every_position_by_exactly_that(shift):
+    # Keypoints labelled `shift` metres away from where they are: every mapped
+    # position moves by -shift, so the error in metres is exactly |shift|.
+    pitch = SoccerPitch()
+    to_frame = _homography()
+    shifted = (pitch.vertices + np.float32(shift)).reshape(-1, 1, 2)
+    xy = (
+        cv2.perspectiveTransform(shifted, to_frame).reshape(1, -1, 2).astype(np.float32)
+    )
+    keypoints = sv.KeyPoints(xy=xy, confidence=np.full((1, 32), 0.9, np.float32))
+    matrix = HomographyEstimator(pitch).fit(keypoints)
+    truth = _pitch_grid(pitch)
+    frame_points = cv2.perspectiveTransform(truth.reshape(-1, 1, 2), to_frame)
+    offsets = frame_to_pitch(frame_points, matrix) - truth
+    np.testing.assert_allclose(
+        offsets, np.broadcast_to(-np.float32(shift), offsets.shape), atol=1e-3
+    )
+    np.testing.assert_allclose(
+        np.linalg.norm(offsets, axis=1), np.hypot(*shift), atol=1e-3
+    )
