@@ -92,6 +92,9 @@ CONFIGS = {c.name: c for c in (
     ExtractorConfig("D3", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.5, refine_with_lines=True),
     ExtractorConfig("D4", 1920, 0.15, True, keypoint_stretch=True, homography_min_confidence=0.3, refine_with_lines=True))}
 AUDIT_1, AUDIT_2 = ("C1", "C2", "C3", "C4"), ("D1", "D2", "D3", "D4")
+# The committed declaration of D1-D4 (ticket 08, 4a60000); audit 2 refuses to run when the file differs from it.
+AUDIT_2_DECLARATION = Path(__file__).resolve().parents[2] / "research/xg_detector_audit2_configs.json"
+AUDIT_2_DECLARATION_SHA256 = "b7bfcffb8e36d22c23eca13a98eee887fcd1bfe6aa36435ba47a3a8f30cf4448"
 COMMON = {"detector_conf": 0.3, "detector_iou": 0.5, "keypoint_conf": 0.1,
           "homography_ransac_threshold": 10.0, "team_embedder": SIGLIP, "team_reducer": None, "n_teams": 2,
           "crop_scale": 0.8, "fallback_offsets_ms": list(FALLBACK_OFFSETS)}

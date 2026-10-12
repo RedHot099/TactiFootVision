@@ -1,6 +1,8 @@
-"""Run the four declared extractor configurations on the t0 frames of the paired shots (xg-detector ticket 01).
+"""Run the four declared extractor configurations on the t0 frames of the paired shots (xg-detector tickets 01 and 09).
 
-    ./run.sh python scripts/xgd_extract.py [--out cache/xgd_extract] [--configs C1 C2 C3 C4] [--limit N] [--device cuda]
+    audit 2 (ticket 09, the defaults): ./run.sh python scripts/xgd_extract.py [--out cache/xgd_extract2] [--configs D1 D2 D3 D4]
+    audit 1 (ticket 01): --out cache/xgd_extract --configs C1 C2 C3 C4
+    both: [--limit N] [--device cuda]
 
 Which shots: the 2,754 SoccerNet shots paired with a StatsBomb shot (`results/xgv_pairing/pairs.parquet`, columns
 `shot_id` and `paired` only), because the audit (ticket 02) compares their detected positions with the freeze frames.
@@ -8,8 +10,9 @@ That list is read first, here and nowhere else. Everything after it (models, fra
 `no_statsbomb_reads()`, so no model or feature input can come from StatsBomb data or the pairing. The index is read
 for the frame paths only (`FRAME_COLUMNS`): no label column.
 
-Configurations with the same detector settings share one pass (C1 with C2, C3 with C4): t0 is analysed once and the
--400 / -800 ms frames only for the ball fallback of C2 / C4, when t0 has no ball on the pitch.
+Configurations with the same detector, keypoint and homography settings share one pass (C1 with C2, C3 with C4; each of
+D1-D4 is its own pass): t0 is analysed once and the -400 / -800 ms frames only for the ball fallback, when t0 has no
+ball on the pitch.
 
 Writes <out>/<config>/frames.parquet (one row per analysed frame: detections, keypoints, homography), features.parquet
 (one row per shot) and complete.json, last. A configuration whose complete.json exists is refused.
@@ -44,8 +47,8 @@ def paired_shot_ids(pairs: Path) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--out", type=Path, default=ROOT / "cache/xgd_extract")
-    parser.add_argument("--configs", nargs="+", default=list(ex.AUDIT_1), choices=list(ex.CONFIGS))
+    parser.add_argument("--out", type=Path, default=ROOT / "cache/xgd_extract2")
+    parser.add_argument("--configs", nargs="+", default=list(ex.AUDIT_2), choices=list(ex.CONFIGS))
     parser.add_argument("--index", type=Path, default=INDEX)
     parser.add_argument("--pairs", type=Path, default=PAIRS)
     parser.add_argument("--limit", type=int, help="first N shots only (smoke runs)")

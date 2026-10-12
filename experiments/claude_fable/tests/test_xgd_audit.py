@@ -1,4 +1,4 @@
-"""The StatsBomb audit, config choice and gate on fixtures with known answers (xg-detector 02)."""
+"""The StatsBomb audit, config choice and gate on fixtures with known answers (xg-detector 02 and 09)."""
 
 import json
 import sys
@@ -119,7 +119,8 @@ def _table(rows):
     base = {"config": "C9", "game": "g", "residual_ms": 0.0, "shot_ok": 1.0, "shot_from_ball": 1.0, "shooter_by_goal": 0.0,
             "ball_fallback": 0.0, "gk_ok": 1.0, "gk_detected": 0.0, "gk_proxy": 1.0, "gk_proxy_same_team": 0.0, "kp_conf": 0.9,
             "kp_conf_t0": 0.9, "shot_err": 0.0, "shot_dx": 0.0, "shot_dy": 0.0, "shot_err_mirror_y": 9.0, "gk_err": 0.0,
-            "sb_gk_x": 104.0, "cone_det": 1.0, "cone_sb": 1.0}
+            "det_shot_x": 90.0, "det_shot_y": 34.0, "sb_shot_x": 90.0, "sb_shot_y": 34.0,
+            "det_gk_x": 104.0, "det_gk_y": 34.0, "sb_gk_x": 104.0, "sb_gk_y": 34.0, "cone_det": 1.0, "cone_sb": 1.0}
     return pd.DataFrame([base | {"shot_id": f"s{i}"} | r for i, r in enumerate(rows)])
 
 
@@ -139,6 +140,71 @@ def test_config_metrics_on_planted_rows():
     assert m["def_cone", "all", "n"] == 2 and m["def_cone", "all", "exact"] == 0.5
     assert m["def_cone", "all", "ge1_agree"] == 1.0 and m["def_cone", "all", "ge2_agree"] == 0.5
     assert m["def_cone", "all", "mean_diff"] == 0.5
+
+
+def test_correlations_follow_the_draws():
+    a, b = np.array([1.0, 2.0, 3.0, 4.0, 9.0]), np.array([2.0, 4.0, 6.0, 8.0, 0.0])
+    keys = np.array(["a", "b"])
+    match = np.array([0, 0, 0, 0, 1])
+    point, lo, hi = audit.correlation(a, b, np.ones(5, bool), audit.Draws(keys, np.array([[2, 0], [1, 1]], np.int32), match))
+    assert point == pytest.approx(np.corrcoef(a, b)[0, 1])
+    # the two draws: match a twice (b = 2a exactly, correlation 1) and the sample itself
+    assert (lo, hi) == (pytest.approx(np.percentile([1.0, point], 2.5)), pytest.approx(np.percentile([1.0, point], 97.5)))
+    assert np.isnan(audit.correlation(a, b, np.eye(5, dtype=bool)[0], audit.Draws(keys, np.ones((2, 2), np.int32), match))[0])
+
+
+def test_spearman_ranks_each_resample_with_ties_as_scipy_does():
+    from scipy.stats import rankdata, spearmanr
+
+    a = np.array([3.0, 1.0, 2.0, 2.0, 50.0, 7.0])
+    b = np.array([1.0, 1.0, 4.0, 3.0, 2.0, 9.0])
+    w = np.array([[1, 1, 1, 1, 1, 1], [0, 2, 1, 0, 3, 1]], float)
+    ranks = audit.weighted_ranks(a, w)
+    np.testing.assert_allclose(ranks[0], rankdata(a))
+    repeated = np.repeat(np.arange(6), w[1].astype(int))           # the resample the second draw stands for
+    np.testing.assert_allclose(ranks[1][repeated], rankdata(a[repeated]))
+    keys, match = np.array(list("abcdef")), np.arange(6)
+    d = audit.Draws(keys, w.astype(np.int32), match)
+    point, lo, hi = audit.correlation(a, b, np.ones(6, bool), d, rank=True)
+    assert point == pytest.approx(spearmanr(a, b)[0])
+    drawn = spearmanr(a[repeated], b[repeated])[0]
+    assert (lo, hi) == (pytest.approx(np.percentile([point, drawn], 2.5)), pytest.approx(np.percentile([point, drawn], 97.5)))
+
+
+def test_the_constant_baselines_guess_the_population_median_on_the_compared_shots():
+    table = _table([{"sb_shot_x": 90.0, "sb_gk_x": 104.0, "sb_gk_y": 33.0},
+                    {"sb_shot_x": 94.0, "sb_gk_x": 100.0, "sb_gk_y": 34.0},
+                    {"sb_shot_x": 98.0, "sb_gk_x": 103.0, "sb_gk_y": 35.0, "shot_ok": 0.0, "gk_ok": 0.0, "gk_proxy": 0.0},
+                    {"sb_shot_x": 99.0, "sb_gk_x": np.nan, "sb_gk_y": np.nan}])
+    m = pd.DataFrame(audit.config_metrics(table, audit.draws(table.game.to_numpy(), n_boot=5)))
+    m = m.set_index(["quantity", "subset", "stat"]).value
+    # shot: the median of 90, 94, 98, 99 (inverted CDF) is 94, scored on the three located shots: 4, 0, 5
+    assert (m["shot_constant", "all", "const_x"], m["shot_constant", "all", "const_y"]) == (94.0, 34.0)
+    assert m["shot_constant", "all", "n"] == 3 and m["shot_constant", "all", "median"] == 4.0
+    assert m["shot_constant", "all", "coverage"] == m["shot_location", "all", "coverage"] == 0.75
+    # goalkeeper: the median over the three StatsBomb goalkeepers is (103, 34), scored on the two compared shots
+    assert (m["gk_constant", "all", "const_x"], m["gk_constant", "all", "const_y"]) == (103.0, 34.0)
+    assert m["gk_constant", "all", "n"] == m["gk_any", "all", "n"] == 2
+    assert m["gk_constant", "all", "median"] == pytest.approx(np.hypot(1.0, 1.0))      # (104, 33) and (100, 34): 1.41 and 3
+    assert m["gk_constant", "all", "lt2"] == 0.5
+
+
+def test_correlations_of_the_detected_with_the_statsbomb_positions():
+    table = _table([{"det_shot_x": x, "sb_shot_x": 2 * x, "det_shot_y": y, "sb_shot_y": -y, "det_gk_x": x, "sb_gk_x": x + 1,
+                     "det_gk_y": y, "sb_gk_y": y} for x, y in ((80.0, 20.0), (85.0, 30.0), (95.0, 31.0))])
+    m = pd.DataFrame(audit.config_metrics(table, audit.draws(table.game.to_numpy(), n_boot=5)))
+    m = m.set_index(["quantity", "subset", "stat"]).value
+    assert m["shot_location", "all", "corr_x"] == pytest.approx(1.0) and m["shot_location", "all", "corr_y"] == pytest.approx(-1.0)
+    assert m["gk_any", "all", "corr_x"] == pytest.approx(1.0) and m["gk_any", "all", "corr_y"] == pytest.approx(1.0)
+    assert m["shot_location", "all", "rank_corr_y"] == pytest.approx(-1.0) and m["gk_any", "all", "rank_corr_x"] == pytest.approx(1.0)
+    assert m["shot_location", "all", "off_pitch"] == 0.0
+
+
+def test_off_pitch_counts_detected_locations_outside_the_pitch():
+    table = _table([{"det_shot_x": 106.0}, {"det_shot_y": -0.5}, {"det_shot_y": 68.5}, {}, {"shot_ok": 0.0, "det_shot_x": 900.0}])
+    m = pd.DataFrame(audit.config_metrics(table, audit.draws(table.game.to_numpy(), n_boot=5))).set_index(["quantity", "subset", "stat"])
+    assert m.value["shot_location", "all", "off_pitch"] == 0.75          # three of the four located shots; 900 m is not located
+    assert ("gk_detected", "all", "corr_x") not in m.index
 
 
 # ------------------------------------------------------------ choice and gate
@@ -179,6 +245,30 @@ def test_decide_reads_the_metrics_of_subset_all():
     assert decision["chosen"] == "C4" and decision["gate"]["result"] == "STOP" and decision["gate"]["config"] == "C4"
     assert decision["gate"]["checks"]["shot_location_median_m"]["value"] == 3.8
     assert decision["approach2"].startswith("closes")
+
+
+def test_decide_chooses_among_the_candidates_only():
+    rows = []
+    for config, cov, med in (("C4", 0.9, 1.0), ("D1", 0.72, 3.8), ("D2", 0.8, 2.9)):
+        rows += [{"config": config, "quantity": "shot_location", "subset": "all", "stat": "coverage", "value": cov},
+                 {"config": config, "quantity": "shot_location", "subset": "all", "stat": "median", "value": med},
+                 {"config": config, "quantity": "gk_any", "subset": "all", "stat": "coverage", "value": 0.6}]
+    decision = audit.decide(pd.DataFrame(rows), ["D1", "D2"])     # the reference C4 would win; it is not a candidate
+    assert decision["chosen"] == "D2" and [c["config"] for c in decision["candidates"]] == ["D1", "D2"]
+    assert decision["gate"]["result"] == "PASS" and decision["approach2"] == "continues"
+    with pytest.raises(ValueError, match="no shot_location coverage"):
+        audit.decide(pd.DataFrame(rows), ["D1", "D3"])
+
+
+def test_metric_differences_compare_the_reference_rows_only():
+    keys = {"quantity": "shot_location", "subset": "all"}
+    old = pd.DataFrame([{"config": "C4", **keys, "stat": "median", "value": 12.1, "lo": 11.4, "hi": 12.8},
+                        {"config": "C4", **keys, "stat": "n", "value": 3.0, "lo": np.nan, "hi": np.nan},
+                        {"config": "C1", **keys, "stat": "median", "value": 15.8, "lo": 15.0, "hi": 16.4}])
+    new = pd.concat([old[old.config == "C4"], old.iloc[[0]].assign(config="D1", value=9.0)], ignore_index=True)
+    assert audit.metric_differences(new, old, ["C4"]) == {"rows": 2, "missing": 0, "differing": 0}
+    assert audit.metric_differences(new.assign(hi=[12.9, np.nan, 9.0]), old, ["C4"])["differing"] == 1
+    assert audit.metric_differences(new.iloc[1:], old, ["C4"]) == {"rows": 2, "missing": 1, "differing": 0}
 
 
 # ------------------------------------------------------------ the script end to end, and no outcome read
@@ -226,12 +316,13 @@ def _write_inputs(tmp_path: Path, flip: bool = False) -> tuple[Path, Path, Path]
     return tmp_path / "pairs.parquet", tmp_path / "shots.parquet", extract
 
 
-def _run(monkeypatch, tmp_path, out_name, flip=False, record_reads=None):
+def _run(monkeypatch, tmp_path, out_name, flip=False, record_reads=None, configs=("C1", "C4"), reference=()):
     (tmp_path / out_name).mkdir()
     pairs, shots, extract = _write_inputs(tmp_path / out_name, flip)
     out = tmp_path / out_name / "audit"
     monkeypatch.setattr(sys, "argv", ["xgd_audit.py", "--extract", str(extract), "--out", str(out), "--pairs", str(pairs),
-                                      "--shots", str(shots), "--configs", "C1", "C4", "--n-boot", "30"])
+                                      "--shots", str(shots), "--configs", *configs, "--reference-configs", *reference,
+                                      "--reference-extract", str(extract), "--n-boot", "30", *_reference_metrics(tmp_path)])
     with monkeypatch.context() as readers:
         if record_reads is not None:      # every pandas table read: file, the columns asked for, the columns returned
             def recorder(original):
@@ -244,6 +335,11 @@ def _run(monkeypatch, tmp_path, out_name, flip=False, record_reads=None):
                 readers.setattr(pd, reader, recorder(getattr(pd, reader)))
         xgd_audit.main()
     return out
+
+
+def _reference_metrics(tmp_path):
+    earlier = tmp_path / "earlier" / "audit" / "metrics.csv"
+    return ["--reference-metrics", str(earlier)] if earlier.is_file() else []
 
 
 def test_the_audit_reads_no_goal_or_outcome_column(monkeypatch, tmp_path):
@@ -287,11 +383,45 @@ def test_the_audit_end_to_end_on_planted_shots(monkeypatch, tmp_path):
         xgd_audit.main()
 
 
+def test_a_reference_configuration_is_audited_with_the_same_draws_but_never_chosen(monkeypatch, tmp_path):
+    earlier = _run(monkeypatch, tmp_path, "earlier")                                  # an "audit 1" of C1 and C4
+    out = _run(monkeypatch, tmp_path, "later", configs=("C1",), reference=("C4",))   # C1 the candidate, C4 the reference
+    choice = json.loads((out / "choice.json").read_text())
+    assert choice["chosen"] == "C1" and [c["config"] for c in choice["candidates"]] == ["C1"]
+    assert choice["reference_configs"] == ["C4"] and choice["declaration"] is None
+    later, before = pd.read_csv(out / "metrics.csv"), pd.read_csv(earlier / "metrics.csv")
+    assert set(later.config) == {"C1", "C4"}
+    pd.testing.assert_frame_equal(later[later.config == "C4"].reset_index(drop=True), before[before.config == "C4"].reset_index(drop=True))
+    check = json.loads((out / "complete.json").read_text())["reference_check"]
+    assert check["rows"] == int((before.config == "C4").sum()) and (check["missing"], check["differing"]) == (0, 0)
+
+
+def test_a_reference_that_does_not_reproduce_the_earlier_audit_is_refused(monkeypatch, tmp_path):
+    earlier = _run(monkeypatch, tmp_path, "earlier")
+    metrics = pd.read_csv(earlier / "metrics.csv")
+    metrics.loc[metrics.config == "C4", "value"] += 0.1
+    metrics.to_csv(earlier / "metrics.csv", index=False)
+    with pytest.raises(SystemExit, match="do not reproduce"):
+        _run(monkeypatch, tmp_path, "later", configs=("C1",), reference=("C4",))
+    assert not (tmp_path / "later" / "audit" / "complete.json").exists()
+
+
+def test_a_candidate_cannot_be_a_reference_and_audit_2_needs_the_committed_declaration(monkeypatch, tmp_path):
+    with pytest.raises(SystemExit, match="both a candidate and a reference"):
+        _run(monkeypatch, tmp_path, "both", configs=("C1", "C4"), reference=("C4",))
+    changed = tmp_path / "declaration.json"
+    changed.write_text(ex.AUDIT_2_DECLARATION.read_text().replace('"D4"', '"D5"'))
+    monkeypatch.setattr(sys, "argv", ["xgd_audit.py", "--configs", "D1", "D2", "D3", "D4", "--declaration", str(changed),
+                                      "--out", str(tmp_path / "o")])
+    with pytest.raises(SystemExit, match="not the committed D1-D4 declaration"):
+        xgd_audit.main()
+
+
 def test_a_cache_that_does_not_match_its_record_is_refused(monkeypatch, tmp_path):
     pairs, shots, extract = _write_inputs(tmp_path)
     pd.read_parquet(extract / "C1/features.parquet").assign(dist=1.0).to_parquet(extract / "C1/features.parquet")
     monkeypatch.setattr(sys, "argv", ["xgd_audit.py", "--extract", str(extract), "--out", str(tmp_path / "o"), "--pairs", str(pairs),
-                                      "--shots", str(shots), "--configs", "C1"])
+                                      "--shots", str(shots), "--configs", "C1", "--reference-configs"])
     with pytest.raises(SystemExit, match="completion record"):
         xgd_audit.main()
 

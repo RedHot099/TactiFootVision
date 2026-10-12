@@ -1,8 +1,12 @@
-"""Run the chosen extractor configuration on every index shot at t0 and -400 ms (xg-detector ticket 02, story 11).
+"""Run the chosen extractor configuration on every index shot at t0 and -400 ms (xg-detector tickets 02 and 09, story 11).
 
-    ./run.sh python scripts/xgd_extract_full.py [--out cache/xgd_full] [--report results/xgd_full] [--limit N] [--device cuda]
+    audit 2 (ticket 09, the defaults; the features approach 1 uses whatever the gate says):
+    ./run.sh python scripts/xgd_extract_full.py [--out cache/xgd_full2] [--report results/xgd_full2] [--limit N] [--device cuda]
 
-Which configuration: `chosen` in the audit's `results/xgd_audit/choice.json`, read first, here and nowhere else; it
+    audit 1 (ticket 02): --choice results/xgd_audit/choice.json --out cache/xgd_full --report results/xgd_full \
+        --reference cache/xgd_extract
+
+Which configuration: `chosen` in the audit's `choice.json` (default audit 2's), read first, here and nowhere else; it
 holds a name, no StatsBomb value. Everything after it (models, frames, features, hashes, coverage) runs inside
 `no_statsbomb_reads()`. The index is read for the frame paths and the game (`ex.frame_table`, then shot_id and game
 for the roles): no label column. The pairing is never read.
@@ -13,7 +17,7 @@ only for that fallback, without teams. No frame after t0 is read (`ex.extract_st
 
 Writes <out>/<config>/frames.parquet, features.parquet and complete.json (last; a complete folder is refused), and
 <report>/coverage_by_role.csv with its own complete.json: coverage by split role (xg-vendor split plan: training,
-gate, evaluation) and offset. The t0 rows of the shots in the audit cache (`cache/xgd_extract/<config>`) are compared
+gate, evaluation) and offset. The t0 rows of the shots in the audit cache (`--reference`/<config>) are compared
 with it; the record keeps the number of shots whose features differ, per column.
 """
 
@@ -37,7 +41,7 @@ from xgpoc.detector.guard import no_statsbomb_reads
 from xgpoc.paths import INDEX
 
 ROOT = Path(__file__).resolve().parents[1]
-CHOICE = ROOT / "results/xgd_audit/choice.json"
+CHOICE = ROOT / "results/xgd_audit2/choice.json"
 PLAN = ROOT / "results/xgv_split_plan/plan.csv"
 
 
@@ -62,12 +66,12 @@ def reference_differences(features: pd.DataFrame, reference: Path) -> dict | Non
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--out", type=Path, default=ROOT / "cache/xgd_full")
-    parser.add_argument("--report", type=Path, default=ROOT / "results/xgd_full")
+    parser.add_argument("--out", type=Path, default=ROOT / "cache/xgd_full2")
+    parser.add_argument("--report", type=Path, default=ROOT / "results/xgd_full2")
     parser.add_argument("--choice", type=Path, default=CHOICE)
     parser.add_argument("--index", type=Path, default=INDEX)
     parser.add_argument("--plan", type=Path, default=PLAN)
-    parser.add_argument("--reference", type=Path, default=ROOT / "cache/xgd_extract")
+    parser.add_argument("--reference", type=Path, default=ROOT / "cache/xgd_extract2")
     parser.add_argument("--limit", type=int, help="first N shots only (smoke runs)")
     parser.add_argument("--device", default=None)
     args = parser.parse_args()

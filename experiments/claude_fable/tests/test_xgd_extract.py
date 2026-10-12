@@ -287,3 +287,9 @@ def test_audit_2_configurations_are_the_committed_declaration():
     assert ex.COMMON["homography_ransac_threshold"] == common["homography"]["ransac_threshold_m"]
     assert (ex.COMMON["detector_conf"], ex.COMMON["detector_iou"]) == (common["detector"]["conf"], common["detector"]["iou"])
     assert ex.CONFIGS["D1"].analysis != ex.CONFIGS["C4"].analysis      # no shared pass with audit 1
+
+
+def test_the_declaration_file_is_the_committed_one():
+    from xgpoc.bundle import sha256_file
+
+    assert sha256_file(ex.AUDIT_2_DECLARATION) == ex.AUDIT_2_DECLARATION_SHA256

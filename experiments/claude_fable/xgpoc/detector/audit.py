@@ -1,5 +1,9 @@
-"""Audit of detected positions against StatsBomb freeze frames, config choice and gate (xg-detector ticket 02; spec,
-Audit and story 13-15). Diagnostic only: nothing here is an input of any model.
+"""Audit of detected positions against StatsBomb freeze frames, config choice and gate (xg-detector tickets 02 and 09;
+spec, Audit and story 13-15). Diagnostic only: nothing here is an input of any model.
+
+Audit 1 (ticket 02) ran on C1-C4; audit 2 (ticket 09), the last one, runs on D1-D4 as declared by ticket 08
+(`research/xg_detector_audit2_configs.json`, whose sha256 the script checks), with audit 1's choice C4 audited next to
+them as a reference: same population, same draws, never a candidate of the choice.
 
 This module and `scripts/xgd_audit.py` are the only detector code that reads StatsBomb data or the pairing. The model
 and feature paths stay behind `guard.no_statsbomb_reads`, whose pattern also refuses this audit's outputs
@@ -29,6 +33,10 @@ Quantities, each with its coverage (share of the whole population that has the d
     gk_proxy_other
     def_cone          defenders-in-cone count: exact agreement, agreement of >= 1 and >= 2, mean difference
                       (detected - StatsBomb), on covered shots with a freeze frame; confusion tables separately
+    shot_constant     baselines that ignore the frame: one constant guess for every shot, the coordinate-wise median of
+    gk_constant       the StatsBomb positions over the whole population (shot location; goalkeeper, over the shots with
+                      a StatsBomb goalkeeper), scored on exactly the shots compared for shot_location / gk_any. An
+                      in-sample oracle guess: a detector worse than it carries no position information.
 
 Subsets (`SUBSETS`, each a part of the population): all; ball / flag, the shot location from a ball (its own or a
 fallback ball) or from the shooter flagged `shooter_by_goal` (owner decision Q23); fallback, the ball of an earlier
@@ -37,14 +45,20 @@ and t0 too for the goalkeeper and the cone).
 
 Statistics: coverage, n (shots compared), median, p90, lt1/lt2/lt5 (share of compared shots under 1/2/5 m); for the
 shot location also the median signed errors along x and y (dx, dy) and `median_mirror_y`, the median error after
-mirroring the detected y (a convention check: a sign error in y would make it the smaller one). Quantiles are the
+mirroring the detected y (a convention check: a sign error in y would make it the smaller one); for the shot location
+and the goalkeeper (gk_any) the Pearson and the Spearman correlations of the detected with the StatsBomb x and y (corr_x,
+corr_y, rank_corr_x, rank_corr_y; Pearson is dominated by the few positions a bad homography throws far off the pitch,
+which the ranks are not); for the shot location `off_pitch`, the share of compared shots placed outside the pitch
+(x > 105, y < 0 or y > 68 in aligned metres); for the constant baselines the constant itself (const_x, const_y, no
+interval). Quantiles are the
 inverted CDF (`np.quantile(method="inverted_cdf")`). Intervals: 95% percentile intervals of a match bootstrap
 (`N_BOOT` draws, seed `SEED`, over the population's matches, the same draws for every configuration and subset).
 
 The errors include the annotation-timing noise of both sources (about 1 s, in which players move 3-6 m). `timing_table`
 breaks the errors down by xg-vendor's timing residual, descriptively; nothing is selected on it.
 
-Config choice (frozen in the spec): among the configurations whose shot-location coverage is >= 70% of the population,
+Config choice (frozen in the spec), among the candidate configurations only (audit 2: D1-D4, not the reference C4):
+among the configurations whose shot-location coverage is >= 70% of the population,
 the lowest median shot-location error; ties go to the higher coverage, then to the configuration name. When none
 reaches 70%, the same rule over all configurations chooses the configuration for approach 1, and the gate is STOP.
 
@@ -59,7 +73,7 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
-from xgpoc.detector.conventions import WIDTH, statsbomb_to_metres
+from xgpoc.detector.conventions import LENGTH, WIDTH, statsbomb_to_metres
 from xgpoc.detector.extract import feature_differences
 from xgpoc.detector.features import geometry
 from xgpoc.paths import STATSBOMB
@@ -221,6 +235,50 @@ def quantiles(values: np.ndarray, mask: np.ndarray, qs, d: Draws) -> list[tuple[
     return out
 
 
+def _weighted_pearson(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Pearson correlation of the columns x, y ((n,) or (B, n)) with row weights w (B, n), one per draw."""
+    with np.errstate(invalid="ignore", divide="ignore"):       # a constant column has no correlation (NaN)
+        total = w.sum(axis=1, keepdims=True)
+        cx, cy = x - (w * x).sum(axis=1, keepdims=True) / total, y - (w * y).sum(axis=1, keepdims=True) / total
+        return (w * cx * cy).sum(axis=1) / np.sqrt((w * cx**2).sum(axis=1) * (w * cy**2).sum(axis=1))
+
+
+def weighted_ranks(values: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Mid-ranks (B, n) of `values` in each draw's resample, a row repeated as often as its weight: the copies of tied
+    values share the mean of their positions. With unit weights these are `scipy.stats.rankdata` ranks."""
+    order = np.argsort(values, kind="stable")
+    v = values[order]
+    start = np.r_[0, np.flatnonzero(np.diff(v) != 0) + 1]          # first sorted position of each run of equal values
+    group = np.cumsum(np.r_[False, np.diff(v) != 0])
+    end = np.r_[start[1:], len(v)]                                 # one past the last position of each run
+    cum = np.concatenate([np.zeros((len(w), 1)), np.cumsum(w[:, order], axis=1)], axis=1)
+    below, upto = cum[:, start[group]], cum[:, end[group]]
+    ranks = np.empty_like(cum[:, 1:])
+    ranks[:, order] = below + (upto - below + 1) / 2
+    return ranks
+
+
+def correlation(a: np.ndarray, b: np.ndarray, mask: np.ndarray, d: Draws, rank: bool = False) -> tuple[float, float, float]:
+    """Pearson (or with `rank` Spearman) correlation of `a[mask]` with `b[mask]`, with its interval: each draw weighs a
+    row by its match's count, and Spearman ranks each draw's resample afresh (`weighted_ranks`)."""
+    x, y = a[mask], b[mask]
+    if len(x) < 2:
+        return (np.nan, np.nan, np.nan)
+    w, ones = d.weights(mask).astype(float), np.ones((1, len(x)))
+    if rank:
+        point = _weighted_pearson(weighted_ranks(x, ones), weighted_ranks(y, ones), ones)[0]
+        boot = _weighted_pearson(weighted_ranks(x, w), weighted_ranks(y, w), w)
+    else:
+        point, boot = _weighted_pearson(x, y, ones)[0], _weighted_pearson(x, y, w)
+    return (float(point), *_interval(boot))
+
+
+def constant_guess(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """The coordinate-wise inverted-CDF median of the finite (x, y) rows: the constant baselines' guess."""
+    finite = np.isfinite(x) & np.isfinite(y)
+    return float(np.quantile(x[finite], 0.5, method="inverted_cdf")), float(np.quantile(y[finite], 0.5, method="inverted_cdf"))
+
+
 def mean(values: np.ndarray, mask: np.ndarray, d: Draws) -> tuple[float, float, float]:
     v = values[mask]
     point = float(v.mean()) if len(v) else np.nan
@@ -253,25 +311,56 @@ def error_stats(err: np.ndarray, compared: np.ndarray, d: Draws) -> dict:
     return stats
 
 
+def _correlations(detected: list[np.ndarray], statsbomb: list[np.ndarray], mask: np.ndarray, d: Draws) -> dict:
+    """corr_x, corr_y (Pearson) and rank_corr_x, rank_corr_y (Spearman) of detected with StatsBomb positions."""
+    out = {}
+    for prefix, rank in (("corr", False), ("rank_corr", True)):
+        for axis, det, sb in zip(("x", "y"), detected, statsbomb, strict=True):
+            out[f"{prefix}_{axis}"] = correlation(det, sb, mask, d, rank=rank)
+    return out
+
+
+def _constant(table: pd.DataFrame, prefix: str) -> tuple[np.ndarray, dict]:
+    """The constant baseline of `sb_<prefix>_x/y`: each row's error and the constant as statistics."""
+    sx, sy = table[f"sb_{prefix}_x"].to_numpy(float), table[f"sb_{prefix}_y"].to_numpy(float)
+    cx, cy = constant_guess(sx, sy)
+    return np.hypot(sx - cx, sy - cy), {"const_x": (cx, np.nan, np.nan), "const_y": (cy, np.nan, np.nan)}
+
+
 def config_metrics(table: pd.DataFrame, d: Draws) -> list[dict]:
-    """Every quantity x subset x statistic of one configuration's per-shot rows (in population order)."""
+    """Every quantity x subset x statistic of one configuration's per-shot rows (the whole population, in its order)."""
     config = table.config.iloc[0]
     everyone = np.ones(len(table), bool)
+    shot_const_err, shot_const = _constant(table, "shot")
+    gk_const_err, gk_const = _constant(table, "gk")
     rows = []
     for subset, mask in subset_masks(table, players=False).items():
         has = mask & (table.shot_ok.to_numpy() == 1)
-        stats = {"coverage": share(has, everyone, d)} | error_stats(table.shot_err.to_numpy(float), has, d)
+        coverage = {"coverage": share(has, everyone, d)}
+        stats = coverage | error_stats(table.shot_err.to_numpy(float), has, d)
         extra = [table.shot_dx.to_numpy(float), table.shot_dy.to_numpy(float), table.shot_err_mirror_y.to_numpy(float)]
         for name, values in zip(("median_dx", "median_dy", "median_mirror_y"), extra, strict=True):
             stats[name] = quantiles(values, has, (0.5,), d)[0]
+        det_xy = [table[f"det_shot_{axis}"].to_numpy(float) for axis in ("x", "y")]
+        sb_xy = [table[f"sb_shot_{axis}"].to_numpy(float) for axis in ("x", "y")]
+        stats |= _correlations(det_xy, sb_xy, has, d)
+        with np.errstate(invalid="ignore"):
+            stats["off_pitch"] = share((det_xy[0] > LENGTH) | (det_xy[1] < 0) | (det_xy[1] > WIDTH), has, d)
         rows += _rows(config, "shot_location", subset, stats, int(has.sum()))
+        rows += _rows(config, "shot_constant", subset, coverage | error_stats(shot_const_err, has, d) | shot_const, int(has.sum()))
     has_sb_gk = table.sb_gk_x.notna().to_numpy()
     cone_det, cone_sb = table.cone_det.to_numpy(float), table.cone_sb.to_numpy(float)
     for subset, mask in subset_masks(table, players=True).items():
         for kind, rule in GK_KINDS.items():
             has = mask & table.eval(rule).to_numpy(bool)
             compared = has & has_sb_gk
-            stats = {"coverage": share(has, everyone, d)} | error_stats(table.gk_err.to_numpy(float), compared, d)
+            coverage = {"coverage": share(has, everyone, d)}
+            stats = coverage | error_stats(table.gk_err.to_numpy(float), compared, d)
+            if kind == "gk_any":
+                stats |= _correlations([table[f"det_gk_{axis}"].to_numpy(float) for axis in ("x", "y")],
+                                       [table[f"sb_gk_{axis}"].to_numpy(float) for axis in ("x", "y")], compared, d)
+                rows += _rows(config, "gk_constant", subset, coverage | error_stats(gk_const_err, compared, d) | gk_const,
+                              int(compared.sum()))
             rows += _rows(config, kind, subset, stats, int(compared.sum()))
         has = mask & np.isfinite(cone_det)
         compared = has & np.isfinite(cone_sb)
@@ -350,18 +439,36 @@ def stat(table: pd.DataFrame, quantity: str, name: str, subset: str = "all") -> 
     return rows.set_index("config").value
 
 
-def decide(table: pd.DataFrame) -> dict:
-    """Config choice and gate from a metrics table (`metrics`): reads only coverage and median rows of subset all.
+def decide(table: pd.DataFrame, candidates: list[str] | None = None) -> dict:
+    """Config choice and gate from a metrics table (`metrics`): reads only coverage and median rows of subset all,
+    of the `candidates` (default: every configuration in the table; a reference configuration is never one).
 
     Eligibility and the gate use the point estimates; the intervals are reported, not used."""
+    names = sorted(set(table.config)) if candidates is None else list(candidates)
+
     def stat_all(quantity, name):
-        return stat(table, quantity, name)
+        values = stat(table, quantity, name)
+        missing = sorted(set(names) - set(values.index))
+        if missing:
+            raise ValueError(f"the metrics have no {quantity} {name} for {missing}")
+        return values.loc[names]
     candidates = pd.DataFrame({"coverage": stat_all("shot_location", "coverage"), "median": stat_all("shot_location", "median")})
     choice = choose(candidates.reset_index())
     c = choice["chosen"]
     result = gate(float(candidates.coverage[c]), float(candidates["median"][c]), float(stat_all("gk_any", "coverage")[c]))
     return choice | {"gate": {"config": c} | result,
                      "approach2": "continues" if result["result"] == "PASS" else "closes with the audit report (ticket 05)"}
+
+
+def metric_differences(new: pd.DataFrame, old: pd.DataFrame, configs) -> dict:
+    """How the rows of `configs` in a metrics table `new` compare with the same rows of an earlier run `old` (both as
+    read back from metrics.csv): rows of `old` compared, missing from `new`, and differing in value or interval
+    (NaN equals NaN). The audit-1 reference C4 must reproduce audit 1's rows exactly."""
+    keys = ["config", "quantity", "subset", "stat"]
+    before, after = old[old.config.isin(list(configs))].set_index(keys), new.set_index(keys)
+    present = before.index.isin(after.index)
+    differs = feature_differences(before[present], after.loc[before.index[present]], ["value", "lo", "hi"], 0.0).any(axis=1)
+    return {"rows": len(before), "missing": int((~present).sum()), "differing": int(differs.sum())}
 
 
 def check_replay(cached: pd.DataFrame, replayed: pd.DataFrame, tolerance: float = 1e-9) -> dict[str, int]:
