@@ -219,3 +219,52 @@ def test_markings_shrunk_onto_one_line_have_no_thickness():
     assert lines._thickness(line) < 3
     assert lines._thickness(line) < lines._MIN_THICKNESS_RATIO * lines._thickness(view)
     assert lines._thickness(view[:2]) == 0.0
+
+
+def _refined_to(monkeypatch, start, target_to_frame):
+    """Make the optimiser end exactly at ``target_to_frame`` (pitch -> frame)."""
+    control_px = np.array(lines._CONTROL) * SIZE
+    control = cv2.perspectiveTransform(control_px.reshape(-1, 1, 2), start)
+    target = cv2.perspectiveTransform(control, target_to_frame).reshape(-1, 2)
+    monkeypatch.setattr(
+        lines, "_least_squares", lambda *args: (target - control_px).ravel()
+    )
+
+
+def test_a_mirror_image_is_refused_even_from_a_mirrored_start(monkeypatch):
+    # Start and result both mirror images: comparing their orientations let it
+    # through; a camera never sees one, whatever the start.
+    pitch = SoccerPitch()
+    to_frame = _camera(pitch)
+    flip = np.array([[1, 0, 0], [0, -1, pitch.width], [0, 0, 1.0]])
+    start = flip @ _shifted(to_frame, 1.5, -1.0, 1.02)
+    _refined_to(monkeypatch, start, to_frame @ flip)
+    fit = refine_homography(_render(pitch, to_frame), start, pitch)
+    assert not fit.refined
+
+
+def test_markings_squashed_onto_one_painted_line_keep_the_start(monkeypatch):
+    # The true view squashed 100 times onto row 360, where a band is painted:
+    # every visible marking lands on a "line".
+    pitch = SoccerPitch()
+    to_frame = _camera(pitch)
+    frame = _render(pitch, to_frame)
+    frame[358:363] = (235, 235, 235)
+    squash = np.array([[1, 0, 0], [0, 0.01, 0.99 * 360], [0, 0, 1.0]])
+    start = _shifted(to_frame, 1.5, -1.0, 1.02)
+    _refined_to(monkeypatch, start, squash @ to_frame)
+    monkeypatch.setattr(lines, "_MIN_THICKNESS_RATIO", 0.0)
+    assert refine_homography(frame, start, pitch).refined  # what the check stops
+    monkeypatch.undo()
+    _refined_to(monkeypatch, start, squash @ to_frame)
+    assert not refine_homography(frame, start, pitch).refined
+
+
+def test_a_horizon_across_the_top_of_the_grass_is_allowed():
+    # Boards or stands green enough for the grass mask can lie beyond a good
+    # fit's horizon; only the lower half and the seen markings must face it.
+    to_pitch = np.array([[1, 0, 0], [0, -1, 0], [0, 1, -100.0]])  # horizon at y = 100
+    grass = np.ones((SIZE[1], SIZE[0]), np.uint8)
+    seen = np.array([[640.0, 600.0]])
+    assert lines._faces_camera(to_pitch, grass, seen)
+    assert not lines._faces_camera(to_pitch, grass, seen - [0, 550])

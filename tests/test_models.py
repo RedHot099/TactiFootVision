@@ -698,3 +698,14 @@ def test_without_stretch_the_frame_goes_to_ultralytics_unchanged(monkeypatch):
     keypoints = model(frame)
     assert predictor.images[-1] is frame and "imgsz" not in predictor.calls[-1]
     np.testing.assert_allclose(keypoints.xy[0], [[4, 8], [12, 16]])
+
+
+@pytest.mark.parametrize("recorded", [None, [640, 384]])
+def test_stretch_needs_a_square_training_size(monkeypatch, recorded):
+    predictor = _FakeStretchPredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    predictor.overrides = {} if recorded is None else {"imgsz": recorded}
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, stretch=True)
+    with pytest.raises(ValueError, match="square training size"):
+        model(np.zeros((48, 64, 3), np.uint8))
+    predictor.overrides = {"imgsz": [32, 32]}
+    assert model(np.zeros((48, 64, 3), np.uint8)).xy.shape == (1, 2, 2)

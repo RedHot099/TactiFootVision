@@ -90,7 +90,7 @@ class _UltralyticsModel(Model):
         size = self.imgsz
         scale = np.ones(2, np.float32)
         if self.stretch:
-            size = size or int(self._yolo.overrides["imgsz"])
+            size = size or _trained_size(self._yolo)
             height, width = image.shape[:2]
             image = cv2.resize(image, (size, size))
             scale = np.float32([width / size, height / size])
@@ -278,6 +278,19 @@ class YOLOPoseModel(_UltralyticsModel):
             result.boxes.cls.cpu().numpy().astype(int),
             self.class_names,
         )
+
+
+def _trained_size(yolo: Any) -> int:
+    """The square input size a checkpoint was trained at (``imgsz`` of its training arguments)."""
+    size = getattr(yolo, "overrides", {}).get("imgsz")
+    if isinstance(size, list | tuple) and len(set(size)) == 1:
+        size = size[0]
+    if not isinstance(size, int):
+        raise ValueError(
+            f"stretch=True needs a square training size, but the checkpoint records "
+            f"imgsz={size!r}; pass imgsz"
+        )
+    return size
 
 
 def _keypoints_from_arrays(
