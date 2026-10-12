@@ -180,3 +180,31 @@ def height_ratio(homography: np.ndarray | None, boxes: np.ndarray) -> float:
         if scale > 0:
             ratios.append((box[3] - box[1]) / (PLAYER_HEIGHT_M * scale))
     return float(np.median(ratios)) if ratios else np.nan
+
+
+def mirrored(homography: np.ndarray | None, shape: tuple[int, int]) -> float:
+    """1.0 when the frame -> pitch homography is a mirror image at the bottom centre of the frame, else 0.0 (NaN
+    without a homography). With the pitch's far touchline at y = 0, a camera above the pitch never sees a mirror image
+    (image and pitch both have y growing towards the camera); keypoints of one end labelled as the other end's give one.
+    The sign of the Jacobian determinant of a homography at a point is that of det(H) times the point's w."""
+    if homography is None:
+        return np.nan
+    h, w = shape
+    homography = np.asarray(homography, dtype=float)
+    depth = (homography @ np.array([w / 2, h - 1, 1.0]))[2]
+    return float(np.linalg.det(homography) * depth < 0)
+
+
+def keypoint_residuals(keypoints, homography: np.ndarray, pitch: SoccerPitch | None = None,
+                       min_confidence: float = 0.5) -> np.ndarray:
+    """`(vertex, pixels)` rows: distance of each confident keypoint from its landmark projected by `homography`
+    (frame -> pitch) that lies in front of the camera; empty without keypoints."""
+    if keypoints is None or len(keypoints) == 0:
+        return np.zeros((0, 2))
+    vertices = (pitch or SoccerPitch()).vertices.astype(float)
+    to_frame = np.linalg.inv(np.asarray(homography, dtype=float))
+    xy, front = project_points(vertices, to_frame, tuple(vertices.mean(axis=0)))
+    confident = (keypoints.confidence[0] >= min_confidence) & front
+    index = np.flatnonzero(confident)
+    distance = np.linalg.norm(keypoints.xy[0][index] - xy[index], axis=1)
+    return np.column_stack([index, distance])

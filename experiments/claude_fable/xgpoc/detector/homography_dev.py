@@ -93,5 +93,6 @@ def summarise(per_frame: pd.DataFrame) -> pd.DataFrame:
                          "agreement_median": group.agreement.median(), "agreement_mean": group.agreement.mean(),
                          "recall_median": group.recall.median(),
                          "height_log_median": float(np.nanmedian(log_height)) if log_height.notna().any() else np.nan,
-                         "players_on_pitch": group.players_on_pitch[has].mean()})
+                         "players_on_pitch": group.players_on_pitch[has].mean(),
+                         "mirrored": group.mirrored[has].mean() if "mirrored" in group else np.nan})
     return pd.DataFrame(rows)

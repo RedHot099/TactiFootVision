@@ -140,3 +140,25 @@ def test_the_dev_script_reads_everything_inside_the_guard():
     import xgd_homography_dev
 
     assert {v.keypoint_input for v in xgd_homography_dev.VARIANTS} == {"letterbox", "stretch"}
+
+
+def test_a_mirror_image_is_flagged_and_a_camera_view_is_not():
+    assert lines.mirrored(TRUTH, (720, 1280)) == 0.0
+    flip = np.array([[1, 0, 0], [0, -1, 68], [0, 0, 1.0]])           # far and near touchline swapped
+    assert lines.mirrored(flip @ TRUTH, (720, 1280)) == 1.0
+    rotated = np.array([[-1, 0, 105], [0, -1, 68], [0, 0, 1.0]])     # the camera on the other side: no mirror
+    assert lines.mirrored(rotated @ TRUTH, (720, 1280)) == 0.0
+    assert np.isnan(lines.mirrored(None, (720, 1280)))
+
+
+def test_keypoint_residuals_measure_the_distance_from_the_projected_landmarks():
+    vertices = lines.SoccerPitch().vertices.astype(float)
+    xy = cv2.perspectiveTransform(vertices.reshape(-1, 1, 2), CAMERA).reshape(1, -1, 2)
+    confidence = np.zeros((1, 32), np.float32)
+    confidence[0, [20, 21, 25]] = 0.9
+    xy[0, 25] += [3.0, 4.0]                                            # 5 px off
+    keypoints = sv.KeyPoints(xy=xy.astype(np.float32), confidence=confidence)
+    rows = lines.keypoint_residuals(keypoints, TRUTH)
+    np.testing.assert_array_equal(rows[:, 0], [20, 21, 25])
+    np.testing.assert_allclose(rows[:, 1], [0, 0, 5], atol=1e-3)
+    assert lines.keypoint_residuals(None, TRUTH).shape == (0, 2)

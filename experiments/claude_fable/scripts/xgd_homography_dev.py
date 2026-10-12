@@ -12,8 +12,12 @@ and evaluation matches are never read. Folds 0-2 are `dev`, folds 3-4 `confirm`.
    of ticket 02's full C4 run (`cache/xgd_full/C4`, before this ticket). The people boxes come from that run's t0
    detections (the C4 detector), for the line mask and the checks without lines.
 3. Scores (`xgpoc.detector.lines`): line agreement and recall at 5 px, players on the pitch, the height ratio.
-   `summary.csv` per variant and subset (dev, confirm, all), `per_frame.parquet`, and overlays of the projected
-   markings on `--overlays` frames (`overlays/`, one image per frame with every variant in `OVERLAY_VARIANTS`).
+   `summary.csv` per variant and subset (dev, confirm, all), `per_frame.parquet` (also whether the homography is a
+   mirror image), and overlays of the projected markings on `--overlays` frames (`overlays/`, one image per frame with
+   every variant in `OVERLAY_VARIANTS`).
+4. Keypoint residuals (`keypoint_residuals.csv`): on frames where `REFERENCE`'s lines agree >= `CONFIRMED`, the pixel
+   distance of each confident keypoint (letterbox and stretched input) from its landmark under that homography: the
+   keypoint model's own error on SoccerNet frames.
 
 Everything runs inside `no_statsbomb_reads()`; the index is read for shot_id, game and frame_path only (no label).
 Writes `<out>/complete.json` last.
@@ -53,6 +57,8 @@ VARIANTS = (
     V("stretch_kp03_refined", "stretch", min_confidence=0.3, refine_with_lines=True),
 )
 OVERLAY_VARIANTS = ("C4", "stretch_kp03", "stretch_kp03_refined")
+# Keypoint residuals are measured against this variant's homography where its lines agree at least CONFIRMED.
+REFERENCE, CONFIRMED = "stretch_kp03_refined", 0.9
 OVERLAY_COLORS = {"C4": (0, 0, 255), "stretch_kp03": (255, 0, 255), "stretch_kp03_refined": (255, 255, 0)}
 
 
@@ -101,7 +107,8 @@ def c4_frames(shot_ids: list[str]) -> pd.DataFrame:
 
 def scores(view: lines.LineView, matrix, boxes: np.ndarray, players: np.ndarray) -> dict:
     return {"has_homography": matrix is not None} | lines.score(view, matrix) | {
-        "players_on_pitch": lines.players_on_pitch(matrix, players), "height_ratio": lines.height_ratio(matrix, players)}
+        "players_on_pitch": lines.players_on_pitch(matrix, players), "height_ratio": lines.height_ratio(matrix, players),
+        "mirrored": lines.mirrored(matrix, view.lines.shape)}
 
 
 def overlay(image: np.ndarray, matrices: dict, line_view: lines.LineView, scored: dict) -> np.ndarray:
@@ -142,7 +149,7 @@ def main() -> None:
         estimators = {v.name: (v, v.estimator()) for v in VARIANTS}
         overlay_ids = set(frames.shot_id.sample(min(args.overlays, len(frames)), random_state=args.seed))
 
-        rows = []
+        rows, residuals = [], []
         (args.out / "overlays").mkdir(parents=True, exist_ok=True)
         for shot in tqdm(frames.itertuples(index=False), total=len(frames), desc="variants", mininterval=30):
             image = cv2.imread(shot.frame_path)
@@ -159,6 +166,12 @@ def main() -> None:
             for name, values in scored.items():
                 rows.append({"shot_id": shot.shot_id, "game": shot.game, "fold": shot.fold, "subset": shot.subset,
                              "variant": name} | values)
+            if scored[REFERENCE]["agreement"] >= CONFIRMED:
+                # The model's keypoints against a homography the painted lines confirm: its error on SoccerNet frames.
+                for name in ("letterbox", "stretch"):
+                    found = dev.keypoints_from_row(keypoints.loc[(shot.shot_id, name)])
+                    residuals += [{"shot_id": shot.shot_id, "input": name, "vertex": int(v), "px": d}
+                                  for v, d in lines.keypoint_residuals(found, matrices[REFERENCE])]
             if shot.shot_id in overlay_ids:
                 shown = {name: matrices[name] for name in OVERLAY_VARIANTS}
                 cv2.imwrite(str(args.out / "overlays" / f"{shot.shot_id}.jpg"), overlay(image, shown, line_view, scored),
@@ -167,11 +180,14 @@ def main() -> None:
         summary = dev.summarise(per_frame)
         per_frame.to_parquet(args.out / "per_frame.parquet", index=False)
         summary.to_csv(args.out / "summary.csv", index=False, float_format="%.4f")
+        residual_table = pd.DataFrame(residuals, columns=["shot_id", "input", "vertex", "px"])
+        residual_table.to_csv(args.out / "keypoint_residuals.csv", index=False, float_format="%.3f")
         frames.drop(columns=["frame_path"]).to_csv(args.out / "frames.csv", index=False)
         record = {"purpose": "xg-detector 08: label-free line agreement of homography variants on training-match frames",
                   "variants": {v.name: v.settings() for v in VARIANTS} | {"C4": "cache/xgd_full/C4 t0 homography"},
                   "parameters": {"n": args.n, "seed": args.seed, "tol_px": lines.TOL, "min_points": lines.MIN_POINTS,
-                                 "good": dev.GOOD, "dev_folds": dev.DEV_FOLDS, "confirm_folds": dev.CONFIRM_FOLDS},
+                                 "good": dev.GOOD, "dev_folds": dev.DEV_FOLDS, "confirm_folds": dev.CONFIRM_FOLDS,
+                                 "residual_reference": REFERENCE, "residual_confirmed_agreement": CONFIRMED},
                   "inputs": {"index": {"path": str(args.index), "sha256": sha256_file(args.index),
                                        "columns": ["shot_id", "game", "frame_path"]},
                              "plan": {"path": str(args.plan), "sha256": sha256_file(args.plan)},
