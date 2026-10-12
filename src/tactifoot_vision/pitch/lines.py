@@ -19,9 +19,10 @@ Only samples inside the frame and on the grass count. With fewer than
 than ``min_inliers`` of the samples on a line, or no more than the start: a
 fit that ends between lines has snapped partly onto the wrong ones (on
 SoccerNet frames such fits had a worse scale than the keypoint fit they
-started from). So it is, too, when the result is a mirror image (the far
-touchline nearer the camera than the near one): the markings are symmetric, so
-a mirrored view fits them perfectly, but no camera sees one. :class:`LineFit` reports the share of samples within
+started from). So it is, too, when the result is no camera's view of the
+grass: a mirror image (far and near touchline swapped), which fits the
+symmetric markings perfectly, or a view whose horizon cuts the grass, where
+the fit shrank the markings into a corner of the frame. :class:`LineFit` reports the share of samples within
 ``inlier_px`` of a painted line (``inliers``), before and after.
 """
 
@@ -224,25 +225,30 @@ def refine_homography(
     refined_inliers, refined_points = inliers(refined_to_frame)
     if not (refined_inliers >= min_inliers and refined_inliers > start_inliers):
         return unchanged
-    # The markings are symmetric about both axes, so a mirror image of the view
-    # can fit the lines perfectly. With the far touchline at y = 0 (the
-    # keypoint dataset's landmark order, which SoccerPitch follows) a camera
-    # above the pitch sees x and y as the frame does: a homography that
-    # reverses the orientation where the markings are seen is a mirror image.
-    _, seen = visible(refined_to_frame)
-    if _orientation(refined, seen.mean(axis=0)) < 0:
+    if not _faces_camera(refined, grass):
         return unchanged
     return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
 
 
-def _orientation(to_pitch: np.ndarray, point: np.ndarray) -> float:
-    """+1 where ``to_pitch`` keeps the orientation at a frame ``point``, -1 where it mirrors.
+def _faces_camera(to_pitch: np.ndarray, grass: np.ndarray, every: int = 16) -> bool:
+    """Whether a frame -> pitch homography is a camera's view of all the grass.
 
-    The Jacobian determinant of a homography at a point has the sign of
-    ``det(H) * w``, ``w`` the point's homogeneous scale.
+    With the far touchline at y = 0 (the keypoint dataset's landmark order,
+    which :class:`SoccerPitch` follows) a camera above the pitch sees x and y
+    as the frame does, so the homography keeps the orientation at every grass
+    pixel. It reverses it everywhere for a mirror image, which fits the
+    symmetric markings perfectly, and beyond its horizon, which a fit that
+    shrinks the markings into a corner of the view puts inside the grass. The
+    Jacobian determinant of a homography at a point has the sign of
+    ``det(H) * w``, ``w`` the point's homogeneous scale; it is checked on a
+    grid of grass pixels, ``every`` pixels apart.
     """
-    w = (to_pitch @ np.array([point[0], point[1], 1.0]))[2]
-    return float(np.sign(np.linalg.det(to_pitch) * w))
+    rows, cols = np.nonzero(grass[::every, ::every])
+    if len(rows) == 0:
+        return True
+    points = np.column_stack([cols * every, rows * every, np.ones(len(rows))])
+    w = points @ to_pitch[2]
+    return bool((np.linalg.det(to_pitch) * w > 0).all())
 
 
 def _least_squares(residuals, start: np.ndarray, loss_scale: float) -> np.ndarray:
