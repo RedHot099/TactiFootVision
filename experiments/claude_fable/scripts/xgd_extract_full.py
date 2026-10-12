@@ -48,11 +48,14 @@ def chosen_config(choice: Path) -> str:
 
 
 def reference_differences(features: pd.DataFrame, reference: Path) -> dict | None:
-    """Shots of the audit cache whose t0 features differ in the full run, per column (None without a cache)."""
+    """Shots in both runs whose t0 features differ between the audit cache and the full run, per column (None
+    without an audit cache)."""
     if not reference.is_file():
         return None
     ref = pd.read_parquet(reference).set_index("shot_id").sort_index()
-    new = features[features.offset_ms == 0].set_index("shot_id").reindex(ref.index)
+    new = features[features.offset_ms == 0].set_index("shot_id")
+    common = ref.index.intersection(new.index)
+    ref, new = ref.loc[common], new.loc[common]
     columns, differing = {}, np.zeros(len(ref), bool)
     for column in ref.columns.intersection(new.columns).intersection(COLUMNS):
         a, b = ref[column].to_numpy(float), new[column].to_numpy(float)
