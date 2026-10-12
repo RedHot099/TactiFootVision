@@ -39,6 +39,7 @@ def test_every_reader_refuses_statsbomb_paths_inside_the_guard(tmp_path, relativ
     assert len(pd.read_parquet(path)) == 1                         # outside the block nothing is refused
 
 
+@pytest.mark.skipif(not ex.DETECTOR_WEIGHTS.exists(), reason="needs the trained detector weights")
 def test_the_guard_lets_frames_index_and_weights_through(tmp_path):
     index = tmp_path / "soccernet_720p/index_v1_2.parquet"
     index.parent.mkdir(parents=True)

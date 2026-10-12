@@ -110,6 +110,10 @@ def test_goalkeeper_proxy_plays_the_goalkeepers_role():
     near = [SCENE[0], (95.0, 35.0, DEF, "player")]
     g = shot_features(frame_with(near, BALL))                        # ... but counts as an opponent within 3 m
     assert (g["gk_proxy"], g["ff_opp_3m"], g["ff_def_cone"]) == (1.0, 1.0, 0.0)
+    assert (f["gk_proxy_same_team"], g["gk_proxy_same_team"]) == (0.0, 0.0)
+    teammate = shot_features(frame_with([SCENE[0], (103.5, 34.0, ATT, "player")], BALL))
+    assert (teammate["gk_proxy"], teammate["gk_proxy_same_team"]) == (1.0, 1.0)   # no team filter, but recorded
+    assert np.isnan(shot_features(frame_with(SCENE, BALL))["gk_proxy_same_team"])   # a detected goalkeeper
     alone = shot_features(frame_with([SCENE[0], (40.0, 30.0, DEF, "player")], BALL))
     assert alone["gk_ok"] == 0.0 and np.isnan(alone["gk_depth"])     # nobody in the attacked half
 

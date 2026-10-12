@@ -26,7 +26,10 @@ What the detector adds (`shot_features`, decisions of the spec):
     goalkeeper       the detected goalkeeper nearest the attacked goal, in the attacked half; else the proxy, the
                      player other than the shooter nearest the attacked goal, in the attacked half (gk_proxy = 1). The
                      detector rarely labels goalkeepers, so the proxy is usually the goalkeeper labelled "player": it
-                     plays the goalkeeper's role, out of the outfield counts and in ff_opp_3m.
+                     plays the goalkeeper's role, out of the outfield counts and in ff_opp_3m. No team filter (the
+                     spec's "player nearest the goal"): the goalkeeper's own kit falls into either k = 2 kit cluster,
+                     so a filter would drop him whenever it lands in the shooter's; gk_proxy_same_team records it
+                     (in the C4 run, 51% of proxies) so the audit can compare the two kinds.
     referees         never anyone's team, never counted.
 
 Every feature is NaN when its inputs are missing; the flags (`FLAGS`) say which inputs existed.
@@ -51,7 +54,7 @@ GEOMETRY = ["dist", "angle", "ff_def_cone", "def_cone_ge1", "def_cone_ge2", "ff_
 FLAGS = ["homography_ok", "ball_ok", "ball_fallback", "shot_ok", "shot_from_ball", "shooter_ok", "shooter_by_goal",
          "teams_ok", "gk_ok", "gk_detected", "gk_proxy"]
 DESCRIPTIVE = ["shot_x", "shot_y", "attack_right", "ball_source", "n_keypoints", "n_players", "n_goalkeepers",
-               "n_defenders", "n_attackers", "n_unknown_team", "shooter_ball_dist"]
+               "n_defenders", "n_attackers", "n_unknown_team", "shooter_ball_dist", "gk_proxy_same_team"]
 COLUMNS = [*GEOMETRY, *FLAGS, *DESCRIPTIVE]
 
 
@@ -113,7 +116,7 @@ def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[
     out["homography_ok"] = float(frame.homography is not None)
     confidence = frame.keypoints.confidence if frame.keypoints is not None else None
     out["n_keypoints"] = float((confidence[0] >= keypoint_confidence).sum()) if confidence is not None and len(confidence) else 0.0
-    names = frame.detections.data.get("class_name", np.zeros(0, dtype=str))
+    names = frame.detections.data["class_name"] if len(frame.detections) else np.zeros(0, dtype=str)
     xy, teams = frame.pitch_xy.astype(float), frame.team_ids
     on_pitch = np.isfinite(xy).all(axis=1)
     players = np.flatnonzero((names == PLAYER) & on_pitch)
@@ -158,6 +161,8 @@ def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[
     out["gk_ok"], out["gk_detected"], out["gk_proxy"] = float(goalkeeper is not None), float(goalkeeper is not None and proxy is None), float(proxy is not None)
 
     shooter_team = teams[shooter] if shooter is not None else NO_TEAM
+    if proxy is not None and shooter_team != NO_TEAM and teams[proxy] != NO_TEAM:
+        out["gk_proxy_same_team"] = float(teams[proxy] == shooter_team)
     outfield = players[(players != shooter) & (players != (proxy if proxy is not None else -1))]
     known = outfield[teams[outfield] != NO_TEAM]
     out["n_unknown_team"] = float(len(outfield) - len(known))

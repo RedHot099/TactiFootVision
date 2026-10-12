@@ -24,6 +24,7 @@ teams, and they never contribute anything but the ball. No frame after t0 is rea
 """
 
 import json
+import os
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -35,9 +36,11 @@ import supervision as sv
 from tactifoot_vision.pipeline import FrameAnalyzer, FrameResult, fill_ball
 from xgpoc.detector.features import missing_features, shot_features
 
-REPO = Path("/home/kuba/projects/tactifoot_vision")
-DETECTOR_WEIGHTS = REPO / "results/project/raw/yolo11m/training/detect_yolo11m/weights/best.pt"
-KEYPOINT_WEIGHTS = REPO / "results/project/raw/yolo_pose/training/kp_yolo_pose/weights/best.pt"
+# The trained weights live in the main checkout's results/ (not in git); models/football_yolo11m.pt, the run file's
+# name, does not exist locally. The completion record pins them by sha256.
+MAIN_CHECKOUT = Path(os.environ.get("TACTIFOOT_REPO", "/home/kuba/projects/tactifoot_vision"))
+DETECTOR_WEIGHTS = MAIN_CHECKOUT / "results/project/raw/yolo11m/training/detect_yolo11m/weights/best.pt"
+KEYPOINT_WEIGHTS = MAIN_CHECKOUT / "results/project/raw/yolo_pose/training/kp_yolo_pose/weights/best.pt"
 SIGLIP = "google/siglip-base-patch16-224"
 
 FRAME_COLUMNS = {0: "frame_path", -400: "frame_path_-400", -800: "frame_path_-800"}
@@ -176,15 +179,21 @@ def extract_detector(shots: pd.DataFrame, configs: Sequence[ExtractorConfig], an
 
 def _earlier_frames(shot: dict, read_image: Callable, ball_only: Callable,
                     analysed: dict[int, tuple[dict, FrameResult | None]]) -> Iterator[FrameResult]:
-    """The shot's -400 and -800 ms frames, analysed on first use; `analysed` keeps (cache row, result) per offset."""
+    """The shot's -400 and -800 ms frames, analysed on first use; `analysed` keeps (cache row, result) per offset.
+
+    One result per offset, in `FALLBACK_OFFSETS` order, so `fill_ball`'s k-th frame is always offset k: a missing or
+    unreadable frame is a frame without a ball.
+    """
     for offset in FALLBACK_OFFSETS:
         if offset not in analysed:
             path = shot[FRAME_COLUMNS[offset]]
             image = read_image(path) if isinstance(path, str) else None
             result = ball_only(image) if image is not None else None
             analysed[offset] = (frame_row(shot["shot_id"], offset, path, result), result)
-        if analysed[offset][1] is not None:
-            yield analysed[offset][1]
+        yield analysed[offset][1] or _NOTHING
+
+
+_NOTHING = FrameResult(index=0, timestamp=0.0, detections=sv.Detections.empty(), ball=sv.Detections.empty())
 
 
 def frames_table(rows: list[dict]) -> pd.DataFrame:

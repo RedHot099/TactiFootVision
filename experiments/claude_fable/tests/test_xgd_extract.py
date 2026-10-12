@@ -108,6 +108,16 @@ def test_one_pass_serves_both_configurations_and_reads_earlier_frames_only_when_
     assert c2.loc["b", "teams_ok"] == 1.0
 
 
+def test_an_unreadable_400_frame_keeps_the_800_label():
+    results = _results()
+    shots = _shots().iloc[[1]]
+    out = ex.extract_detector(shots, [ex.CONFIGS["C2"]], Analyser(results), Analyser(results),
+                              lambda p: None if p == "b4" else p)
+    row = out["C2"].features[0]
+    assert (row["ball_source"], row["ball_offset_ms"], row["shot_x"]) == (2.0, -800, 90.0)
+    assert [(r["offset_ms"], r["readable"]) for r in out["C2"].frames] == [(0, True), (-400, False), (-800, True)]
+
+
 def test_an_unreadable_t0_frame_is_a_missing_row_and_mixed_detectors_are_refused():
     shots = _shots().iloc[:1]
     out = ex.extract_detector(shots, [ex.CONFIGS["C3"], ex.CONFIGS["C4"]], Analyser({}), Analyser({}), lambda p: None)
