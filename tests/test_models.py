@@ -559,3 +559,72 @@ def test_train_config_is_immutable_and_training_names_the_run_by_copy(
     result = fake_yolo.train(_tiny_dataset(tmp_path), config)
     assert result.run_dir == tmp_path / "runs" / "yolo"
     assert config.name is None
+
+
+# ------------------------------------------------------------ class_conf (ball)
+class _FakePredictor:
+    """Returns fixed boxes like Ultralytics: everything at or above the given ``conf``."""
+
+    names = dict(enumerate(FOOTBALL_CLASSES))
+
+    def __init__(self, boxes):
+        self.boxes = np.asarray(boxes, dtype=np.float32)  # x1 y1 x2 y2 conf cls
+        self.calls = []
+
+    def predict(self, image, **options):
+        import torch
+        from ultralytics.engine.results import Results
+
+        self.calls.append(options)
+        kept = self.boxes[self.boxes[:, 4] >= options["conf"]]
+        return [
+            Results(image, path="frame", names=self.names, boxes=torch.tensor(kept))
+        ]
+
+
+_BOXES = [
+    [1, 1, 4, 4, 0.12, 0],  # ball below every threshold
+    [5, 5, 8, 8, 0.2, 0],  # ball above the ball threshold only
+    [10, 10, 20, 40, 0.2, 2],  # player below conf
+    [30, 10, 40, 40, 0.6, 2],  # player
+    [50, 10, 60, 40, 0.4, 3],  # referee
+]
+
+
+def _yolo_with(monkeypatch, boxes, **options) -> YOLODetector:
+    predictor = _FakePredictor(boxes)
+
+    def load(self, weights):
+        self._yolo = predictor
+
+    monkeypatch.setattr(YOLODetector, "_load", load)
+    return YOLODetector(device="cpu", **options)
+
+
+def test_class_conf_lowers_the_threshold_of_the_named_class_only(monkeypatch):
+    image = np.zeros((48, 64, 3), np.uint8)
+    plain = _yolo_with(monkeypatch, _BOXES, conf=0.3)(image)
+    model = _yolo_with(monkeypatch, _BOXES, conf=0.3, class_conf={"ball": 0.15})
+    detections = model(image)
+    assert (
+        model._yolo.calls[-1]["conf"] == 0.15
+    )  # the model runs at the lowest threshold
+    assert detections.data["class_name"].tolist() == ["ball", "player", "referee"]
+    np.testing.assert_allclose(detections.confidence, [0.2, 0.6, 0.4])
+    people = detections[detections.data["class_name"] != "ball"]
+    np.testing.assert_array_equal(people.xyxy, plain.xyxy)  # other classes unchanged
+    assert "ball" not in plain.data["class_name"]
+
+
+def test_class_conf_can_also_raise_a_threshold(monkeypatch):
+    model = _yolo_with(monkeypatch, _BOXES, conf=0.15, class_conf={"referee": 0.5})
+    detections = model(np.zeros((48, 64, 3), np.uint8))
+    assert model._yolo.calls[-1]["conf"] == 0.15
+    assert detections.data["class_name"].tolist() == ["ball", "player", "player"]
+
+
+def test_class_conf_is_checked(monkeypatch):
+    with pytest.raises(ValueError, match=r"class_conf\['ball'\] must be in \[0, 1\]"):
+        _yolo_with(monkeypatch, _BOXES, class_conf={"ball": 1.5})
+    with pytest.raises(ValueError, match="unknown class.*bal.*the model has ball"):
+        _yolo_with(monkeypatch, _BOXES, class_conf={"bal": 0.1})

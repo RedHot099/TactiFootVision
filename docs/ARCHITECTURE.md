@@ -202,6 +202,11 @@ configs/              example run files
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
   `yolo_pose.predict` returns `sv.KeyPoints` of all instances sorted by confidence.
+  `imgsz` sets the inference size (`None`: the training size). `yolo` takes
+  `class_conf={"ball": 0.15}`: a threshold per class name that replaces
+  `conf` for the classes it names; the model runs at the lowest threshold and
+  every other class keeps exactly its `conf` detections (non-maximum
+  suppression is per class). Unknown class names fail when the model loads.
 * `rfdetr`: RF-DETR (`size` option: nano/small/medium/base/large); training
   exports with `to_coco`; class names come from the checkpoint.
 * `Model.train` picks the run folder (`output_dir/name`, then `name2`, ... unless

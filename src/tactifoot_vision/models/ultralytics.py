@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -67,9 +68,9 @@ class _UltralyticsModel(Model):
         names = self._yolo.names
         return [names[i] for i in sorted(names)]
 
-    def _run(self, image: np.ndarray) -> Any:
+    def _run(self, image: np.ndarray, conf: float | None = None) -> Any:
         options: dict[str, Any] = {
-            "conf": self.conf,
+            "conf": self.conf if conf is None else conf,
             "iou": self.iou,
             "device": self.device,
             "verbose": False,
@@ -152,18 +153,62 @@ class YOLODetector(_UltralyticsModel):
 
         model = tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3)
         detections = model(frame)
+        # The ball is a few pixels wide: a larger input and a lower threshold for it.
+        model = tv.load_model(
+            "yolo", "models/football_yolo11m.pt", conf=0.3, imgsz=1920,
+            class_conf={"ball": 0.15},
+        )
     """
 
     name = "yolo"
     task = Task.DETECT
     default_weights = "yolo11n.pt"
 
+    def __init__(
+        self,
+        weights: str | Path | None = None,
+        *,
+        conf: float = 0.25,
+        iou: float = 0.7,
+        imgsz: int | None = None,
+        class_conf: Mapping[str, float] | None = None,
+        device: str | None = None,
+    ) -> None:
+        """
+        Args:
+            weights, conf, iou, imgsz, device: as for every Ultralytics backend.
+            class_conf: minimum confidence per class name, replacing ``conf``
+                for the classes it names (e.g. ``{"ball": 0.15}``). Other
+                classes keep exactly the detections they get with ``conf``
+                alone: non-maximum suppression is per class.
+        """
+        self.class_conf = dict(class_conf or {})
+        for name, value in self.class_conf.items():
+            if not 0 <= value <= 1:
+                raise ValueError(f"class_conf[{name!r}] must be in [0, 1], got {value}")
+        super().__init__(weights, conf=conf, iou=iou, imgsz=imgsz, device=device)
+        unknown = self.class_conf and sorted(
+            set(self.class_conf) - set(self.class_names)
+        )
+        if unknown:
+            raise ValueError(
+                f"class_conf names unknown class(es) {', '.join(unknown)}; "
+                f"the model has {', '.join(self.class_names)}"
+            )
+
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
-        detections = sv.Detections.from_ultralytics(self._run(image))
+        floor = min([self.conf, *self.class_conf.values()])
+        detections = sv.Detections.from_ultralytics(self._run(image, conf=floor))
+        class_id = detections.class_id.astype(int)
         detections.data["class_name"] = np.asarray(self.class_names, dtype=str)[
-            detections.class_id.astype(int)
+            class_id
         ]
+        if self.class_conf:
+            thresholds = np.array(
+                [self.class_conf.get(name, self.conf) for name in self.class_names]
+            )
+            detections = detections[detections.confidence >= thresholds[class_id]]
         return detections
 
 

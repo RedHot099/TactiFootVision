@@ -22,6 +22,8 @@ detector:                   # tv.load_model(type, weights, **rest)
   weights: ../models/football_yolo11m.pt
   conf: 0.3
   iou: 0.5
+  # imgsz: 1920             # inference size; the ball is a few pixels wide at 640
+  # class_conf: {ball: 0.15}  # threshold per class, replacing conf for the ball
 
 keypoints:                  # null: no homography, no pitch positions
   type: yolo_pose
