@@ -1,0 +1,141 @@
+"""The declared configurations, cache rows and the extraction loop with fake analysers (xg-detector 01)."""
+
+import numpy as np
+import pandas as pd
+import pytest
+from xgd_fixtures import frame_with
+from xgpoc.detector import extract as ex
+from xgpoc.detector.features import COLUMNS, shot_features
+
+from tactifoot_vision.pipeline import NO_TEAM
+
+PEOPLE = [(93.6, 34.2, 0, "player"), (100.0, 34.0, 1, "player"), (104.0, 34.5, 1, "goalkeeper"),
+          (50.0, 30.0, NO_TEAM, "referee")]
+
+
+def test_the_four_configurations_are_the_declared_ones():
+    table = {name: (c.imgsz, c.ball_conf, c.ball_fallback) for name, c in ex.CONFIGS.items()}
+    assert table == {"C1": (640, 0.30, False), "C2": (640, 0.30, True), "C3": (1920, 0.15, False), "C4": (1920, 0.15, True)}
+    assert ex.CONFIGS["C1"].detector == ex.CONFIGS["C2"].detector != ex.CONFIGS["C3"].detector
+    assert ex.FALLBACK_OFFSETS == (-400, -800) and set(ex.FRAME_COLUMNS) == {0, -400, -800}
+    assert ex.settings(ex.CONFIGS["C4"])["team_reducer"] is None
+
+
+def _detailed_frame():
+    frame = frame_with(PEOPLE, (94.0, 34.0), homography=np.diag([0.1, 0.1, 1.0]), keypoint_conf=np.linspace(0, 1, 32))
+    frame.keypoints.xy[:] = np.arange(64, dtype=np.float32).reshape(1, 32, 2)
+    return frame
+
+
+def test_cache_rows_round_trip_to_the_same_features():
+    frame = _detailed_frame()
+    frame.keypoints.data["box_confidence"] = np.float32([0.42])
+    row = ex.frame_row("s1", 0, "/f/s1.jpg", frame)
+    assert row["kp_instance_conf"] == pytest.approx(0.42)
+    back = ex.frame_from_row(pd.DataFrame([row]).iloc[0].to_dict())
+    np.testing.assert_array_equal(back.homography, frame.homography)
+    np.testing.assert_array_equal(back.keypoints.xy, frame.keypoints.xy)
+    np.testing.assert_allclose(back.keypoints.confidence, frame.keypoints.confidence)
+    np.testing.assert_array_equal(back.pitch_xy, frame.pitch_xy)
+    np.testing.assert_array_equal(back.team_ids, frame.team_ids)
+    assert back.detections.data["class_name"].tolist() == [c for *_, c in PEOPLE]
+    np.testing.assert_array_equal(back.ball_xy, frame.ball_xy)
+    a, b = shot_features(frame), shot_features(back)
+    assert all(a[k] == pytest.approx(b[k], nan_ok=True) for k in COLUMNS)
+
+
+def test_rows_of_frames_without_a_fit_or_a_ball_or_an_image(tmp_path):
+    bare = frame_with([], None)
+    bare.homography = None
+    row = ex.frame_row("s2", -400, "/f/m400.jpg", bare)
+    assert row["homography"] is None and row["kp_xy"] is None and row["ball_conf"] == [] and row["det_class"] == []
+    rows = [row, ex.frame_row("s3", 0, "/missing.jpg", None), ex.frame_row("s1", 0, "/f.jpg", _detailed_frame())]
+    table = ex.frames_table(rows)
+    table.to_parquet(tmp_path / "frames.parquet")                    # the mixed rows are one parquet table
+    back = pd.read_parquet(tmp_path / "frames.parquet")
+    assert back.shot_id.tolist() == ["s1", "s2", "s3"]
+    rebuilt = [ex.frame_from_row(r) for r in back.to_dict("records")]
+    assert rebuilt[2] is None and rebuilt[1].homography is None and len(rebuilt[1].ball) == 0
+    np.testing.assert_array_equal(rebuilt[0].pitch_xy, _detailed_frame().pitch_xy)
+
+
+class Analyser:
+    """Fake FrameAnalyzer: the 'image' is the frame path; returns the planted FrameResult of that path."""
+
+    def __init__(self, results):
+        self.results, self.calls = results, []
+
+    def __call__(self, image):
+        self.calls.append(image)
+        return self.results[image]
+
+
+def _shots():
+    return pd.DataFrame({"shot_id": ["a", "b", "c"],
+                         "frame_path": ["a0", "b0", "c0"], "frame_path_-400": ["a4", "b4", "c4"],
+                         "frame_path_-800": ["a8", "b8", None]})
+
+
+def _results():
+    no_ball = frame_with(PEOPLE, None)
+    return {"a0": frame_with(PEOPLE, (94.0, 34.0)),                  # own ball
+            "b0": no_ball, "b4": frame_with(PEOPLE, None), "b8": frame_with(PEOPLE, (90.0, 30.0)),  # ball at -800
+            "c0": no_ball, "c4": frame_with(PEOPLE, (np.nan, np.nan))}  # c: no ball on the pitch anywhere
+
+
+def test_one_pass_serves_both_configurations_and_reads_earlier_frames_only_when_needed():
+    analyser, ball_only = Analyser(_results()), Analyser(_results())
+    read = []
+
+    def read_image(path):
+        read.append(path)
+        return path if path in _results() else None
+    out = ex.extract_detector(_shots(), [ex.CONFIGS["C1"], ex.CONFIGS["C2"]], analyser, ball_only, read_image)
+    assert analyser.calls == ["a0", "b0", "c0"]                      # t0 once per shot, shared by C1 and C2
+    assert ball_only.calls == ["b4", "b8", "c4"]                     # fallback frames once, only without a t0 ball
+    assert read == ["a0", "b0", "b4", "b8", "c0", "c4"]              # never a frame after t0, never -800 needlessly
+    c1, c2 = (pd.DataFrame(out[n].features).set_index("shot_id") for n in ("C1", "C2"))
+    assert c1.ball_ok.tolist() == [1.0, 0.0, 0.0] and c1.ball_offset_ms.tolist()[0] == 0
+    assert c2.ball_ok.tolist() == [1.0, 1.0, 0.0] and c2.ball_fallback.tolist() == [0.0, 1.0, 0.0]
+    assert c2.loc["b", "ball_offset_ms"] == -800 and c2.loc["b", "shot_x"] == 90.0
+    assert np.isnan(c2.loc["c", "ball_offset_ms"]) and c2.loc["c", "shooter_by_goal"] == 1.0
+    # The frames each configuration used: t0 for both, the analysed earlier frames for C2 (c's -800 has no path).
+    assert [(r["shot_id"], r["offset_ms"]) for r in out["C1"].frames] == [("a", 0), ("b", 0), ("c", 0)]
+    c2_frames = [(r["shot_id"], r["offset_ms"], r["readable"]) for r in out["C2"].frames]
+    assert c2_frames == [("a", 0, True), ("b", 0, True), ("b", -400, True), ("b", -800, True), ("c", 0, True),
+                         ("c", -400, True), ("c", -800, False)]
+    # Teams come from t0 only: the fallback analyser has none, and the t0 people are kept.
+    assert c2.loc["b", "teams_ok"] == 1.0
+
+
+def test_an_unreadable_t0_frame_is_a_missing_row_and_mixed_detectors_are_refused():
+    shots = _shots().iloc[:1]
+    out = ex.extract_detector(shots, [ex.CONFIGS["C3"], ex.CONFIGS["C4"]], Analyser({}), Analyser({}), lambda p: None)
+    row = out["C4"].features[0]
+    assert row["frame_readable"] == 0.0 and row["shot_ok"] == 0.0 and np.isnan(row["dist"])
+    assert out["C4"].frames == [ex.frame_row("a", 0, "a0", None)]
+    with pytest.raises(ValueError, match="share the detector settings"):
+        ex.extract_detector(shots, [ex.CONFIGS["C1"], ex.CONFIGS["C3"]], Analyser({}), Analyser({}), lambda p: None)
+
+
+def test_real_analysers_share_one_detector_and_only_the_t0_one_has_teams(monkeypatch):
+    import tactifoot_vision as tv
+    from tactifoot_vision.models.ultralytics import YOLODetector, YOLOPoseModel
+
+    class Names:
+        names = {0: "ball", 1: "goalkeeper", 2: "player", 3: "referee"}
+
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+    monkeypatch.setattr(YOLOPoseModel, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+
+    class Embedder(tv.teams.Embedder):
+        name = "fake"
+
+        def embed(self, crops):
+            return np.zeros((len(crops), 2), np.float32)
+    analyser, ball_only = ex.build_analyzers(1920, 0.15, Embedder(), device="cpu")
+    assert analyser.detector is ball_only.detector and analyser.detector.imgsz == 1920
+    assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.conf == 0.3 and analyser.detector.iou == 0.5
+    assert analyser.team_classifier.reducer is None and ball_only.team_classifier is None
+    assert analyser.homography.min_confidence == 0.5 and analyser.homography.ransac_threshold == 10.0
+    assert analyser.keypoint_model.conf == 0.1 and analyser.keypoint_model.imgsz is None   # letterbox at 640
