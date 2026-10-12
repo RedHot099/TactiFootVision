@@ -276,6 +276,8 @@ def correlation(a: np.ndarray, b: np.ndarray, mask: np.ndarray, d: Draws, rank: 
 def constant_guess(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     """The coordinate-wise inverted-CDF median of the finite (x, y) rows: the constant baselines' guess."""
     finite = np.isfinite(x) & np.isfinite(y)
+    if not finite.any():
+        raise ValueError("a constant baseline needs at least one StatsBomb position")
     return float(np.quantile(x[finite], 0.5, method="inverted_cdf")), float(np.quantile(y[finite], 0.5, method="inverted_cdf"))
 
 
@@ -344,7 +346,7 @@ def config_metrics(table: pd.DataFrame, d: Draws) -> list[dict]:
         det_xy = [table[f"det_shot_{axis}"].to_numpy(float) for axis in ("x", "y")]
         sb_xy = [table[f"sb_shot_{axis}"].to_numpy(float) for axis in ("x", "y")]
         stats |= _correlations(det_xy, sb_xy, has, d)
-        with np.errstate(invalid="ignore"):
+        with np.errstate(invalid="ignore"):   # aligned x is >= 52.5 by construction (the nearer goal is attacked)
             stats["off_pitch"] = share((det_xy[0] > LENGTH) | (det_xy[1] < 0) | (det_xy[1] > WIDTH), has, d)
         rows += _rows(config, "shot_location", subset, stats, int(has.sum()))
         rows += _rows(config, "shot_constant", subset, coverage | error_stats(shot_const_err, has, d) | shot_const, int(has.sum()))
@@ -439,12 +441,12 @@ def stat(table: pd.DataFrame, quantity: str, name: str, subset: str = "all") -> 
     return rows.set_index("config").value
 
 
-def decide(table: pd.DataFrame, candidates: list[str] | None = None) -> dict:
+def decide(table: pd.DataFrame, candidates: list[str]) -> dict:
     """Config choice and gate from a metrics table (`metrics`): reads only coverage and median rows of subset all,
-    of the `candidates` (default: every configuration in the table; a reference configuration is never one).
+    of the `candidates` (a reference configuration in the table is never one).
 
     Eligibility and the gate use the point estimates; the intervals are reported, not used."""
-    names = sorted(set(table.config)) if candidates is None else list(candidates)
+    names = list(candidates)
 
     def stat_all(quantity, name):
         values = stat(table, quantity, name)
@@ -452,10 +454,10 @@ def decide(table: pd.DataFrame, candidates: list[str] | None = None) -> dict:
         if missing:
             raise ValueError(f"the metrics have no {quantity} {name} for {missing}")
         return values.loc[names]
-    candidates = pd.DataFrame({"coverage": stat_all("shot_location", "coverage"), "median": stat_all("shot_location", "median")})
-    choice = choose(candidates.reset_index())
+    shot = pd.DataFrame({"coverage": stat_all("shot_location", "coverage"), "median": stat_all("shot_location", "median")})
+    choice = choose(shot.reset_index())
     c = choice["chosen"]
-    result = gate(float(candidates.coverage[c]), float(candidates["median"][c]), float(stat_all("gk_any", "coverage")[c]))
+    result = gate(float(shot.coverage[c]), float(shot["median"][c]), float(stat_all("gk_any", "coverage")[c]))
     return choice | {"gate": {"config": c} | result,
                      "approach2": "continues" if result["result"] == "PASS" else "closes with the audit report (ticket 05)"}
 
@@ -471,7 +473,10 @@ def refinement_groups(plain: pd.DataFrame, refined: pd.DataFrame) -> pd.Series:
     matrix differs from the unrefined one's), "kept" (it fell back to the keypoint fit) or "no_fit". Both frame tables
     must hold the same t0 keypoints (one model, one input); a shot whose keypoints differ is refused."""
     a = plain[plain.offset_ms == 0].set_index("shot_id").sort_index()
-    b = refined[refined.offset_ms == 0].set_index("shot_id").reindex(a.index)
+    b = refined[refined.offset_ms == 0].set_index("shot_id")
+    if not a.index.equals(b.index.sort_values()):
+        raise ValueError(f"the two runs have different t0 shots ({len(a.index.symmetric_difference(b.index))} in one only)")
+    b = b.reindex(a.index)
 
     def matrix(value):
         return None if value is None or (isinstance(value, float) and np.isnan(value)) else np.asarray(value, float)
@@ -484,8 +489,13 @@ def refinement_groups(plain: pd.DataFrame, refined: pd.DataFrame) -> pd.Series:
         ha, hb = matrix(h_a), matrix(h_b)
         if (ha is None) != (hb is None):
             raise ValueError(f"{shot}: one run has a t0 homography and the other not")
-        out[shot] = "no_fit" if ha is None else ("kept" if np.allclose(ha / ha[-1], hb / hb[-1], rtol=0, atol=1e-9) else "refined")
+        out[shot] = "no_fit" if ha is None else ("kept" if np.allclose(_scaled(ha), _scaled(hb), rtol=0, atol=1e-9) else "refined")
     return pd.Series(out, name="refinement").rename_axis("shot_id")
+
+
+def _scaled(matrix: np.ndarray) -> np.ndarray:
+    """A homography up to scale, divided by its largest-magnitude entry (sign included), so equal maps compare equal."""
+    return matrix / matrix[np.argmax(np.abs(matrix))]
 
 
 def group_errors(per_shot: pd.DataFrame, groups: dict[str, np.ndarray], config: str, split: str, d: Draws) -> list[dict]:
@@ -497,7 +507,7 @@ def group_errors(per_shot: pd.DataFrame, groups: dict[str, np.ndarray], config: 
     located, gk = t.shot_ok.to_numpy() == 1, (t.gk_ok.to_numpy() == 1) & t.sb_gk_x.notna().to_numpy()
     rows = []
     for name, mask in groups.items():
-        cells = {("all", "share"): share(mask, everyone, d),
+        cells = {("population", "share"): share(mask, everyone, d),
                  ("shot_location", "n"): (float((mask & located).sum()), np.nan, np.nan),
                  ("shot_location", "median"): quantiles(t.shot_err.to_numpy(float), mask & located, (0.5,), d)[0],
                  ("shot_location", "median_dx"): quantiles(t.shot_dx.to_numpy(float), mask & located, (0.5,), d)[0],

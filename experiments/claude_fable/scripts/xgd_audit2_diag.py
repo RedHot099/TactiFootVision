@@ -10,11 +10,13 @@ already computed (`--audit`/per_shot.parquet, checked against its completion rec
                  the line refinement on; a t0 homography is "refined" when the refined configuration's matrix differs
                  from the unrefined one's, "kept" when the refinement fell back to the keypoint fit, "no_fit" without
                  one (`audit.refinement_groups`, which refuses shots whose t0 keypoints differ between the runs). For
-                 each group: both configurations' errors on the same shots.
+                 each group: both configurations' errors on the same shots. The groups follow the t0 homography only;
+                 a shot located by an earlier frame's ball was placed by that frame's homography (refined or not).
     source       for every audited configuration, the errors by where the shot location came from: the t0 ball, the
                  ball of the -400 or -800 ms frame (used only when t0 has no ball on the pitch), or the flagged shooter.
 
-Writes diag.csv (split, group, config, quantity, stat, value, lo, hi; `share` is the group's share of the population)
+Writes diag.csv (split, group, config, quantity, stat, value, lo, hi; quantity `population`, stat `share`: the group's
+share of the population)
 and complete.json, last. Like the audit it reads StatsBomb-derived data and is on no model or feature path.
 """
 
@@ -32,11 +34,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def verified(path: Path) -> str:
-    """sha256 of a file after checking it against its folder's completion record."""
-    digest = sha256_file(path)
-    if json.loads((path.parent / "complete.json").read_text())["files"].get(path.name) != digest:
-        raise SystemExit(f"{path} does not match its completion record")
-    return digest
+    try:
+        return records.verified_file(path)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
 
 
 def main() -> None:

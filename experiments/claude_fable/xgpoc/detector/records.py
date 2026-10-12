@@ -6,6 +6,7 @@ checkout), of the inputs (the index file and the list of shot ids), of every out
 library versions, timing and coverage. It is written last, so a folder without `complete.json` is incomplete.
 """
 
+import json
 from pathlib import Path
 
 from xgpoc.bundle import canonical_digest, code_version, sha256_file
@@ -40,6 +41,14 @@ def library_versions() -> dict:
 
     return {name: version(name) for name in ("torch", "ultralytics", "transformers", "supervision", "opencv-python-headless",
                                              "scikit-learn", "numpy", "pandas")}
+
+
+def verified_file(path: Path) -> str:
+    """sha256 of a file after checking it against the completion record (`complete.json`) of its folder."""
+    digest = sha256_file(path)
+    if json.loads((Path(path).parent / "complete.json").read_text())["files"].get(Path(path).name) != digest:
+        raise ValueError(f"{path} does not match its completion record")
+    return digest
 
 
 def output_hashes(folder: Path) -> dict:

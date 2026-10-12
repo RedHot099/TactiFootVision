@@ -40,9 +40,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def verified_cache(folder: Path) -> dict:
     """The configuration's completion record, after checking every listed output file against it."""
     record = json.loads((folder / "complete.json").read_text())
-    for name, digest in record["files"].items():
-        if sha256_file(folder / name) != digest:
-            raise SystemExit(f"{folder / name} does not match its completion record")
+    try:
+        for name in record["files"]:
+            records.verified_file(folder / name)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
     return record
 
 

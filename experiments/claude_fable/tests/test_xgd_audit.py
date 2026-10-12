@@ -241,7 +241,7 @@ def test_decide_reads_the_metrics_of_subset_all():
                  {"config": config, "quantity": "shot_location", "subset": "all", "stat": "median", "value": med},
                  {"config": config, "quantity": "shot_location", "subset": "ball", "stat": "median", "value": 0.1},
                  {"config": config, "quantity": "gk_any", "subset": "all", "stat": "coverage", "value": gk}]
-    decision = audit.decide(pd.DataFrame(rows))
+    decision = audit.decide(pd.DataFrame(rows), ["C1", "C4"])
     assert decision["chosen"] == "C4" and decision["gate"]["result"] == "STOP" and decision["gate"]["config"] == "C4"
     assert decision["gate"]["checks"]["shot_location_median_m"]["value"] == 3.8
     assert decision["approach2"].startswith("closes")
@@ -449,6 +449,11 @@ def test_refinement_groups_compare_the_t0_matrices_of_the_same_keypoints():
         audit.refinement_groups(plain, refined.assign(kp_xy=[[1.0, 2.5], [1.0, 2.0], None, [9.0]]))
     with pytest.raises(ValueError, match="one run has a t0 homography"):
         audit.refinement_groups(plain, refined.assign(homography=[None, moved, None, shifted]))
+    with pytest.raises(ValueError, match="different t0 shots"):
+        audit.refinement_groups(plain, refined[refined.shot_id != "c"])
+    zero_corner = list(np.array([[1.0, 0, 0], [0, 1.0, 0], [0, 1.0, 0]]).ravel())    # h33 = 0 still compares by scale
+    assert audit.refinement_groups(plain.assign(homography=[zero_corner, eye, None, eye]),
+                                   refined.assign(homography=[list(-2 * np.array(zero_corner)), eye, None, eye]))["a"] == "kept"
 
 
 def test_group_errors_and_location_sources_on_planted_rows():
@@ -462,7 +467,7 @@ def test_group_errors_and_location_sources_on_planted_rows():
     d = audit.draws(table.game.to_numpy(), n_boot=5)
     rows = pd.DataFrame(audit.group_errors(table, masks, "C9", "source", d)).set_index(["group", "quantity", "stat"]).value
     assert rows["ball_m400", "shot_location", "median"] == 8.0 and rows["ball_m400", "shot_location", "median_dx"] == -1.0
-    assert rows["flag", "all", "share"] == 0.25 and rows["flag", "gk_any", "n"] == 0 and np.isnan(rows["flag", "gk_any", "median"])
+    assert rows["flag", "population", "share"] == 0.25 and rows["flag", "gk_any", "n"] == 0 and np.isnan(rows["flag", "gk_any", "median"])
     assert rows["ball_m800", "shot_location", "n"] == 0
 
 
@@ -494,7 +499,7 @@ def test_the_audit_2_diagnostic_end_to_end(monkeypatch, tmp_path):
     diag = pd.read_csv(out / "diag.csv").set_index(["split", "group", "config", "quantity", "stat"]).value
     assert diag["refinement_D3", "refined", "D1", "shot_location", "median"] == 0.0     # s0: D1 error 0, D3 error 2
     assert diag["refinement_D3", "refined", "D3", "shot_location", "median"] == 2.0
-    assert diag["source", "ball_t0", "D4", "all", "share"] == 1.0
+    assert diag["source", "ball_t0", "D4", "population", "share"] == 1.0
     with pytest.raises(SystemExit, match="is complete"):
         xgd_audit2_diag.main()
 
