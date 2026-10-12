@@ -13,8 +13,8 @@ import supervision as sv
 
 from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.teams.classifier import NO_TEAM
 
-NO_TEAM = -1
 UNTRACKED = -1  # track id / player id of a detection without a tracker
 BALL_PLAYER_ID = -99  # player id of the ball in freeze frames
 # StatsBomb's match clock: the minute at which each period kicks off.

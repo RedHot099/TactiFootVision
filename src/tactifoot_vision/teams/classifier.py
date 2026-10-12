@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Below this many crops UMAP fails or returns unstable layouts; cluster directly.
 MIN_UMAP_SAMPLES = 30
+NO_TEAM = -1  # team id of people without a team (referees, unknown)
 
 
 class TeamClassifier:

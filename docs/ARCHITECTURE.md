@@ -264,6 +264,13 @@ configs/              example run files
   `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings (at least `n_teams`, checked
   before the embedder is built) and skips UMAP below 30 crops.
+* `assign_frame_teams(frame, detections, classifier, positions=None)` is the
+  single-frame team mode: the classifier (`reducer=None`, about 15 crops a
+  frame) is fitted on this frame's player crops alone; goalkeepers join the
+  team whose players' mean position is nearest (`positions`, else box bottom
+  centres in pixels); referees and everyone in a frame with fewer than
+  `n_teams` valid player crops get `NO_TEAM`. Team numbers are comparable
+  within one frame only.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.

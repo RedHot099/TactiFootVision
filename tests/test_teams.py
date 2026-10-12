@@ -3,11 +3,14 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import supervision as sv
 
 from tactifoot_vision.teams import (
     EMBEDDERS,
+    NO_TEAM,
     Embedder,
     TeamClassifier,
+    assign_frame_teams,
     extract_crops,
 )
 from tactifoot_vision.teams.embedders import SigLIPEmbedder
@@ -222,3 +225,90 @@ def test_a_fit_cap_of_exactly_n_teams_fits():
     classifier.fit_embeddings(embeddings)
     assert classifier._kmeans.labels_.shape == (2,)
     assert classifier.predict_embeddings(embeddings).shape == (4,)
+
+
+# ----------------------------------------------------------- single-frame mode
+GREEN, YELLOW, BLACK = (40, 140, 40), (0, 230, 230), (0, 0, 0)
+
+
+def _frame_scene(objects):
+    """A green frame with solid boxes; ``objects`` are (colour, class, xyxy)."""
+    frame = np.full((120, 200, 3), GREEN, dtype=np.uint8)
+    for color, _, (x1, y1, x2, y2) in objects:
+        frame[y1:y2, x1:x2] = color
+    detections = sv.Detections(
+        xyxy=np.array([box for *_, box in objects], dtype=np.float32).reshape(-1, 4),
+        data={"class_name": np.array([name for _, name, _ in objects], dtype=str)},
+    )
+    return frame, detections
+
+
+_OBJECTS = [
+    (RED, "player", (10, 10, 20, 30)),
+    (RED, "player", (30, 12, 40, 32)),
+    (RED, "player", (20, 50, 30, 70)),
+    (BLUE, "player", (150, 10, 160, 30)),
+    (BLUE, "player", (170, 40, 180, 60)),
+    (YELLOW, "goalkeeper", (185, 80, 195, 100)),  # beside the blue players
+    (BLACK, "referee", (90, 50, 100, 70)),
+]
+
+
+def _frame_classifier():
+    return TeamClassifier(MeanColorEmbedder(), reducer=None)
+
+
+def test_frame_teams_split_the_kits_and_place_the_goalkeeper_by_position():
+    frame, detections = _frame_scene(_OBJECTS)
+    teams = assign_frame_teams(frame, detections, _frame_classifier())
+    red, blue = teams[0], teams[3]
+    assert {red, blue} == {0, 1}
+    assert teams.tolist() == [red, red, red, blue, blue, blue, NO_TEAM]
+
+
+def test_frame_teams_prefer_the_given_positions_for_goalkeepers():
+    frame, detections = _frame_scene(_OBJECTS)
+    # On the pitch the goalkeeper stands among the red players.
+    positions = np.array(
+        [[10, 10], [12, 14], [8, 12], [80, 30], [85, 40], [9, 11], [50, 30]], float
+    )
+    teams = assign_frame_teams(
+        frame, detections, _frame_classifier(), positions=positions
+    )
+    assert teams[5] == teams[0] != teams[3]
+    # Without a pitch position for the goalkeeper, the pixels decide.
+    positions[5] = np.nan
+    teams = assign_frame_teams(
+        frame, detections, _frame_classifier(), positions=positions
+    )
+    assert teams[5] == teams[3] != teams[0]
+
+
+def test_frame_teams_need_enough_player_crops():
+    frame, detections = _frame_scene([_OBJECTS[0], _OBJECTS[5], _OBJECTS[6]])
+    teams = assign_frame_teams(frame, detections, _frame_classifier())
+    assert teams.tolist() == [NO_TEAM] * 3
+    _, empty = _frame_scene([])
+    assert assign_frame_teams(frame, empty, _frame_classifier()).tolist() == []
+
+
+def test_frame_teams_refuse_umap_and_misshapen_positions():
+    frame, detections = _frame_scene(_OBJECTS)
+    with pytest.raises(ValueError, match="reducer=None"):
+        assign_frame_teams(frame, detections, TeamClassifier(MeanColorEmbedder()))
+    with pytest.raises(ValueError, match=r"positions must be \(7, 2\)"):
+        assign_frame_teams(
+            frame, detections, _frame_classifier(), positions=np.zeros((6, 2))
+        )
+
+
+def test_each_frame_is_fitted_on_its_own():
+    classifier = _frame_classifier()
+    frame, detections = _frame_scene(_OBJECTS)
+    assign_frame_teams(frame, detections, classifier)
+    first = classifier._kmeans
+    swapped = [((c[2], c[1], c[0]), n, b) for c, n, b in _OBJECTS]  # other kits
+    frame, detections = _frame_scene(swapped)
+    teams = assign_frame_teams(frame, detections, classifier)
+    assert classifier._kmeans is not first
+    assert teams[0] == teams[1] == teams[2] != teams[3] == teams[4]
