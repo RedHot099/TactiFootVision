@@ -17,6 +17,7 @@ from tactifoot_vision.pitch import (
     HomographyEstimator,
     SoccerPitch,
     frame_to_pitch,
+    pitch_markings,
     pitch_to_frame,
 )
 from tactifoot_vision.registry import Registry
@@ -83,8 +84,6 @@ def test_pitch_vertices_and_scaling():
 
 @pytest.mark.parametrize("size", [(105, 68), (120, 80), (100, 64)])
 def test_arc_landmarks_lie_on_the_drawn_arcs(size):
-    from tactifoot_vision.viz.radar import pitch_markings
-
     pitch = SoccerPitch(*size)
     vertices = pitch.vertices
     lines, _ = pitch_markings(pitch)

@@ -117,7 +117,7 @@ configs/              example run files
 * `data/dataset.py`: `Sample`, `Dataset` (splits `train`/`valid`/`test`)
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `HomographyEstimator`
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
 
 ## Module specifications
@@ -325,7 +325,10 @@ configs/              example run files
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
   ellipse the radar draws, so on any `length × width` those vertices lie
-  exactly on the drawn arcs.
+  exactly on the drawn arcs. `pitch_markings(pitch)` gives the painted
+  markings as pitch-unit polylines (lines, centre circle, penalty arcs) and
+  spots; `viz` draws them and the pitch module uses them itself, so it does
+  not import `viz`.
 
 ### Results visualisation (`tv.viz`)
 
