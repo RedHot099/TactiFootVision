@@ -8,7 +8,7 @@
 #               sam2 = "external/segment-anything-2-real-time"
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.5, size="base"),
-#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5),
+#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5, stretch=True),
 #                   tracker=tv.tracking.create_tracker(
 #                       "sam2",
 #                       checkpoint=f"{sam2}/checkpoints/sam2.1_hiera_tiny.pt",
@@ -31,6 +31,7 @@ keypoints:
   type: yolo_pose
   weights: ../models/pitch_yolov8n_pose.pt
   conf: 0.5
+  stretch: true             # trained on frames stretched to 640x640, not letterboxed
 
 tracker:
   type: sam2

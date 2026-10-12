@@ -30,7 +30,7 @@ for name, model in detectors.items():
     )
 
 # Pitch keypoints -> homography -> pitch coordinates of the players' feet.
-pitch_model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt")
+pitch_model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", stretch=True)
 keypoints = pitch_model(frame)
 homography = tv.pitch.HomographyEstimator().update(keypoints)
 feet = detectors["yolo"](frame).get_anchors_coordinates(sv.Position.BOTTOM_CENTER)

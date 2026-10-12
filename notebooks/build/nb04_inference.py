@@ -62,7 +62,7 @@ detectors = {
     "yolo": tv.load_model("yolo", MODELS / "football_yolo11m.pt", conf=0.3),
     "rfdetr": tv.load_model("rfdetr", MODELS / "football_rfdetr_base.pth", conf=0.5),
 }
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt")
+pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt", stretch=True)
 
 views = []
 for name, model in detectors.items():

@@ -20,7 +20,7 @@ import tactifoot_vision as tv
 
 pipeline = tv.Pipeline(
     detector=tv.load_model("yolo", "models/football_yolo11m.pt"),
-    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt"),
+    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", stretch=True),
     team_classifier=tv.teams.TeamClassifier("siglip"),
 )
 result = pipeline.run("match.mp4")

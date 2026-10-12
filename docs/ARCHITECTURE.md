@@ -203,7 +203,12 @@ configs/              example run files
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
   `yolo_pose.predict` returns `sv.KeyPoints` of all instances sorted by confidence.
-  `imgsz` sets the inference size (`None`: the training size). `yolo` takes
+  `imgsz` sets the inference size (`None`: the training size). `stretch=True`
+  resizes the frame to `imgsz` x `imgsz` ignoring its aspect ratio instead of
+  Ultralytics' letterbox, and scales outputs back to frame pixels: for
+  checkpoints trained on stretched Roboflow exports, such as the pitch model
+  `pitch_yolov8n_pose.pt` (on its own labelled images the letterbox more than
+  doubles the keypoint error, about 24 px against 10 px at 1280 x 720). `yolo` takes
   `class_conf={"ball": 0.15}`: a threshold per class name that replaces
   `conf` for the classes it names; the model runs at the lowest threshold and
   every other class keeps exactly its `conf` detections (non-maximum

@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
+import cv2
 import numpy as np
 import pandas as pd
 import supervision as sv
@@ -34,6 +35,7 @@ class _UltralyticsModel(Model):
         conf: float = 0.25,
         iou: float = 0.7,
         imgsz: int | None = None,
+        stretch: bool = False,
         device: str | None = None,
     ) -> None:
         """
@@ -43,10 +45,17 @@ class _UltralyticsModel(Model):
             conf: minimum confidence of returned objects.
             iou: IoU threshold of non-maximum suppression.
             imgsz: inference size; ``None`` keeps the size the model was trained at.
+            stretch: resize the image to ``imgsz`` x ``imgsz``, ignoring its aspect
+                ratio, instead of Ultralytics' letterbox; outputs are scaled back to
+                image pixels. For checkpoints trained on images stretched to a square,
+                such as Roboflow exports with "Resize: Stretch" (the pitch keypoint
+                model ``pitch_yolov8n_pose.pt``): a letterboxed frame shows them
+                shapes they never saw, and their keypoints land off the landmarks.
             device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
         """
         self.iou = iou
         self.imgsz = imgsz
+        self.stretch = stretch
         super().__init__(weights, conf=conf, device=device)
 
     def _load(self, weights: str | Path | None) -> None:
@@ -68,16 +77,26 @@ class _UltralyticsModel(Model):
         names = self._yolo.names
         return [names[i] for i in sorted(names)]
 
-    def _run(self, image: np.ndarray, conf: float | None = None) -> Any:
+    def _run(
+        self, image: np.ndarray, conf: float | None = None
+    ) -> tuple[Any, np.ndarray]:
+        """The Ultralytics result and the ``(x, y)`` factors from its pixels to ``image``'s."""
         options: dict[str, Any] = {
             "conf": self.conf if conf is None else conf,
             "iou": self.iou,
             "device": self.device,
             "verbose": False,
         }
-        if self.imgsz is not None:
-            options["imgsz"] = self.imgsz
-        return self._yolo.predict(image, **options)[0]
+        size = self.imgsz
+        scale = np.ones(2, np.float32)
+        if self.stretch:
+            size = size or int(self._yolo.overrides["imgsz"])
+            height, width = image.shape[:2]
+            image = cv2.resize(image, (size, size))
+            scale = np.float32([width / size, height / size])
+        if size is not None:
+            options["imgsz"] = size
+        return self._yolo.predict(image, **options)[0], scale
 
     def _check_options(self, config: TrainConfig) -> None:
         from ultralytics.cfg import DEFAULT_CFG_DICT
@@ -171,12 +190,13 @@ class YOLODetector(_UltralyticsModel):
         conf: float = 0.25,
         iou: float = 0.7,
         imgsz: int | None = None,
+        stretch: bool = False,
         class_conf: Mapping[str, float] | None = None,
         device: str | None = None,
     ) -> None:
         """
         Args:
-            weights, conf, iou, imgsz, device: as for every Ultralytics backend.
+            weights, conf, iou, imgsz, stretch, device: as for every Ultralytics backend.
             class_conf: minimum confidence per class name, replacing ``conf``
                 for the classes it names (e.g. ``{"ball": 0.15}``). Other
                 classes keep exactly the detections they get with ``conf``
@@ -188,7 +208,9 @@ class YOLODetector(_UltralyticsModel):
         for name, value in self.class_conf.items():
             if not 0 <= value <= 1:
                 raise ValueError(f"class_conf[{name!r}] must be in [0, 1], got {value}")
-        super().__init__(weights, conf=conf, iou=iou, imgsz=imgsz, device=device)
+        super().__init__(
+            weights, conf=conf, iou=iou, imgsz=imgsz, stretch=stretch, device=device
+        )
         unknown = []
         if self.class_conf:
             unknown = sorted(set(self.class_conf) - set(self.class_names))
@@ -201,7 +223,9 @@ class YOLODetector(_UltralyticsModel):
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
         floor = min([self.conf, *self.class_conf.values()])
-        detections = sv.Detections.from_ultralytics(self._run(image, conf=floor))
+        result, scale = self._run(image, conf=floor)
+        detections = sv.Detections.from_ultralytics(result)
+        detections.xyxy = detections.xyxy * np.tile(scale, 2)
         class_id = detections.class_id.astype(int)
         detections.data["class_name"] = np.asarray(self.class_names, dtype=str)[
             class_id
@@ -224,7 +248,8 @@ class YOLOPoseModel(_UltralyticsModel):
 
     Example::
 
-        model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt")
+        # The pitch model was trained on frames stretched to 640 x 640.
+        model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", stretch=True)
         keypoints = model(frame)
         best = keypoints.xy[0]  # (32, 2) pixel coordinates of the best pitch
     """
@@ -235,7 +260,7 @@ class YOLOPoseModel(_UltralyticsModel):
 
     def predict(self, image: np.ndarray) -> sv.KeyPoints:
         """Detect keypoint instances in one BGR image."""
-        result = self._run(image)
+        result, scale = self._run(image)
         if result.keypoints is None or len(result.boxes) == 0:
             return _keypoints_from_arrays(
                 np.zeros((0, 0, 3), np.float32),
@@ -244,9 +269,11 @@ class YOLOPoseModel(_UltralyticsModel):
                 np.zeros(0, int),
                 self.class_names,
             )
+        keypoints = result.keypoints.data.cpu().numpy()
+        keypoints[..., :2] *= scale
         return _keypoints_from_arrays(
-            result.keypoints.data.cpu().numpy(),
-            result.boxes.xyxy.cpu().numpy(),
+            keypoints,
+            result.boxes.xyxy.cpu().numpy() * np.tile(scale, 2),
             result.boxes.conf.cpu().numpy(),
             result.boxes.cls.cpu().numpy().astype(int),
             self.class_names,

@@ -628,3 +628,73 @@ def test_class_conf_is_checked(monkeypatch):
         _yolo_with(monkeypatch, _BOXES, class_conf={"ball": 1.5})
     with pytest.raises(ValueError, match="unknown class.*bal.*the model has ball"):
         _yolo_with(monkeypatch, _BOXES, class_conf={"bal": 0.1})
+
+
+# ------------------------------------------------------- stretched input (pitch)
+class _FakeStretchPredictor:
+    """Ultralytics-like: records the image it gets and answers in that image's pixels."""
+
+    names = {0: "pitch"}
+    overrides = {"imgsz": 32}  # the size the checkpoint was trained at
+
+    def __init__(self, keypoints=None):
+        self.keypoints = keypoints
+        self.images, self.calls = [], []
+
+    def predict(self, image, **options):
+        import torch
+        from ultralytics.engine.results import Results
+
+        self.images.append(image)
+        self.calls.append(options)
+        boxes = torch.tensor([[4.0, 8.0, 12.0, 16.0, 0.9, 0.0]])
+        keypoints = None if self.keypoints is None else torch.tensor(self.keypoints)
+        return [
+            Results(
+                image, path="frame", names=self.names, boxes=boxes, keypoints=keypoints
+            )
+        ]
+
+
+def _ultralytics_with(monkeypatch, cls, predictor, **options):
+    monkeypatch.setattr(
+        cls, "_load", lambda self, weights: setattr(self, "_yolo", predictor)
+    )
+    return cls(device="cpu", **options)
+
+
+def test_stretch_resizes_to_a_square_and_scales_pose_outputs_back(monkeypatch):
+    # The pitch keypoint model was trained on frames stretched to 640 x 640; a
+    # 64 x 48 frame stretched to the trained 32 x 32 has pixels 2 wide and 1.5 high.
+    predictor = _FakeStretchPredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, stretch=True)
+    keypoints = model(np.zeros((48, 64, 3), np.uint8))
+    assert predictor.images[-1].shape == (32, 32, 3)
+    assert predictor.calls[-1]["imgsz"] == 32
+    np.testing.assert_allclose(keypoints.xy[0], [[8, 12], [24, 24]])
+    np.testing.assert_allclose(keypoints.confidence[0], [0.9, 0.8])
+    np.testing.assert_allclose(keypoints.data["xyxy"], [[8, 12, 24, 24]])
+    explicit = _ultralytics_with(
+        monkeypatch, YOLOPoseModel, predictor, stretch=True, imgsz=16
+    )
+    np.testing.assert_allclose(
+        explicit(np.zeros((48, 64, 3), np.uint8)).xy[0], [[16, 24], [48, 48]]
+    )
+    assert predictor.images[-1].shape == (16, 16, 3)
+
+
+def test_stretch_scales_detection_boxes_back(monkeypatch):
+    predictor = _FakeStretchPredictor()
+    predictor.names = dict(enumerate(FOOTBALL_CLASSES))
+    model = _ultralytics_with(monkeypatch, YOLODetector, predictor, stretch=True)
+    detections = model(np.zeros((48, 64, 3), np.uint8))
+    np.testing.assert_allclose(detections.xyxy, [[8, 12, 24, 24]])
+
+
+def test_without_stretch_the_frame_goes_to_ultralytics_unchanged(monkeypatch):
+    predictor = _FakeStretchPredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor)
+    frame = np.zeros((48, 64, 3), np.uint8)
+    keypoints = model(frame)
+    assert predictor.images[-1] is frame and "imgsz" not in predictor.calls[-1]
+    np.testing.assert_allclose(keypoints.xy[0], [[4, 8], [12, 16]])

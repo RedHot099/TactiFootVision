@@ -94,7 +94,7 @@ pitch through the pitch-landmark model, and splits players into teams by kit.
     nb.code("""
 pipeline = tv.Pipeline(
     detector=detector,
-    keypoint_model=tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt"),
+    keypoint_model=tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt", stretch=True),
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
