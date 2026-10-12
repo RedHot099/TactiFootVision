@@ -4,13 +4,14 @@
   "ticket": "xg-detector 08 (declaration); xg-detector 09 runs the audit on exactly these, adding nothing after it runs",
   "rules": "Unchanged and frozen (spec, Audit; ticket 02): the chosen configuration has the lowest median shot-location error among those with shot-location coverage >= 70% of the paired non-penalty shots, ties broken by coverage; approach 2 continues only if that median is <= 3 m at coverage >= 70% and goalkeeper information covers >= 50%. This is the last audit (owner decision Q26).",
   "package": {
-    "commit": "08c9606",
+    "commit": "56e288f",
     "changes_since_audit_1": [
       "e927f40 models: stretch=True (the pitch model sees the frame stretched to 640x640, as it was trained)",
       "8994cc6 pitch: no homography from landmarks that do not span the pitch (singular fits)",
       "99bd7a0 pitch: pitch_markings in tv.pitch",
       "4725862, 30702ec, 9a6289b, 639b86f, ec487a6, 0243771 pitch: HomographyEstimator(refine_with_lines=True), the line refinement and its acceptance checks",
-      "08c9606 docs"
+      "08c9606 docs",
+      "56e288f review fixes (stretch reads the training size safely; regression tests)"
     ]
   },
   "common": {
@@ -42,6 +43,7 @@
     },
     "teams": {"embedder": "google/siglip-base-patch16-224", "n_teams": 2, "reducer": null, "crop_scale": 0.8}
   },
+  "extractor": "experiments/claude_fable/xgpoc/detector/extract.py CONFIGS['D1'..'D4'] (ExtractorConfig fields keypoint_stretch, homography_min_confidence, refine_with_lines; build_analyzers(config, ...)); tests/test_xgd_extract.py ties them to this file",
   "configs": {
     "D1": {"keypoint_input": "stretch", "keypoint_conf": 0.5, "refine_with_lines": false,
            "dev_variant": "stretch", "role": "the keypoint fixes alone (input and degenerate fits), C4's thresholds"},
@@ -54,15 +56,17 @@
   },
   "selection": {
     "data": "1,500 random t0 shot frames of the split plan's training matches only (323 matches; dev folds 0-2: 913 frames, confirm folds 3-4: 587); no gate or evaluation match, no StatsBomb data, no label",
-    "run": "scripts/xgd_homography_dev.py at aeb9b2c (clean tree), results/xgd_homography_dev",
-    "summary_csv_sha256": "c145b09923eeb0002cc60f029b9399b7ef84c0153b9e92756cbf7883049fe908",
-    "complete_json_sha256": "9b26826242f5ced9317cd33033ed5eda8d808fdc7004905d3997862f9d53f679",
+    "run": "scripts/xgd_homography_dev.py at abd24ed (clean tree), results/xgd_homography_dev",
+    "summary_csv_sha256": "0369a175a078e4c8f8c6d48d4576d85cf9c0c7de09ad476d411bbb582559e93f",
+    "complete_json_sha256": "e379a8456aacb0b2acf4a93de5d680478476b480074ccd79d412b38a56cab1da",
     "split_plan_sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a",
     "metric": "good = share of all frames whose homography puts >= 50% of the projected marking samples within 5 px of the white-line mask; homography = share with a homography; height_log_median = median |log| of the player-height ratio (a check without lines)",
     "dev": {
-      "C4 (audit 1)": {"homography": 0.635, "good": 0.000, "height_log_median": 0.340},
+      "C4 (audit 1)": {"homography": 0.635, "good": 0.000, "height_log_median": 0.334},
       "letterbox": {"homography": 0.622, "good": 0.000, "height_log_median": 0.334},
       "letterbox_refined": {"homography": 0.622, "good": 0.287, "height_log_median": 0.190},
+      "stretch_kp07": {"homography": 0.579, "good": 0.010, "height_log_median": 0.179},
+      "stretch_ransac2": {"homography": 0.711, "good": 0.008, "height_log_median": 0.165},
       "D1 stretch": {"homography": 0.711, "good": 0.008, "height_log_median": 0.162},
       "D2 stretch_kp03": {"homography": 0.808, "good": 0.008, "height_log_median": 0.165},
       "D3 stretch_refined": {"homography": 0.711, "good": 0.386, "height_log_median": 0.119},
@@ -77,8 +81,9 @@
     },
     "reasoning": [
       "All four use the stretched keypoint input: on the model's own labelled images it halves the keypoint error (9.5 vs 25.3 px median at 1280x720) and on the dev frames it beats the letterbox on every score, with and without refinement.",
-      "On the line metric the refined variants rank first (D4, then D3); without refinement no keypoint setting reaches good line agreement (<= 1% of frames), whatever the keypoint threshold or RANSAC limit.",
-      "D1 and D2 are kept although they score far lower: the line metric is close to the refinement's own objective, so it cannot weigh refinement on against off fairly. The check without lines (player height) also favours refinement, but the StatsBomb audit decides.",
+      "On the line metric the refined variants rank first (D4, then D3); without refinement no keypoint setting reaches good line agreement (<= 1% of frames), whatever the keypoint threshold (0.3, 0.5, 0.7) or RANSAC limit (2 m, 10 m).",
+      "The line metric is close to the refinement's own objective (a separate mask with the same idea; on 200 exploration frames the refinement's inlier share correlated 0.99 with it), so the ranking of D3/D4 above D1/D2 rests on the independent check without lines: the player-height scale error (median |log|) on dev is 0.334 for C4, 0.162 for D1 and 0.119 for D3.",
+      "D1 and D2 are kept although they score far lower, because the line metric cannot weigh refinement on against off fairly; the StatsBomb audit decides.",
       "Keypoint threshold 0.3 vs 0.5: more homographies (dev 80.8% vs 71.1%) at the same line agreement per fit; both are declared because audit coverage must reach 70%."
     ]
   }
