@@ -18,6 +18,7 @@ from xgpoc.eval.calibration import sigmoid
 from xgpoc.models.g_bundle import ensemble_probability
 from xgpoc.vendor import eval_scoring as es
 from xgpoc.vendor import evaltable as et
+from xgpoc.vendor import probes
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import vendor_leakage  # noqa: E402
@@ -30,8 +31,8 @@ from vendor_ladder import population_sets  # noqa: E402
 from vendor_score_eval import check_gate  # noqa: E402
 
 PREREG = et.PreRegistration("a" * 64, datetime(2026, 10, 12, tzinfo=UTC), "b" * 64, margin=0.005, n_boot=6000, fold_seed=1, boot_seed=2,
-                            offset_logits="raw", h3_thresholds={"dist": 0.5, "head": 0.7}, h3_confirmatory_targets=("dist",),
-                            timing_rule_sha256="c" * 64, draft=True)
+                            offset_logits="raw", h3_thresholds={"dist": 0.5, "head": 0.7}, h3_confirmatory_targets=("dist",), h3_control_max_r2=0.004,
+                            timing_rule_sha256="c" * 64, recalibrated_bootstrap="refit", frame_exclusions={}, draft=True)
 
 
 # ------------------------------------------------------------------ vendor_score_eval.check_gate
@@ -186,6 +187,7 @@ def test_probe_parameters_come_from_the_record_for_dryrun_and_confirmatory_table
     for kind in ("dryrun", "confirmatory"):
         params = vendor_probes.probe_parameters(kind, PREREG, probe_args())
         assert (params["n_boot"], params["seed"], params["thresholds"], params["confirmatory_targets"]) == (6000, 2, {"dist": 0.5, "head": 0.7}, ["dist"])
+        assert params["control_max_r2"] == 0.004
         with pytest.raises(ValueError, match="needs --prereg"):
             vendor_probes.probe_parameters(kind, None, probe_args())
         with pytest.raises(ValueError, match=r"drop \['n_boot', 'thresholds'\]"):
@@ -197,6 +199,7 @@ def test_probe_parameters_come_from_the_record_for_dryrun_and_confirmatory_table
     (tmp_path / "t.json").write_text('{"dist": 0.4}')
     dev = vendor_probes.probe_parameters("development", None, probe_args(n_boot=200, thresholds=tmp_path / "t.json"))
     assert (dev["n_boot"], dev["seed"], dev["thresholds"], dev["source"]) == (200, 0, {"dist": 0.4}, "command line")
+    assert dev["control_max_r2"] == probes.CONTROL_MAX_R2
 
 
 def test_leakage_parameters_come_from_the_record_and_a_verdict_needs_a_pinned_rule():

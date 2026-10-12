@@ -17,6 +17,7 @@ from xgpoc.vendor.prereg import PreRegistrationError
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "research/xg_vendor_preregistration.md"
+HASHES = ROOT / "research/xg_vendor_prereg_hashes.json"
 sys.path.insert(0, str(ROOT / "scripts"))
 from vendor_dryrun import dryrun_table  # noqa: E402
 from vendor_probes import probe_subsets  # noqa: E402
@@ -29,7 +30,14 @@ THRESHOLDS = {"dist": 0.5, "angle": 0.25, "ff_def_cone": 0.25, "def_cone_ge1": 0
 def parameters(**changes) -> dict:
     pins = {name: {"path": None, "sha256": None} for name in pr.REQUIRED_PINS}
     return {"margin": None, "dry_run_margin": 0.005, "n_boot": 5000, "fold_seed": 0, "boot_seed": 0, "permutation_seed": 0,
-            "offset_logits": "calibrated", "h3_thresholds": THRESHOLDS, "h3_confirmatory_targets": ["dist", "def_cone_ge1"], "pins": pins} | changes
+            "offset_logits": "calibrated", "h3_thresholds": THRESHOLDS, "h3_confirmatory_targets": ["dist", "def_cone_ge1"],
+            "h3_control_max_r2": 0.005, "recalibrated_bootstrap": "refit", "frame_exclusions": {}, "pins": pins} | changes
+
+
+def dryrun_record(code: dict, params: dict, table_sha256: str | None) -> dict:
+    """The fields of a dry run's completion record (`scripts/vendor_dryrun.py`) that make it evidence."""
+    ran = {k: v for k, v in params.items() if k != "pins"} | {"margin_used": params["margin"] or params["dry_run_margin"]}
+    return {"identity": {"sources": code, "parameters": ran, "label_free_table": {"sha256": table_sha256}}}
 
 
 def document(params: dict, prose: str = "") -> str:
@@ -38,15 +46,19 @@ def document(params: dict, prose: str = "") -> str:
 
 
 # ------------------------------------------------------------------ parameter block
-def test_the_document_parameter_block_parses_and_lists_its_placeholders():
+def test_the_document_parameter_block_is_final():
     text = DOC.read_text()
     params = pr.read_parameters(text)
-    assert params["n_boot"] >= 5000 and params["offset_logits"] == "calibrated"
+    assert params["n_boot"] >= 5000 and params["offset_logits"] == "calibrated" and params["margin"] == 0.005
     assert params["pins"]["primary_label_free_table"]["sha256"].startswith("829aa7ed")
+    assert params["pins"]["combined_label_free_table"]["sha256"].startswith("f1e7c71f")
     assert set(params["h3_confirmatory_targets"]) == {"dist", "def_cone_ge1"}
-    open_items = pr.placeholders(text, params)
-    if params["margin"] is None:   # the draft round: delta and the combined table are still open
-        assert "margin" in open_items and "pin combined_label_free_table" in open_items
+    assert params["recalibrated_bootstrap"] in et.RECALIBRATED_BOOTSTRAPS   # owner decision A
+    assert set(params["frame_exclusions"]) <= {"1357b69b-baa6-406f-a238-12e493594942"}   # owner decision B: keep or exclude this row
+    assert params["h3_control_max_r2"] in (0.0, 0.005)   # owner decision F
+    assert pr.placeholders(text, params) == []
+    hashes = json.loads(HASHES.read_text())
+    assert hashes["status"] == "complete" and hashes["placeholders"] == [] and hashes["parameters"] == params
 
 
 @pytest.mark.parametrize(("change", "message"), [
@@ -56,6 +68,11 @@ def test_the_document_parameter_block_parses_and_lists_its_placeholders():
     ({"offset_logits": "both"}, "offset_logits"),
     ({"h3_thresholds": {"dist": 0.5}}, "h3_thresholds"),
     ({"h3_confirmatory_targets": ["xg"]}, "unknown confirmatory"),
+    ({"recalibrated_bootstrap": "both"}, "recalibrated_bootstrap"),
+    ({"h3_control_max_r2": 0.2}, "h3_control_max_r2"),
+    ({"h3_control_max_r2": -0.001}, "h3_control_max_r2"),
+    ({"frame_exclusions": {"k": "looks_odd"}}, "frame_exclusions"),
+    ({"frame_exclusions": ["k"]}, "frame_exclusions"),
 ])
 def test_the_parameter_block_refuses_bad_values(change, message):
     with pytest.raises(PreRegistrationError, match=message):
@@ -124,6 +141,45 @@ def test_the_hash_list_verifies_pins_and_is_deterministic(tmp_path):
         pr.hash_list(tmp_path, doc, ("scripts/entry.py",))
 
 
+def test_a_dry_run_is_evidence_only_for_the_code_parameters_and_table_it_ran(tmp_path):
+    doc, params = hashed_tree(tmp_path)
+    params["pins"]["primary_label_free_table"] = {"path": "plan.csv", "sha256": params["pins"]["split_plan"]["sha256"]}
+    doc.write_text(document(params))
+    code = pr.hash_list(tmp_path, doc, ("scripts/entry.py",))["code"]
+    good = dryrun_record(code, params, params["pins"]["primary_label_free_table"]["sha256"])
+    assert pr.evidence_mismatch(good, code, params, params["pins"]["primary_label_free_table"]["sha256"]) == []
+    assert pr.evidence_mismatch(good, code | {"xgpoc/other.py": "0" * 64}, params, None) == ["analysis code differs", "table differs from its pin"]
+    assert pr.evidence_mismatch(good, code, params | {"recalibrated_bootstrap": "fixed"}, params["pins"]["primary_label_free_table"]["sha256"]) == [
+        "parameters differ"]
+    assert pr.evidence_mismatch([], code, params, None) == ["not a dry-run completion record"]
+    path = tmp_path / pr.EVIDENCE["dry_run_primary"]
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(good))
+    assert not any("dry_run_primary" in item for item in pr.hash_list(tmp_path, doc, ("scripts/entry.py",))["placeholders"])
+    (tmp_path / "xgpoc/other.py").write_text("def helper():\n    return 2\n")   # the code changed after the dry run
+    assert "evidence dry_run_primary is stale (analysis code differs); rerun the dry run" in pr.hash_list(tmp_path, doc, ("scripts/entry.py",))["placeholders"]
+
+
+def test_frame_exclusions_must_be_scored_secondary_rows_of_the_pinned_combined_table(tmp_path):
+    doc, params = hashed_tree(tmp_path)
+    params["frame_exclusions"] = {"e2": "decode_corrupted_frame"}
+    doc.write_text(document(params))
+    with pytest.raises(PreRegistrationError, match="need the pinned combined"):
+        pr.hash_list(tmp_path, doc, ("scripts/entry.py",))
+    table = pd.DataFrame({"key": ["p1", "e1", "e2"], "population": ["primary", "statsbomb_only", "statsbomb_only"],
+                          "frame_status": ["ok", "0:beyond_half_end;-400:beyond_half_end", "ok"], "goal_sn": [True, False, True]})
+    table.to_parquet(tmp_path / "c.parquet")
+    params["pins"]["combined_label_free_table"] = {"path": "c.parquet", "sha256": hashlib.sha256((tmp_path / "c.parquet").read_bytes()).hexdigest()}
+    for key, message in (("e2", None), ("zz", "not a row"), ("p1", "secondary row with a scored frame"), ("e1", "secondary row with a scored frame")):
+        params["frame_exclusions"] = {key: "decode_corrupted_frame"}
+        doc.write_text(document(params))
+        if message is None:
+            assert pr.hash_list(tmp_path, doc, ("scripts/entry.py",))["parameters"]["frame_exclusions"] == {"e2": "decode_corrupted_frame"}
+        else:
+            with pytest.raises(PreRegistrationError, match=message):
+                pr.hash_list(tmp_path, doc, ("scripts/entry.py",))
+
+
 def test_the_hash_block_is_regenerated_in_place(tmp_path):
     doc, _ = hashed_tree(tmp_path)
     hashes = pr.hash_list(tmp_path, doc, ("scripts/entry.py",))
@@ -142,6 +198,9 @@ def test_a_draft_record_uses_the_dry_run_margin_while_delta_is_open(tmp_path):
     doc.write_text(document(params))
     record = pr.draft_record(doc, "primary_label_free_table", NOW)
     assert record.draft and record.margin == 0.005 and record.label_free_table_sha256 == "c" * 64
+    assert record.recalibrated_bootstrap == "refit" and record.frame_exclusions == {} and record.h3_control_max_r2 == 0.005
+    (tmp_path / "record.json").write_text(json.dumps(et.preregistration_record(record)))
+    assert et.load_preregistration(tmp_path / "record.json") == record
     assert record.sha256 == hashlib.sha256(doc.read_bytes()).hexdigest()
     params["margin"] = 0.002
     doc.write_text(document(params))
@@ -183,8 +242,9 @@ def test_h3_reading_is_decided_by_the_lower_end():
     assert shells.h3_reading(0.70, 0.52, 0.80, 0.50) == "koduje"
     assert shells.h3_reading(0.55, 0.45, 0.62, 0.50) == "nierozstrzygnięty"   # the point estimate alone does not decide
     assert shells.h3_reading(0.40, 0.30, 0.49, 0.50) == "nie koduje (poniżej progu)"
-    assert shells.h3_reading(-0.001, -0.01, 0.0, None, control=True) == "kontrola przechodzi"
-    assert shells.h3_reading(0.004, -0.01, 0.02, None, control=True) == "kontrola NIE przechodzi"
+    assert shells.h3_reading(-0.001, -0.01, 0.0, 0.0, control=True) == "kontrola przechodzi"
+    assert shells.h3_reading(0.004, -0.01, 0.02, 0.0, control=True) == "kontrola NIE przechodzi"
+    assert shells.h3_reading(0.004, -0.01, 0.02, 0.005, control=True) == "kontrola przechodzi"   # the pre-registered gate
     assert [shells.difference_reading(*ci) for ci in ((0.01, 0.1), (-0.1, -0.01), (-0.01, 0.02))] == [
         "G > DINOv2", "G < DINOv2", "brak rozróżnialnej różnicy"]
 
@@ -192,7 +252,7 @@ def test_h3_reading_is_decided_by_the_lower_end():
 def test_a_failed_control_invalidates_every_h3_reading_of_its_encoder():
     """The hard gate of the shuffled-target control: no "koduje" and no difference reading once a control decodes."""
     assert shells.h3_reading(0.70, 0.52, 0.80, 0.50, gate_passed=False) == shells.INVALID_READING
-    assert shells.h3_reading(0.20, 0.10, 0.30, None, control=True, gate_passed=False) == "kontrola NIE przechodzi"
+    assert shells.h3_reading(0.20, 0.10, 0.30, 0.005, control=True, gate_passed=False) == "kontrola NIE przechodzi"
     assert shells.difference_reading(0.01, 0.1, gate_passed=False) == shells.INVALID_READING
 
 
@@ -338,6 +398,15 @@ def test_filled_probe_shells_obey_the_control_gate():
     leaky = {row[0]: row for row in shells._probe_rows(probe_outputs(0.3), "emb_g_fold0", params)}
     assert leaky["dist_shuffled"][8] == "kontrola NIE przechodzi"
     assert all(leaky[t][8] == leaky[t][9] == shells.INVALID_READING for t in THRESHOLDS)
+
+
+def test_filled_population_shell_counts_each_exclusion():
+    exclusions = {"chosen": 797, "label_excluded": 12, "penalty": 0, "frame_excluded": 1, "no_frame": 140, "analysed": 644}
+    ladder = {"h2": {"sets": {"combined": {"exclusions": exclusions, "goals": 50, "matches": 135}}}}
+    primary, combined = shells._population_rows(ladder)
+    assert len(primary) == len(combined) == len(shells.HEADERS["S1"])
+    assert primary[:2] == ["pierwotna", "pominięta"]
+    assert combined == ["łączona", "797", "12", "0", "1", "140", "644", "50", "135"]
 
 
 def test_filled_penalty_shell_reports_the_penalties_apart():

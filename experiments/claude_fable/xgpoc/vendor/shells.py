@@ -92,12 +92,13 @@ def h2_reading(record: dict | None) -> str:
     return "nierozstrzygnięty"
 
 
-def h3_reading(value: float, lo: float, hi: float, threshold: float | None, control: bool = False, gate_passed: bool = True) -> str:
+def h3_reading(value: float, lo: float, hi: float, threshold: float, control: bool = False, gate_passed: bool = True) -> str:
     """Threshold reading of a probe: the lower end of the 95% interval decides "koduje"; the upper end below the threshold
-    gives "nie koduje"; the negative control must have R2 <= 0 (point estimate). When the encoder's control gate failed
+    gives "nie koduje"; for the negative control `threshold` is the gate's (pre-registered `h3_control_max_r2`) and the
+    point estimate must stay at or below it. When the encoder's control gate failed
     (`probes.control_gate`), no target of that encoder gets a reading."""
     if control:
-        return "kontrola przechodzi" if value <= 0 else "kontrola NIE przechodzi"
+        return "kontrola przechodzi" if value <= threshold else "kontrola NIE przechodzi"
     if not gate_passed:
         return INVALID_READING
     if lo >= threshold:
@@ -124,11 +125,12 @@ def _population_rows(ladder: dict | None) -> list[list[str]]:
     for name, label in POPULATIONS.items():
         s = None if ladder is None else ladder["h2"]["sets"].get(name)
         if s is None:
-            rows.append([label, *([""] * 7 if ladder is None else ["pominięta"] + ["—"] * 6)])
+            cells = len(HEADERS["S1"]) - 1
+            rows.append([label, *([""] * cells if ladder is None else ["pominięta"] + ["—"] * (cells - 1))])
             continue
         e = s["exclusions"]
-        rows.append([label, str(e["chosen"]), str(e["label_excluded"]), str(e["penalty"]), str(e["no_frame"]), str(e["analysed"]),
-                     str(s["goals"]), str(s["matches"])])
+        rows.append([label, str(e["chosen"]), str(e["label_excluded"]), str(e["penalty"]), str(e["frame_excluded"]), str(e["no_frame"]),
+                     str(e["analysed"]), str(s["goals"]), str(s["matches"])])
     return rows
 
 
@@ -203,17 +205,17 @@ def _h2_rows(ladder: dict | None) -> list[list[str]]:
 
 
 def _probe_rows(probes: dict | None, encoder: str, params: dict) -> list[list[str]]:
-    thresholds, confirmatory = params["h3_thresholds"], set(params["h3_confirmatory_targets"])
+    thresholds, confirmatory, control_max = params["h3_thresholds"], set(params["h3_confirmatory_targets"]), params["h3_control_max_r2"]
     if probes is not None:
         m, d = probes["metrics"], probes["differences"]
-        gate = {e: g["passed"] for e, g in control_gate(m)["encoders"].items()}
+        gate = {e: g["passed"] for e, g in control_gate(m, control_max)["encoders"].items()}
         own_gate = gate.get(encoder, False)
         pair_gate = own_gate and gate.get(REFERENCE, False)
     rows = []
     for target in (CONTROL, *TARGET_COLUMNS):
         control = target == CONTROL
         metric = "AUC" if target in BINARY_TARGETS else "R2"
-        threshold = "R2 ≤ 0" if control else f"{thresholds[target]:.2f}"
+        threshold = f"R2 ≤ {control_max:g}" if control else f"{thresholds[target]:.2f}"
         role = "kontrola negatywna" if control else ("konfirmacyjny" if target in confirmatory else "opisowy")
         head = [target, metric]
         if probes is None:
@@ -231,7 +233,7 @@ def _probe_rows(probes: dict | None, encoder: str, params: dict) -> list[list[st
             raise ValueError(f"{target}: the reference row covers {ref.n} shots, the encoder {g.n}")
         rows.append([*head, str(int(g.n)), _interval(g.value, g.lo, g.hi, 3), _interval(ref.value, ref.lo, ref.hi, 3),
                      _interval(diff.difference, diff.lo, diff.hi, 3, True), threshold, role,
-                     h3_reading(g.value, g.lo, g.hi, None if control else thresholds[target], control, own_gate),
+                     h3_reading(g.value, g.lo, g.hi, control_max if control else thresholds[target], control, own_gate),
                      "—" if control else difference_reading(diff.lo, diff.hi, pair_gate)])
     return rows
 
@@ -276,7 +278,8 @@ SHELL_TITLES = {
     "S9": "S9. Rzuty karne, raportowane osobno (poza H1–H4; prawdopodobieństwa surowe, bez przedziałów)",
 }
 HEADERS = {
-    "S1": ["Populacja", "Wybrane", "Wykluczone przy etykietach", "Karne", "Bez klatki", "Analizowane", "Gole", "Mecze"],
+    "S1": ["Populacja", "Wybrane", "Wykluczone przy etykietach", "Karne", "Klatka wykluczona", "Bez klatki", "Analizowane",
+           "Gole", "Mecze"],
     "S2": ["Szczebel", *(h for _, _, h in METRIC_COLUMNS)],
     "S4": ["Kontrast (A − B)", "Δ log-loss [95%]", "Δ log-loss, 90%", "Najmniejszy margines równoważności", "Δ AUC [95%]"],
     "S5": ["Kontrast", "Populacja", "Rola", "Log-loss A", "Log-loss B", "Δ [95%]", "Δ, 90%", "p TOST przy δ", "p przewagi",

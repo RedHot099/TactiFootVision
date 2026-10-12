@@ -223,7 +223,7 @@ def test_label_excluded_rows_leave_the_analysis_and_penalties_are_summarised_apa
     table.loc[[0, 1], "goal_sn"] = [True, False]
     table.loc[[0, 1], "pred_vendor_xg"] = 0.76
     rows, exclusions = ld.analysis_population(table, ld.POPULATION_SETS["combined"])
-    assert exclusions == {"chosen": 60, "label_excluded": 1, "penalty": 2, "no_frame": 0, "analysed": 57}
+    assert exclusions == {"chosen": 60, "label_excluded": 1, "penalty": 2, "frame_excluded": 0, "no_frame": 0, "analysed": 57}
     assert table.key[3] not in set(rows.key)
     penalties = ld.penalty_summary(table, ("primary",))
     assert (penalties["penalties"], penalties["goals"], penalties["conversion"]) == (2, 1, 0.5)
@@ -238,11 +238,42 @@ def test_analysis_population_drops_penalties_and_unscored_frames():
     table.loc[1, ["frame_status", "frame_logit_0"]] = ["0:anchor_off_tolerance", np.nan]
     table.loc[2, "population"] = "statsbomb_only"
     rows, exclusions = ld.analysis_population(table, ("primary",))
-    assert exclusions == {"chosen": 59, "label_excluded": 0, "penalty": 1, "no_frame": 1, "analysed": 57}
+    assert exclusions == {"chosen": 59, "label_excluded": 0, "penalty": 1, "frame_excluded": 0, "no_frame": 1, "analysed": 57}
     assert ld.analysis_population(table, ld.POPULATION_SETS["combined"])[1]["analysed"] == 58
     assert ld.analysis_population(table, ("primary",), splits=("test",))[0].split.eq("test").all()
     with pytest.raises(ValueError, match="labels joined"):
         ld.analysis_population(table.drop(columns="goal_sn"), ("primary",))
+
+
+def test_preregistered_frame_exclusions_leave_secondary_rows_out_of_every_rung():
+    table = synthetic_table(n_matches=10, per_match=6)
+    table.loc[[2, 3, 4], "population"] = "statsbomb_only"
+    table.loc[4, ["frame_status", "frame_logit_0"]] = ["0:beyond_half_end;-400:beyond_half_end", np.nan]
+    exclusions = {table.key[2]: "decode_corrupted_frame", table.key[3]: "decode_corrupted_frame"}
+    rows, counts = ld.analysis_population(table, ld.POPULATION_SETS["combined"], frame_exclusions=exclusions)
+    assert counts == {"chosen": 60, "label_excluded": 0, "penalty": 0, "frame_excluded": 2, "no_frame": 1, "analysed": 57}
+    assert not set(exclusions) & set(rows.key)
+    assert ld.analysis_population(table, ("primary",), frame_exclusions=exclusions)[1]["frame_excluded"] == 0
+    with pytest.raises(ValueError, match="secondary rows only"):
+        ld.analysis_population(table, ("primary",), frame_exclusions={table.key[0]: "decode_corrupted_frame"})
+    big = synthetic_table(n_matches=40, per_match=20)
+    big.loc[[2, 3, 4], "population"] = "statsbomb_only"
+    result = ld.analyse(big, "combined", ld.POPULATION_SETS["combined"], 0.005, table_draws(big, 200), frame_exclusions=exclusions)
+    assert result.exclusions["frame_excluded"] == 2 and (result.metrics.n == 798).all()
+
+
+def test_the_fixed_bootstrap_reweights_the_observed_out_of_fold_predictions():
+    """The pre-registered alternative to the per-draw refit: the recalibrated rungs' draws are those of `h2_draws`, the
+    power simulation's fixed-prediction H2; the point estimate does not depend on the choice."""
+    table = synthetic_table(n_matches=40, per_match=20, frame_signal=0.3)
+    fixed = primary_ladder(table, 0.003, 300, fold_seed=3, bootstrap="fixed").summary
+    refit = primary_ladder(table, 0.003, 300, fold_seed=3).summary
+    _, draws = ld.h2_draws(table.goal_sn.to_numpy(), table.pred_freeze_frame.to_numpy(), table.frame_logit_0.to_numpy(),
+                           table.match.to_numpy(), ld.bootstrap(table.match.to_numpy(), n_boot=300), fold_seed=3)
+    np.testing.assert_allclose(np.percentile(draws, [5, 95]), [fixed["h2"]["lo90"], fixed["h2"]["hi90"]], atol=1e-12)
+    assert fixed["h2"]["diff"] == refit["h2"]["diff"] and fixed["bootstrap"] != refit["bootstrap"]
+    with pytest.raises(ValueError, match="bootstrap must be one of"):
+        primary_ladder(table, 0.003, 50, bootstrap="parametric")
 
 
 def test_contrast_pairs_keep_stacks_recalibrated_and_include_h2():
@@ -272,11 +303,13 @@ def ladder_args(**given) -> argparse.Namespace:
 
 def test_parameters_come_from_the_preregistration_record_for_confirmatory_and_dryrun_tables():
     prereg = et.PreRegistration("a" * 64, datetime(2026, 10, 12, tzinfo=UTC), "b" * 64, margin=0.002, n_boot=6000, fold_seed=3,
-                                boot_seed=4, offset_logits="calibrated", h3_thresholds={"dist": 0.5}, h3_confirmatory_targets=("dist",),
-                                timing_rule_sha256="c" * 64, draft=True)
+                                boot_seed=4, offset_logits="calibrated", h3_thresholds={"dist": 0.5}, h3_confirmatory_targets=("dist",), h3_control_max_r2=0.0,
+                                timing_rule_sha256="c" * 64, recalibrated_bootstrap="fixed",
+                                frame_exclusions={"e1": "decode_corrupted_frame"}, draft=True)
     for kind in ("confirmatory", "dryrun"):
         params = analysis_parameters(kind, prereg, ladder_args())
         assert (params["margin"], params["n_boot"], params["fold_seed"], params["boot_seed"]) == (0.002, 6000, 3, 4)
+        assert (params["bootstrap"], params["frame_exclusions"]) == ("fixed", {"e1": "decode_corrupted_frame"})
         with pytest.raises(ValueError, match="needs --prereg"):
             analysis_parameters(kind, None, ladder_args(margin=0.005))
         with pytest.raises(ValueError, match=r"fixes the parameters; drop \['margin'\]"):
@@ -290,5 +323,6 @@ def test_parameters_come_from_the_preregistration_record_for_confirmatory_and_dr
 def test_a_development_run_takes_the_margin_from_the_command_line():
     params = analysis_parameters("development", None, ladder_args(margin=0.005, n_boot=200))
     assert (params["margin"], params["n_boot"], params["fold_seed"], params["boot_seed"]) == (0.005, 200, ld.FOLD_SEED, ld.BOOT_SEED)
+    assert (params["bootstrap"], params["frame_exclusions"]) == ("refit", {})
     with pytest.raises(ValueError, match="needs --margin"):
         analysis_parameters("development", None, ladder_args())

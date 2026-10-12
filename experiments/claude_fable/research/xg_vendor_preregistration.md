@@ -1,20 +1,65 @@
 # Pre-rejestracja: xG z jednej klatki transmisji wobec xG dostawcy i xG pozycyjnego (xg-vendor, ticket 14)
 
-Status: **SZKIC, runda robocza z 2026-10-11 (z rundą poprawek po przeglądzie kodu tego samego wieczoru).** To jeszcze nie jest pre-rejestracja. Brakuje tabeli łączonej bez etykiet (ticket 13), dry runu na niej, końcowych hashy, commita i zatwierdzenia przez właściciela. Decyzje właściciela o δ i o zakresie H3 są już wpisane (sekcje 10 i 11). Każde miejsce, które czeka na te kroki, ma znacznik „DO UZUPEŁNIENIA”. Skrypt `scripts/vendor_prereg_hashes.py` liczy te znaczniki i nie wystawi rekordu pre-rejestracji, dopóki choć jeden zostaje.
+Status: **wersja końcowa, do zatwierdzenia przez właściciela (2026-10-12).** Dokument, lista hashy (sekcja 17) i kod analizy są zamrożone w jednym commicie przed jakimkolwiek łączeniem etykiet. Otwarte zostają tylko decyzje z sekcji 0. Każda decyzja, od której zależy przebieg analizy, jest parametrem bloku parametrów (sekcja 16) i ma tam wpisaną wartość zalecaną. Zatwierdzenie bez zmian i zatwierdzenie ze zmianą prowadzą przez procedurę z sekcji 0.2.
 
-Do chwili zatwierdzenia żadna etykieta nie zostaje połączona z nowymi predykcjami. Jedynym przebiegiem analizy na tych predykcjach jest dry run na etykietach i celach sond permutowanych w obrębie meczów (sekcja 15).
+Do chwili zatwierdzenia żadna etykieta nie zostaje połączona z nowymi predykcjami. Jedynymi przebiegami analizy na tych predykcjach są dwa dry runy na etykietach i celach sond permutowanych w obrębie meczów (sekcja 15).
 
 Wszystkie liczby oznaczone „deweloperskie” pochodzą z prototypu, z tabeli deweloperskiej (ticket 07) albo z symulacji mocy (ticket 08). Modele, które je dały, widziały w treningu większość tych meczów. To nie są wyniki.
 
-## 0. Co zostaje do finalizacji
+## 0. Decyzje wymagane przed łączeniem etykiet
 
-1. Ticket 13: tabela łączona bez etykiet. Jej sha256 trafia do pinu `combined_label_free_table` w bloku parametrów (sekcja 16). Wiersze pierwotne mają być bajt w bajt takie jak w tabeli z ticketu 11. DO UZUPEŁNIENIA
-2. Reguła etykiet populacji wtórnej: wdrożona 2026-10-11 w `xgpoc.vendor.labels.table_labels` i w kroku łączenia `scripts/vendor_confirm.py` (sekcja 4). Ticket 13 dostarcza tylko wiersze, do których się stosuje.
-3. Dry run na tabeli łączonej: `scripts/vendor_dryrun.py --pin combined_label_free_table --table-dir <katalog tabeli łączonej> --out results/xgv_dryrun_combined`. DO UZUPEŁNIENIA
-4. Decyzja właściciela o δ (sekcja 10): δ = 0,005, wpisana jako `margin` w bloku parametrów.
-5. Końcowe hashe: `./run.sh python scripts/vendor_prereg_hashes.py`. Polecenie przelicza listę hashy kodu, pinów i dowodów, a potem odtwarza blok hashy w sekcji 17.
-6. Commit dokumentu, listy hashy i kodu, osobny i przed jakimkolwiek łączeniem etykiet. Potem `./run.sh python scripts/vendor_prereg_hashes.py --record results/xgv_prereg/preregistration_record.json`, które wystawia rekord pre-rejestracji z czasem tego commita.
-7. Zatwierdzenie przez właściciela. Dopiero potem ticket 15 uruchamia `scripts/vendor_confirm.py` (sekcja 18).
+### 0.1 Decyzje
+
+Decyzje A, B i F to parametry z wartością zalecaną; C i D to reguły w kodzie, które właściciel potwierdza; E to samo zatwierdzenie. Decyzje podjęte wcześniej i tylko wpisane tutaj: δ = 0,005 (sekcja 10), część konfirmacyjna H3 zawężona do `dist` i `def_cone_ge1` z poprawką Bonferroniego (sekcja 11), pakiet replikacyjny bez danych StatsBomb (ticket 16). Do decyzji zostaje:
+
+| | Decyzja | Parametr | Wartość wpisana (zalecana) | Alternatywa | Czego dotyczy |
+|---|---|---|---|---|---|
+| A | Bootstrap szczebli rekalibrowanych (H1, H2) | `recalibrated_bootstrap` | `"refit"`: modele dopasowywane od nowa w każdym losowaniu | `"fixed"`: stałe predykcje out-of-fold | przedziały i p-wartości H2 obu populacji i wariantu rekalibrowanego H1 (sekcja 7.1) |
+| B | Wiersz z uszkodzoną klatką | `frame_exclusions` | `{"1357b69b-baa6-406f-a238-12e493594942": "decode_corrupted_frame"}`: wiersz wypada | `{}`: wiersz zostaje | tylko populacja łączona (odporność H2, H1 opisowo) |
+| C | 147 celów wtórnych bez klatki | reguła w kodzie (sekcja 3) | wiersze zostają w tabeli, wypadają z H1/H2 dla każdego szczebla, S1 je liczy, lista jest przypięta | opisowa drabina szczebli bez klatki na wszystkich 797 strzałach (niewdrożona) | tylko populacja łączona |
+| D | 12 goli StatsBomb bez gola SoccerNet | reguła w kodzie (sekcja 4) | wykluczenie według flagi zamrożonego parowania (12 wierszy) | — | tylko populacja łączona |
+| F | Próg bramki kontroli negatywnej sond (H3) | `h3_control_max_r2` | `0.005`: kontrola może dać R² do 0,005 | `0.0`: próg szkicu, R² ≤ 0 | ważność każdego odczytu H3 enkodera (sekcja 11) |
+| E | Zatwierdzenie całości | — | — | — | cały dokument; potem przegląd właściciela („thermo-nuclear review”) |
+
+**A. Bootstrap szczebli rekalibrowanych.** Szczegóły i liczby w sekcji 7.1. Krótko: bootstrap z dopasowaniem w każdym losowaniu (`refit`) odtwarza rozrzut próbkowania przy prawdzie deweloperskiej (SD 0,00120 wobec 0,00119), a przy prawdzie zerowej jest o około 70% za szeroki. Bootstrap ze stałymi predykcjami (`fixed`) jest o około 13% za wąski w obu scenariuszach. Konfirmacyjne twierdzenie H2 to równoważność przy δ = 0,005; za wąski przedział czyni TOST liberalnym, a za szeroki tylko konserwatywnym, przy δ = 0,005 praktycznie bez straty mocy. **Zalecenie: `refit`** (wpisane). Koszt: test przewagi jest konserwatywny, więc mały rzeczywisty zysk z klatki łatwiej przeoczyć. `fixed` zgadza się metodą z zamrożoną tabelą mocy (ticket 08), ale błąd ma w groźniejszą stronę.
+
+**B. Wiersz z uszkodzoną klatką.** Audyt klatek i klipów ticketu 13 porównał klatkę i klip każdego z 847 celów wtórnych. Rozjechał się jeden: zdarzenie StatsBomb `1357b69b-baa6-406f-a238-12e493594942` (Stoke City 1-0 Chelsea, 1. połowa, 182,5 s, strzał tylko ze StatsBomb, typ „Open Play”). Ma klatki ze statusem „ok” i zgodnymi hashami, ale jego klip się nie wycina („Clip ends before the annotation anchor”). Klatka z offsetu 0 jest uszkodzona przy dekodowaniu: smugi i bloki na całym obrazie, kamera na kole środkowym, zegar transmisji 02:46 przy celu około 03:02. Offset tej połowy wynosi 0,36 s, więc nie tłumaczy różnicy 16 s. Wideo połowy jest w tym miejscu uszkodzone, a klatka pokazuje inny moment niż strzał. Wiersz został oceniony jak pozostałe (ticket 13 nie wymyślał reguły). Decyzja nie czyta żadnej etykiety: opiera się na audycie, który etykiet nie czyta, i na obrazie, który strzału nie pokazuje.
+- Wykluczyć (wpisane, **zalecane**): wiersz jest traktowany jak wiersz bez klatki, w każdym szczeblu H1/H2 populacji łączonej, i liczony osobno w S1 (kolumna „Klatka wykluczona”). Za: reguła „wiersz bez klatki strzału wypada” (decyzja C) obejmuje ten przypadek co do treści; zostawienie oceniałoby model klatki na obrazie innej chwili.
+- Zostawić (`frame_exclusions = {}`): wiersz wchodzi do analiz. Za: brak wykluczeń ręcznych; sygnał audytu (nieudany klip) nie wykrywa każdej uszkodzonej klatki, więc ewentualne inne takie klatki i tak zostają.
+- Skutek: 1 z 700 ocenionych wierszy wtórnych, tylko populacja łączona. H2 konfirmacyjne, H3 i H4 liczą się na populacji pierwotnej i są nietknięte. Kod waliduje parametr: każdy klucz musi być wierszem wtórnym przypiętej tabeli łączonej z ocenioną klatką (`prereg.check_frame_exclusions`), a analiza odmawia klucza wiersza pierwotnego.
+
+**C. 147 celów wtórnych bez klatki.** Wszystkie to strzały tylko ze StatsBomb; przy obu offsetach mają status `beyond_half_end`, czyli cel leży po końcu wideo połowy (doliczony czas). Leżą w 86 meczach (train 84, valid 30, test 33 wiersze). Reguła (sekcja 3): wiersz zostaje w tabeli ze statusem klatki i logitami NaN, wypada z H1/H2 populacji łączonej dla każdego szczebla (także dostawcy i pozycji, żeby wszystkie szczeble liczyły się na tych samych strzałach), S1 liczy go w kolumnie „Bez klatki”, a lista z przyczynami (`results/xgv_eval_combined/no_frame_targets.csv`) jest przypięta (pin `combined_no_frame_targets`). Niczego nie podstawiamy. Skutek: populacji łączonej brakuje 147 z 797 strzałów tylko ze StatsBomb (18%), głównie z doliczonego czasu; raport to podaje. **Zalecenie: potwierdzić regułę.** Alternatywa (osobna, opisowa drabina szczebli bez klatki na wszystkich 797) wymagałaby nowego kodu, nowych testów i powtórzenia procedury z 0.2.
+
+**D. 12 goli StatsBomb bez gola SoccerNet.** Flaga `sb_goal_without_sn_goal` zamrożonego parowania oznacza 12 wierszy wtórnych (wcześniejsze notatki podawały 11). Kod idzie za flagą i odmawia, gdy flaga nie zgadza się z wynikiem StatsBomb (sekcja 4). Wiersze te zostają w tabeli, wypadają z analiz, a S1 je liczy. Imienna lista powstaje dopiero w kroku łączenia etykiet (ticket 15, kolumna `label_exclusion`), bo wymaga wyników strzałów. **Zalecenie: potwierdzić regułę z flagą (12).**
+
+**F. Próg bramki kontroli negatywnej sond.** Szkic (runda poprawek 2026-10-11) ustalił twardą bramkę: jeśli kontrola `dist_shuffled` (odległość permutowana po wierszach) da punktowo R² > 0 dla enkodera, każdy odczyt H3 tego enkodera jest nieważny. Dry run na tabeli łączonej z tym progiem (`results/xgv_dryrun_combined_gate0/`) pokazał, że próg odpada przypadkiem: kontrola modelu foldu 0 dała R² = +0,0005 [−0,0025; +0,0027], choć wszystkie cele były tam szumem, a w dry runie pierwotnym ta sama kontrola przeszła. Kontrola na samym szumie (`results/xgv_control_gate_check/`): 50 permutacji odległości z dry runu (seedy 1–50), zamrożona procedura sond, tabela pierwotna bez etykiet, 2 721 wierszy. Bramka R² ≤ 0 odpada w 12% (fold 0), 10% (fold 1) i 12% (DINOv2) przebiegów; największe R² na szumie to 0,0017, mediana około −0,0015, żaden przebieg nie przekroczył 0,005. Przy progu 0 przebieg konfirmacyjny miałby więc około 1 do 8 szans, że sam szum unieważni konfirmacyjne H3 modelu foldu 0, a odczyt różnicy G − DINOv2 zależy jeszcze od bramki DINOv2.
+- `0.005` (wpisane, **zalecane**): bramka łapie przeciek, który daje kontroli choćby pół procent wariancji, czyli trzy razy więcej niż największy wynik szumu; przeciek tego rzędu nie przesuwa żadnego odczytu wobec progów 0,25–0,50. Na szumie fałszywe odrzucenie 0 na 150.
+- `0.0`: próg szkicu. Najsurowszy, ale z około 10–12% fałszywych unieważnień na enkoder.
+- Decyzja nie czyta żadnej etykiety ani żadnego prawdziwego celu sondy: dry run permutuje cele, a kontrola na szumie permutuje je jeszcze raz.
+
+**E. Zatwierdzenie.** Właściciel zatwierdza dokument (z decyzjami A–D i F) i wpisuje zatwierdzenie w tickecie 14. Ticket 15 nie startuje bez tego wpisu.
+
+### 0.2 Procedura po decyzjach
+
+Wartości wpisane w bloku parametrów weszły do dry runów, listy hashy i commita pre-rejestracji.
+
+Zatwierdzenie bez zmian w bloku parametrów:
+
+1. Właściciel wpisuje zatwierdzenie w tickecie 14.
+2. `./run.sh python scripts/vendor_prereg_hashes.py --check` przechodzi bez zmian.
+3. `./run.sh python scripts/vendor_prereg_hashes.py --record results/xgv_prereg/preregistration_record.json` wystawia rekord pre-rejestracji z czasem commita dokumentu.
+4. Ticket 15 (sekcja 18).
+
+Zmiana decyzji A, B lub F (zmiana parametru, kod się nie zmienia), raz, przed rekordem:
+
+1. Zmienić tylko pole `recalibrated_bootstrap`, `frame_exclusions` albo `h3_control_max_r2` w bloku parametrów i zapisać zmianę w dzienniku odstępstw (sekcja 19) jako decyzję właściciela przed łączeniem etykiet.
+2. Przenieść `results/xgv_dryrun_primary` i `results/xgv_dryrun_combined` do folderów z dopiskiem `_superseded`; nie usuwać.
+3. Powtórzyć oba dry runy, tymi samymi poleceniami co w sekcji 15.
+4. `./run.sh python scripts/vendor_prereg_hashes.py`, potem `--check`. Lista hashy liczy dry run jako dowód tylko wtedy, gdy przebieg użył bieżącego kodu, bieżących parametrów i tabeli swojego pinu (`prereg.evidence_mismatch`). Dotyczy to każdego pola bloku poza pinami, także `dry_run_margin` i `permutation_seed`. Zmiana parametru bez nowych dry runów zostawia listę w statusie szkicu, a wtedy `--record` i `vendor_confirm.py` odmawiają.
+5. Osobny commit dokumentu i listy hashy, przed jakimkolwiek łączeniem etykiet.
+6. Kroki 1–4 z poprzedniej listy.
+
+Zmiana decyzji C albo D zmienia kod analizy. Wymaga nowego ticketu: kod, testy, ta sama procedura z nowymi hashami kodu.
 
 ## 1. Pytanie i hipotezy
 
@@ -44,6 +89,7 @@ Słownictwo idzie za `GLOSSARY.md`, sekcja xG. Używamy pojęć: kotwica strzał
 | Wersja danych StatsBomb `statsbomb_open_v1` (commit open-data 4b73468f) | xG dostawcy, zdarzenia, freeze frame | 01 |
 | Komparator pozycyjny, zamrożony | szczeble: stała, odległość i kąt, zdarzenia, freeze frame | 06 |
 | G-combo wytrenowany ponownie bez 135 meczów nakładki | logity klatki przy offsetach 0 i −400 ms, embeddingi | 10, 11 |
+| Ponowne pobranie SoccerNet i ocena populacji wtórnej | klatki w czasie StatsBomb, logity, embeddingi, tabela łączona bez etykiet | 12, 13 |
 | Test źródła czasu | werdykt „independent” | 04 |
 | Reguła δ i symulacja mocy | tabela mocy; reguła wybiera δ = 0,005 | 08 |
 
@@ -64,21 +110,36 @@ Nie należą:
 - 2 niesparowane karne;
 - gole samobójcze, które w StatsBomb nie są zdarzeniami Shot.
 
-Klatki populacji wtórnej wycina się w czasie StatsBomb plus offset połowy (`anchor_convention = statsbomb_time`). Werdykt „independent” znaczy, że te klatki mogą leżeć kilkaset ms od kontaktu. Raport musi to napisać. Strzał wtórny bez klatki zostaje w tabeli ze statusem klatki i wypada z analiz; S1 go liczy.
+Klatki populacji wtórnej wycina się w czasie StatsBomb plus offset połowy (`anchor_convention = statsbomb_time`). Werdykt „independent” znaczy, że te klatki mogą leżeć kilkaset ms od kontaktu. Raport musi to napisać.
 
-**Łączona** = pierwotna ∪ wtórna. Liczności po tickecie 13: DO UZUPEŁNIENIA
+Ticket 13 ocenił klatki 700 z 847 celów wtórnych przy obu offsetach: 50 odzyskanych goli i 650 strzałów tylko ze StatsBomb. Pozostałe 147 (wszystkie tylko ze StatsBomb) nie ma klatki przy żadnym offsecie, bo cel leży po końcu wideo połowy (`frame_status = 0:beyond_half_end;-400:beyond_half_end`).
+
+**Reguła dla wierszy bez klatki (decyzja C).** Wiersz bez ocenionej klatki przy offsecie 0 zostaje w tabeli ze statusem klatki i logitami NaN. Wypada z H1/H2 dla każdego szczebla, także szczebli bez klatki, żeby cała drabina liczyła się na tych samych strzałach. S1 liczy go w kolumnie „Bez klatki”. Lista z przyczynami to `results/xgv_eval_combined/no_frame_targets.csv` (pin `combined_no_frame_targets`).
+
+**Wykluczenia klatek z bloku parametrów (decyzja B).** Wiersz wtórny wymieniony w `frame_exclusions` jest traktowany jak wiersz bez klatki i liczony osobno (S1, kolumna „Klatka wykluczona”). Wartość wpisana wyklucza jeden wiersz z uszkodzoną klatką (sekcja 0.1).
+
+**Łączona** = pierwotna ∪ wtórna, tabela `results/xgv_eval_combined/eval_table_labels_absent.parquet` (pin `combined_label_free_table`, ticket 13). Liczności:
+
+| Populacja | Wiersze | train / valid / test | Z ocenioną klatką | Bez klatki |
+|---|---|---|---|---|
+| pierwotna | 2 754 | 1 478 / 639 / 637 | 2 754 | 0 |
+| odzyskane gole | 50 | 19 / 15 / 16 | 50 | 0 |
+| tylko StatsBomb | 797 | 427 / 216 / 154 | 650 | 147 |
+| razem | 3 601 | | 3 454 | 147 |
+
+Wiersze pierwotne tabeli łączonej są bajt w bajt tabelą ticketu 11 (pin `primary_label_free_table`; dowód w `results/xgv_eval_combined/complete.json`, `summary.primary_identity`). Macierze embeddingów mają 3 454 wiersze: najpierw macierze ticketu 11, potem 700 wierszy wtórnych; wiersze bez klatki nie mają embeddingu. Karne populacji wtórnej to 7 odzyskanych goli (typ strzału StatsBomb „Penalty”).
 
 **Wykluczenia z analiz:**
 
 | Analiza | Populacja | Wykluczone |
 |---|---|---|
-| H1, H2 | pierwotna (H2: konfirmacyjnie) i łączona (odporność) | karne (`is_penalty`), wiersze bez ocenionej klatki przy offsecie 0 |
+| H1, H2 | pierwotna (H2: konfirmacyjnie) i łączona (odporność) | wykluczenia przy etykietach (`label_exclusion`), karne (`is_penalty`), wykluczenia klatek (`frame_exclusions`), wiersze bez ocenionej klatki przy offsecie 0; każdy szczebel na tych samych wierszach |
 | H3 | pierwotna | karne (typ strzału StatsBomb „Penalty”, zmienna bez etykiety; na pierwotnej ten sam zbiór co `is_penalty`), wiersze bez embeddingu; dla każdego celu wiersze bez jego wartości |
 | H4 | pierwotna, tylko strzały bez gola SoccerNet | karne, wiersze bez ocenionej klatki; w kontraście offsetów także wiersze bez logitu przy −400 ms |
 
 Pominiętej klatki ani brakującego celu niczym nie zastępujemy.
 
-**Mecze i losowania.** Strzały wtórne leżą w tych samych 135 meczach. Losowania bootstrapu zależą tylko od zbioru meczów tabeli (sekcja 7), więc tabela pierwotna i łączona mają te same losowania. Przebieg konfirmacyjny liczy wszystko na tabeli łączonej. Jeśli zbiór meczów tabeli łączonej różni się od 135 meczów tabeli pierwotnej, odstępstwo trafia do dziennika (sekcja 19), a obowiązują losowania tabeli łączonej.
+**Mecze i losowania.** Strzały wtórne leżą w tych samych 135 meczach; zbiór meczów tabeli łączonej jest równy zbiorowi tabeli pierwotnej (sprawdzone na tabelach bez etykiet). Losowania bootstrapu zależą tylko od zbioru meczów tabeli (sekcja 7), więc tabela pierwotna i łączona mają te same losowania. Przebieg konfirmacyjny liczy wszystko na tabeli łączonej. Gdyby zbiór meczów tabeli łączonej różnił się od 135 meczów tabeli pierwotnej, odstępstwo trafia do dziennika (sekcja 19), a obowiązują losowania tabeli łączonej; S1 obu dry runów podaje liczbę meczów.
 
 ## 4. Etykiety (decyzja D4)
 
@@ -146,7 +207,10 @@ Wartość K1 to minimum po siatce, więc jest optymistyczna przez selekcję, o r
   - Losowania liczy `xgpoc.vendor.draws.table_draws`, czyli `match_draw_counts`: klucze `np.unique` meczów całej tabeli, `default_rng(boot_seed = 0)`, każde losowanie to `rng.choice(M, M)`. Liczba losowań `n_boot` = 5 000.
   - Mecz wylosowany k razy wchodzi z wagą k.
   - Te same losowania obsługują każdą populację, każdy szczebel, każdy kontrast i każdą hipotezę (H1–H4). Podzbiór czyta kolumny swoich meczów.
-  - Wariant rekalibrowany (szczeble pojedyncze i oba stosy, więc też H2): w każdym losowaniu rekalibracja i stosy są dopasowywane od nowa na wylosowanych meczach (`xgpoc.vendor.refit`). Foldy zostają te same, kopie meczu leżą w jego foldzie, wagą strzału jest liczba wylosowań jego meczu. Model to ten sam cel co regresja logistyczna sklearn z C = 10⁶, rozwiązany do zbieżności metodą Newtona (tak samo liczy się estymata punktowa, `ladder.crossfit`). Każdą metrykę liczy się z predykcji out-of-fold dopasowanych w danym losowaniu.
+  - Wariant rekalibrowany (szczeble pojedyncze i oba stosy, więc też H2), według parametru `recalibrated_bootstrap` (decyzja A, sekcja 7.1):
+    - `refit` (wpisane): w każdym losowaniu rekalibracja i stosy są dopasowywane od nowa na wylosowanych meczach (`xgpoc.vendor.refit`). Foldy zostają te same, kopie meczu leżą w jego foldzie, wagą strzału jest liczba wylosowań jego meczu. Model to ten sam cel co regresja logistyczna sklearn z C = 10⁶, rozwiązany do zbieżności metodą Newtona (tak samo liczy się estymata punktowa, `ladder.crossfit`). Każdą metrykę liczy się z predykcji out-of-fold dopasowanych w danym losowaniu.
+    - `fixed`: predykcje out-of-fold z próby obserwowanej zostają stałe, losowanie tylko je przeważa (metoda zamrożonej symulacji mocy, `ladder.h2_draws`).
+    - Estymata punktowa nie zależy od wyboru.
   - Wariant surowy: nic nie jest dopasowywane, zapisane prawdopodobieństwa dostają wagi meczów.
   - Przedziały są percentylowe.
 - **TOST** przy marginesie d, na poziomie 5% na stronę:
@@ -154,12 +218,32 @@ Wartość K1 to minimum po siatce, więc jest optymistyczna przez selekcję, o r
   - p TOST = max(odsetek losowań ≤ −d, odsetek ≥ d).
 - **Test przewagi**, jednostronny, dla log-lossu (A − B): p = odsetek losowań ≥ 0, przewaga przy p ≤ 0,05. Dla AUC: odsetek ≤ 0.
 - **Krzywe równoważności**: p TOST na siatce marginesów od 0 do 0,01 co 0,0001, dla każdej pary szczebli. Najmniejszy margines to pierwszy punkt siatki z równoważnością.
-- **Znana granica i jej zmiana w rundzie poprawek.** W tickecie 08 bootstrap ze stałymi predykcjami był o około 8% węższy od rzeczywistego rozrzutu próbkowania (13% przy prawdzie zerowej), więc TOST byłby lekko liberalny. Przegląd kodu (2026-10-11) kazał dopasowywać modele w każdym losowaniu. Kontrola na bazie deweloperskiej ticketu 08 (80 symulowanych badań na scenariusz, 500 losowań, `results/xgv_refit_check/`, liczby deweloperskie):
-  - prawda deweloperska: SD próbkowania 0,00119 (1 000 badań ticketu 08), bootstrap ze stałymi predykcjami 0,00103, bootstrap z dopasowaniem w losowaniu 0,00120;
-  - prawda zerowa: SD próbkowania 0,00042, stałe predykcje 0,00036, dopasowanie w losowaniu 0,00072, czyli o około 70% za szeroko;
-  - w obu scenariuszach średnia losowań z dopasowaniem leży o około +0,0002 powyżej estymaty punktowej (zduplikowane mecze zmniejszają efektywną liczbę meczów i zwiększają koszt dopasowania stosu).
-  Skutki: przy prawdzie bliskiej zeru TOST jest konserwatywny (przy δ = 0,005 bez praktycznej straty mocy, bo górny koniec przedziału 90% leży około 0,0017), a test przewagi jest konserwatywny przez przesunięcie. Tabela mocy z sekcji 10 pochodzi z bootstrapu ze stałymi predykcjami (ticket 08, zamrożona); `ladder.h2_draws` zostaje jej metodą. Dopasowanie krzyżowe liczy się teraz do zbieżności (wcześniej sklearn z domyślną tolerancją, około 10⁻³ w prawdopodobieństwie od optimum), więc powtórka symulacji dałaby liczby różne w ostatnich miejscach. Raport podaje obie granice i niczego nie poprawia po fakcie.
 - **Zatrzymanie.** Jeśli któreś losowanie nie ma gola albo ma same gole, kod przerywa analizę. Raport opisuje wtedy przerwę i nie podstawia innej metody.
+
+### 7.1 Decyzja właściciela A: bootstrap z dopasowaniem w losowaniu czy ze stałymi predykcjami
+
+Ticket 08 liczył moc bootstrapem ze stałymi predykcjami. Przegląd kodu (2026-10-11) kazał dopasowywać rekalibrację i stosy w każdym losowaniu, bo stałe predykcje pomijają zmienność samego dopasowania. Kontrola na bazie deweloperskiej ticketu 08 (`results/xgv_refit_check/refit_check.json`; 80 symulowanych badań na scenariusz, 500 losowań; liczby deweloperskie) pokazuje, że żaden wariant nie jest dokładny:
+
+| SD różnicy H2 | Prawda deweloperska (zysk z klatki około −0,0012) | Prawda zerowa (klatka nic nie dodaje) |
+|---|---|---|
+| rzeczywisty rozrzut próbkowania (1 000 badań ticketu 08; w tych 80 badaniach) | 0,00119 (0,00099) | 0,00042 (0,00044) |
+| `fixed`: średnie SD bootstrapu | 0,00103 (−13%) | 0,00036 (−14%) |
+| `refit`: średnie SD bootstrapu | 0,00120 (+1%) | 0,00072 (+71%) |
+| `refit`: średnia losowań minus estymata punktowa | +0,00022 | +0,00025 |
+
+Procenty liczone są względem rozrzutu z 1 000 badań. Przesunięcie losowań `refit` w górę bierze się stąd, że zduplikowane mecze zmniejszają efektywną liczbę meczów i zwiększają koszt dopasowania drugiego współczynnika stosu.
+
+Skutki dla rozstrzygnięć H2:
+
+| | `refit` (wpisane) | `fixed` |
+|---|---|---|
+| TOST przy δ = 0,005 (twierdzenie konfirmacyjne) | konserwatywny przy prawdzie bliskiej zeru; bez praktycznej straty mocy, bo górny koniec przedziału 90% leży daleko od 0,005 (dry run pierwotny: +0,0019) | lekko liberalny w obu scenariuszach |
+| test przewagi | konserwatywny przez przesunięcie i szerokość; mały rzeczywisty zysk łatwiej przeoczyć | bliższy nominalnemu, lekko liberalny |
+| zgodność z tabelą mocy (sekcja 10) | nie; rzeczywista moc przy prawdzie deweloperskiej może być nieco niższa niż 0,849 | tak, to metoda symulacji mocy |
+
+**Zalecenie: `refit`.** Twierdzenie konfirmacyjne to równoważność. Za wąski przedział daje fałszywą równoważność, a za szeroki tylko utrudnia jej wykazanie; przy δ = 0,005 tej straty praktycznie nie widać. Przy prawdzie deweloperskiej `refit` odtwarza rozrzut próbkowania prawie dokładnie. Cena to konserwatywny test przewagi; raport podaje ją wprost.
+
+Wybór obejmuje każdy szczebel wariantu rekalibrowanego (H1, H2 i klatka + dostawca, obie populacje). Wariant surowy niczego nie dopasowuje i od wyboru nie zależy. Kod: `ladder.analyse(..., bootstrap=...)`, parametr z rekordu pre-rejestracji. Raport podaje własności wybranego wariantu z tej tabeli (sekcja 19) i niczego nie poprawia po fakcie.
 
 ## 8. H1: drabina informacji (opisowa)
 
@@ -226,7 +310,7 @@ Opcje przedstawione właścicielowi przed decyzją (wybrał A):
 
 Niezależnie od opcji raport podaje najmniejszy margines równoważności i całą krzywą równoważności H2, więc czytelnik może przyłożyć własny próg.
 
-**Decyzja właściciela (2026-10-11, wieczór):** δ = 0,005, opcja A, czyli reguła z ticketu 08 bez zmian. Wartość stoi w polu `margin` bloku parametrów (sekcja 16). Moc z tabeli powyżej policzono bootstrapem ze stałymi predykcjami; bootstrap analizy dopasowuje modele w każdym losowaniu (sekcja 7), więc rzeczywista moc przy prawdzie deweloperskiej może być nieco niższa niż 0,849.
+**Decyzja właściciela (2026-10-11, wieczór):** δ = 0,005, opcja A, czyli reguła z ticketu 08 bez zmian. Wartość stoi w polu `margin` bloku parametrów (sekcja 16). Moc z tabeli powyżej policzono bootstrapem ze stałymi predykcjami. Przy wpisanej wartości decyzji A (`refit`, sekcja 7.1) bootstrap analizy dopasowuje modele w każdym losowaniu, więc rzeczywista moc przy prawdzie deweloperskiej może być nieco niższa niż 0,849. Dopasowanie krzyżowe liczy się teraz do zbieżności (wcześniej sklearn z domyślną tolerancją, około 10⁻³ w prawdopodobieństwie od optimum), więc powtórka symulacji dałaby liczby różne w ostatnich miejscach.
 
 ## 11. H3: co klatka koduje (konfirmacyjna)
 
@@ -249,7 +333,7 @@ Cele binarne mierzy AUC wyniku sondy, ciągłe R² predykcji out-of-fold. Obok R
 - zagnieżdżona walidacja krzyżowa grupowana po meczach: zewnętrznie `GroupKFold(5)`, wewnętrznie `GroupKFold(3)` do wyboru α z siatki 1…10⁶ (13 wartości), przy remisie mniejsze α;
 - standaryzacja dopasowana tylko na wierszach, na których model się uczy.
 
-Kontrola negatywna `dist_shuffled`: odległość permutowana po wierszach sondy (`default_rng(0)`). Musi dać R² ≤ 0 (punktowo) dla każdego enkodera. Jeśli dla któregoś enkodera nie da, H3 dla tego enkodera jest nieważna i raport to podaje. To twarda bramka w kodzie (`probes.control_gate`): `vendor_probes.py` zapisuje wyniki z bramką oznaczoną jako niezaliczona i kończy się kodem 3, a szablony S6 i S7 wpisują dla każdego celu tego enkodera „nieważny: kontrola negatywna nie przechodzi” zamiast odczytu progu; tak samo odczyt różnicy, gdy bramki nie przechodzi enkoder albo DINOv2.
+Kontrola negatywna `dist_shuffled`: odległość permutowana po wierszach sondy (`default_rng(0)`). Musi dać R² ≤ `h3_control_max_r2` (punktowo) dla każdego enkodera; wartość wpisana 0,005, decyzja F (sekcja 0.1). Jeśli dla któregoś enkodera nie da, H3 dla tego enkodera jest nieważna i raport to podaje. To twarda bramka w kodzie (`probes.control_gate`): `vendor_probes.py` zapisuje wyniki z bramką oznaczoną jako niezaliczona i kończy się kodem 3, a szablony S6 i S7 wpisują dla każdego celu tego enkodera „nieważny: kontrola negatywna nie przechodzi” zamiast odczytu progu; tak samo odczyt różnicy, gdy bramki nie przechodzi enkoder albo DINOv2.
 
 **Enkodery** (embeddingi wszystkich 2 754 strzałów pierwotnych, ticket 11):
 
@@ -360,10 +444,12 @@ Kod `xgpoc.vendor.shells` wypełnia szablony S1–S9 z wyników skryptów analiz
 
 #### S1. Populacje analizy H1/H2: liczności i wykluczenia
 
-| Populacja | Wybrane | Wykluczone przy etykietach | Karne | Bez klatki | Analizowane | Gole | Mecze |
-|---|---|---|---|---|---|---|---|
-| pierwotna |  |  |  |  |  |  |  |
-| łączona |  |  |  |  |  |  |  |
+Każdy wiersz liczy się raz, pod pierwszą przyczyną z kolejności kolumn: wykluczenie przy etykietach, karny, klatka wykluczona (`frame_exclusions`), brak ocenionej klatki.
+
+| Populacja | Wybrane | Wykluczone przy etykietach | Karne | Klatka wykluczona | Bez klatki | Analizowane | Gole | Mecze |
+|---|---|---|---|---|---|---|---|---|
+| pierwotna |  |  |  |  |  |  |  |  |
+| łączona |  |  |  |  |  |  |  |  |
 
 #### S2. H1, drabina informacji, warianty rekalibrowane (populacja: pierwotna; ta sama tabela dla łączonej)
 
@@ -415,7 +501,7 @@ Kod `xgpoc.vendor.shells` wypełnia szablony S1–S9 z wyników skryptów analiz
 
 | Cel | Metryka | n | G-combo [95%] | DINOv2 [95%] | G − DINOv2 [95%] | Próg | Rola | Odczyt progu | Odczyt różnicy |
 |---|---|---|---|---|---|---|---|---|---|
-| dist_shuffled | R2 |  |  |  |  | R2 ≤ 0 | kontrola negatywna |  |  |
+| dist_shuffled | R2 |  |  |  |  | R2 ≤ 0.005 | kontrola negatywna |  |  |
 | dist | R2 |  |  |  |  | 0.50 | konfirmacyjny |  |  |
 | angle | R2 |  |  |  |  | 0.25 | opisowy |  |  |
 | ff_def_cone | R2 |  |  |  |  | 0.25 | opisowy |  |  |
@@ -472,13 +558,13 @@ Dry run (`scripts/vendor_dryrun.py`) przechodzi całą ścieżkę konfirmacyjną
    - `default_rng([permutation_seed, 1])`.
    Potem etykiety przechodzą przez logowany krok łączenia. Żadna niepermutowana etykieta nie jest łączona z predykcją ani wypisywana.
 3. Cele sond: wiersze tabeli strzałów StatsBomb dla zdarzeń tabeli (lokalizacja, część ciała, freeze frame) są permutowane razem w warstwach (mecz, karny), `default_rng([permutation_seed, 2])`. Sondy liczą wszystkie cele z permutowanych wierszy.
-4. Rekord roboczy pre-rejestracji (`draft = true`) bieżącego dokumentu podaje parametry (δ = 0,005 z bloku parametrów). Rekord roboczy nie dopuszcza łączenia etykiet z tabelą konfirmacyjną.
+4. Rekord roboczy pre-rejestracji (`draft = true`) bieżącego dokumentu podaje parametry z bloku parametrów (δ = 0,005, decyzje A i B z wartościami wpisanymi). Rekord roboczy nie dopuszcza łączenia etykiet z tabelą konfirmacyjną.
 5. Trzy skrypty analizy biegną z tymi samymi argumentami co w przebiegu konfirmacyjnym (`confirm.analysis_commands`): każdy czyta z rekordu wszystkie swoje parametry, z linii poleceń nie przyjmuje żadnego:
-   - `vendor_ladder.py`: δ, liczba losowań, ziarna;
-   - `vendor_probes.py`: liczba losowań, ziarno bootstrapu, progi H3 i cele konfirmacyjne;
+   - `vendor_ladder.py`: δ, liczba losowań, ziarna, bootstrap szczebli rekalibrowanych, wykluczenia klatek;
+   - `vendor_probes.py`: liczba losowań, ziarno bootstrapu, progi H3, cele konfirmacyjne i próg bramki kontroli;
    - `vendor_leakage.py`: liczba losowań, ziarno, logity offsetów i hash reguły, z którym przyjmuje rekord werdyktu.
    Niezaliczona bramka kontroli sond (kod 3) jest zapisywana, nie przerywa przebiegu.
-6. Kod wypełnia szablony S1–S9 (`shells.md`) i zapisuje rekord ukończenia z hashem dokumentu i kodu.
+6. Kod wypełnia szablony S1–S9 (`shells.md`) i zapisuje rekord ukończenia z hashem dokumentu, kodem (sha256 każdego pliku domknięcia kodu), parametrami i hashem tabeli. Lista hashy liczy przebieg jako dowód tylko wtedy, gdy te trzy rzeczy zgadzają się z bieżącymi (sekcja 17).
 
 Permutacja w obrębie meczów zachowuje różnice między meczami (częstość goli, średnią odległość). Liczby z dry run nie muszą więc leżeć przy zerze. Nie są wynikami i nie wolno ich cytować jako wyników.
 
@@ -487,28 +573,33 @@ Czego permutacja nie ukrywa:
 - liczności w S1 (wiersze, karne, gole, mecze), znane z indeksu;
 - wiersze H4, które nie czytają etykiety: średni kontrast offsetów i ramię reszty czasowej. Różnica logitów, kontrast i reszta czasowa są kolumnami tabeli bez etykiet. Etykieta wchodzi tylko przez wybór strzałów bez gola, a ten permutacja zmienia w niewielkim stopniu. Te wiersze dry run pokazuje więc w przybliżeniu w wartościach przebiegu konfirmacyjnego. H4 jest opisowa i żadna decyzja nie zależy od tych wierszy.
 
-Przebiegi:
+Przebiegi, od najstarszego. Obowiązują dwa ostatnie; ich rekordy ukończenia są dowodami w sekcji 17. Starsze foldery zostają jako historia.
 
-- tabela pierwotna, 2026-10-11, pierwsza wersja kodu (commit bdc3af3; 43 s CPU, 5 000 losowań, stałe predykcje w losowaniach). Jej wyniki zastąpił przebieg po rundzie poprawek, opisany niżej; odczyty poniżej dotyczą pierwszej wersji.
-  - Wypełnione są wszystkie szablony; populacja łączona jest oznaczona jako pominięta, bo tabela ma tylko wiersze pierwotne.
-  - Analizowane: 2 721 strzałów w H1/H2, 2 721 (cele bramkarza 2 719) w H3, 2 347 strzałów bez gola w H4.
-  - Kontrola negatywna sond przechodzi dla obu modeli foldu i DINOv2.
-  - Ramię reszty czasowej uruchomiło się z werdyktem przypiętym do hasha reguły.
-  - Odczyt H2 na etykietach permutowanych to „równoważne przy δ; stos istotnie gorszy”. Gdy nic nie przewiduje etykiety, stos płaci za drugi współczynnik. To zgadza się z dodatnią średnią H2 przy prawdzie zerowej w symulacji mocy (+0,0002).
-- tabela łączona: DO UZUPEŁNIENIA (`results/xgv_dryrun_combined/`).
-
-- tabela pierwotna po rundzie poprawek, 2026-10-11, wyniki w `results/xgv_dryrun_primary/` (hash rekordu ukończenia w sekcji 17): 87 s CPU, 5 000 losowań, modele dopasowywane w każdym losowaniu, wszystkie parametry trzech skryptów z rekordu roboczego.
-  - Wypełnione są szablony S1–S9; populacja łączona jest oznaczona jako pominięta.
-  - Analizowane: 2 721 strzałów w H1/H2 (0 wykluczonych przy etykietach; 33 karne, 22 gole, w S9), 2 721 (cele bramkarza 2 719) w H3, 2 347 strzałów bez gola w H4.
-  - Bramka kontroli sond przechodzi dla obu modeli foldu i DINOv2 (największe R² kontroli −0,0006).
-  - Ramię reszty czasowej uruchomiło się z werdyktem przyjętym pod hashem reguły z rekordu.
-  - H2 na etykietach permutowanych: Δ = +0,0005 [−0,0003; +0,0022], SD bootstrapu 0,00064 wobec 0,00022 w pierwszej wersji (stałe predykcje). To ten sam efekt co przy prawdzie zerowej w sekcji 7. Odczyt: „równoważne przy δ: klatka nie dodaje więcej niż δ” (p TOST 0,0002, p przewagi 0,93).
+- `results/xgv_dryrun_primary_bdc3af3/`: tabela pierwotna, pierwsza wersja kodu (commit bdc3af3; stałe predykcje w losowaniach). Odczyt H2 „równoważne przy δ; stos istotnie gorszy”.
+- `results/xgv_dryrun_primary_16a3c9d/`: tabela pierwotna po rundzie poprawek (dopasowanie w każdym losowaniu). H2 +0,0005 [−0,0003; +0,0022], SD bootstrapu 0,00064 wobec 0,00022 przy stałych predykcjach w pierwszej wersji.
+- `results/xgv_dryrun_primary_gate0/` i `results/xgv_dryrun_combined_gate0/` (2026-10-12): kod końcowy z bramką kontroli R² ≤ 0. Na tabeli łączonej bramka modelu foldu 0 odpadła na szumie (R² kontroli +0,0005), `vendor_probes.py` zakończył się kodem 3, a szablony S6 i S7 wpisały „nieważny” zgodnie z regułą. Z tego wynikła decyzja F (sekcja 0.1); oba przebiegi zastąpiły następne.
+- **`results/xgv_dryrun_primary/`** (2026-10-12, 80 s CPU): tabela pierwotna, kod i parametry końcowe (5 000 losowań, `refit`, próg bramki 0,005).
+  - S1: 2 754 wybrane, 33 karne, 2 721 analizowanych, 374 gole (permutacja w warstwach samej tabeli pierwotnej nie zmienia ich liczby), 135 meczów; populacja łączona oznaczona jako pominięta.
+  - H2 na etykietach permutowanych: Δ = +0,0005 [−0,0003; +0,0022], 90% [−0,0001; +0,0019], SD bootstrapu 0,00064, p TOST 0,0002, p przewagi 0,93, odczyt „równoważne przy δ: klatka nie dodaje więcej niż δ”.
+  - H3: 2 721 strzałów (cele bramkarza 2 719); bramka kontroli przechodzi dla wszystkich trzech enkoderów (największe R² kontroli −0,0006).
+  - H4: 2 347 strzałów bez gola w 135 meczach, 2 283 z resztą w ±200 ms; ramię reszty czasowej uruchomione z werdyktem „independent” przyjętym pod hashem reguły 42dcf710….
+  - S9: 33 karne, 22 gole.
+- **`results/xgv_dryrun_combined/`** (2026-10-12, 130 s CPU): tabela łączona, te same parametry.
+  - S1, populacja łączona: 3 601 wybranych, 12 wykluczonych przy etykietach (kody wykluczenia zostają przy swoich wierszach), 40 karnych, 1 klatka wykluczona (decyzja B), 147 bez klatki (decyzja C), 3 401 analizowanych, 135 meczów. Populacja pierwotna: 2 721 analizowanych.
+  - Liczba goli w obu populacjach (318 pierwotna, 398 łączona) nie jest prawdziwa: w tej tabeli warstwy permutacji obejmują wiersze pierwotne i wtórne razem, więc gole przechodzą między populacjami.
+  - H2 na etykietach permutowanych: pierwotna Δ = −0,0005 [−0,0023; +0,0015], łączona −0,0002 [−0,0015; +0,0013]; oba odczyty „równoważne przy δ: klatka nie dodaje więcej niż δ”. Klatka + dostawca: tak samo.
+  - H3: sondy liczą tylko wiersze pierwotne (847 wierszy wtórnych pominiętych); bramka kontroli przechodzi (największe R² kontroli: fold 0 +0,0005, fold 1 0,0000, DINOv2 −0,0009, próg 0,005).
+  - H4: 2 403 strzały bez gola (inny wybór niż w dry runie pierwotnym, z tego samego powodu co gole), ramię reszty czasowej uruchomione.
+  - S9: 40 karnych (33 pierwotne i 7 odzyskanych goli).
+- Na celach permutowanych w obrębie meczów sonda przewiduje między meczami odwrotnie (np. AUC `def_cone_ge1` dla foldu 0: 0,47 [0,45; 0,49] w dry runie łączonym). To znane obciążenie walidacji grupowanej, gdy cel niesie tylko różnice między meczami, a nie błąd kodu; liczby dry runu nie są wynikami.
 
 Przygotowanie dry run ujawniło dwa błędy ścieżki konfirmacyjnej, naprawione przed zamrożeniem kodu. Pierwszy: `vendor_probes.py` szukał względnych plików embeddingów w katalogu roboczym, a nie w katalogu tabeli, i przerwałby przebieg konfirmacyjny. Drugi: rekordy sond i przecieku oznaczały każdą tabelę inną niż deweloperska jako „confirmatory run”.
 
 ## 16. Parametry
 
-Blok poniżej jest jedynym źródłem parametrów przebiegu konfirmacyjnego. `scripts/vendor_prereg_hashes.py` go czyta i sprawdza każdy pin z plikiem. Rekord pre-rejestracji przenosi `margin`, `n_boot`, `fold_seed`, `boot_seed`, `offset_logits`, `h3_thresholds`, `h3_confirmatory_targets` i hash pinu `timing_rule`. `vendor_ladder.py`, `vendor_probes.py` i `vendor_leakage.py` czytają je z rekordu, wymagają co najmniej 5 000 losowań i dla tabeli dry run albo konfirmacyjnej nie przyjmują ich z linii poleceń ani opcji deweloperskich. `null` to pozycja do uzupełnienia. Hash pinu `timing_rule` jest tym, z którym `vendor_leakage.py` przyjmuje werdykt.
+Blok poniżej jest jedynym źródłem parametrów przebiegu konfirmacyjnego. `scripts/vendor_prereg_hashes.py` go czyta i sprawdza każdy pin z plikiem. Rekord pre-rejestracji przenosi `margin`, `n_boot`, `fold_seed`, `boot_seed`, `offset_logits`, `h3_thresholds`, `h3_confirmatory_targets`, `h3_control_max_r2`, `recalibrated_bootstrap`, `frame_exclusions` i hash pinu `timing_rule`. `vendor_ladder.py`, `vendor_probes.py` i `vendor_leakage.py` czytają je z rekordu, wymagają co najmniej 5 000 losowań i dla tabeli dry run albo konfirmacyjnej nie przyjmują ich z linii poleceń ani opcji deweloperskich. `null` to pozycja do uzupełnienia (żadna nie zostaje). Hash pinu `timing_rule` jest tym, z którym `vendor_leakage.py` przyjmuje werdykt.
+
+Decyzje właściciela z sekcji 0 to pola `recalibrated_bootstrap` (A), `frame_exclusions` (B) i `h3_control_max_r2` (F), z wartościami zalecanymi. `frame_exclusions` przyjmuje tylko kody z `evaltable.FRAME_EXCLUSIONS` i tylko klucze wierszy wtórnych z ocenioną klatką przypiętej tabeli łączonej. Piny `combined_no_frame_targets` i `combined_frame_clip_audit` przypinają listę 147 celów bez klatki i wynik audytu klatek i klipów, na których opierają się decyzje B i C.
 
 <!-- prereg-parameters:begin -->
 ```json
@@ -523,12 +614,22 @@ Blok poniżej jest jedynym źródłem parametrów przebiegu konfirmacyjnego. `sc
   "h3_thresholds": {"dist": 0.5, "angle": 0.25, "ff_def_cone": 0.25, "def_cone_ge1": 0.7, "def_cone_ge2": 0.7, "gk_depth": 0.25,
                     "gk_off_line_abs": 0.25, "gk_dist_goal": 0.25, "ff_opp_3m": 0.25, "head": 0.7},
   "h3_confirmatory_targets": ["dist", "def_cone_ge1"],
+  "h3_control_max_r2": 0.005,
+  "recalibrated_bootstrap": "refit",
+  "frame_exclusions": {"1357b69b-baa6-406f-a238-12e493594942": "decode_corrupted_frame"},
   "pins": {
     "primary_label_free_table": {"path": "results/xgv_eval_primary/eval_table_labels_absent.parquet",
                                  "sha256": "829aa7edb59e99423cdf379c8cb656c59536a42bea38f4f64bec93cc9fd3c741"},
     "primary_label_free_sidecar": {"path": "results/xgv_eval_primary/eval_table_labels_absent.json",
                                    "sha256": "628b8ba7b93528a81eb9c26ad5e67485a4a4090c977e10a3dd3bb902bda438ed"},
-    "combined_label_free_table": {"path": null, "sha256": null},
+    "combined_label_free_table": {"path": "results/xgv_eval_combined/eval_table_labels_absent.parquet",
+                                  "sha256": "f1e7c71f59a57f610bcc8fdf7caf385f689d994ab85606df0805cc842ad50ab3"},
+    "combined_label_free_sidecar": {"path": "results/xgv_eval_combined/eval_table_labels_absent.json",
+                                    "sha256": "efe0dce7741621df4052cb93b9e2ce010e11fbaa7fd8c563a7ca1ea313795ad2"},
+    "combined_no_frame_targets": {"path": "results/xgv_eval_combined/no_frame_targets.csv",
+                                  "sha256": "b5d0378a6285ed94e0a5b25fe8e6304d6333ce93215c6eb5b3b21c245a34e9ad"},
+    "combined_frame_clip_audit": {"path": "results/xgv_eval_combined/frame_clip_disagreements.csv",
+                                  "sha256": "127cba0f7b99b29392bc047a7d3733275df2407785ee7d631fc01eb69243e4a7"},
     "split_plan": {"path": "results/xgv_split_plan/plan.csv", "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"},
     "split_plan_record": {"path": "results/xgv_split_plan/complete.json", "sha256": "9f828694f782a427b8ce6f0abcbf4e5cb439c74b221c34505432f48d7208d64b"},
     "comparator_predictions": {"path": "results/xgv_comparator/predictions.parquet",
@@ -549,7 +650,7 @@ Blok poniżej jest jedynym źródłem parametrów przebiegu konfirmacyjnego. `sc
 ```
 <!-- prereg-parameters:end -->
 
-Embeddingi (`emb_g_fold0.npy`, `emb_g_fold1.npy`, `emb_dinov2.npy`) przypina plik boczny tabeli: pin `primary_label_free_sidecar`, a po tickecie 13 plik boczny tabeli łączonej. `vendor_probes.py` sprawdza sha256 każdego pliku z plikiem bocznym.
+Embeddingi (`emb_g_fold0.npy`, `emb_g_fold1.npy`, `emb_dinov2.npy`) przypina plik boczny tabeli: piny `primary_label_free_sidecar` i `combined_label_free_sidecar`. `vendor_probes.py` sprawdza sha256 każdego pliku z plikiem bocznym.
 
 ## 17. Hashe
 
@@ -557,16 +658,19 @@ Blok poniżej generuje `scripts/vendor_prereg_hashes.py`; nie edytuje się go r�
 
 - piny z bloku parametrów, każdy sprawdzony z plikiem;
 - kod analizy: skrypty `vendor_confirm.py` (weryfikacja hashy i łączenie etykiet obiema regułami), `vendor_ladder.py`, `vendor_probes.py`, `vendor_leakage.py`, `vendor_dryrun.py`, `vendor_prereg_hashes.py` i każdy moduł pakietu `xgpoc`, który importują, przechodnio;
-- rekordy ukończenia dry runów.
+- rekordy ukończenia dry runów. Rekord liczy się jako dowód tylko wtedy, gdy dry run użył dokładnie bieżącego domknięcia kodu, bieżących parametrów (bez pinów) i tabeli swojego pinu (`prereg.evidence_mismatch`). Inaczej lista ma status szkicu z pozycją „evidence … is stale”, a `--record` i `vendor_confirm.py` odmawiają.
 
-Hashe kodu w szkicu są robocze i zostaną przeliczone przy finalizacji. Kod kroku łączenia etykiet obu populacji jest już na liście skryptów wejściowych (`prereg.ENTRY_SCRIPTS`: `vendor_confirm.py`, przez nią `xgpoc.vendor.labels` i `xgpoc.vendor.confirm`).
+Kod kroku łączenia etykiet obu populacji leży na liście skryptów wejściowych (`prereg.ENTRY_SCRIPTS`: `vendor_confirm.py`, przez nią `xgpoc.vendor.labels` i `xgpoc.vendor.confirm`). Zmiana decyzji A, B lub F zmienia blok parametrów, więc ten blok trzeba wygenerować ponownie według sekcji 0.2.
 
 <!-- prereg-hashes:begin -->
-Lista hashy: `research/xg_vendor_prereg_hashes.json`, sha256 `c575d135e5bcb3204fc0ba9bd487e4422eff3d665e5053244a7cb085e84f4f08`, status: **SZKIC**.
+Lista hashy: `research/xg_vendor_prereg_hashes.json`, sha256 `0db46ea942629e4fc57f485bfc193d88973e41b24f9567c027c0b45e824f558e`, status: **KOMPLETNA**.
 
 | Wejście | Plik | sha256 |
 |---|---|---|
-| combined_label_free_table | — | do uzupełnienia |
+| combined_frame_clip_audit | results/xgv_eval_combined/frame_clip_disagreements.csv | `127cba0f7b99b29392bc047a7d3733275df2407785ee7d631fc01eb69243e4a7` |
+| combined_label_free_sidecar | results/xgv_eval_combined/eval_table_labels_absent.json | `efe0dce7741621df4052cb93b9e2ce010e11fbaa7fd8c563a7ca1ea313795ad2` |
+| combined_label_free_table | results/xgv_eval_combined/eval_table_labels_absent.parquet | `f1e7c71f59a57f610bcc8fdf7caf385f689d994ab85606df0805cc842ad50ab3` |
+| combined_no_frame_targets | results/xgv_eval_combined/no_frame_targets.csv | `b5d0378a6285ed94e0a5b25fe8e6304d6333ce93215c6eb5b3b21c245a34e9ad` |
 | comparator_predictions | results/xgv_comparator/predictions.parquet | `6c66b2f5d4f25a6b60d4ed167435ecac49a5192e569adfac5f765f82003c1a56` |
 | comparator_record | results/xgv_comparator/complete.json | `84f16f555a2c308048a2fad2576c14dde2a1a0d86bb551efcb10869c7c8d2136` |
 | delta_rule | research/xg_vendor_delta_rule.md | `766ee11b3ba5ea33d7a6e9dce8bce691fbc9468815cfe5f7b6b320032e5ff30a` |
@@ -581,8 +685,8 @@ Lista hashy: `research/xg_vendor_prereg_hashes.json`, sha256 `c575d135e5bcb3204f
 | statsbomb_shots | /home/kuba/projects/football_data/statsbomb_open_v1/tables/shots.parquet | `c11c77ab58e32924501488a596e88dda0082932b2b445d6e13abc0febbfb4aed` |
 | timing_rule | research/xg_vendor_timing_rule.md | `42dcf71018f28c078e5fa6ff83e71f137ac77e13c45fdb2534608314882029c5` |
 | timing_verdict | results/xgv_timing_source/timing_verdict.json | `3903e8f7c7f35f2d9059850ec62fa7c69bed74ba597e6f28e2adb83440a66a59` |
-| dowód: dry_run_primary | results/xgv_dryrun_primary/complete.json | `871e427b0c6605e0611e271c8c677965488c9776d24279a75cc0f98df26f2539` |
-| dowód: dry_run_combined | results/xgv_dryrun_combined/complete.json | brak (do wykonania) |
+| dowód: dry_run_primary | results/xgv_dryrun_primary/complete.json | `a5752e242098b07d16d4addb743987d31ac73ce18d9395d2de4e177d5125a6ac` |
+| dowód: dry_run_combined | results/xgv_dryrun_combined/complete.json | `885b00bc295778b1793342bffc9069bff88786bcbb94d0cab183b76f51b0ed9b` |
 
 Kod analizy (32 plików):
 
@@ -590,10 +694,10 @@ Kod analizy (32 plików):
 |---|---|
 | scripts/vendor_confirm.py | `5f63c56ee81ed2e339974db0b51d46c91bf74700a8c23eb9aa48b8b071997271` |
 | scripts/vendor_dryrun.py | `774d617247bc2125350314cb836b7a26ebcbba2867f280361bea026c07003fe0` |
-| scripts/vendor_ladder.py | `37c46bfffe455f527e330529e5fecd68e8066bef22719e85dced78ed5f683c83` |
+| scripts/vendor_ladder.py | `89d5fd33b82b91537e795561a3e432953b9cca881bbfbdd51e99e3de912235ab` |
 | scripts/vendor_leakage.py | `e1e9fc9213d04ed98470a09e496b11ecebe6822709d329e55cb7a2232117a31e` |
 | scripts/vendor_prereg_hashes.py | `804e4b88c138d15ff1e35cfb169aba8f59ee0e1a05daeb8e4e3064c182e80d60` |
-| scripts/vendor_probes.py | `8e0e47cc7d59375fd5f2bcdf9bd4eecb835cf0468fed673c8e474415fbe01c22` |
+| scripts/vendor_probes.py | `07de430c650c127010395de6d64149e4b36a4dbd03370ff3ac649b618eb242b0` |
 | xgpoc/__init__.py | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | xgpoc/bundle.py | `05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d` |
 | xgpoc/data/__init__.py | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
@@ -606,33 +710,31 @@ Kod analizy (32 plików):
 | xgpoc/probe/readability.py | `540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116` |
 | xgpoc/probe/table.py | `d1cc2d77e331cb5d37b898e1694341fbb9973a31a474eff3b3557a586bd58ceb` |
 | xgpoc/vendor/__init__.py | `aa7741ce1a94ea50fc915f440569855ed2e33c435c81cb1c47fc0912168ea195` |
-| xgpoc/vendor/confirm.py | `2f3c6b6405b42a8e8059c4e34551319c904afee51fc3d994c60eb85b1b320314` |
+| xgpoc/vendor/confirm.py | `411466f6391f55d1a83661565ec0479c8e439521960461b47baa96fe0e0ef86e` |
 | xgpoc/vendor/draws.py | `fc88a16636cd4e558b5264081a7a6d245d6a4b981f0c1cad7b33ba9649bfe62c` |
 | xgpoc/vendor/dryrun.py | `6665a9bcd661da3ed90069736eeefb6e02254c543c6d1137e39800cf057d38d4` |
-| xgpoc/vendor/evaltable.py | `9b49aed0897f086c5cc2fe8feb24c7e80d383e87a187988fb9ae3a0c7dcaf0c6` |
+| xgpoc/vendor/evaltable.py | `e6220255f3dc4723a40f4f37ba1044aa33cc016ca30d8746aca3c29d5cbc31f7` |
 | xgpoc/vendor/labels.py | `b719774f7913a9c19aa24eb2b57f1501210bb395b2c6151757348e7395ccda0b` |
-| xgpoc/vendor/ladder.py | `b653fed5664f299eb049f0dc9b72a4971fe3864138015e02f924f99c3525e61b` |
+| xgpoc/vendor/ladder.py | `a2de6fff3ade4b7741896aaf6f78df1071d3e67e1e5db983ea434d0bbd5428b1` |
 | xgpoc/vendor/ladder_dev.py | `7f8a7404e1bfe9d2f1f4687e49383cd096ddaf318183057d6cfda0b17fb6d525` |
 | xgpoc/vendor/leakage.py | `f65f2bc368dbe4761550a81733c2a354ea4d64555cdcefa81ff421c78afec134` |
-| xgpoc/vendor/prereg.py | `0f57e32ac35e7344d05ae8926ebb97c4a36d7c74137816c0da61a897d5bc98be` |
+| xgpoc/vendor/prereg.py | `0f170950b5b8f107705038a9d130e4a432d8dbcd6b2bbd45da0d00bd3cea3fd0` |
 | xgpoc/vendor/probe_targets.py | `e9ec5bb125d9522885c924bd3acfdd76008790c00be97643e2b2d24fdc1e6293` |
-| xgpoc/vendor/probes.py | `dec26cb422fd662b4347efcb54b77e2ab9728ab138f138cd8ead01961aa24504` |
+| xgpoc/vendor/probes.py | `90b61163f06ea5218f2c1d3bf3d62142d82d0ba77a938637c8945be75a050565` |
 | xgpoc/vendor/refit.py | `1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02` |
-| xgpoc/vendor/shells.py | `8051368057377566a998a668bc02eec43221890babc29d9973969e24f3291a00` |
+| xgpoc/vendor/shells.py | `991573ed8e3c36206916b7458c29baa6e5348f2609fc13972fa33ac01865e198` |
 | xgpoc/vendor/timing_verdict.py | `ba50b1aea4c65ccb137f3c81ed06d301b260a7e48c7ab78c40a83b2d53fc3b02` |
-
-Otwarte pozycje: pin combined_label_free_table; 5 'DO UZUPEŁNIENIA' marks in the document; evidence dry_run_combined.
 <!-- prereg-hashes:end -->
 
 ## 18. Przebieg konfirmacyjny (ticket 15)
 
 Kolejność, bez innych kroków:
 
-1. `./run.sh python scripts/vendor_prereg_hashes.py --check` musi przejść bez zmian.
+1. Zatwierdzenie właściciela jest wpisane w tickecie 14, a rekord pre-rejestracji wystawiony według sekcji 0.2. `./run.sh python scripts/vendor_prereg_hashes.py --check` musi przejść bez zmian.
 2. `./run.sh python scripts/vendor_confirm.py --record results/xgv_prereg/preregistration_record.json --table-dir <katalog tabeli łączonej> --out results/xgv_confirmatory`. Skrypt (`xgpoc.vendor.confirm`), zanim przeczyta jakąkolwiek etykietę:
    - sprawdza, że rekord nie jest roboczy i wskazuje commit;
    - przelicza listę hashy i porównuje ją bajt w bajt z zatwierdzoną: każdy pin (tabela łączona bez etykiet, podział, predykcje komparatora, werdykt i reguła czasu, parowanie i reszta pinów) z plikiem, każdy plik kodu analizy i rekordy dry runów;
-   - sprawdza, że rekord zgadza się z dokumentem (hash dokumentu, przypięta tabela, δ, losowania, ziarna, logity offsetów, progi i cele H3, hash reguły czasu), że dokument przy zapisanym commicie jest plikiem roboczym, a dokument, lista hashy i kod są zatwierdzone i niezmienione;
+   - sprawdza, że rekord zgadza się z dokumentem (hash dokumentu, przypięta tabela, δ, losowania, ziarna, logity offsetów, progi i cele H3, próg bramki kontroli, hash reguły czasu, bootstrap szczebli rekalibrowanych, wykluczenia klatek), że dokument przy zapisanym commicie jest plikiem roboczym, a dokument, lista hashy i kod są zatwierdzone i niezmienione;
    - sprawdza, że łączona tabela jest przypiętą, a pliki etykiet (`pairs.parquet`, `sb_unpaired.parquet`) to pliki przypiętego parowania.
    Przy jakiejkolwiek niezgodności odmawia i nie łączy etykiet. Potem łączy etykiety raz (`labels.table_labels`, `evaltable.join_labels` z rekordem), uruchamia `vendor_ladder.py`, `vendor_probes.py` i `vendor_leakage.py` z parametrami z rekordu i wypełnia szablony S1–S9 (`shells.md`).
 3. Raport.
@@ -647,18 +749,21 @@ Każdy krok uruchamia się raz. Powtórka po błędzie technicznym (przerwany pr
 - Po zatwierdzeniu: każda zmiana analizy jest oznaczona jako post hoc i raportowana obok analizy z pre-rejestracji. Werdykty H2 i H3 zostają werdyktami reguł tego dokumentu.
 - Jeśli kroku nie da się wykonać (brak plików, błąd kodu, losowanie bez goli), agent zatrzymuje się i opisuje problem w tickecie. Nie dobiera zastępczej reguły.
 
-Dziennik odstępstw: brak.
+Dziennik odstępstw: brak. Zmiana decyzji A, B lub F przed rekordem (sekcja 0.2) trafia tutaj z datą i nie jest odstępstwem od pre-rejestracji, bo zapada przed łączeniem etykiet.
 
 **Ujawnienia dotyczące samej pre-rejestracji.**
 
 - Uprzedniości reguł δ (`research/xg_vendor_delta_rule.md`) i źródła czasu (`research/xg_vendor_timing_rule.md`) nie da się sprawdzić w gicie co do minuty. Obie reguły napisano przed liczbami, które rozstrzygały, ale w tej samej sesji roboczej, i trafiły do commitów razem z wynikami (tickety 08 i 04). Ich hashe przypina skrypt (`power.RULE_SHA256`, `timing_source`), który odmawia innej wersji, ale kolejność „reguła, potem liczby” w obrębie sesji poświadcza tylko opis w ticketach. Właściwa pre-rejestracja dostaje własny commit przed jakimkolwiek łączeniem etykiet (sekcja 0, krok 6), więc dla H1–H4 ta luka nie występuje.
+- Próg bramki kontroli (decyzja F) zmieniono po dry runie na tabeli łączonej, w którym bramka R² ≤ 0 odpadła na celach będących szumem. Zmiana opiera się wyłącznie na zachowaniu kontroli na szumie, nie na żadnym prawdziwym celu sondy ani etykiecie.
+- Decyzje B i C zapadły po obejrzeniu tabeli bez etykiet: statusów klatek, audytu klatek i klipów oraz jednej klatki z offsetu 0, która strzału nie pokazuje. Żadna etykieta ani wynik strzału nie zostały przy tym odczytane. Wiersz z decyzji B wskazał audyt (jedyna niezgodność klatki i klipu na 847 celach), a nie wartość predykcji.
+- Dry runy uruchomiono na kodzie i parametrach z commita pre-rejestracji, przed commitem; rekordy ukończenia podają więc stan drzewa „zmieniony”, a o tożsamości kodu świadczą hashe plików w rekordzie, porównane z listą hashy.
 - Kod rekordów ukończenia (`complete.json`) powtarza się w skryptach ticketów 01–13, a funkcja `file_sha256` z `xgpoc.vendor.statsbomb_fetch` dubluje `xgpoc.bundle.sha256_file`. Celowo tego nie refaktoryzujemy: każdy z tych plików jest plikiem źródłowym, którego hash zapisały gotowe wyniki (parowanie, test czasu, plan podziału, komparator, retrening G, tabela pierwotna, wersja danych StatsBomb), a plan podziału i trwające pobieranie SoccerNet porównują te hashe przy każdym użyciu. Refaktoryzacja zmieniłaby hashe i unieważniła te sprawdzenia.
 
 **Ograniczenia, które raport musi wymienić:**
 
 - Progi opisowe H3 (0,25 dla R², 0,70 dla AUC) ustalono przy znanych liczbach deweloperskich prototypu i ticketu 09. Progi konfirmacyjne pochodzą z planu sprzed prototypu.
-- H1 i H2: bootstrap dopasowuje rekalibrację i stosy w każdym losowaniu. Na danych deweloperskich daje to SD zgodne z rozrzutem próbkowania przy prawdzie deweloperskiej, ale o około 70% za szerokie i przesunięte o około +0,0002 przy prawdzie zerowej (sekcja 7). H3: sondy nie są dopasowywane w losowaniach, więc przedziały pomijają zmienność dopasowania sondy.
+- H1 i H2: własności bootstrapu wybranego w decyzji A (sekcja 7.1). Przy `refit`: SD zgodne z rozrzutem próbkowania przy prawdzie deweloperskiej, ale o około 70% za szerokie i przesunięte o około +0,0002 przy prawdzie zerowej. Przy `fixed`: około 13% za wąskie w obu scenariuszach. H3: sondy nie są dopasowywane w losowaniach, więc przedziały pomijają zmienność dopasowania sondy.
 - H2 dotyczy szczebla freeze frame naszego komparatora, który dorównuje dostawcy (K1). Nie dotyczy modelu samego dostawcy, który nie ma krzyżowo dopasowanej wersji „z klatką”. Kontrast klatka + dostawca − dostawca jest tylko opisowy.
-- Populacja pierwotna to strzały, które SoccerNet oznaczył. SoccerNet pomija około 42% strzałów zablokowanych i 68% niecelnych strzałów StatsBomb. Populacja łączona to częściowo naprawia, ale jej klatki mają kotwicę w czasie StatsBomb.
+- Populacja pierwotna to strzały, które SoccerNet oznaczył. SoccerNet pomija około 42% strzałów zablokowanych i 68% niecelnych strzałów StatsBomb. Populacja łączona to częściowo naprawia, ale jej klatki mają kotwicę w czasie StatsBomb, a 147 z 797 strzałów tylko ze StatsBomb (głównie z doliczonego czasu) nie ma klatki i wypada (decyzja C).
 - Kluby z meczów ewaluacyjnych występują w meczach treningowych innych sezonów, jak w archiwalnym podziale testowym.
 - Klatka nie widzi wysokości piłki. Dostawca zna wysokość kontaktu, technikę i presję (raport: tabela „co widzi które źródło”).

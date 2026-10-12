@@ -20,7 +20,7 @@ covariate, so no label is read; the secondary rows' frames sit at StatsBomb time
 A dry-run or confirmatory table needs `--prereg`: the number of draws, the bootstrap seed and the H3 thresholds come from
 that record (at least `ladder.MIN_CONFIRMATORY_BOOT` draws) and cannot be given on the command line; the development
 options are refused (`probe_parameters`). The shuffled-target control is a hard gate (`probes.control_gate`): when an
-encoder's control decodes above R^2 = 0, the outputs and the completion record are written with the gate failed and the
+encoder's control decodes above the record's `h3_control_max_r2` (development: `probes.CONTROL_MAX_R2`), the outputs and the completion record are written with the gate failed and the
 script exits with status `probes.CONTROL_FAILED_EXIT`.
 
 A development table gives development numbers and a dry-run table dry-run numbers, labelled so in complete.json; neither
@@ -54,7 +54,7 @@ PROTOTYPE_ENCODERS = {"emb_g_fold0": "g_combo", "emb_g_fold1": "g_combo", "emb_d
 
 
 def probe_parameters(kind: str, prereg: et.PreRegistration | None, args: argparse.Namespace) -> dict:
-    """Draws, bootstrap seed and H3 thresholds of the run, with their source. Raises `ValueError` for a combination the
+    """Draws, bootstrap seed, H3 thresholds and the control-gate threshold of the run, with their source. Raises `ValueError` for a combination the
     contract forbids: a dry-run or confirmatory table takes them only from the pre-registration record (at least
     `MIN_CONFIRMATORY_BOOT` draws, no development options); a development table takes them from the options."""
     given = {k: getattr(args, k) for k in ("n_boot", "seed", "thresholds") if getattr(args, k) is not None}
@@ -62,12 +62,14 @@ def probe_parameters(kind: str, prereg: et.PreRegistration | None, args: argpars
         if given:
             raise ValueError(f"the pre-registration record fixes the parameters; drop {sorted(given)}")
         params = {"n_boot": prereg.n_boot, "seed": prereg.boot_seed, "thresholds": dict(prereg.h3_thresholds),
+                  "control_max_r2": prereg.h3_control_max_r2,
                   "confirmatory_targets": list(prereg.h3_confirmatory_targets), "source": "pre-registration record"}
     elif kind != "development":
         raise ValueError(f"a {kind} table needs --prereg; its parameters come from the pre-registration record")
     else:
         params = {"n_boot": N_BOOT if args.n_boot is None else args.n_boot, "seed": SEED if args.seed is None else args.seed,
                   "thresholds": json.loads(args.thresholds.read_text()) if args.thresholds else None, "confirmatory_targets": None,
+                  "control_max_r2": probes.CONTROL_MAX_R2,
                   "source": "command line"}
     if kind != "development" and (params["n_boot"] < MIN_CONFIRMATORY_BOOT or args.by_split or args.prototype):
         raise ValueError(f"a {kind} run needs at least {MIN_CONFIRMATORY_BOOT} draws and no development options")
@@ -162,7 +164,7 @@ def main() -> None:
           f"{ {c: len(p) for c, (p, _) in embeddings.items()} }; {n_boot} draws", flush=True)
 
     result = probes.probe_table(table, targets, embeddings, draws, subsets)
-    gate = probes.control_gate(result.metrics)
+    gate = probes.control_gate(result.metrics, params["control_max_r2"])
     metrics = probes.apply_thresholds(result.metrics, thresholds) if thresholds else result.metrics
     args.out.mkdir(parents=True, exist_ok=True)
     metrics.to_csv(args.out / "probes.csv", index=False)
@@ -204,7 +206,8 @@ def main() -> None:
               "label": et.RUN_LABELS[kind],
               "identity": {"analysis": "xg-vendor H3 probes", "table_kind": kind, "inputs": inputs,
                            "parameters": {"n_boot": n_boot, "seed": seed, "source": params["source"],
-                                          "confirmatory_targets": params["confirmatory_targets"], "subsets": list(subsets),
+                                          "confirmatory_targets": params["confirmatory_targets"], "control_max_r2": params["control_max_r2"],
+                                          "subsets": list(subsets),
                                           "alphas": list(probes.ALPHAS),
                                           "n_outer": probes.N_OUTER, "n_inner": probes.N_INNER, "control": probes.CONTROL,
                                           "control_seed": probes.CONTROL_SEED, "reference": probes.REFERENCE},

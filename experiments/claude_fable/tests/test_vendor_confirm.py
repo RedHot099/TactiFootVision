@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from test_vendor_evaltable import make_table
-from test_vendor_prereg import document, make_tree, parameters
+from test_vendor_prereg import document, dryrun_record, make_tree, parameters
 from xgpoc.vendor import confirm
 from xgpoc.vendor import evaltable as et
 from xgpoc.vendor import prereg as pr
@@ -48,11 +48,12 @@ def frozen_tree(root: Path) -> dict:
                        "delta_rule": pinned_file(root, "delta.md", "delta\n"),
                        "pairs": {"path": "pairs.parquet", "sha256": sha(root / "pairs.parquet")},
                        "pairing_record": pinned_file(root, "pairing.json", json.dumps(pairing))}
-    for path in pr.EVIDENCE.values():
-        (root / path).parent.mkdir(parents=True, exist_ok=True)
-        (root / path).write_text("{}\n")
     doc, hashes_path = root / "doc.md", root / "hashes.json"
     doc.write_text(document(params))
+    code = pr.hash_list(root, doc, ENTRY)["code"]
+    for name, path in pr.EVIDENCE.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(json.dumps(dryrun_record(code, params, params["pins"][pr.EVIDENCE_TABLE_PINS[name]]["sha256"])))
     hashes = pr.hash_list(root, doc, ENTRY)
     payload = pr.hash_list_bytes(hashes)
     doc.write_text(pr.replace_hash_block(doc.read_text(), pr.render_hash_block(hashes, "hashes.json", hashlib.sha256(payload).hexdigest())))
@@ -78,6 +79,10 @@ def test_an_intact_preregistration_is_verified(tmp_path):
     (lambda t: (t["root"] / "comparator.csv").write_text("shot,p\ns,0.1\n"), "pin comparator_predictions"),
     (lambda t: (t["root"] / "verdict.json").write_text('{"verdict": "shared"}\n'), "pin timing_verdict"),
     (lambda t: (t["root"] / "results/xgv_dryrun_primary/complete.json").write_text("[]\n"), "hash list differs"),
+    (lambda t: t["record_path"].write_text(json.dumps(json.loads(t["record_path"].read_text()) | {"recalibrated_bootstrap": "fixed"})),
+     "recalibrated_bootstrap"),
+    (lambda t: t["record_path"].write_text(json.dumps(json.loads(t["record_path"].read_text()) | {"frame_exclusions": {"k": "decode_corrupted_frame"}})),
+     "frame_exclusions"),
     (lambda t: t["document"].write_text(t["document"].read_text() + "\nedited after the commit\n"), "document"),
     (lambda t: t["record_path"].write_text(json.dumps(json.loads(t["record_path"].read_text()) | {"margin": 0.002})), "margin"),
     (lambda t: t["record_path"].write_text(json.dumps(json.loads(t["record_path"].read_text()) | {"draft": True})), "draft"),

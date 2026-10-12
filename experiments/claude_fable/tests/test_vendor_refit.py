@@ -72,7 +72,7 @@ def test_refitting_in_every_draw_widens_the_h2_interval_over_fixed_predictions()
     h2 = result.summary["h2"]
     assert point == pytest.approx(h2["diff"], abs=1e-12)
     assert h2["boot_sd"] > 1.2 * np.std(fixed, ddof=1)
-    assert result.summary["bootstrap"] == ld.BOOTSTRAP_NOTE
+    assert result.summary["bootstrap"] == ld.BOOTSTRAP_NOTES["refit"]
 
 
 def test_newton_refuses_to_report_a_fit_that_did_not_converge():

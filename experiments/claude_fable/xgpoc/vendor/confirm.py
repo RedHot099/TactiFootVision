@@ -8,9 +8,11 @@ Nothing joins a label to the new predictions before `verify` has passed. It chec
    the pairing and the rest of the parameter block's pins;
 3. that list equals the committed hash list byte for byte, so every source file of the analysis code (the code closure
    of `prereg.ENTRY_SCRIPTS`) and every dry-run completion record still has its recorded sha256, and its status is
-   complete; the document's hash block is the one the list generates;
+   complete (every dry run ran the current code, parameters and pinned table); the document's hash block is the one the
+   list generates;
 4. the record equals the record the document and the list imply (document sha256, pinned label-free table, margin,
-   draws, seeds, offset logits, H3 thresholds and targets, timing rule hash), the commit and its time taken as recorded;
+   draws, seeds, offset logits, H3 thresholds and targets, timing rule hash, bootstrap of the recalibrated rungs, frame
+   exclusions), the commit and its time taken as recorded;
 5. the label-free table to be joined is the pinned one (its parquet matches its sidecar, which carries the pinned hash).
 `committed_unchanged` adds the git side (the document at the recorded commit is the working file; the document, the
 hash list and every code file are committed and clean); `label_sources` admits the label inputs only when they are the

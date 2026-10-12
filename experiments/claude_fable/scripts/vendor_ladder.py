@@ -6,10 +6,10 @@
 
 Opens the table through `xgpoc.vendor.evaltable.load_table` (validated), runs `xgpoc.vendor.ladder.analyse` on the
 primary and the combined population (the combined set is skipped when it holds the same rows as the primary one), and
-writes the files below. A confirmatory or dry-run table needs `--prereg`: the margin, the number of draws and both seeds
-are read from that record and cannot be given on the command line, the record needs at least
-`ladder.MIN_CONFIRMATORY_BOOT` draws, and the development options are refused. Only a development table takes
-`--margin` and the other parameters as options.
+writes the files below. A confirmatory or dry-run table needs `--prereg`: the margin, the number of draws, both seeds,
+the bootstrap of the recalibrated rungs and the frame exclusions are read from that record and cannot be given on the
+command line, the record needs at least `ladder.MIN_CONFIRMATORY_BOOT` draws, and the development options are refused.
+Only a development table takes `--margin` and the other parameters as options (refit bootstrap, no frame exclusions).
 
     metrics.csv              every rung x variant: n, goals, matches, metrics with 95% match-bootstrap intervals
     contrasts.csv            every rung pair of one variant x (log-loss, Brier, AUC): difference, intervals, superiority,
@@ -58,7 +58,8 @@ def population_sets(table: pd.DataFrame, split_groups: bool) -> tuple[list[tuple
 
 
 def analysis_parameters(kind: str, prereg: et.PreRegistration | None, args: argparse.Namespace) -> dict:
-    """Margin, draws and seeds of the run, with their source. Raises `ValueError` for a combination the contract forbids:
+    """Margin, draws, seeds, the bootstrap of the recalibrated rungs and the frame exclusions of the run, with their
+    source. Raises `ValueError` for a combination the contract forbids:
     a confirmatory or dry-run table takes them only from the pre-registration record (at least
     `ladder.MIN_CONFIRMATORY_BOOT` draws, no development options); a development table takes them from the options."""
     given = {k: getattr(args, k) for k in ("margin", "n_boot", "fold_seed", "boot_seed") if getattr(args, k) is not None}
@@ -66,13 +67,15 @@ def analysis_parameters(kind: str, prereg: et.PreRegistration | None, args: argp
         if given:
             raise ValueError(f"the pre-registration record fixes the parameters; drop {sorted(given)}")
         params = {"margin": prereg.margin, "n_boot": prereg.n_boot, "fold_seed": prereg.fold_seed, "boot_seed": prereg.boot_seed,
+                  "bootstrap": prereg.recalibrated_bootstrap, "frame_exclusions": dict(prereg.frame_exclusions),
                   "source": "pre-registration record"}
     elif kind != "development":
         raise ValueError(f"a {kind} table needs --prereg; its parameters come from the pre-registration record")
     elif "margin" not in given:
         raise ValueError("a development run needs --margin")
     else:
-        params = {"n_boot": ld.MIN_CONFIRMATORY_BOOT, "fold_seed": ld.FOLD_SEED, "boot_seed": ld.BOOT_SEED, **given, "source": "command line"}
+        params = {"n_boot": ld.MIN_CONFIRMATORY_BOOT, "fold_seed": ld.FOLD_SEED, "boot_seed": ld.BOOT_SEED, **given, "bootstrap": "refit",
+                  "frame_exclusions": {}, "source": "command line"}
     if kind != "development" and (params["n_boot"] < ld.MIN_CONFIRMATORY_BOOT or args.prototype or args.split_groups):
         raise ValueError(f"a {kind} run needs at least {ld.MIN_CONFIRMATORY_BOOT} draws and no development options")
     return params
@@ -110,7 +113,8 @@ def main() -> None:
     results = {}
     for name, populations, splits in sets:
         print(f"{name}: ladder with {n_boot} draws", flush=True)
-        results[name] = ld.analyse(table, name, populations, margin, draws, splits, fold_seed)
+        results[name] = ld.analyse(table, name, populations, margin, draws, splits, fold_seed, bootstrap=params["bootstrap"],
+                                   frame_exclusions=params["frame_exclusions"])
 
     args.out.mkdir(parents=True, exist_ok=True)
     tag = {"table_kind": kind}

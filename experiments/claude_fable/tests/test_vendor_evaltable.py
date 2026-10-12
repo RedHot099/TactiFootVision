@@ -241,7 +241,8 @@ def confirmatory(tmp_path, recorded_at=T0, sha=DOC_SHA):
     table = write(tmp_path, make_table("confirmatory"), kind="confirmatory")
     return table, PreRegistration(sha, recorded_at, et.read_table(tmp_path, "t")[1]["table_sha256"], margin=0.005, n_boot=5000,
                                   fold_seed=0, boot_seed=0, offset_logits="calibrated", h3_thresholds={"dist": 0.5},
-                                  h3_confirmatory_targets=("dist",), timing_rule_sha256="f" * 64, draft=False, commit="abc123")
+                                  h3_confirmatory_targets=("dist",), h3_control_max_r2=0.0, timing_rule_sha256="f" * 64, recalibrated_bootstrap="refit",
+                                  frame_exclusions={}, draft=False, commit="abc123")
 
 
 def test_a_draft_preregistration_admits_no_confirmatory_join(tmp_path):
@@ -343,7 +344,8 @@ def test_a_label_exclusion_needs_a_known_reason_code(tmp_path):
 
 PREREG = {"sha256": "d" * 64, "recorded_at": "2026-10-12T11:00:00+02:00", "label_free_table_sha256": "e" * 64, "margin": 0.005,
           "n_boot": 5000, "fold_seed": 0, "boot_seed": 0, "offset_logits": "calibrated", "h3_thresholds": {"dist": 0.5, "head": 0.7},
-          "h3_confirmatory_targets": ["dist"], "timing_rule_sha256": "f" * 64, "draft": False, "commit": "abc"}
+          "h3_confirmatory_targets": ["dist"], "h3_control_max_r2": 0.005, "timing_rule_sha256": "f" * 64, "recalibrated_bootstrap": "refit",
+          "frame_exclusions": {"e1": "decode_corrupted_frame"}, "draft": False, "commit": "abc"}
 
 
 def test_preregistration_file_round_trip(tmp_path):
@@ -353,14 +355,18 @@ def test_preregistration_file_round_trip(tmp_path):
     assert record.recorded_at == datetime(2026, 10, 12, 9, 0, tzinfo=UTC) and record.commit == "abc"
     assert (record.margin, record.n_boot, record.fold_seed, record.boot_seed, record.draft) == (0.005, 5000, 0, 0, False)
     assert (record.offset_logits, record.h3_thresholds, record.h3_confirmatory_targets) == ("calibrated", {"dist": 0.5, "head": 0.7}, ("dist",))
+    assert (record.recalibrated_bootstrap, record.frame_exclusions) == ("refit", {"e1": "decode_corrupted_frame"})
+    assert record.h3_control_max_r2 == 0.005
     path.write_text(json.dumps(et.preregistration_record(record)))
     assert et.load_preregistration(path) == record
     bad = {"recorded_at": "2026-10-12T09:00:00", "sha256": "xyz", "margin": 0.0, "n_boot": 0, "fold_seed": -1, "draft": "no",
-           "offset_logits": "both", "h3_confirmatory_targets": ["angle"], "timing_rule_sha256": None}
+           "offset_logits": "both", "h3_confirmatory_targets": ["angle"], "timing_rule_sha256": None, "recalibrated_bootstrap": "both",
+           "frame_exclusions": {"e1": "blurry"}, "h3_control_max_r2": 0.5}
     messages = {"recorded_at": "no timezone", "sha256": "sha256 hex", "margin": "not a log-loss margin", "n_boot": "n_boot 0 is not an integer",
                 "fold_seed": "fold_seed -1 is not an integer", "draft": "draft must be true or false",
                 "offset_logits": "offset_logits 'both'", "h3_confirmatory_targets": "thresholded targets",
-                "timing_rule_sha256": "timing_rule_sha256 is not a sha256"}
+                "timing_rule_sha256": "timing_rule_sha256 is not a sha256", "recalibrated_bootstrap": "recalibrated_bootstrap 'both'",
+                "frame_exclusions": "frame_exclusions must map", "h3_control_max_r2": "h3_control_max_r2 0.5"}
     for field, value in bad.items():
         path.write_text(json.dumps(PREREG | {field: value}))
         with pytest.raises(EvalTableError, match=messages[field]):

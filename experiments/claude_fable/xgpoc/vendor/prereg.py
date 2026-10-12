@@ -2,8 +2,11 @@
 
 The Polish document `research/xg_vendor_preregistration.md` is the authority. It holds one JSON block between the
 markers `PARAMETERS_BEGIN` / `PARAMETERS_END`: the analysis parameters (margin, draws, seeds, offset logits, H3
-thresholds and confirmatory targets, the dry-run permutation seed and margin) and the pins (path and sha256 of every
-frozen input). `read_parameters` parses and checks it; a `null` margin or a pin without a hash is a placeholder.
+thresholds, confirmatory targets and control-gate threshold, the bootstrap of the recalibrated rungs, the frame exclusions, the dry-run
+permutation seed and margin) and the pins (path and sha256 of every frozen input). `read_parameters` parses and checks
+it; a `null` margin or a pin without a hash is a placeholder. The owner's choices before the label join are parameters
+of this block, so a changed choice changes the document and, through the dry-run check below, forces new dry runs and
+a new hash list.
 
 The hash list (`hash_list`) is a deterministic JSON object, without timestamps, so a rerun on unchanged files gives the
 same bytes:
@@ -11,7 +14,9 @@ same bytes:
     pins         every pinned file with its recorded and its current sha256 (they must agree)
     code         sha256 of every source file of the confirmatory run: the entry scripts and every module of the
                  `xgpoc` package they import, transitively (`code_closure`), package `__init__` files included
-    evidence     completion records of the dry runs (a missing one is a placeholder)
+    evidence     completion records of the dry runs; a missing one is a placeholder, and so is a stale one: a dry run
+                 is evidence only when it ran the current code closure, the current parameters (pins aside) and the
+                 table its pin names (`evidence_mismatch`)
     placeholders what still has to be filled; `status` is "complete" only when the list is empty
 The document prints the hash list's own sha256 and its pins and code hashes between `HASHES_BEGIN` / `HASHES_END`
 (`render_hash_block`), so the document's sha256 pins everything transitively. The pre-registration record
@@ -25,6 +30,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+
 from xgpoc.bundle import sha256_file
 from xgpoc.vendor import evaltable as et
 from xgpoc.vendor.leakage import OFFSET_LOGITS
@@ -35,13 +42,14 @@ PARAMETERS_BEGIN, PARAMETERS_END = "<!-- prereg-parameters:begin -->", "<!-- pre
 HASHES_BEGIN, HASHES_END = "<!-- prereg-hashes:begin -->", "<!-- prereg-hashes:end -->"
 PLACEHOLDER_TOKEN = "DO UZUPEŁNIENIA"
 PARAMETER_FIELDS = ("margin", "n_boot", "fold_seed", "boot_seed", "offset_logits", "h3_thresholds", "h3_confirmatory_targets",
-                    "permutation_seed", "dry_run_margin", "pins")
+                    "h3_control_max_r2", "recalibrated_bootstrap", "frame_exclusions", "permutation_seed", "dry_run_margin", "pins")
 REQUIRED_PINS = ("primary_label_free_table", "combined_label_free_table", "split_plan", "comparator_predictions", "timing_verdict",
                  "timing_rule", "delta_rule")
 TABLE_PINS = ("primary_label_free_table", "combined_label_free_table")
 ENTRY_SCRIPTS = ("scripts/vendor_confirm.py", "scripts/vendor_ladder.py", "scripts/vendor_probes.py", "scripts/vendor_leakage.py",
                  "scripts/vendor_dryrun.py", "scripts/vendor_prereg_hashes.py")
 EVIDENCE = {"dry_run_primary": "results/xgv_dryrun_primary/complete.json", "dry_run_combined": "results/xgv_dryrun_combined/complete.json"}
+EVIDENCE_TABLE_PINS = {"dry_run_primary": "primary_label_free_table", "dry_run_combined": "combined_label_free_table"}
 
 
 class PreRegistrationError(ValueError):
@@ -81,6 +89,13 @@ def read_parameters(text: str) -> dict:
     _require(params["offset_logits"] in OFFSET_LOGITS, f"offset_logits must be one of {sorted(OFFSET_LOGITS)}")
     _require(set(params["h3_thresholds"]) == set(TARGET_COLUMNS), f"h3_thresholds needs exactly the targets {TARGET_COLUMNS}")
     _require(set(params["h3_confirmatory_targets"]) <= set(TARGET_COLUMNS), "unknown confirmatory H3 target")
+    gate = params["h3_control_max_r2"]
+    _require(isinstance(gate, int | float) and not isinstance(gate, bool) and 0 <= gate <= et.MAX_CONTROL_R2_LIMIT,
+             f"h3_control_max_r2 must be an R^2 in [0, {et.MAX_CONTROL_R2_LIMIT}]")
+    _require(params["recalibrated_bootstrap"] in et.RECALIBRATED_BOOTSTRAPS, f"recalibrated_bootstrap must be one of {et.RECALIBRATED_BOOTSTRAPS}")
+    exclusions = params["frame_exclusions"]
+    _require(isinstance(exclusions, dict) and set(exclusions.values()) <= set(et.FRAME_EXCLUSIONS),
+             f"frame_exclusions must map row keys to reason codes of {sorted(et.FRAME_EXCLUSIONS)}")
     _require(set(params["pins"]) >= set(REQUIRED_PINS), f"pins must include {REQUIRED_PINS}")
     for name, pin in params["pins"].items():
         _require(set(pin) == {"path", "sha256"}, f"pin {name} needs exactly path and sha256")
@@ -150,9 +165,44 @@ def _resolve(root: Path, path: str) -> Path:
     return Path(path) if Path(path).is_absolute() else Path(root) / path
 
 
+def check_frame_exclusions(root: Path, params: dict) -> None:
+    """Every key of `frame_exclusions` must be a secondary row with a scored frame of the pinned combined label-free
+    table (only its key, population and frame status are read)."""
+    if not params["frame_exclusions"]:
+        return
+    pin = params["pins"]["combined_label_free_table"]
+    _require(pin["sha256"] is not None, "frame_exclusions need the pinned combined label-free table")
+    rows = pd.read_parquet(_resolve(root, pin["path"]), columns=["key", "population", "frame_status"]).set_index("key")
+    _require(rows.index.is_unique, "the pinned combined label-free table has duplicate keys")
+    for key in params["frame_exclusions"]:
+        _require(key in rows.index, f"frame exclusion {key} is not a row of the combined label-free table")
+        _require(rows.population[key] != "primary" and rows.frame_status[key] == et.OK, f"frame exclusion {key} must be a secondary row with a scored frame")
+
+
+def evidence_mismatch(record: object, code: dict, params: dict, table_sha256: str | None) -> list[str]:
+    """Why a dry run's completion record (parsed JSON, or None) is not evidence for the current document and code: it
+    must have run exactly the code closure `code`, the parameters of the block (pins aside) and the label-free table
+    `table_sha256`. Empty when it is evidence."""
+    identity = record.get("identity") if isinstance(record, dict) else None
+    if not isinstance(identity, dict):
+        return ["not a dry-run completion record"]
+    ran = {k: v for k, v in (identity.get("parameters") or {}).items() if k != "margin_used"}
+    reasons = [] if identity.get("sources") == code else ["analysis code differs"]
+    reasons += [] if ran == {k: v for k, v in params.items() if k != "pins"} else ["parameters differ"]
+    reasons += [] if (identity.get("label_free_table") or {}).get("sha256") == table_sha256 else ["table differs from its pin"]
+    return reasons
+
+
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def hash_list(root: Path, document: Path, entries: tuple[str, ...] = ENTRY_SCRIPTS) -> dict:
     """The hash list of the document (module docstring); `entries` are the entry scripts of the code closure. Raises when
-    a pinned file has another hash than its pin."""
+    a pinned file has another hash than its pin or a frame exclusion is not a scored secondary row of the pinned table."""
     root, text = Path(root), Path(document).read_text()
     params = read_parameters(text)
     pins = {}
@@ -163,10 +213,18 @@ def hash_list(root: Path, document: Path, entries: tuple[str, ...] = ENTRY_SCRIP
         actual = sha256_file(_resolve(root, pin["path"]))
         _require(actual == pin["sha256"], f"pin {name}: {pin['path']} has sha256 {actual}, the document pins {pin['sha256']}")
         pins[name] = dict(pin)
+    check_frame_exclusions(root, params)
     code = {str(p.relative_to(root)): sha256_file(p) for p in code_closure(root, entries)}
-    evidence = {name: {"path": path, "sha256": sha256_file(root / path) if (root / path).is_file() else None}
-                for name, path in EVIDENCE.items()}
-    open_items = placeholders(text, params) + [f"evidence {n}" for n, e in evidence.items() if e["sha256"] is None]
+    evidence, open_evidence = {}, []
+    for name, path in EVIDENCE.items():
+        found = (root / path).is_file()
+        evidence[name] = {"path": path, "sha256": sha256_file(root / path) if found else None}
+        stale = evidence_mismatch(_read_json(root / path), code, params, params["pins"][EVIDENCE_TABLE_PINS[name]]["sha256"]) if found else []
+        if not found:
+            open_evidence.append(f"evidence {name}")
+        elif stale:
+            open_evidence.append(f"evidence {name} is stale ({', '.join(stale)}); rerun the dry run")
+    open_items = placeholders(text, params) + open_evidence
     return {"schema": SCHEMA, "status": "draft" if open_items else "complete", "document": str(Path(document).resolve().relative_to(root)),
             "parameters": params, "pins": pins, "code": code, "evidence": evidence, "placeholders": open_items}
 
@@ -205,7 +263,9 @@ def _record(document_sha256: str, recorded_at: datetime, table_sha256: str, marg
     return et.PreRegistration(sha256=document_sha256, recorded_at=recorded_at, label_free_table_sha256=table_sha256, margin=margin,
                               n_boot=params["n_boot"], fold_seed=params["fold_seed"], boot_seed=params["boot_seed"],
                               offset_logits=params["offset_logits"], h3_thresholds=dict(params["h3_thresholds"]),
-                              h3_confirmatory_targets=tuple(params["h3_confirmatory_targets"]), timing_rule_sha256=timing_rule,
+                              h3_confirmatory_targets=tuple(params["h3_confirmatory_targets"]),
+                              h3_control_max_r2=float(params["h3_control_max_r2"]), timing_rule_sha256=timing_rule,
+                              recalibrated_bootstrap=params["recalibrated_bootstrap"], frame_exclusions=dict(params["frame_exclusions"]),
                               draft=draft, commit=commit)
 
 

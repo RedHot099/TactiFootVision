@@ -13,9 +13,10 @@ Nesting     outer `GroupKFold(N_OUTER)` by match gives the out-of-fold predictio
             for the outer fit. The outer test rows enter no fit, no standardisation and no alpha choice.
 Metric      R^2 of the out-of-fold predictions for continuous targets, AUC of the ridge score for binary ones
             (`probe_targets.BINARY_TARGETS`); Spearman's rho is reported next to R^2.
-Control     `CONTROL`: the distance target permuted across the probe's rows (`CONTROL_SEED`); it must give R^2 <= 0.
-            `control_gate` is the hard gate: an encoder whose control decodes above `CONTROL_MAX_R2` (point estimate, on
-            any of its rows of the subset "all") fails, and every H3 reading of that encoder is invalid.
+Control     `CONTROL`: the distance target permuted across the probe's rows (`CONTROL_SEED`); it must not decode.
+            `control_gate` is the hard gate: an encoder whose control decodes above the threshold (the pre-registered
+            `h3_control_max_r2` in dry-run and confirmatory runs, `CONTROL_MAX_R2` in development runs; point estimate,
+            on any of its rows of the subset "all") fails, and every H3 reading of that encoder is invalid.
 Encoders    the table's embedding columns; the fold-0 seed-0 G-combo (`emb_g_fold0`) is pre-specified, the fold-1 model
             (`emb_g_fold1`) is the sensitivity check, frozen DINOv2 (`emb_dinov2`) the reference. Every encoder is
             probed on the rows it covers; each G-combo encoder and the reference are also probed on the rows both cover,
@@ -41,7 +42,7 @@ ALPHAS = tuple(float(a) for a in np.logspace(0, 6, 13))
 N_OUTER, N_INNER = 5, 3
 STD_EPS = 1e-6
 CONTROL, CONTROL_SOURCE, CONTROL_SEED = "dist_shuffled", "dist", 0
-CONTROL_MAX_R2 = 0.0
+CONTROL_MAX_R2 = 0.0   # development runs; dry-run and confirmatory runs take the pre-registration's h3_control_max_r2
 CONTROL_FAILED_EXIT = 3   # exit status of scripts/vendor_probes.py when the control gate fails (outputs written)
 PROBE_TARGETS = (CONTROL, *TARGET_COLUMNS)
 REFERENCE = "emb_dinov2"
@@ -279,16 +280,16 @@ def probe_table(table: pd.DataFrame, targets: pd.DataFrame, embeddings: dict[str
                         pd.concat(pred_out, ignore_index=True) if pred_out else pd.DataFrame())
 
 
-def control_gate(metrics: pd.DataFrame, subset: str = "all") -> dict:
+def control_gate(metrics: pd.DataFrame, threshold: float, subset: str = "all") -> dict:
     """The gate of the shuffled-target control over `probe_table`'s metrics: per encoder, the largest control R^2 of its
-    rows of `subset` (own and shared coverage) and whether it stays at or below `CONTROL_MAX_R2`; `passed` only when
-    every encoder passes."""
+    rows of `subset` (own and shared coverage) and whether it stays at or below `threshold`; `passed` only when every
+    encoder passes."""
     control = metrics[metrics.negative_control.astype(bool) & metrics.subset.eq(subset)]
     if control.empty:
         raise ValueError(f"no negative-control rows in the subset {subset!r}")
-    encoders = {encoder: {"max_r2": float(rows.value.max()), "passed": bool(rows.value.max() <= CONTROL_MAX_R2)}
+    encoders = {encoder: {"max_r2": float(rows.value.max()), "passed": bool(rows.value.max() <= threshold)}
                 for encoder, rows in control.groupby("encoder", sort=True)}
-    return {"threshold": CONTROL_MAX_R2, "subset": subset, "encoders": encoders, "passed": all(e["passed"] for e in encoders.values())}
+    return {"threshold": threshold, "subset": subset, "encoders": encoders, "passed": all(e["passed"] for e in encoders.values())}
 
 
 def apply_thresholds(metrics: pd.DataFrame, thresholds: dict[str, float]) -> pd.DataFrame:

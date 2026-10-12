@@ -58,7 +58,8 @@ Writing
     labels in a separate step: it records the sha256 of the label-free table and the time, appends both to a log
     and refuses a confirmatory join that is earlier than the pre-registration record (`PreRegistration`: the
     pre-registration document's hash, the time it was committed, the hash of the label-free table it pins and the
-    analysis parameters it fixes: margin, bootstrap draws and seeds). A draft record (written from an uncommitted
+    analysis parameters it fixes: margin, bootstrap draws, seeds, the bootstrap of the recalibrated rungs and the frame
+    exclusions). A draft record (written from an uncommitted
     document, for the dry run) never admits a confirmatory join.
     The times are those the caller reports (the commit time ticket 14 records); nothing here anchors them to a clock.
     Analyses open a table with `load_table`, which validates it. `validate_table` rejects duplicate keys,
@@ -95,6 +96,13 @@ EMBEDDING_COLUMNS = ["emb_g_fold0", "emb_g_fold1", "emb_dinov2"]
 PAIRING_COLUMNS = ["timing_residual_ms", "anchor_convention", "table_kind"]
 LABEL_COLUMNS = ["goal_sn", "on_target_sn", "sb_outcome", "is_penalty", "label_exclusion"]
 LABEL_EXCLUSIONS = {"sb_goal_without_sn_goal": "a StatsBomb goal of the secondary population without any SoccerNet goal (label conflict)"}
+# pre-registered, label-blind exclusions of single secondary rows whose scored frame does not show the shot (H1/H2 treat
+# them like rows without a frame); the reason codes a pre-registration may use
+FRAME_EXCLUSIONS = {"decode_corrupted_frame": "the half video is decode-corrupted at the target: the scored frame shows another moment"}
+# the largest R^2 the H3 shuffled-target control may reach (point estimate) before the gate fails an encoder
+MAX_CONTROL_R2_LIMIT = 0.05
+# the match bootstrap of the recalibrated rungs and stacks: models refitted in every draw, or out-of-fold predictions held fixed
+RECALIBRATED_BOOTSTRAPS = ("refit", "fixed")
 LABEL_FREE_COLUMNS = [*KEY_COLUMNS, *COVARIATE_COLUMNS, *PROBABILITY_COLUMNS, *FRAME_COLUMNS, *EMBEDDING_COLUMNS, *PAIRING_COLUMNS]
 JOINED_COLUMNS = [*LABEL_FREE_COLUMNS, *LABEL_COLUMNS]
 
@@ -113,8 +121,10 @@ class PreRegistration:
     the hash of the pre-registration document, the time it was committed (timezone-aware), the hash of the label-free
     evaluation table that the document pins, the H2 equivalence margin (log-loss), the number of match-bootstrap draws,
     the cross-fit fold seed and the bootstrap seed, the H4 offset logits ("calibrated" or "raw"), the H3 thresholds
-    {target: threshold} and confirmatory targets, the sha256 of the timing rule the H4 verdict must have been reached
-    under, whether the record is a draft (an uncommitted document, dry run only) and, optionally, the commit."""
+    {target: threshold}, confirmatory targets and control-gate threshold (largest control R^2), the sha256 of the timing rule the H4 verdict must have been reached
+    under, the bootstrap of the recalibrated rungs (`RECALIBRATED_BOOTSTRAPS`), the frame exclusions {row key: reason
+    code of `FRAME_EXCLUSIONS`}, whether the record is a draft (an uncommitted document, dry run only) and, optionally,
+    the commit."""
 
     sha256: str
     recorded_at: datetime
@@ -126,7 +136,10 @@ class PreRegistration:
     offset_logits: str
     h3_thresholds: dict
     h3_confirmatory_targets: tuple[str, ...]
+    h3_control_max_r2: float
     timing_rule_sha256: str
+    recalibrated_bootstrap: str
+    frame_exclusions: dict
     draft: bool
     commit: str | None = None
 
@@ -149,7 +162,7 @@ def is_sha256(text) -> bool:
 
 
 PREREG_FIELDS = ("sha256", "recorded_at", "label_free_table_sha256", "margin", "n_boot", "fold_seed", "boot_seed", "offset_logits",
-                 "h3_thresholds", "h3_confirmatory_targets", "timing_rule_sha256", "draft")
+                 "h3_thresholds", "h3_confirmatory_targets", "h3_control_max_r2", "timing_rule_sha256", "recalibrated_bootstrap", "frame_exclusions", "draft")
 
 
 def load_preregistration(path: Path) -> PreRegistration:
@@ -176,13 +189,22 @@ def load_preregistration(path: Path) -> PreRegistration:
         raise EvalTableError("pre-registration h3_thresholds must map targets to numbers")
     if not isinstance(targets, list) or not set(targets) <= set(thresholds):
         raise EvalTableError("pre-registration h3_confirmatory_targets must be a list of thresholded targets")
+    gate = record["h3_control_max_r2"]
+    if isinstance(gate, bool) or not isinstance(gate, int | float) or not 0 <= gate <= MAX_CONTROL_R2_LIMIT:
+        raise EvalTableError(f"pre-registration h3_control_max_r2 {gate!r} is not an R^2 in [0, {MAX_CONTROL_R2_LIMIT}]")
+    if record["recalibrated_bootstrap"] not in RECALIBRATED_BOOTSTRAPS:
+        raise EvalTableError(f"pre-registration recalibrated_bootstrap {record['recalibrated_bootstrap']!r} is not one of {RECALIBRATED_BOOTSTRAPS}")
+    exclusions = record["frame_exclusions"]
+    if not isinstance(exclusions, dict) or not set(exclusions.values()) <= set(FRAME_EXCLUSIONS):
+        raise EvalTableError(f"pre-registration frame_exclusions must map row keys to reason codes of {sorted(FRAME_EXCLUSIONS)}")
     if not isinstance(record["draft"], bool):
         raise EvalTableError("pre-registration draft must be true or false")
     return PreRegistration(sha256=record["sha256"], recorded_at=parse_time(record["recorded_at"]),
                            label_free_table_sha256=record["label_free_table_sha256"], margin=float(margin), n_boot=record["n_boot"],
                            fold_seed=record["fold_seed"], boot_seed=record["boot_seed"], offset_logits=record["offset_logits"],
                            h3_thresholds={k: float(v) for k, v in thresholds.items()}, h3_confirmatory_targets=tuple(targets),
-                           timing_rule_sha256=record["timing_rule_sha256"], draft=record["draft"], commit=record.get("commit"))
+                           h3_control_max_r2=float(gate), timing_rule_sha256=record["timing_rule_sha256"], recalibrated_bootstrap=record["recalibrated_bootstrap"],
+                           frame_exclusions=dict(exclusions), draft=record["draft"], commit=record.get("commit"))
 
 
 def preregistration_record(prereg: PreRegistration) -> dict:
@@ -190,7 +212,9 @@ def preregistration_record(prereg: PreRegistration) -> dict:
     return {"sha256": prereg.sha256, "recorded_at": format_time(prereg.recorded_at), "label_free_table_sha256": prereg.label_free_table_sha256,
             "margin": prereg.margin, "n_boot": prereg.n_boot, "fold_seed": prereg.fold_seed, "boot_seed": prereg.boot_seed,
             "offset_logits": prereg.offset_logits, "h3_thresholds": dict(prereg.h3_thresholds),
-            "h3_confirmatory_targets": list(prereg.h3_confirmatory_targets), "timing_rule_sha256": prereg.timing_rule_sha256,
+            "h3_confirmatory_targets": list(prereg.h3_confirmatory_targets), "h3_control_max_r2": prereg.h3_control_max_r2,
+            "timing_rule_sha256": prereg.timing_rule_sha256,
+            "recalibrated_bootstrap": prereg.recalibrated_bootstrap, "frame_exclusions": dict(prereg.frame_exclusions),
             "draft": prereg.draft, "commit": prereg.commit}
 
 

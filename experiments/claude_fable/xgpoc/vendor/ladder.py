@@ -5,9 +5,10 @@ seeds). The power simulation (`xgpoc.vendor.power`) runs H2 through `h2_draws`, 
 
 Population
     the rows of the chosen populations (and splits) without a label exclusion (`label_exclusion`, e.g. a StatsBomb goal
-    without any SoccerNet goal), that are not penalties and have a scored frame (`frame_status` ok and a finite
-    `frame_logit_0`); the label is `goal_sn`. Excluded rows are counted, never replaced. Penalties are reported apart
-    (`penalty_summary`, spec: penalties reported separately).
+    without any SoccerNet goal), that are not penalties, are not pre-registered frame exclusions (`frame_exclusions`,
+    secondary rows whose scored frame does not show the shot) and have a scored frame (`frame_status` ok and a finite
+    `frame_logit_0`); the label is `goal_sn`. Every rung is scored on these same rows. Excluded rows are counted, never
+    replaced. Penalties are reported apart (`penalty_summary`, spec: penalties reported separately).
 Rungs, in ladder order (`LADDER`)
     constant, dist_angle, event, freeze_frame (the positions rung of H2), vendor, frame (sigmoid of `frame_logit_0`),
     and the stacks frame+positions and frame+vendor.
@@ -23,9 +24,11 @@ Inference
     (`xgpoc.vendor.draws.table_draws`, i.e. `xgpoc.probe.readability.match_draw_counts`: keys np.unique(matches),
     default_rng(seed), rng.choice(M, M) per draw, the sequence of scripts/significance.py). A population set reads
     its matches' columns of the counts, so every set, contrast and ticket uses the same draws. Recalibrated variant
-    (single rungs and stacks, so H2): the cross-fitted models are refitted in every draw on the resampled matches
-    (`xgpoc.vendor.refit`, same folds, match counts as weights) and every metric is computed from the refitted
-    out-of-fold predictions. Raw variant: nothing is fitted, the stored probabilities are reweighted per draw.
+    (single rungs and stacks, so H2), by the pre-registered `bootstrap` (`evaltable.RECALIBRATED_BOOTSTRAPS`): "refit"
+    refits the cross-fitted models in every draw on the resampled matches (`xgpoc.vendor.refit`, same folds, match
+    counts as weights) and computes every metric from the refitted out-of-fold predictions; "fixed" reweights the
+    observed out-of-fold predictions like the raw variant. Raw variant: nothing is fitted, the stored probabilities are
+    reweighted per draw.
     Intervals are percentile intervals.
     TOST at `ALPHA` per side: equivalence at margin d when at most ALPHA of the draws of the difference lie at or
     below -d and at most ALPHA at or above d (the 90% interval inside (-d, d)); equivalence curves over
@@ -35,11 +38,12 @@ H2 (`H2`)
     log-loss of frame+positions minus positions (freeze_frame), both recalibrated; negative = the frame helps.
     Primary population: confirmatory at the pre-registered margin. Combined population: robustness. frame+vendor
     minus vendor (`H2_VENDOR`) is reported the same way. `h2_draws` is the fixed-prediction version that the frozen
-    ticket-08 power simulation ran; the analysis itself refits per draw.
+    ticket-08 power simulation ran; the analysis refits per draw unless the pre-registration fixes "fixed".
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import NamedTuple
 
 import numpy as np
@@ -85,7 +89,9 @@ NO_CALIBRATION = ("constant",)   # a constant prediction has no calibration slop
 H2 = (Rung("recalibrated", "frame+positions"), Rung("recalibrated", "freeze_frame"))
 H2_VENDOR = (Rung("recalibrated", "frame+vendor"), Rung("recalibrated", "vendor"))
 POPULATION_SETS = {"primary": ("primary",), "combined": et.POPULATIONS}
-BOOTSTRAP_NOTE = "recalibrated variant: cross-fitted models refitted in every match draw; raw variant: stored probabilities reweighted"
+BOOTSTRAP_NOTES = {"refit": "recalibrated variant: cross-fitted models refitted in every match draw; raw variant: stored probabilities reweighted",
+                   "fixed": "recalibrated variant: observed out-of-fold predictions reweighted in every match draw (no refit); "
+                            "raw variant: stored probabilities reweighted"}
 PENALTY_RUNGS = ("vendor", "frame", "freeze_frame")
 
 
@@ -100,14 +106,21 @@ def _chosen(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[st
     return chosen, chosen.label_exclusion.notna()
 
 
-def analysis_population(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str] = et.SPLITS) -> tuple[pd.DataFrame, dict]:
-    """(rows of the analysis, exclusion counts) for a table with labels joined. Rows keep the table order."""
+def analysis_population(table: pd.DataFrame, populations: Sequence[str], splits: Sequence[str] = et.SPLITS,
+                        frame_exclusions: Mapping[str, str] = MappingProxyType({})) -> tuple[pd.DataFrame, dict]:
+    """(rows of the analysis, exclusion counts) for a table with labels joined. Rows keep the table order. A row whose
+    key is in `frame_exclusions` (the pre-registration's, secondary rows only) is left out like a row without a frame
+    and counted apart; each row is counted under the first reason that applies (label, penalty, frame excluded, no frame)."""
+    listed = list(frame_exclusions)
+    if table.population.eq("primary").to_numpy()[table.key.isin(listed).to_numpy()].any():
+        raise ValueError("frame_exclusions may list secondary rows only")
     chosen, excluded = _chosen(table, populations, splits)
     penalty = ~excluded & chosen.is_penalty.astype(bool)
-    no_frame = ~excluded & ~penalty & ~(chosen.frame_status.eq(et.OK) & np.isfinite(chosen.frame_logit_0.to_numpy(float)))
-    rows = chosen[~excluded & ~penalty & ~no_frame].reset_index(drop=True)
+    frame_excluded = ~excluded & ~penalty & chosen.key.isin(listed)
+    no_frame = ~excluded & ~penalty & ~frame_excluded & ~(chosen.frame_status.eq(et.OK) & np.isfinite(chosen.frame_logit_0.to_numpy(float)))
+    rows = chosen[~excluded & ~penalty & ~frame_excluded & ~no_frame].reset_index(drop=True)
     exclusions = {"chosen": int(len(chosen)), "label_excluded": int(excluded.sum()), "penalty": int(penalty.sum()),
-                  "no_frame": int(no_frame.sum()), "analysed": int(len(rows))}
+                  "frame_excluded": int(frame_excluded.sum()), "no_frame": int(no_frame.sum()), "analysed": int(len(rows))}
     return rows, exclusions
 
 
@@ -396,10 +409,14 @@ class LadderResult:
 
 
 def analyse(table: pd.DataFrame, name: str, populations: Sequence[str], margin: float, draws: TableDraws,
-            splits: Sequence[str] = et.SPLITS, fold_seed: int = FOLD_SEED) -> LadderResult:
+            splits: Sequence[str] = et.SPLITS, fold_seed: int = FOLD_SEED, bootstrap: str = "refit",
+            frame_exclusions: Mapping[str, str] = MappingProxyType({})) -> LadderResult:
     """The ladder, all contrasts and H2 on one population set (`name` labels the outputs). `draws` are the shared
-    draws of the whole table (`table_draws`)."""
-    rows, exclusions = analysis_population(table, populations, splits)
+    draws of the whole table (`table_draws`); `bootstrap` and `frame_exclusions` are the pre-registration's (module
+    docstring)."""
+    if bootstrap not in et.RECALIBRATED_BOOTSTRAPS:
+        raise ValueError(f"bootstrap must be one of {et.RECALIBRATED_BOOTSTRAPS}")
+    rows, exclusions = analysis_population(table, populations, splits, frame_exclusions)
     y, matches = rows.goal_sn.to_numpy(int), rows.match.to_numpy()
     folds = match_folds(matches, seed=fold_seed)
     predictions, fits = rung_predictions(rows, folds)
@@ -409,7 +426,7 @@ def analyse(table: pd.DataFrame, name: str, populations: Sequence[str], margin: 
     for rung in [Rung(v, n) for v in VARIANTS for n in LADDER if Rung(v, n) in predictions]:
         calibration = rung.name not in NO_CALIBRATION
         points[rung] = {k: float(v[0]) for k, v in metric_draws(y, predictions[rung], point_boot, calibration=calibration).items()}
-        sample = refit_predictor(fits[rung], y, folds) if rung in fits else predictions[rung]
+        sample = refit_predictor(fits[rung], y, folds) if rung in fits and bootstrap == "refit" else predictions[rung]
         rung_draws[rung] = metric_draws(y, sample, boot, calibration=calibration)
         row = {"population": name, "variant": rung.variant, "rung": rung.name, "n": len(rows), "goals": int(y.sum()), "matches": n_matches}
         for metric in METRICS:
@@ -435,7 +452,7 @@ def analyse(table: pd.DataFrame, name: str, populations: Sequence[str], margin: 
 
     keys_fold = pd.DataFrame({"match": matches, "fold": folds}).drop_duplicates("match").sort_values("match").reset_index(drop=True)
     summary = {"population": name, "n": len(rows), "goals": int(y.sum()), "matches": n_matches, "n_boot": len(draws.counts),
-               "fold_seed": fold_seed, "alpha_per_side": ALPHA, "margin": margin, "bootstrap": BOOTSTRAP_NOTE,
+               "fold_seed": fold_seed, "alpha_per_side": ALPHA, "margin": margin, "bootstrap": BOOTSTRAP_NOTES[bootstrap],
                "h2": record(H2), "frame_plus_vendor": record(H2_VENDOR),
                "penalties": {k: _plain(v) if not isinstance(v, dict) else {m: _plain(x) for m, x in v.items()}
                              for k, v in penalty_summary(table, populations, splits).items()}}
