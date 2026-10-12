@@ -225,29 +225,35 @@ def refine_homography(
     refined_inliers, refined_points = inliers(refined_to_frame)
     if not (refined_inliers >= min_inliers and refined_inliers > start_inliers):
         return unchanged
-    if not _faces_camera(refined, grass):
+    _, seen = visible(refined_to_frame)
+    if not _faces_camera(refined, grass, seen):
         return unchanged
     return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
 
 
-def _faces_camera(to_pitch: np.ndarray, grass: np.ndarray, every: int = 16) -> bool:
-    """Whether a frame -> pitch homography is a camera's view of all the grass.
+def _faces_camera(
+    to_pitch: np.ndarray, grass: np.ndarray, seen: np.ndarray, every: int = 16
+) -> bool:
+    """Whether a frame -> pitch homography is a camera's view of the pitch it sees.
 
     With the far touchline at y = 0 (the keypoint dataset's landmark order,
     which :class:`SoccerPitch` follows) a camera above the pitch sees x and y
-    as the frame does, so the homography keeps the orientation at every grass
-    pixel. It reverses it everywhere for a mirror image, which fits the
+    as the frame does, so the homography keeps the orientation on the visible
+    pitch. It reverses it everywhere for a mirror image, which fits the
     symmetric markings perfectly, and beyond its horizon, which a fit that
-    shrinks the markings into a corner of the view puts inside the grass. The
-    Jacobian determinant of a homography at a point has the sign of
-    ``det(H) * w``, ``w`` the point's homogeneous scale; it is checked on a
-    grid of grass pixels, ``every`` pixels apart.
+    shrinks the markings into a corner of the view puts inside the frame.
+    Checked at the ``seen`` marking pixels and on a grid (``every`` pixels) of
+    the grass in the lower half of the frame, which a broadcast camera looking
+    down always sees in front of it; the top of a grass mask can hold boards.
+    The Jacobian determinant of a homography at a point has the sign of
+    ``det(H) * w``, ``w`` the point's homogeneous scale.
     """
-    rows, cols = np.nonzero(grass[::every, ::every])
-    if len(rows) == 0:
+    half = grass.shape[0] // 2
+    rows, cols = np.nonzero(grass[half::every, ::every])
+    points = np.vstack([np.column_stack([cols * every, half + rows * every]), seen])
+    if len(points) == 0:
         return True
-    points = np.column_stack([cols * every, rows * every, np.ones(len(rows))])
-    w = points @ to_pitch[2]
+    w = np.column_stack([points, np.ones(len(points))]) @ to_pitch[2]
     return bool((np.linalg.det(to_pitch) * w > 0).all())
 
 

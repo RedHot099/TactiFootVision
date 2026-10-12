@@ -193,17 +193,19 @@ def test_a_refinement_that_ends_in_a_mirror_image_keeps_the_start(monkeypatch):
     np.testing.assert_array_equal(fit.matrix, start)
 
 
-def test_a_camera_view_faces_the_camera_on_all_the_grass():
+def test_a_camera_view_faces_the_camera_where_the_pitch_is_seen():
     pitch = SoccerPitch()
     to_frame = _camera(pitch)
     view = np.linalg.inv(to_frame)
     grass = np.ones((SIZE[1], SIZE[0]), np.uint8)
-    assert lines._faces_camera(view, grass)
+    seen = np.array([[640.0, 200.0], [300.0, 600.0]])
+    assert lines._faces_camera(view, grass, seen)
     flip = np.array([[1, 0, 0], [0, -1, pitch.width], [0, 0, 1.0]])
-    assert not lines._faces_camera(flip @ view, grass)
+    assert not lines._faces_camera(flip @ view, grass, seen)
     # A horizon across the lower half: the frame's bottom rows lie beyond it.
     horizon = view.copy()
     horizon[2] = [0, -1 / 500, 1.0]
-    assert not lines._faces_camera(horizon, grass)
-    grass[500:] = 0  # ... unless no grass is there
-    assert lines._faces_camera(horizon, grass)
+    assert not lines._faces_camera(horizon, grass, seen[:1])
+    grass[500:] = 0  # ... unless neither grass nor markings are seen there
+    assert lines._faces_camera(horizon, grass, seen[:1])
+    assert not lines._faces_camera(horizon, grass, seen)
