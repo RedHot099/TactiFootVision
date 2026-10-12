@@ -239,9 +239,12 @@ def extract_study(shots: pd.DataFrame, config: ExtractorConfig, analyzer: Callab
 def frame_features(result: FrameResult | None, earlier: Iterable[FrameResult], config: ExtractorConfig) -> dict[str, float]:
     """`shot_features` of an analysed frame after the ball fallback from `earlier` (empty: no fallback); a missing frame
     gives `missing_features`."""
-    if result is None:
-        return missing_features()
-    return shot_features(fill_ball(result, earlier), config.homography_min_confidence)
+    return analysed_features(fill_ball(result, earlier) if result is not None else None, config)
+
+
+def analysed_features(filled: FrameResult | None, config: ExtractorConfig) -> dict[str, float]:
+    """`shot_features` of a frame after its ball fallback; `missing_features` for an unreadable frame."""
+    return shot_features(filled, config.homography_min_confidence) if filled is not None else missing_features()
 
 
 def feature_record(offset_ms: int, readable: bool, features: dict[str, float]) -> dict:
@@ -268,13 +271,14 @@ def _earlier_frames(shot: dict, read_image: Callable, ball_only: Callable,
         yield analysed[offset][1] or _NOTHING
 
 
-def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequence[int] = (0,)) -> pd.DataFrame:
-    """Feature rows recomputed from a configuration's cached frames, without a GPU (one row per shot and offset).
+def replay_frames(frames: pd.DataFrame, config: ExtractorConfig,
+                  offsets: Sequence[int] = (0,)) -> Iterator[tuple[str, int, FrameResult | None]]:
+    """(shot_id, offset, analysed frame after the ball fallback, or None when unreadable) for every shot and offset of a
+    configuration's cached frames, without a GPU; shots in sorted order, offsets in the given order.
 
-    The same steps as the extraction (`frame_features`, `feature_record`) on the `frame_from_row` results. A fallback
-    frame that the ball fallback asks for must be in the cache; a frame the fallback never reached may be absent.
+    The ball fallback is the extraction's (`fill_ball` over `fallback_offsets`). A fallback frame that it asks for must
+    be in the cache; a frame the fallback never reached may be absent.
     """
-    rows = []
     for shot_id, group in frames.groupby("shot_id", sort=True):
         cached = {int(r["offset_ms"]): r for r in group.to_dict("records")}
 
@@ -288,7 +292,14 @@ def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequ
                 continue
             result = frame_from_row(cached[offset])
             chain = earlier(fallback_offsets(offset)) if config.ball_fallback else []
-            rows.append({"shot_id": shot_id} | feature_record(offset, result is not None, frame_features(result, chain, config)))
+            yield shot_id, offset, (fill_ball(result, chain) if result is not None else None)
+
+
+def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequence[int] = (0,)) -> pd.DataFrame:
+    """Feature rows recomputed from a configuration's cached frames, without a GPU (one row per shot and offset): the
+    extraction's `shot_features` on `replay_frames`."""
+    rows = [{"shot_id": shot_id} | feature_record(offset, result is not None, analysed_features(result, config))
+            for shot_id, offset, result in replay_frames(frames, config, offsets)]
     return pd.DataFrame(rows)
 
 

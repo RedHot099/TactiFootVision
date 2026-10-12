@@ -36,6 +36,8 @@ Every feature is NaN when its inputs are missing; the flags (`FLAGS`) say which 
 `gk_x/y` are the aligned positions themselves (descriptive; the audit compares them with StatsBomb freeze frames).
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult
@@ -108,6 +110,77 @@ def missing_features() -> dict[str, float]:
     return dict.fromkeys(COLUMNS, np.nan) | dict.fromkeys(FLAGS, 0.0)
 
 
+@dataclass(frozen=True)
+class Situation:
+    """The roles of one analysed shot frame, chosen by the rules of the module docstring. Positions are pitch metres as
+    projected (not aligned; NaN without a projection); indices point into the frame's people detections."""
+
+    xy: np.ndarray                  # (N, 2) every person
+    names: np.ndarray               # (N,) class names
+    teams: np.ndarray               # (N,) team ids, NO_TEAM when unknown
+    players: np.ndarray             # class "player" with a pitch position
+    keepers: np.ndarray             # class "goalkeeper" with a pitch position
+    ball: np.ndarray | None         # (2,) the ball used (own or fallback), None without one on the pitch
+    ball_source: int                # 0 the frame's own ball, k the k-th earlier frame's
+    shooter: int | None
+    shooter_by_goal: bool           # no ball: the shooter is the player nearest either goal centre
+    shot: np.ndarray | None         # (2,) shot location: the ball, else the shooter's feet
+    attack_right: bool | None       # the attacked goal is at x = 105 (None without a shot location)
+    goalkeeper: int | None          # the attacked goal's goalkeeper (detected, else the proxy)
+    proxy: bool                     # the goalkeeper is the proxy (a "player")
+
+    @property
+    def outfield(self) -> np.ndarray:
+        """Players other than the shooter and the goalkeeper proxy."""
+        drop = [i for i in (self.shooter, self.goalkeeper if self.proxy else None) if i is not None]
+        return self.players[~np.isin(self.players, drop)]
+
+    @property
+    def shooter_team(self) -> int:
+        return int(self.teams[self.shooter]) if self.shooter is not None else NO_TEAM
+
+    def aligned(self, xy) -> np.ndarray:
+        """Pitch points in aligned coordinates (attacked goal at x = 105)."""
+        return align(xy, bool(self.attack_right))
+
+
+def situation(frame: FrameResult) -> Situation:
+    """The `Situation` of an analysed shot frame (after `fill_ball` when the ball may fall back)."""
+    names = frame.detections.data["class_name"] if len(frame.detections) else np.zeros(0, dtype=str)
+    xy, teams = frame.pitch_xy.astype(float), frame.team_ids
+    on_pitch = np.isfinite(xy).all(axis=1)
+    players = np.flatnonzero((names == PLAYER) & on_pitch)
+    keepers = np.flatnonzero((names == GOALKEEPER) & on_pitch)
+
+    balls = frame.ball_xy.astype(float)
+    finite_ball = np.isfinite(balls).all(axis=1)
+    ball = balls[finite_ball][0] if finite_ball.any() else None
+    source = int(frame.ball.data["fallback"][finite_ball][0]) if ball is not None and "fallback" in frame.ball.data else 0
+
+    shooter, by_goal = None, False
+    if len(players):
+        if ball is not None:
+            shooter = int(players[_nearest(xy[players], ball)])
+        else:
+            to_goal = np.minimum(np.hypot(*(xy[players] - GOAL).T), np.hypot(*(xy[players] - OTHER_GOAL).T))
+            shooter, by_goal = int(players[np.argmin(to_goal)]), True
+    shot = ball if ball is not None else (xy[shooter] if shooter is not None else None)
+    right = attacks_right(shot) if shot is not None else None
+
+    goalkeeper, proxy = None, False
+    if shot is not None:
+        aligned = align(xy, right)
+        attacked_half = aligned[:, 0] >= LENGTH / 2
+        candidates = keepers[attacked_half[keepers]]
+        if len(candidates):
+            goalkeeper = int(candidates[_nearest(aligned[candidates], GOAL)])
+        else:
+            others = players[(players != shooter) & attacked_half[players]]
+            if len(others):
+                goalkeeper, proxy = int(others[_nearest(aligned[others], GOAL)]), True
+    return Situation(xy, names, teams, players, keepers, ball, source, shooter, by_goal, shot, right, goalkeeper, proxy)
+
+
 def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[str, float]:
     """`COLUMNS` of one analysed shot frame (a package `FrameResult`, after `fill_ball` when the ball may fall back).
 
@@ -117,56 +190,32 @@ def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[
     out["homography_ok"] = float(frame.homography is not None)
     confidence = frame.keypoints.confidence if frame.keypoints is not None else None
     out["n_keypoints"] = float((confidence[0] >= keypoint_confidence).sum()) if confidence is not None and len(confidence) else 0.0
-    names = frame.detections.data["class_name"] if len(frame.detections) else np.zeros(0, dtype=str)
-    xy, teams = frame.pitch_xy.astype(float), frame.team_ids
-    on_pitch = np.isfinite(xy).all(axis=1)
-    players = np.flatnonzero((names == PLAYER) & on_pitch)
-    keepers = np.flatnonzero((names == GOALKEEPER) & on_pitch)
-    out["n_players"], out["n_goalkeepers"] = float(len(players)), float(len(keepers))
-
-    balls = frame.ball_xy.astype(float)
-    finite_ball = np.isfinite(balls).all(axis=1)
-    ball = balls[finite_ball][0] if finite_ball.any() else None
-    source = int(frame.ball.data["fallback"][finite_ball][0]) if ball is not None and "fallback" in frame.ball.data else 0
-    out["ball_ok"] = float(ball is not None)
-    out["ball_fallback"] = float(ball is not None and source > 0)
-    out["ball_source"] = float(source) if ball is not None else np.nan
-
-    shooter = None
-    if len(players):
-        if ball is not None:
-            shooter = int(players[_nearest(xy[players], ball)])
-            out["shooter_ball_dist"] = float(np.hypot(*(xy[shooter] - ball)))
-        else:
-            to_goal = np.minimum(np.hypot(*(xy[players] - GOAL).T), np.hypot(*(xy[players] - OTHER_GOAL).T))
-            shooter = int(players[np.argmin(to_goal)])
-            out["shooter_by_goal"] = 1.0
-    out["shooter_ok"] = float(shooter is not None)
-    shot = ball if ball is not None else (xy[shooter] if shooter is not None else None)
-    if shot is None:
+    s = situation(frame)
+    out["n_players"], out["n_goalkeepers"] = float(len(s.players)), float(len(s.keepers))
+    out["ball_ok"] = float(s.ball is not None)
+    out["ball_fallback"] = float(s.ball is not None and s.ball_source > 0)
+    out["ball_source"] = float(s.ball_source) if s.ball is not None else np.nan
+    if s.shooter is not None:
+        if s.ball is not None:
+            out["shooter_ball_dist"] = float(np.hypot(*(s.xy[s.shooter] - s.ball)))
+        out["shooter_by_goal"] = float(s.shooter_by_goal)
+    out["shooter_ok"] = float(s.shooter is not None)
+    if s.shot is None:
         return out
-    right = attacks_right(shot)
-    shot, aligned = align(shot, right), align(xy, right)
-    out |= {"shot_ok": 1.0, "shot_from_ball": float(ball is not None), "shot_x": float(shot[0]), "shot_y": float(shot[1]),
-            "attack_right": float(right)}
+    shot, aligned = s.aligned(s.shot), s.aligned(s.xy)
+    out |= {"shot_ok": 1.0, "shot_from_ball": float(s.ball is not None), "shot_x": float(shot[0]), "shot_y": float(shot[1]),
+            "attack_right": float(s.attack_right)}
 
-    goalkeeper, proxy = None, None
-    attacked_half = aligned[:, 0] >= LENGTH / 2
-    candidates = keepers[attacked_half[keepers]]
-    if len(candidates):
-        goalkeeper = int(candidates[_nearest(aligned[candidates], GOAL)])
-    else:
-        others = players[(players != shooter) & attacked_half[players]]
-        if len(others):
-            goalkeeper = proxy = int(others[_nearest(aligned[others], GOAL)])
-    out["gk_ok"], out["gk_detected"], out["gk_proxy"] = float(goalkeeper is not None), float(goalkeeper is not None and proxy is None), float(proxy is not None)
+    goalkeeper = s.goalkeeper
+    out["gk_ok"], out["gk_detected"], out["gk_proxy"] = (float(goalkeeper is not None), float(goalkeeper is not None and not s.proxy),
+                                                         float(s.proxy))
     if goalkeeper is not None:
         out["gk_x"], out["gk_y"] = (float(v) for v in aligned[goalkeeper])
 
-    shooter_team = teams[shooter] if shooter is not None else NO_TEAM
-    if proxy is not None and shooter_team != NO_TEAM and teams[proxy] != NO_TEAM:
-        out["gk_proxy_same_team"] = float(teams[proxy] == shooter_team)
-    outfield = players[(players != shooter) & (players != (proxy if proxy is not None else -1))]
+    shooter_team, teams = s.shooter_team, s.teams
+    if s.proxy and shooter_team != NO_TEAM and teams[goalkeeper] != NO_TEAM:
+        out["gk_proxy_same_team"] = float(teams[goalkeeper] == shooter_team)
+    outfield = s.outfield
     known = outfield[teams[outfield] != NO_TEAM]
     out["n_unknown_team"] = float(len(outfield) - len(known))
     defenders_xy = opponents_xy = None
