@@ -481,3 +481,30 @@ def test_landmarks_shifted_on_the_pitch_shift_every_position_by_exactly_that(shi
     np.testing.assert_allclose(
         np.linalg.norm(offsets, axis=1), np.hypot(*shift), atol=1e-3
     )
+
+
+@pytest.mark.parametrize(
+    "landmarks",
+    [
+        (22, 24, 25, 26),  # three on the goal line and the goal-box corner
+        (8, 21, 30, 31, 13),  # four on the long axis and one more
+        (13, 14, 15, 16),  # the halfway line alone
+    ],
+)
+def test_landmarks_that_do_not_span_the_pitch_give_no_homography(landmarks):
+    # All but one landmark on one pitch line leave the homography undetermined:
+    # the solver still returns a (numerically singular) matrix, which maps the
+    # whole frame onto a line. On SoccerNet shot frames such fits were 2.8% of
+    # the letterbox fits, from keypoints 22, 24, 25, 26 or 0, 1, 2, 6.
+    pitch = SoccerPitch()
+    noise = np.random.default_rng(0).normal(0, 3, (1, 32, 2)).astype(np.float32)
+    keypoints = _keypoints(pitch, _homography(), drop=set(range(32)) - set(landmarks))
+    keypoints.xy += noise
+    estimator = HomographyEstimator(pitch)
+    assert estimator.fit(keypoints) is None
+    assert estimator.update(keypoints) is None and estimator.used_indices is None
+    # Two more landmarks off that line determine it again.
+    spanning = _keypoints(
+        pitch, _homography(), drop=set(range(32)) - {*landmarks, 9, 12}
+    )
+    assert estimator.fit(spanning) is not None

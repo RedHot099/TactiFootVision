@@ -53,7 +53,8 @@ class HomographyEstimator:
     one frame on its own and leaves the estimator unchanged, for frames that
     are not consecutive (single shot frames, frames from different matches).
 
-    Keypoints below ``min_confidence`` are ignored; at least four are needed.
+    Keypoints below ``min_confidence`` are ignored; at least four are needed, and
+    the landmarks RANSAC keeps must not all but one lie on one pitch line.
     Averaging the last ``smoothing_window`` fits steadies pitch positions but lags
     behind camera pans: on broadcast footage 3 frames cut position jitter in half
     versus no smoothing while adding about 2 px of line misalignment.
@@ -143,7 +144,7 @@ class HomographyEstimator:
         indices = np.flatnonzero(confidence >= self.min_confidence)
         if len(indices) < 4:
             return None
-        matrix, _ = cv2.findHomography(
+        matrix, inliers = cv2.findHomography(
             xy[indices].astype(np.float32),
             vertices[indices],
             cv2.RANSAC,
@@ -151,4 +152,30 @@ class HomographyEstimator:
         )
         if matrix is None or not np.isfinite(matrix).all() or abs(matrix[2, 2]) < 1e-12:
             return None
+        if not _spans_plane(vertices[indices[inliers.ravel() > 0]]):
+            return None
         return matrix / matrix[2, 2], indices
+
+
+def _spans_plane(points: np.ndarray) -> bool:
+    """Whether four of ``points`` have no three on a line, which a homography needs.
+
+    That fails exactly when all points but at most one share a line (e.g. three
+    landmarks on the goal line and a goal-box corner): the solver still returns a
+    matrix, numerically singular, that maps the whole frame onto a line.
+    """
+    points = np.asarray(points, dtype=float)
+    if len(points) < 4:
+        return False
+    tolerance = 1e-6 * max(1.0, float(np.abs(points).max()))
+    for i in range(len(points)):
+        for j in range(i + 1, len(points)):
+            direction = points[j] - points[i]
+            if not direction.any():
+                continue
+            offsets = points - points[i]
+            cross = direction[0] * offsets[:, 1] - direction[1] * offsets[:, 0]
+            off_line = np.abs(cross) > tolerance * np.hypot(*direction)
+            if off_line.sum() <= 1:
+                return False
+    return True
