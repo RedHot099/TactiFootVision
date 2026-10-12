@@ -176,7 +176,7 @@ def test_a_refinement_that_ends_in_a_mirror_image_keeps_the_start(monkeypatch):
     # The markings are symmetric about the long axis, so a mirror image of the
     # true view (near and far touchline swapped) puts every marking on a line;
     # no camera above the pitch sees one. On SoccerNet frames 1% of refined fits
-    # ended there from starts that were not mirror images.
+    # ended there, mostly from starts that were not mirror images.
     pitch = SoccerPitch()
     to_frame = _camera(pitch)
     frame = _render(pitch, to_frame)

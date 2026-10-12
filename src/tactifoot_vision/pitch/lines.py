@@ -19,9 +19,9 @@ Only samples inside the frame and on the grass count. With fewer than
 than ``min_inliers`` of the samples on a line, or no more than the start: a
 fit that ends between lines has snapped partly onto the wrong ones (on
 SoccerNet frames such fits had a worse scale than the keypoint fit they
-started from). So it is, too, when the result is a mirror image of the start:
-the markings are symmetric, so a mirrored view fits them perfectly, but no
-camera sees one. :class:`LineFit` reports the share of samples within
+started from). So it is, too, when the result is a mirror image (the far
+touchline nearer the camera than the near one): the markings are symmetric, so
+a mirrored view fits them perfectly, but no camera sees one. :class:`LineFit` reports the share of samples within
 ``inlier_px`` of a painted line (``inliers``), before and after.
 """
 
@@ -225,11 +225,12 @@ def refine_homography(
     if not (refined_inliers >= min_inliers and refined_inliers > start_inliers):
         return unchanged
     # The markings are symmetric about both axes, so a mirror image of the view
-    # can fit the lines perfectly; a camera never sees one, so the refined
-    # matrix must keep the start's orientation where the markings are seen.
-    _, seen = visible(to_frame)
-    centre = seen.mean(axis=0)
-    if _orientation(refined, centre) != _orientation(start, centre):
+    # can fit the lines perfectly. With the far touchline at y = 0 (the
+    # keypoint dataset's landmark order, which SoccerPitch follows) a camera
+    # above the pitch sees x and y as the frame does: a homography that
+    # reverses the orientation where the markings are seen is a mirror image.
+    _, seen = visible(refined_to_frame)
+    if _orientation(refined, seen.mean(axis=0)) < 0:
         return unchanged
     return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
 

@@ -337,8 +337,8 @@ configs/              example run files
   `(keypoints, frame, boxes)`, which `Pipeline` and `FrameAnalyzer` pass. The
   refined matrix replaces the keypoint fit only when at least half of the
   visible marking samples land on a line (3 px at 720 p), more than before,
-  and it is not a mirror image of the keypoint fit (the markings are
-  symmetric, so a mirrored view fits them perfectly). Off by default.
+  and it is not a mirror image (far and near touchline swapped; the markings
+  are symmetric, so a mirrored view fits them perfectly). Off by default.
   On SoccerNet shot frames the pitch model's keypoints are ~50 px off at
   720 p even with `stretch=True` (~10 px on its own images), and only ~1% of
   its fits put half of the projected markings within 5 px of a painted line;
