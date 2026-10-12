@@ -48,6 +48,18 @@ def test_a_shot_without_freeze_frame_or_goalkeeper_has_no_such_truth():
     assert not np.isnan(t.loc["a"].sb_shot_x)            # the shot location is always known
 
 
+def test_a_statsbomb_event_paired_twice_is_refused():
+    pairs = pd.DataFrame({c: ["x", "y"] for c in audit.PAIR_COLUMNS} | {"shot_id": ["a", "b"], "paired": [True, True],
+                         "is_penalty": [False, False], "sb_event_id": ["e", "e"]})
+    with pytest.raises(ValueError, match="twice"):
+        audit.population(pairs)
+
+
+def test_the_timing_table_refuses_a_missing_residual():
+    with pytest.raises(ValueError, match="no timing residual"):
+        audit.timing_table(_table([{"residual_ms": np.nan}]))
+
+
 def test_population_is_paired_non_penalty_and_refuses_other_columns():
     pairs = pd.DataFrame({c: ["x", "y", "z"] for c in audit.PAIR_COLUMNS} | {"shot_id": ["c", "a", "b"],
                          "paired": [True, True, False], "is_penalty": [False, True, False]})
@@ -218,19 +230,19 @@ def _run(monkeypatch, tmp_path, out_name, flip=False, record_reads=None):
     (tmp_path / out_name).mkdir()
     pairs, shots, extract = _write_inputs(tmp_path / out_name, flip)
     out = tmp_path / out_name / "audit"
-    if record_reads is not None:
-        original = pd.read_parquet
-
-        def recording(path, *args, **kwargs):
-            table = original(path, *args, **kwargs)
-            record_reads.append((Path(path).name, kwargs.get("columns"), list(table.columns)))
-            return table
-        monkeypatch.setattr(pd, "read_parquet", recording)
     monkeypatch.setattr(sys, "argv", ["xgd_audit.py", "--extract", str(extract), "--out", str(out), "--pairs", str(pairs),
                                       "--shots", str(shots), "--configs", "C1", "C4", "--n-boot", "30"])
-    xgd_audit.main()
-    if record_reads is not None:
-        monkeypatch.setattr(pd, "read_parquet", original)
+    with monkeypatch.context() as readers:
+        if record_reads is not None:      # every pandas table read: file, the columns asked for, the columns returned
+            def recorder(original):
+                def recording(path, *args, **kwargs):
+                    table = original(path, *args, **kwargs)
+                    record_reads.append((Path(path).name, kwargs.get("columns", kwargs.get("usecols")), list(table.columns)))
+                    return table
+                return recording
+            for reader in ("read_parquet", "read_csv", "read_json", "read_feather"):
+                readers.setattr(pd, reader, recorder(getattr(pd, reader)))
+        xgd_audit.main()
     return out
 
 

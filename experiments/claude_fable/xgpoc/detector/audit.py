@@ -53,14 +53,20 @@ coverage >= 70%, and goalkeeper information (detected or proxy) for >= 50% of th
 """
 
 import json
+from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from xgpoc.detector.conventions import WIDTH, statsbomb_to_metres
+from xgpoc.detector.extract import feature_differences
 from xgpoc.detector.features import geometry
+from xgpoc.paths import STATSBOMB
 
+EXPERIMENT = Path(__file__).resolve().parents[2]
+PAIRS = EXPERIMENT / "results/xgv_pairing/pairs.parquet"
+SHOTS = STATSBOMB / "tables/shots.parquet"
 PAIR_COLUMNS = ["shot_id", "game", "paired", "is_penalty", "sb_event_id", "sb_x", "sb_y", "residual_ms"]
 SHOT_COLUMNS = ["event_id", "freeze_frame_json"]
 FRAME_READ_COLUMNS = ["shot_id", "offset_ms", "frame_path", "readable", "homography", "kp_xy", "kp_conf", "kp_instance_conf",
@@ -87,7 +93,10 @@ def population(pairs: pd.DataFrame) -> pd.DataFrame:
     if extra:
         raise ValueError(f"the audit reads only {PAIR_COLUMNS}; got also {extra}")
     keep = pairs.paired.astype(bool) & ~pairs.is_penalty.astype(bool)
-    return pairs[keep].sort_values("shot_id").reset_index(drop=True)
+    out = pairs[keep].sort_values("shot_id").reset_index(drop=True)
+    if out.shot_id.duplicated().any() or out.sb_event_id.duplicated().any():
+        raise ValueError("a population shot or StatsBomb event appears twice")
+    return out
 
 
 def read_population(path) -> pd.DataFrame:
@@ -294,7 +303,10 @@ def cone_confusion(per_shot: pd.DataFrame) -> pd.DataFrame:
 
 
 def timing_table(per_shot: pd.DataFrame) -> pd.DataFrame:
-    """Median errors by |timing residual| (xg-vendor's per-shot residual after the half offset), descriptive only."""
+    """Median errors by |timing residual| (xg-vendor's per-shot residual after the half offset), descriptive only.
+    Every paired shot has a residual; a missing one is refused rather than dropped from the bins."""
+    if per_shot.residual_ms.isna().any():
+        raise ValueError(f"{int(per_shot.residual_ms.isna().sum())} rows have no timing residual")
     bins = pd.cut(per_shot.residual_ms.abs(), TIMING_BINS_MS, right=True, include_lowest=True)
     rows = []
     for (config, interval), table in per_shot.groupby(["config", bins], sort=True, observed=False):
@@ -332,30 +344,32 @@ def gate(coverage: float, median: float, gk_coverage: float) -> dict:
     return {"result": "PASS" if all(c["ok"] for c in checks.values()) else "STOP", "checks": checks}
 
 
+def stat(table: pd.DataFrame, quantity: str, name: str, subset: str = "all") -> pd.Series:
+    """One statistic of a metrics table (`metrics`) per configuration."""
+    rows = table[(table.quantity == quantity) & (table.subset == subset) & (table.stat == name)]
+    return rows.set_index("config").value
+
+
 def decide(table: pd.DataFrame) -> dict:
-    """Config choice and gate from a metrics table (`metrics`): reads only coverage and median rows of subset all."""
-    def stat(quantity, name):
-        rows = table[(table.quantity == quantity) & (table.subset == "all") & (table.stat == name)]
-        return rows.set_index("config").value
-    candidates = pd.DataFrame({"coverage": stat("shot_location", "coverage"), "median": stat("shot_location", "median")})
+    """Config choice and gate from a metrics table (`metrics`): reads only coverage and median rows of subset all.
+
+    Eligibility and the gate use the point estimates; the intervals are reported, not used."""
+    def stat_all(quantity, name):
+        return stat(table, quantity, name)
+    candidates = pd.DataFrame({"coverage": stat_all("shot_location", "coverage"), "median": stat_all("shot_location", "median")})
     choice = choose(candidates.reset_index())
     c = choice["chosen"]
-    result = gate(float(candidates.coverage[c]), float(candidates["median"][c]), float(stat("gk_any", "coverage")[c]))
+    result = gate(float(candidates.coverage[c]), float(candidates["median"][c]), float(stat_all("gk_any", "coverage")[c]))
     return choice | {"gate": {"config": c} | result,
                      "approach2": "continues" if result["result"] == "PASS" else "closes with the audit report (ticket 05)"}
 
 
 def check_replay(cached: pd.DataFrame, replayed: pd.DataFrame, tolerance: float = 1e-9) -> dict[str, int]:
-    """Columns where the replayed t0 features differ from the cached feature table, with the number of shots."""
+    """Columns where the replayed t0 features differ from the cached feature table, with the number of shots (only
+    columns that differ; empty when identical)."""
     a = cached.set_index("shot_id").sort_index()
     b = replayed[replayed.offset_ms == 0].set_index("shot_id").sort_index()
     if not a.index.equals(b.index):
         return {"shot_id": int(len(a.index.symmetric_difference(b.index)))}
-    bad = {}
-    for column in a.columns.intersection(b.columns):
-        x, y = a[column].to_numpy(float), b[column].to_numpy(float)
-        same = (np.isnan(x) & np.isnan(y)) | (np.abs(x - y) <= tolerance)
-        if not same.all():
-            bad[column] = int((~same).sum())
-    return bad
-
+    counts = feature_differences(a, b, a.columns, tolerance).sum()
+    return {str(c): int(n) for c, n in counts.items() if n}

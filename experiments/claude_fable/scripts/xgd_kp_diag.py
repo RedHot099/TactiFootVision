@@ -36,13 +36,10 @@ from tqdm import tqdm
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import audit, records
 from xgpoc.detector import extract as ex
-from xgpoc.paths import STATSBOMB
 
 from tactifoot_vision.pitch import HomographyEstimator, frame_to_pitch
 
 ROOT = Path(__file__).resolve().parents[1]
-PAIRS = ROOT / "results/xgv_pairing/pairs.parquet"
-SHOTS = STATSBOMB / "tables/shots.parquet"
 SIZE = 640
 
 
@@ -56,14 +53,10 @@ def stretched_keypoints(model, image: np.ndarray) -> sv.KeyPoints:
     return keypoints
 
 
-def anchors(xyxy, bottom: bool) -> np.ndarray:
-    boxes = np.asarray(xyxy, dtype=float).reshape(-1, 4)
-    y = boxes[:, 3] if bottom else (boxes[:, 1] + boxes[:, 3]) / 2
-    return np.column_stack([(boxes[:, 0] + boxes[:, 2]) / 2, y])
-
-
 def placed(xyxy, matrix, bottom: bool) -> list[float]:
-    points = anchors(xyxy, bottom)
+    """Pitch positions of cached boxes: the bottom centre (people) or the centre (ball), as the package places them."""
+    boxes = sv.Detections(xyxy=np.asarray(xyxy, dtype=np.float32).reshape(-1, 4))
+    points = boxes.get_anchors_coordinates(sv.Position.BOTTOM_CENTER if bottom else sv.Position.CENTER)
     if matrix is None:
         return [float("nan")] * (2 * len(points))
     return [float(v) for v in frame_to_pitch(points, matrix).ravel()]
@@ -93,8 +86,8 @@ def main() -> None:
     parser.add_argument("--config", default="C4", choices=list(ex.CONFIGS))
     parser.add_argument("--extract", type=Path, default=ROOT / "cache/xgd_extract")
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_kp_diag")
-    parser.add_argument("--pairs", type=Path, default=PAIRS)
-    parser.add_argument("--shots", type=Path, default=SHOTS)
+    parser.add_argument("--pairs", type=Path, default=audit.PAIRS)
+    parser.add_argument("--shots", type=Path, default=audit.SHOTS)
     parser.add_argument("--n-boot", type=int, default=audit.N_BOOT)
     parser.add_argument("--seed", type=int, default=audit.SEED)
     parser.add_argument("--device", default="cpu")
@@ -134,8 +127,7 @@ def main() -> None:
         args.out / "keypoints.parquet", index=False)
 
     def value(quantity, stat):
-        rows = metrics[(metrics.quantity == quantity) & (metrics.subset == "all") & (metrics.stat == stat)]
-        return float(rows.value.iloc[0])
+        return float(audit.stat(metrics, quantity, stat)[name])
     figures = {"shot_location_coverage": value("shot_location", "coverage"), "shot_location_median_m": value("shot_location", "median"),
                "gk_information_coverage": value("gk_any", "coverage"), "homography_t0": float(replayed.homography_ok.mean())}
     record = {"purpose": "diagnostic: keypoint input stretched vs letterbox; not the config choice or the gate",

@@ -175,3 +175,15 @@ def test_the_full_run_reads_the_choice_name_only(tmp_path):
     choice = tmp_path / "choice.json"
     choice.write_text('{"chosen": "C4", "gate": {"result": "STOP"}}')
     assert xgd_extract_full.chosen_config(choice) == "C4"
+
+
+def test_the_full_run_compares_only_the_shots_of_both_runs(tmp_path):
+    import xgd_extract_full
+
+    reference = tmp_path / "features.parquet"
+    pd.DataFrame({"shot_id": ["a", "b", "z"], "dist": [1.0, 2.0, 9.0], "shot_ok": [1.0, 1.0, 1.0]}).to_parquet(reference)
+    features = pd.DataFrame({"shot_id": ["a", "a", "b", "c"], "offset_ms": [0, -400, 0, 0], "dist": [1.0, 7.0, 2.5, 3.0],
+                             "shot_ok": [1.0, 0.0, 1.0, 1.0], "gk_x": [1.0, 1.0, 1.0, 1.0]})
+    out = xgd_extract_full.reference_differences(features, reference)
+    assert out == {"shots": 2, "shots_differing": 1, "columns": {"dist": 1, "shot_ok": 0}}   # z and c are in one run only
+    assert xgd_extract_full.reference_differences(features, tmp_path / "missing.parquet") is None

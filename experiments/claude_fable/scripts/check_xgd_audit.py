@@ -11,7 +11,9 @@ docstrings of that script and of `scripts/check_reviewer_report.py` for the tag 
 Exit code 0 when every check passes, 1 otherwise (each failure is printed).
 """
 
+import argparse
 import sys
+from pathlib import Path
 
 import check_vendor_report as cvr
 
@@ -19,10 +21,13 @@ REPORT = cvr.EXP / "results_reports" / "xg_detector_2026-10" / "AUDIT.md"
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if not any(not a.startswith("-") for a in argv):
-        argv.insert(0, str(REPORT))
-    return cvr.main(argv)
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("report", type=Path, nargs="?", default=REPORT)
+    ap.add_argument("--claims", type=Path, help="default: claims.toml next to the report")
+    ap.add_argument("--root", type=Path, default=cvr.EXP, help="base of the claim paths")
+    args = ap.parse_args(argv)
+    claims = ["--claims", str(args.claims)] if args.claims else []
+    return cvr.main([str(args.report), *claims, "--root", str(args.root)])
 
 
 if __name__ == "__main__":

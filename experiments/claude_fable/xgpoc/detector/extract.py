@@ -272,8 +272,16 @@ def frame_table(index: Path, shot_ids: list[str]) -> pd.DataFrame:
     frames = pd.read_parquet(index, columns=["shot_id", *FRAME_COLUMNS.values()]).set_index("shot_id")
     missing = sorted(set(shot_ids) - set(frames.index))
     if missing:
-        raise SystemExit(f"{len(missing)} shots are not in {index}, e.g. {missing[0]}")
+        raise ValueError(f"{len(missing)} shots are not in {index}, e.g. {missing[0]}")
     return frames.loc[shot_ids].reset_index()
+
+
+def feature_differences(a: pd.DataFrame, b: pd.DataFrame, columns, tolerance: float) -> pd.DataFrame:
+    """Where two feature tables with the same index differ by more than `tolerance` (NaN equals NaN): a boolean table
+    over the rows and the `columns` present in both."""
+    shared = a.columns.intersection(b.columns).intersection(list(columns))
+    x, y = a[shared].to_numpy(float), b[shared].to_numpy(float)
+    return pd.DataFrame(~((np.isnan(x) & np.isnan(y)) | (np.abs(x - y) <= tolerance)), index=a.index, columns=shared)
 
 
 def coverage(features: pd.DataFrame) -> dict:

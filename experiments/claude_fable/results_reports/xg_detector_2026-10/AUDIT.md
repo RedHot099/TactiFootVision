@@ -10,7 +10,7 @@ W tekście źródłowym po każdej liczbie stoi niewidoczny znacznik `<!--n:…-
 
 ## 1. Wynik: bramka STOP<!--n:au.gate-->
 
-Według zamrożonej reguły wybrana jest konfiguracja C4<!--n:au.chosen-->. Tylko ona ma pokrycie lokalizacji strzału co najmniej 70%<!--n:au.cov_min--> strzałów. Bramka dla podejścia 2 wymaga trzech warunków:
+Według zamrożonej reguły wybrana jest konfiguracja C4<!--n:au.chosen-->. Tylko ona ma pokrycie lokalizacji strzału co najmniej 70%<!--n:au.cov_min--> strzałów. Reguła wyboru i bramka używają estymat punktowych. Przedział pokrycia C4<!--n:au.chosen-->, 71.8% [67.3; 76.2]<!--n:au.c4.cov-->, obejmuje próg, więc kwalifikacja C4<!--n:au.chosen--> jest na granicy. Bramka dla podejścia 2 wymaga trzech warunków:
 
 | Warunek | Próg | C4<!--n:au.chosen--> | Spełniony |
 |---|---|---|---|
@@ -69,6 +69,17 @@ Bramkarz to wykryty bramkarz najbliżej atakowanej bramki albo zastępczy: zawod
 | C4 | 60.2%<!--n:au.c4.gk.cov--> | 6.9 m [6.4; 7.4]<!--n:au.c4.gk.med--> | 7.6%<!--n:au.c4.gk.lt2--> | 274<!--n:au.c4.gkd.n-->, 12.1 m<!--n:au.c4.gkd.med--> | 695<!--n:au.c4.same.n-->, 5.5 m<!--n:au.c4.same.med--> | 666<!--n:au.c4.other.n-->, 6.5 m<!--n:au.c4.other.med--> | 6.9 m<!--n:au.c4.gkkp.med--> |
 
 Wykryty bramkarz ma błąd większy niż zastępczy. Zastępczy z klastra strzelca nie jest gorszy od zastępczego z drugiego klastra, co zgadza się z decyzją z ticketu 01, by nie filtrować go po drużynie.
+
+**Według źródła lokalizacji** (Q23). Lokalizacja strzału wpływa na wybór bramkarza zastępczego i na wierzchołek stożka, więc oba błędy dzielimy tak samo jak w sekcji 3.
+
+| Konfiguracja | bramkarz, piłka: n, mediana | bramkarz, flaga: n, mediana | stożek, piłka: n, dokładna, ≥ 1 | stożek, flaga: n, dokładna, ≥ 1 |
+|---|---|---|---|---|
+| C1 | 142<!--n:au.c1.gk.ball.n-->, 4.0 m<!--n:au.c1.gk.ball.med--> | 1 500<!--n:au.c1.gk.flag.n-->, 8.2 m<!--n:au.c1.gk.flag.med--> | 142<!--n:au.c1.cone.ball.n-->, 62.0%<!--n:au.c1.cone.ball.exact-->, 69.7%<!--n:au.c1.cone.ball.ge1--> | 1 502<!--n:au.c1.cone.flag.n-->, 50.1%<!--n:au.c1.cone.flag.exact-->, 51.3%<!--n:au.c1.cone.flag.ge1--> |
+| C2 | 594<!--n:au.c2.gk.ball.n-->, 4.7 m<!--n:au.c2.gk.ball.med--> | 1 046<!--n:au.c2.gk.flag.n-->, 8.0 m<!--n:au.c2.gk.flag.med--> | 596<!--n:au.c2.cone.ball.n-->, 51.3%<!--n:au.c2.cone.ball.exact-->, 60.9%<!--n:au.c2.cone.ball.ge1--> | 1 048<!--n:au.c2.cone.flag.n-->, 51.0%<!--n:au.c2.cone.flag.exact-->, 52.2%<!--n:au.c2.cone.flag.ge1--> |
+| C3 | 1 127<!--n:au.c3.gk.ball.n-->, 6.7 m<!--n:au.c3.gk.ball.med--> | 510<!--n:au.c3.gk.flag.n-->, 9.0 m<!--n:au.c3.gk.flag.med--> | 1 128<!--n:au.c3.cone.ball.n-->, 46.5%<!--n:au.c3.cone.ball.exact-->, 52.1%<!--n:au.c3.cone.ball.ge1--> | 510<!--n:au.c3.cone.flag.n-->, 49.8%<!--n:au.c3.cone.flag.exact-->, 51.0%<!--n:au.c3.cone.flag.ge1--> |
+| C4 | 1 518<!--n:au.c4.gk.ball.n-->, 6.7 m<!--n:au.c4.gk.ball.med--> | 117<!--n:au.c4.gk.flag.n-->, 8.6 m<!--n:au.c4.gk.flag.med--> | 1 522<!--n:au.c4.cone.ball.n-->, 46.6%<!--n:au.c4.cone.ball.exact-->, 52.8%<!--n:au.c4.cone.ball.ge1--> | 116<!--n:au.c4.cone.flag.n-->, 52.6%<!--n:au.c4.cone.flag.exact-->, 53.4%<!--n:au.c4.cone.flag.ge1--> |
+
+Przedziały tych podzbiorów są w `results/xgd_audit/metrics.csv`.
 
 ## 5. Obrońcy w stożku strzału
 
@@ -158,4 +169,4 @@ Pokrycie według roli w planie podziału xg-vendor (udział strzałów):
 | `results/xgd_full/coverage_by_role.csv` | `7bda2b30e3e85a96db88131e8340808ff49a7f810a2ce0fe45955f593e7fe12c` | pokrycie według roli i klatki |
 | `results/xgd_kp_diag/complete.json` | `c271936e2e47d55bce966f6af7de2c44322265398872c2c162f35c1a5c62f2d4` | rekord ukończenia |
 | `results/xgd_kp_diag/metrics.csv` | `e6680930f8248ff390b1d1c0cf4b3498ac400313b77a1d49e35b28ecebe859d3` | metryki: konfiguracja × wielkość × podzbiór × statystyka |
-| `xgpoc/detector/audit.py` | `131d0f1e0b8359ef4a8c13de93c3e8bddc1883b2edc8d766d0b2b9659fd86f20` | kod audytu: poziom przedziałów |
+| `xgpoc/detector/audit.py` | `891c55eba77b309fefccce7661849512eead082e74ac7d0de8a9e85511f15c96` | kod audytu: poziom przedziałów |

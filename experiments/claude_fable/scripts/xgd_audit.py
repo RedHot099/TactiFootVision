@@ -25,11 +25,8 @@ import pandas as pd
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import audit, records
 from xgpoc.detector import extract as ex
-from xgpoc.paths import STATSBOMB
 
 ROOT = Path(__file__).resolve().parents[1]
-PAIRS = ROOT / "results/xgv_pairing/pairs.parquet"
-SHOTS = STATSBOMB / "tables/shots.parquet"
 
 
 def verified_cache(folder: Path) -> dict:
@@ -55,8 +52,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--extract", type=Path, default=ROOT / "cache/xgd_extract")
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_audit")
-    parser.add_argument("--pairs", type=Path, default=PAIRS)
-    parser.add_argument("--shots", type=Path, default=SHOTS)
+    parser.add_argument("--pairs", type=Path, default=audit.PAIRS)
+    parser.add_argument("--shots", type=Path, default=audit.SHOTS)
     parser.add_argument("--configs", nargs="+", default=list(ex.CONFIGS), choices=list(ex.CONFIGS))
     parser.add_argument("--n-boot", type=int, default=audit.N_BOOT)
     parser.add_argument("--seed", type=int, default=audit.SEED)

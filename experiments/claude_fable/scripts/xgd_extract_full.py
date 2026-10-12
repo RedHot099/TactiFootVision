@@ -27,7 +27,6 @@ from pathlib import Path
 os.environ.setdefault("HF_HUB_OFFLINE", "1")   # SigLIP comes from the local Hugging Face cache, never downloaded
 
 import cv2
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from xgpoc.bundle import canonical_digest, sha256_file
@@ -56,12 +55,9 @@ def reference_differences(features: pd.DataFrame, reference: Path) -> dict | Non
     new = features[features.offset_ms == 0].set_index("shot_id")
     common = ref.index.intersection(new.index)
     ref, new = ref.loc[common], new.loc[common]
-    columns, differing = {}, np.zeros(len(ref), bool)
-    for column in ref.columns.intersection(new.columns).intersection(COLUMNS):
-        a, b = ref[column].to_numpy(float), new[column].to_numpy(float)
-        differs = ~((np.isnan(a) & np.isnan(b)) | (np.abs(a - b) <= 1e-6))
-        columns[column], differing = int(differs.sum()), differing | differs
-    return {"shots": len(ref), "shots_differing": int(differing.sum()), "columns": columns}
+    differs = ex.feature_differences(ref, new, COLUMNS, 1e-6)
+    return {"shots": len(ref), "shots_differing": int(differs.any(axis=1).sum()),
+            "columns": {str(c): int(n) for c, n in differs.sum().items()}}
 
 
 def main() -> None:

@@ -235,3 +235,29 @@ def test_coverage_by_role_counts_rows_per_role_and_offset():
     assert table.loc[("all", -400), "def_cone"] == pytest.approx(1 / 3)
     with pytest.raises(ValueError, match="no role"):
         ex.coverage_by_role(features, games, plan.iloc[:1])
+
+
+def test_a_cache_whose_list_columns_are_all_null_reads_back(tmp_path):
+    # Regression: a parquet column holding only nulls reads back as NaN, which `frame_from_row` took for a list.
+    bare = frame_with(PEOPLE, (94.0, 34.0))
+    bare.homography = None
+    ex.frames_table([ex.frame_row("s1", 0, "/f.jpg", bare)]).to_parquet(tmp_path / "frames.parquet")
+    row = pd.read_parquet(tmp_path / "frames.parquet").iloc[0].to_dict()
+    assert not isinstance(row["kp_xy"], list | np.ndarray)               # the case: no list, no None
+    frame = ex.frame_from_row(row)
+    assert frame.homography is None and frame.keypoints is None
+    assert ex.replay_features(pd.read_parquet(tmp_path / "frames.parquet"), ex.CONFIGS["C1"]).homography_ok.tolist() == [0.0]
+
+
+def test_feature_differences_count_rows_per_column_with_nan_equal_to_nan():
+    a = pd.DataFrame({"x": [1.0, np.nan, 3.0], "y": [0.0, 0.0, 0.0], "z": [1.0, 1.0, 1.0]}, index=["a", "b", "c"])
+    b = pd.DataFrame({"x": [1.0, np.nan, 3.5], "y": [0.0, 1.0, np.nan]}, index=["a", "b", "c"])
+    d = ex.feature_differences(a, b, ["x", "y", "z"], 1e-6)
+    assert list(d.columns) == ["x", "y"] and d.sum().tolist() == [1, 2] and d.any(axis=1).tolist() == [False, True, True]
+
+
+def test_frame_table_refuses_unknown_shots(tmp_path):
+    index = tmp_path / "index.parquet"
+    pd.DataFrame({"shot_id": ["s1"], **{c: ["/f.jpg"] for c in ex.FRAME_COLUMNS.values()}}).to_parquet(index)
+    with pytest.raises(ValueError, match="not in"):
+        ex.frame_table(index, ["s1", "s2"])

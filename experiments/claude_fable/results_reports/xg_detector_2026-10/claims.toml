@@ -56,6 +56,16 @@ x4 = { path = "cache/xgd_extract/C4" }
 "au.c1.other.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c1.other.med" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
 "au.c1.gkkp.med" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_any", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c1.gk.ball.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_any", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c1.gk.ball.med" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_any", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c1.cone.ball.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c1.cone.ball.exact" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "ball", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c1.cone.ball.ge1" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "ball", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c1.gk.flag.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_any", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c1.gk.flag.med" = { src = "au:metrics.csv", row = { config = "C1", quantity = "gk_any", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c1.cone.flag.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c1.cone.flag.exact" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "flag", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c1.cone.flag.ge1" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "flag", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
 "au.c1.cone.n" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c1.cone.exact" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
 "au.c1.cone.ge1" = { src = "au:metrics.csv", row = { config = "C1", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
@@ -85,6 +95,16 @@ x4 = { path = "cache/xgd_extract/C4" }
 "au.c2.other.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c2.other.med" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
 "au.c2.gkkp.med" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_any", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c2.gk.ball.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_any", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c2.gk.ball.med" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_any", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c2.cone.ball.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c2.cone.ball.exact" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "ball", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c2.cone.ball.ge1" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "ball", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c2.gk.flag.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_any", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c2.gk.flag.med" = { src = "au:metrics.csv", row = { config = "C2", quantity = "gk_any", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c2.cone.flag.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c2.cone.flag.exact" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "flag", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c2.cone.flag.ge1" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "flag", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
 "au.c2.cone.n" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c2.cone.exact" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
 "au.c2.cone.ge1" = { src = "au:metrics.csv", row = { config = "C2", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
@@ -112,6 +132,16 @@ x4 = { path = "cache/xgd_extract/C4" }
 "au.c3.other.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c3.other.med" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
 "au.c3.gkkp.med" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_any", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c3.gk.ball.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_any", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c3.gk.ball.med" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_any", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c3.cone.ball.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c3.cone.ball.exact" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "ball", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c3.cone.ball.ge1" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "ball", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c3.gk.flag.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_any", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c3.gk.flag.med" = { src = "au:metrics.csv", row = { config = "C3", quantity = "gk_any", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c3.cone.flag.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c3.cone.flag.exact" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "flag", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c3.cone.flag.ge1" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "flag", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
 "au.c3.cone.n" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c3.cone.exact" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
 "au.c3.cone.ge1" = { src = "au:metrics.csv", row = { config = "C3", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
@@ -144,6 +174,16 @@ x4 = { path = "cache/xgd_extract/C4" }
 "au.c4.other.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c4.other.med" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
 "au.c4.gkkp.med" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c4.gk.ball.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c4.gk.ball.med" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c4.cone.ball.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c4.cone.ball.exact" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "ball", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c4.cone.ball.ge1" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "ball", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c4.gk.flag.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c4.gk.flag.med" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"au.c4.cone.flag.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"au.c4.cone.flag.exact" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "flag", stat = "exact" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"au.c4.cone.flag.ge1" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "flag", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
 "au.c4.cone.n" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
 "au.c4.cone.exact" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
 "au.c4.cone.ge1" = { src = "au:metrics.csv", row = { config = "C4", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
