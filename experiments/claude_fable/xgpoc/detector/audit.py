@@ -460,6 +460,61 @@ def decide(table: pd.DataFrame, candidates: list[str] | None = None) -> dict:
                      "approach2": "continues" if result["result"] == "PASS" else "closes with the audit report (ticket 05)"}
 
 
+# ------------------------------------------------------------------ audit 2 diagnostics (descriptive, after the choice)
+REFINEMENT_PAIRS = {"D3": "D1", "D4": "D2"}     # refined configuration -> the same keypoint fits without refinement
+SOURCE_GROUPS = {"ball_t0": "shot_from_ball == 1 and ball_offset_ms == 0", "ball_m400": "ball_offset_ms == -400",
+                 "ball_m800": "ball_offset_ms == -800", "flag": "shooter_by_goal == 1"}
+
+
+def refinement_groups(plain: pd.DataFrame, refined: pd.DataFrame) -> pd.Series:
+    """Per shot (index shot_id), what the line refinement did to the t0 homography: "refined" (the refined configuration's
+    matrix differs from the unrefined one's), "kept" (it fell back to the keypoint fit) or "no_fit". Both frame tables
+    must hold the same t0 keypoints (one model, one input); a shot whose keypoints differ is refused."""
+    a = plain[plain.offset_ms == 0].set_index("shot_id").sort_index()
+    b = refined[refined.offset_ms == 0].set_index("shot_id").reindex(a.index)
+
+    def matrix(value):
+        return None if value is None or (isinstance(value, float) and np.isnan(value)) else np.asarray(value, float)
+
+    out = {}
+    for shot, kp_a, kp_b, h_a, h_b in zip(a.index, a.kp_xy, b.kp_xy, a.homography, b.homography, strict=True):
+        ka, kb = matrix(kp_a), matrix(kp_b)
+        if (ka is None) != (kb is None) or (ka is not None and not np.array_equal(ka, kb)):
+            raise ValueError(f"{shot}: the two runs have different t0 keypoints")
+        ha, hb = matrix(h_a), matrix(h_b)
+        if (ha is None) != (hb is None):
+            raise ValueError(f"{shot}: one run has a t0 homography and the other not")
+        out[shot] = "no_fit" if ha is None else ("kept" if np.allclose(ha / ha[-1], hb / hb[-1], rtol=0, atol=1e-9) else "refined")
+    return pd.Series(out, name="refinement").rename_axis("shot_id")
+
+
+def group_errors(per_shot: pd.DataFrame, groups: dict[str, np.ndarray], config: str, split: str, d: Draws) -> list[dict]:
+    """For one configuration's per-shot rows (population order) and boolean `groups` over them: each group's share of the
+    population, and its shot-location and goalkeeper (gk_any) errors: n compared, median with its interval, and for the
+    shot location the median signed error along x."""
+    t = per_shot[per_shot.config == config].reset_index(drop=True)
+    everyone = np.ones(len(t), bool)
+    located, gk = t.shot_ok.to_numpy() == 1, (t.gk_ok.to_numpy() == 1) & t.sb_gk_x.notna().to_numpy()
+    rows = []
+    for name, mask in groups.items():
+        cells = {("all", "share"): share(mask, everyone, d),
+                 ("shot_location", "n"): (float((mask & located).sum()), np.nan, np.nan),
+                 ("shot_location", "median"): quantiles(t.shot_err.to_numpy(float), mask & located, (0.5,), d)[0],
+                 ("shot_location", "median_dx"): quantiles(t.shot_dx.to_numpy(float), mask & located, (0.5,), d)[0],
+                 ("gk_any", "n"): (float((mask & gk).sum()), np.nan, np.nan),
+                 ("gk_any", "median"): quantiles(t.gk_err.to_numpy(float), mask & gk, (0.5,), d)[0]}
+        rows += [{"split": split, "group": name, "config": config, "quantity": q, "stat": st, "value": v[0], "lo": v[1], "hi": v[2]}
+                 for (q, st), v in cells.items()]
+    return rows
+
+
+def source_masks(per_shot: pd.DataFrame, config: str) -> dict[str, np.ndarray]:
+    """`SOURCE_GROUPS` over one configuration's rows: where its shot location came from (the t0 ball, the ball of the
+    -400 or -800 ms frame, or the flagged shooter)."""
+    t = per_shot[per_shot.config == config].reset_index(drop=True)
+    return {name: t.eval(rule).to_numpy(bool) for name, rule in SOURCE_GROUPS.items()}
+
+
 def metric_differences(new: pd.DataFrame, old: pd.DataFrame, configs) -> dict:
     """How the rows of `configs` in a metrics table `new` compare with the same rows of an earlier run `old` (both as
     read back from metrics.csv): rows of `old` compared, missing from `new`, and differing in value or interval

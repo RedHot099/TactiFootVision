@@ -433,6 +433,72 @@ def test_replayed_features_that_differ_from_the_cache_are_reported():
     assert audit.check_replay(cached, replayed.assign(dist=[np.nan, 1.0])) == {}
 
 
+# ------------------------------------------------------------ audit 2 diagnostics
+def _frames(rows):
+    return pd.DataFrame([{"shot_id": s, "offset_ms": o, "kp_xy": kp, "homography": h} for s, o, kp, h in rows])
+
+
+def test_refinement_groups_compare_the_t0_matrices_of_the_same_keypoints():
+    eye, moved = list(np.eye(3).ravel()), list((np.eye(3) * 2).ravel())       # 2 x I is the same homography as I
+    shifted = list((np.eye(3) + np.eye(3, k=2) * 0.5).ravel())                 # a shift along x
+    plain = _frames([("a", 0, [1.0, 2.0], eye), ("b", 0, [1.0, 2.0], eye), ("c", 0, None, None), ("a", -400, [9.0], eye)])
+    refined = _frames([("a", 0, [1.0, 2.0], shifted), ("b", 0, [1.0, 2.0], moved), ("c", 0, None, None),
+                       ("a", -400, [9.0], shifted)])
+    assert audit.refinement_groups(plain, refined).to_dict() == {"a": "refined", "b": "kept", "c": "no_fit"}
+    with pytest.raises(ValueError, match="different t0 keypoints"):
+        audit.refinement_groups(plain, refined.assign(kp_xy=[[1.0, 2.5], [1.0, 2.0], None, [9.0]]))
+    with pytest.raises(ValueError, match="one run has a t0 homography"):
+        audit.refinement_groups(plain, refined.assign(homography=[None, moved, None, shifted]))
+
+
+def test_group_errors_and_location_sources_on_planted_rows():
+    table = _table([{"shot_err": 2.0, "shot_dx": 1.0, "ball_offset_ms": 0.0}, {"shot_err": 8.0, "shot_dx": -1.0, "ball_offset_ms": -400.0,
+                                                                              "ball_fallback": 1.0},
+                    {"shot_err": 6.0, "ball_offset_ms": np.nan, "shot_from_ball": 0.0, "shooter_by_goal": 1.0, "gk_ok": 0.0},
+                    {"shot_ok": 0.0, "shot_err": np.nan, "ball_offset_ms": np.nan, "shot_from_ball": 0.0}])
+    masks = audit.source_masks(table, "C9")
+    assert {k: v.tolist() for k, v in masks.items()} == {"ball_t0": [True, False, False, False], "ball_m400": [False, True, False, False],
+                                                        "ball_m800": [False] * 4, "flag": [False, False, True, False]}
+    d = audit.draws(table.game.to_numpy(), n_boot=5)
+    rows = pd.DataFrame(audit.group_errors(table, masks, "C9", "source", d)).set_index(["group", "quantity", "stat"]).value
+    assert rows["ball_m400", "shot_location", "median"] == 8.0 and rows["ball_m400", "shot_location", "median_dx"] == -1.0
+    assert rows["flag", "all", "share"] == 0.25 and rows["flag", "gk_any", "n"] == 0 and np.isnan(rows["flag", "gk_any", "median"])
+    assert rows["ball_m800", "shot_location", "n"] == 0
+
+
+def test_the_audit_2_diagnostic_end_to_end(monkeypatch, tmp_path):
+    import xgd_audit2_diag
+
+    pop = 4
+    per_shot = pd.concat([_table([{"shot_err": float(i + k)} for i in range(pop)]).assign(config=c, shot_id=[f"s{i}" for i in range(pop)])
+                          for k, c in enumerate(("D1", "D2", "D3", "D4"))], ignore_index=True)
+    folder = tmp_path / "audit"
+    folder.mkdir()
+    per_shot.assign(ball_offset_ms=0.0).to_parquet(folder / "per_shot.parquet")
+    (folder / "complete.json").write_text(json.dumps({"files": {"per_shot.parquet": sha256_file(folder / "per_shot.parquet")},
+                                                      "parameters": {"n_boot": 7, "seed": 0}}))
+    eye, other = list(np.eye(3).ravel()), list((np.eye(3) + np.eye(3, k=1)).ravel())
+    homographies = {"D1": [eye, eye, None, eye], "D3": [other, eye, None, eye], "D2": [eye] * 4, "D4": [eye] * 4}
+    for name, matrices in homographies.items():
+        (tmp_path / "extract" / name).mkdir(parents=True)
+        frames = _frames([(f"s{i}", 0, None if m is None else [1.0], m) for i, m in enumerate(matrices)])
+        frames.to_parquet(tmp_path / "extract" / name / "frames.parquet")
+        (tmp_path / "extract" / name / "complete.json").write_text(
+            json.dumps({"files": {"frames.parquet": sha256_file(tmp_path / "extract" / name / "frames.parquet")}}))
+    out = tmp_path / "diag"
+    monkeypatch.setattr(sys, "argv", ["xgd_audit2_diag.py", "--audit", str(folder), "--extract", str(tmp_path / "extract"),
+                                      "--out", str(out)])
+    xgd_audit2_diag.main()
+    record = json.loads((out / "complete.json").read_text())
+    assert record["refinement_groups"] == {"D3": {"refined": 1, "kept": 2, "no_fit": 1}, "D4": {"refined": 0, "kept": 4, "no_fit": 0}}
+    diag = pd.read_csv(out / "diag.csv").set_index(["split", "group", "config", "quantity", "stat"]).value
+    assert diag["refinement_D3", "refined", "D1", "shot_location", "median"] == 0.0     # s0: D1 error 0, D3 error 2
+    assert diag["refinement_D3", "refined", "D3", "shot_location", "median"] == 2.0
+    assert diag["source", "ball_t0", "D4", "all", "share"] == 1.0
+    with pytest.raises(SystemExit, match="is complete"):
+        xgd_audit2_diag.main()
+
+
 # ------------------------------------------------------------ the keypoint-input diagnostic
 
 def test_the_diagnostic_stretches_the_frame_and_scales_the_keypoints_back():

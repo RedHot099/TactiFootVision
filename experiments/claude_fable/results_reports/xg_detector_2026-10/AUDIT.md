@@ -169,4 +169,4 @@ Pokrycie według roli w planie podziału xg-vendor (udział strzałów):
 | `results/xgd_full/coverage_by_role.csv` | `7bda2b30e3e85a96db88131e8340808ff49a7f810a2ce0fe45955f593e7fe12c` | pokrycie według roli i klatki |
 | `results/xgd_kp_diag/complete.json` | `c271936e2e47d55bce966f6af7de2c44322265398872c2c162f35c1a5c62f2d4` | rekord ukończenia |
 | `results/xgd_kp_diag/metrics.csv` | `e6680930f8248ff390b1d1c0cf4b3498ac400313b77a1d49e35b28ecebe859d3` | metryki: konfiguracja × wielkość × podzbiór × statystyka |
-| `xgpoc/detector/audit.py` | `9bb191c5f58f91aa385dc84fb0a44ed83401f13a7ba146ccc62912dbec6d40b1` | kod audytu: poziom przedziałów |
+| `xgpoc/detector/audit.py` | `67f9406c3a36d6679b713941a70caa99359a847416624d352799a9a3b940e698` | kod audytu: poziom przedziałów |
