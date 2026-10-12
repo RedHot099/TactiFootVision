@@ -37,16 +37,16 @@ def assign_frame_teams(
     so does everyone when fewer than ``classifier.n_teams`` players have a
     valid crop. Team numbers are only comparable within one frame.
     """
-    if classifier.reducer is not None:
-        raise ValueError(
-            "Single-frame teams cluster about 15 crops, too few for "
-            f"reducer={classifier.reducer!r}; use TeamClassifier(reducer=None)"
-        )
+    check_single_frame_classifier(classifier)
     if positions is not None and np.shape(positions) != (len(detections), 2):
         raise ValueError(
             f"positions must be ({len(detections)}, 2), got {np.shape(positions)}"
         )
-    names = detections.data.get("class_name", np.zeros(len(detections), dtype=str))
+    if "class_name" not in detections.data:
+        if len(detections):
+            raise ValueError("detections must carry data['class_name']")
+        return np.zeros(0, dtype=int)
+    names = detections.data["class_name"]
     teams = np.full(len(detections), NO_TEAM, dtype=int)
     players = np.flatnonzero(names == player_class)
     crops = extract_crops(
@@ -75,6 +75,15 @@ def assign_frame_teams(
         if teams[i] == NO_TEAM:
             teams[i] = _nearest_team(pixels.astype(float), player_teams, i)
     return teams
+
+
+def check_single_frame_classifier(classifier: TeamClassifier) -> None:
+    """Refuse a classifier that would reduce with UMAP: a frame has too few crops."""
+    if classifier.reducer is not None:
+        raise ValueError(
+            "Single-frame teams cluster about 15 crops, too few for "
+            f"reducer={classifier.reducer!r}; use TeamClassifier(reducer=None)"
+        )
 
 
 def _nearest_team(points: np.ndarray, teams: np.ndarray, goalkeeper: int) -> int:

@@ -17,7 +17,10 @@ from tactifoot_vision.pipeline.result import NO_TEAM, FrameResult
 from tactifoot_vision.pitch.homography import HomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.teams.classifier import TeamClassifier
-from tactifoot_vision.teams.frame import assign_frame_teams
+from tactifoot_vision.teams.frame import (
+    assign_frame_teams,
+    check_single_frame_classifier,
+)
 
 
 class FrameAnalyzer:
@@ -82,10 +85,8 @@ class FrameAnalyzer:
             raise ValueError(
                 f"pitch {pitch} differs from the homography estimator's {homography.pitch}"
             )
-        if team_classifier is not None and team_classifier.reducer is not None:
-            raise ValueError(
-                "Single-frame teams cluster about 15 crops; use TeamClassifier(reducer=None)"
-            )
+        if team_classifier is not None:
+            check_single_frame_classifier(team_classifier)
         self.detector = detector
         self.keypoint_model = keypoint_model
         self.team_classifier = team_classifier
@@ -107,7 +108,7 @@ class FrameAnalyzer:
         ball, people = _detect_ball_and_people(
             self.detector, frame, self.ball_class, self.include_classes
         )
-        people.mask = None
+        people.mask = None  # full-frame masks (~2 MB per object at 1080p) are not kept
         keypoints = None
         matrix = None
         if self.keypoint_model is not None:

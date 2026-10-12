@@ -302,6 +302,13 @@ def test_frame_teams_refuse_umap_and_misshapen_positions():
         )
 
 
+def test_frame_teams_need_class_names():
+    frame, detections = _frame_scene(_OBJECTS)
+    del detections.data["class_name"]
+    with pytest.raises(ValueError, match="class_name"):
+        assign_frame_teams(frame, detections, _frame_classifier())
+
+
 def test_each_frame_is_fitted_on_its_own():
     classifier = _frame_classifier()
     frame, detections = _frame_scene(_OBJECTS)

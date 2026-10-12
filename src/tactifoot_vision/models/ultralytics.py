@@ -180,16 +180,18 @@ class YOLODetector(_UltralyticsModel):
             class_conf: minimum confidence per class name, replacing ``conf``
                 for the classes it names (e.g. ``{"ball": 0.15}``). Other
                 classes keep exactly the detections they get with ``conf``
-                alone: non-maximum suppression is per class.
+                alone (non-maximum suppression is per class), unless the
+                lower threshold lets more than Ultralytics' ``max_det`` (300)
+                candidates through, which football frames do not reach.
         """
         self.class_conf = dict(class_conf or {})
         for name, value in self.class_conf.items():
             if not 0 <= value <= 1:
                 raise ValueError(f"class_conf[{name!r}] must be in [0, 1], got {value}")
         super().__init__(weights, conf=conf, iou=iou, imgsz=imgsz, device=device)
-        unknown = self.class_conf and sorted(
-            set(self.class_conf) - set(self.class_names)
-        )
+        unknown = []
+        if self.class_conf:
+            unknown = sorted(set(self.class_conf) - set(self.class_names))
         if unknown:
             raise ValueError(
                 f"class_conf names unknown class(es) {', '.join(unknown)}; "
