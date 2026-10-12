@@ -12,7 +12,8 @@ Per frame (`score`):
 - `recall`: the share of mask pixels within `tol` pixels of a projected line (how much of the painted lines the model
   explains; below 1 even for a perfect fit, as the mask also catches kits, logos and shadows).
 
-A frame is scorable with at least `MIN_POINTS` points. No StatsBomb data, labels or detections are used: the check reads
+A frame is scorable with at least `MIN_POINTS` points spread at least `MIN_THICKNESS` pixels across their main
+direction: a degenerate homography that maps the whole pitch onto one painted line would otherwise agree perfectly. No StatsBomb data, labels or detections are used: the check reads
 the frame and the homography only. The sanity tests (`test_xgd_lines.py`) render the markings through a known
 homography: the true matrix scores 1 and a known shift on the pitch lowers it.
 """
@@ -28,6 +29,7 @@ from tactifoot_vision.pitch.homography import project_points
 STEP = 0.25          # metres between samples along a marking
 TOL = 5.0            # pixels, at 1280 x 720: about a painted line's width at mid distance
 MIN_POINTS = 100
+MIN_THICKNESS = 10.0  # pixels: projected markings thinner than this across their main direction are one line
 
 
 def marking_samples(pitch: SoccerPitch | None = None, step: float = STEP) -> np.ndarray:
@@ -109,7 +111,7 @@ def score(view: LineView, homography: np.ndarray | None, tol: float = TOL) -> di
     on_grass = view.grass[row, col]
     points = int(on_grass.sum())
     off_grass = float(1 - on_grass.mean())
-    if points < MIN_POINTS:
+    if points < MIN_POINTS or thickness(xy[on_grass]) < MIN_THICKNESS:
         return nan | {"points": float(points), "off_grass": off_grass}
     agreement = float((view.distance[row[on_grass], col[on_grass]] <= tol).mean())
     drawn = np.zeros(shape, np.uint8)
@@ -117,6 +119,13 @@ def score(view: LineView, homography: np.ndarray | None, tol: float = TOL) -> di
     near_model = cv2.distanceTransform(1 - drawn, cv2.DIST_L2, 5) <= tol
     recall = float(near_model[view.lines].mean()) if view.lines.any() else np.nan
     return {"points": float(points), "off_grass": off_grass, "agreement": agreement, "recall": recall}
+
+
+def thickness(xy: np.ndarray) -> float:
+    """Standard deviation (pixels) of `(N, 2)` points across their main direction; 0 for fewer than 3."""
+    if len(xy) < 3:
+        return 0.0
+    return float(np.linalg.svd(xy - xy.mean(axis=0), compute_uv=False)[1] / np.sqrt(len(xy)))
 
 
 def render(homography: np.ndarray, shape: tuple[int, int] = (720, 1280), width_px: int = 3) -> np.ndarray:

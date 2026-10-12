@@ -162,3 +162,13 @@ def test_keypoint_residuals_measure_the_distance_from_the_projected_landmarks():
     np.testing.assert_array_equal(rows[:, 0], [20, 21, 25])
     np.testing.assert_allclose(rows[:, 1], [0, 0, 5], atol=1e-3)
     assert lines.keypoint_residuals(None, TRUTH).shape == (0, 2)
+
+
+def test_a_homography_that_squashes_the_pitch_onto_one_line_is_not_scored(view):
+    # The true view squashed 100 times towards the middle row of the frame: every marking within a few pixels of it.
+    squash = np.array([[1, 0, 0], [0, 0.01, 0.99 * 360], [0, 0, 1.0]])
+    flat = TRUTH @ np.linalg.inv(squash)                         # frame -> pitch of the squashed view
+    xy = lines.projected_samples(flat, (720, 1280))
+    assert len(xy) >= lines.MIN_POINTS and lines.thickness(xy) < lines.MIN_THICKNESS
+    assert np.isnan(lines.score(view, flat)["agreement"])
+    assert lines.thickness(lines.projected_samples(TRUTH, (720, 1280))) > 100
