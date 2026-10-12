@@ -22,7 +22,9 @@ SoccerNet frames such fits had a worse scale than the keypoint fit they
 started from). So it is, too, when the result is no camera's view of the
 grass: a mirror image (far and near touchline swapped), which fits the
 symmetric markings perfectly, or a view whose horizon cuts the grass, where
-the fit shrank the markings into a corner of the frame. :class:`LineFit` reports the share of samples within
+the fit shrank the markings into a corner of the frame. And so it is when the
+visible markings shrank onto one painted line (across it, a quarter of the
+start's spread or less), which also puts them all on a line. :class:`LineFit` reports the share of samples within
 ``inlier_px`` of a painted line (``inliers``), before and after.
 """
 
@@ -38,6 +40,9 @@ from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 _REFERENCE_HEIGHT = 720
 _FINEST_PX = 5.0  # distance cap of the last stage
 _STAGE_RATIO = 2.5  # caps shrink by about this much per stage
+# A refined view whose markings are thinner than this share of the start's has
+# shrunk them onto one painted line.
+_MIN_THICKNESS_RATIO = 0.25
 # Frame positions (fractions of width and height) of the four control points.
 _CONTROL = ((0.15, 0.35), (0.85, 0.35), (0.85, 0.9), (0.15, 0.9))
 
@@ -228,6 +233,8 @@ def refine_homography(
     _, seen = visible(refined_to_frame)
     if not _faces_camera(refined, grass, seen):
         return unchanged
+    if _thickness(seen) < _MIN_THICKNESS_RATIO * _thickness(visible(to_frame)[1]):
+        return unchanged
     return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
 
 
@@ -255,6 +262,15 @@ def _faces_camera(
         return True
     w = np.column_stack([points, np.ones(len(points))]) @ to_pitch[2]
     return bool((np.linalg.det(to_pitch) * w > 0).all())
+
+
+def _thickness(points: np.ndarray) -> float:
+    """Spread (pixels, standard deviation) of ``(N, 2)`` points across their main direction; 0 for fewer than 3."""
+    if len(points) < 3:
+        return 0.0
+    return float(
+        np.linalg.svd(points - points.mean(axis=0), compute_uv=False)[1]
+    ) / np.sqrt(len(points))
 
 
 def _least_squares(residuals, start: np.ndarray, loss_scale: float) -> np.ndarray:

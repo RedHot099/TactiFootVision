@@ -209,3 +209,13 @@ def test_a_camera_view_faces_the_camera_where_the_pitch_is_seen():
     grass[500:] = 0  # ... unless neither grass nor markings are seen there
     assert lines._faces_camera(horizon, grass, seen[:1])
     assert not lines._faces_camera(horizon, grass, seen)
+
+
+def test_markings_shrunk_onto_one_line_have_no_thickness():
+    rng = np.random.default_rng(0)
+    view = rng.uniform([0, 0], [1280, 720], (500, 2))
+    line = np.column_stack([np.linspace(0, 1280, 500), 300 + rng.normal(0, 2, 500)])
+    assert lines._thickness(view) > 150
+    assert lines._thickness(line) < 3
+    assert lines._thickness(line) < lines._MIN_THICKNESS_RATIO * lines._thickness(view)
+    assert lines._thickness(view[:2]) == 0.0

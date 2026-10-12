@@ -340,8 +340,8 @@ configs/              example run files
   and it is a camera's view of the pitch it sees: not a mirror image (far and
   near touchline swapped; the markings are symmetric, so a mirrored view fits
   them perfectly) and no horizon across the seen markings or the lower half's
-  grass (a fit that shrank the markings into a corner of the frame). Off by
-  default.
+  grass (a fit that shrank the markings into a corner of the frame), and its
+  markings did not shrink onto one painted line. Off by default.
   On SoccerNet shot frames the pitch model's keypoints are ~50 px off at
   720 p even with `stretch=True` (~10 px on its own images), and only ~1% of
   its fits put half of the projected markings within 5 px of a painted line;
