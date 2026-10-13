@@ -1,0 +1,2378 @@
+{
+  "purpose": "xg-compare: the frozen design (council C4), the category dictionary, the shot table it runs on and the expected power, written before any category-level outcome or gap was computed (xg-compare ticket 01)",
+  "provenance": "Transcribed from .scratch/xg-compare/spec.md, Decisions -> C4, and council record C4 (.scratch/xg-detector/council.md). Ticket 02 refuses to run unless this file's SHA-256 is the one recorded in ticket 01. This file is not edited afterwards.",
+  "design": {
+    "notation": {
+      "z_X": "method X's logit on the main scale",
+      "gap": "g = z_F - z_V (frame minus vendor) unless stated otherwise",
+      "unadjusted_contrast": "mean(g | in) - mean(g | out)",
+      "adjusted_effect": "coefficient of the indicator in the OLS fit g ~ 1 + indicator + z_D",
+      "references": "beside every F - V effect, the same effects for D - V and P - V",
+      "xg_points": "every logit effect is also given in xG points at the category mean"
+    },
+    "scale": {
+      "main": "outcome-recalibrated: shared cross-fitted Platt recalibration as in the paper (xgpoc.vendor.ladder: 5 match-grouped folds, fold seed 0), refitted separately inside each population, each split half and each bootstrap draw; never called label-free",
+      "sensitivity": [
+        "raw logits",
+        "within-population ranks (percentile points)"
+      ],
+      "raw_levels": "reported once, for context"
+    },
+    "methods": {
+      "V": "vendor: StatsBomb xG (pred_vendor_xg)",
+      "P": "positions: event + freeze-frame rung (pred_freeze_frame)",
+      "E": "events: event rung (pred_event)",
+      "D": "distance + angle rung (pred_dist_angle)",
+      "F": "frame: retrained G-combo at the anchor (frame_logit_0)",
+      "F-400": "the same model at -400 ms (frame_logit_m400)",
+      "A1": "G-combo with detector inputs (results/xgd_test/predictions.csv, primary shots only)"
+    },
+    "populations": {
+      "primary": "main population: paired SoccerNet shots, non-penalty, with a scored frame (xgpoc.vendor.ladder.analysis_population on the confirmatory table)",
+      "combined": "robustness only: primary plus StatsBomb-only shots and recovered goals with frames, without the label exclusions and the pre-registered frame exclusion; it reuses the primary shots, so it is not a replication",
+      "penalties": "out of every category analysis",
+      "descriptors": "offset-0 detector descriptors from cache/xgd_full3/E3 (offset_ms == 0)"
+    },
+    "bootstrap": {
+      "draws": 2000,
+      "seed": 0,
+      "draws_definition": "xgpoc.vendor.draws.table_draws over the matches of the shot table (match-clustered, count-weighted)",
+      "recalibration": "refitted inside every draw",
+      "p_values": {
+        "greater": "share of draws <= 0",
+        "less": "share of draws >= 0",
+        "two-sided": "min(1, 2 * min(share of draws <= 0, share of draws >= 0))"
+      },
+      "intervals": "95% percentile intervals"
+    },
+    "floors": {
+      "category_in": 50,
+      "category_out": 50,
+      "category_matches_in": 20,
+      "label_goals": 15,
+      "label_non_goals": 15,
+      "scan_half_in": 50,
+      "scan_half_out": 50,
+      "below_floor": "a level below a floor is shown as descriptive, with its n"
+    },
+    "thresholds": {
+      "family_logit": 0.15,
+      "scan_logit": 0.2,
+      "correlation": 0.1,
+      "log_loss": 0.005,
+      "meaning": "a finding is called interesting only at or above its threshold"
+    },
+    "family": {
+      "correction": "Benjamini-Hochberg at q = 0.05 over the 14 items; Benjamini-Yekutieli as a sensitivity check",
+      "population": "primary",
+      "test": "every item on its adjusted effect; directional items one-sided, the others two-sided",
+      "kinds": {
+        "gap": "coefficient of the level indicator in the OLS fit g ~ 1 + indicator + z_D over the shots where the category is defined; g = z_F - z_V on the main scale",
+        "log_loss": "coefficient of the level indicator in the OLS fit (LL(F) - LL(V)) ~ 1 + indicator + z_D, with LL the per-shot log-loss of the main-scale probabilities",
+        "correlation_difference": "Spearman(F, D) - Spearman(F, V) of the probabilities over the population",
+        "correlation_contrast": "[Spearman(F, V) - Spearman(P, V)] of the probabilities among the level's shots minus the same among the reference shots; each group meets the category floor"
+      },
+      "items": [
+        {
+          "id": "2",
+          "label": "rebound: same team, <= 5 s after the previous shot, same StatsBomb possession",
+          "kind": "gap",
+          "category": "rebound_5s",
+          "level": "yes",
+          "side": "less",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": "rebound_3s = yes (3 s window); subtypes after a save / after a block descriptive",
+          "threshold": 0.15
+        },
+        {
+          "id": "3",
+          "label": "header (body = Head)",
+          "kind": "gap",
+          "category": "body",
+          "level": "Head",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "4",
+          "label": "key pass is a cross (kp_cross)",
+          "kind": "gap",
+          "category": "key_pass_cross",
+          "level": "yes",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "5",
+          "label": ">= 2 defenders in the shooting cone (ff_def_cone >= 2)",
+          "kind": "gap",
+          "category": "defenders_in_cone",
+          "level": "2_plus",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "6a",
+          "label": "goalkeeper >= 4 off the goal line (gk_depth >= 4, StatsBomb units)",
+          "kind": "gap",
+          "category": "gk_depth",
+          "level": "04_plus",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "7",
+          "label": "direct free kick (stype = Free Kick)",
+          "kind": "gap",
+          "category": "shot_type",
+          "level": "Free Kick",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "8",
+          "label": "frame closer to distance + angle than to the vendor",
+          "kind": "correlation_difference",
+          "category": null,
+          "level": null,
+          "side": "greater",
+          "reference": "none (whole population)",
+          "sensitivity": "Pearson of the main-scale logits",
+          "threshold": 0.1
+        },
+        {
+          "id": "9",
+          "label": "frame-vendor agreement relative to positions-vendor agreement, headers vs foot shots",
+          "kind": "correlation_contrast",
+          "category": "body",
+          "level": "Head",
+          "side": "less",
+          "reference": "foot shots: body in (Right Foot, Left Foot); body Other left out",
+          "sensitivity": null,
+          "threshold": 0.1
+        },
+        {
+          "id": "10",
+          "label": "tight view: lowest n_players tercile at offset 0",
+          "kind": "log_loss",
+          "category": "players_visible",
+          "level": "low",
+          "side": "greater",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.005
+        },
+        {
+          "id": "11",
+          "label": "under pressure",
+          "kind": "gap",
+          "category": "under_pressure",
+          "level": "yes",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "12",
+          "label": "one-on-one",
+          "kind": "gap",
+          "category": "one_on_one",
+          "level": "yes",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "14",
+          "label": "outside the box (x < 102 or |y - 40| > 22)",
+          "kind": "gap",
+          "category": "outside_box",
+          "level": "yes",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "15",
+          "label": "goalkeeper not detected at offset 0 (gk_detected false)",
+          "kind": "gap",
+          "category": "gk_visible",
+          "level": "no",
+          "side": "two-sided",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.15
+        },
+        {
+          "id": "16",
+          "label": "|timing residual| in the top quartile",
+          "kind": "log_loss",
+          "category": "timing_residual_top",
+          "level": "yes",
+          "side": "greater",
+          "reference": "the other shots where the category is defined",
+          "sensitivity": null,
+          "threshold": 0.005
+        }
+      ]
+    },
+    "outside_family": {
+      "1": "owner's statement (a): non-goal shots from outside the box (sb_outcome != Goal, outside_box = yes); on target = sb_outcome in (Saved, Saved to Post), off target = sb_outcome in (Off T, Post, Wayward); Blocked and Saved Off Target reported apart; F and F-400 side by side with the paper's H4 controls (vendor logit, StatsBomb body-part and shot-type indicators); a re-expression of the paper's H4, post-contact",
+      "13": "on target overall (on_target_sn): reported as the paper's known H4 result",
+      "6b": "open goal (open_goal = yes): descriptive",
+      "negative_control": "half: first against second half, expected to stay inside the threshold"
+    },
+    "scan": {
+      "scope": "F - V only, every scan level of the dictionary (category role 'category'); descriptive, post-shot, sensitivity and negative-control categories are not scanned",
+      "levels": [
+        {
+          "category": "body",
+          "level": "Right Foot"
+        },
+        {
+          "category": "body",
+          "level": "Left Foot"
+        },
+        {
+          "category": "body",
+          "level": "Head"
+        },
+        {
+          "category": "body",
+          "level": "Other"
+        },
+        {
+          "category": "technique",
+          "level": "Normal"
+        },
+        {
+          "category": "technique",
+          "level": "Half Volley"
+        },
+        {
+          "category": "technique",
+          "level": "Volley"
+        },
+        {
+          "category": "technique",
+          "level": "Lob"
+        },
+        {
+          "category": "technique",
+          "level": "Overhead Kick"
+        },
+        {
+          "category": "technique",
+          "level": "Diving Header"
+        },
+        {
+          "category": "technique",
+          "level": "Backheel"
+        },
+        {
+          "category": "shot_type",
+          "level": "Free Kick"
+        },
+        {
+          "category": "play_pattern",
+          "level": "Regular Play"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Free Kick"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Throw In"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Corner"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Counter"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Goal Kick"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Keeper"
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Kick Off"
+        },
+        {
+          "category": "play_pattern",
+          "level": "Other"
+        },
+        {
+          "category": "key_pass_cross",
+          "level": "yes"
+        },
+        {
+          "category": "key_pass_through",
+          "level": "yes"
+        },
+        {
+          "category": "key_pass_cutback",
+          "level": "yes"
+        },
+        {
+          "category": "key_pass_none",
+          "level": "yes"
+        },
+        {
+          "category": "key_pass_height",
+          "level": "Ground Pass"
+        },
+        {
+          "category": "key_pass_height",
+          "level": "Low Pass"
+        },
+        {
+          "category": "key_pass_height",
+          "level": "High Pass"
+        },
+        {
+          "category": "first_time",
+          "level": "yes"
+        },
+        {
+          "category": "under_pressure",
+          "level": "yes"
+        },
+        {
+          "category": "one_on_one",
+          "level": "yes"
+        },
+        {
+          "category": "open_goal",
+          "level": "yes"
+        },
+        {
+          "category": "follows_dribble",
+          "level": "yes"
+        },
+        {
+          "category": "aerial_won",
+          "level": "yes"
+        },
+        {
+          "category": "distance",
+          "level": "00_06"
+        },
+        {
+          "category": "distance",
+          "level": "06_12"
+        },
+        {
+          "category": "distance",
+          "level": "12_18"
+        },
+        {
+          "category": "distance",
+          "level": "18_25"
+        },
+        {
+          "category": "distance",
+          "level": "25_plus"
+        },
+        {
+          "category": "angle",
+          "level": "00_15"
+        },
+        {
+          "category": "angle",
+          "level": "15_20"
+        },
+        {
+          "category": "angle",
+          "level": "20_30"
+        },
+        {
+          "category": "angle",
+          "level": "30_45"
+        },
+        {
+          "category": "angle",
+          "level": "45_plus"
+        },
+        {
+          "category": "outside_box",
+          "level": "yes"
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "0"
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "1"
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "2_plus"
+        },
+        {
+          "category": "gk_depth",
+          "level": "00_02"
+        },
+        {
+          "category": "gk_depth",
+          "level": "02_04"
+        },
+        {
+          "category": "gk_depth",
+          "level": "04_plus"
+        },
+        {
+          "category": "gk_off_line",
+          "level": "00_0.5"
+        },
+        {
+          "category": "gk_off_line",
+          "level": "0.5_1.5"
+        },
+        {
+          "category": "gk_off_line",
+          "level": "1.5_plus"
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "00_1.5"
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "1.5_3"
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "3_plus"
+        },
+        {
+          "category": "rebound_5s",
+          "level": "yes"
+        },
+        {
+          "category": "homography",
+          "level": "failed"
+        },
+        {
+          "category": "players_visible",
+          "level": "low"
+        },
+        {
+          "category": "players_visible",
+          "level": "mid"
+        },
+        {
+          "category": "players_visible",
+          "level": "high"
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "le_8"
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "9"
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "10"
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "ge_11"
+        },
+        {
+          "category": "gk_visible",
+          "level": "yes"
+        },
+        {
+          "category": "ball_detected",
+          "level": "yes"
+        },
+        {
+          "category": "league_season",
+          "level": "england_epl/2015-2016"
+        },
+        {
+          "category": "league_season",
+          "level": "france_ligue-1/2015-2016"
+        },
+        {
+          "category": "league_season",
+          "level": "germany_bundesliga/2015-2016"
+        },
+        {
+          "category": "league_season",
+          "level": "italy_serie-a/2015-2016"
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2014-2015"
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2015-2016"
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2016-2017"
+        },
+        {
+          "category": "minute",
+          "level": "1h_00_14"
+        },
+        {
+          "category": "minute",
+          "level": "1h_15_29"
+        },
+        {
+          "category": "minute",
+          "level": "1h_30_end"
+        },
+        {
+          "category": "minute",
+          "level": "2h_45_59"
+        },
+        {
+          "category": "minute",
+          "level": "2h_60_74"
+        },
+        {
+          "category": "minute",
+          "level": "2h_75_end"
+        },
+        {
+          "category": "minute",
+          "level": "extra_time"
+        },
+        {
+          "category": "timing_residual_top",
+          "level": "yes"
+        }
+      ],
+      "split": {
+        "seed": 20261013,
+        "halves": [
+          "discovery",
+          "validation"
+        ],
+        "unit": "match",
+        "stratified_by": "league_season",
+        "rule": "for each league-season in sorted order, its sorted matches are permuted by one default_rng(seed); the concatenated list is assigned alternately discovery, validation, discovery, ..."
+      },
+      "candidate": "|adjusted effect| >= 0.2 and two-sided p < 0.05 on the discovery half, and the floors met in both halves",
+      "freeze": "candidates, directions and estimands are written to a file and hashed before the validation half is touched",
+      "validation": "one-sided test in the discovered direction on the validation half, Holm at 0.05 across the candidates; pass = 'replicated exploratory'",
+      "not_replicated": "'hypothesis-generating', appendix only, never in the summary",
+      "descriptive_scans": "F - D and F - P scans in an appendix, without tests",
+      "recalibration": "refitted inside each half"
+    },
+    "post_shot": {
+      "categories": [
+        "on_target_sn",
+        "sb_outcome"
+      ],
+      "rules": [
+        "flagged as post-contact",
+        "F and F-400 always side by side; a gap that vanishes at -400 ms reads as the frame seeing the result after contact, not as a valuation",
+        "gaps and discrimination (where both goal classes exist) only; no calibration inside outcome-defined categories",
+        "SoccerNet on target includes blocked shots; StatsBomb Blocked appears mainly in the combined population"
+      ]
+    },
+    "frames": "no frame is looked at, by people or agents; the 5% largest F - V disagreements in each direction are listed by shot ID with their category profile and goal rate, for the owner",
+    "who_is_right": "descriptive, per category and method: O - E, O/E, log-loss, delta LL against V, AUC where both goal classes meet the floor",
+    "agreement": "descriptive except items 8 and 9: Spearman matrix of all methods, overall and per category, plus Pearson on logits; differences between dependent correlations are bootstrapped jointly",
+    "status": "exploratory, post hoc on frozen predictions whose labels the xg-vendor confirmatory run already joined"
+  },
+  "readings": [
+    "Category bins (distance, angle, goalkeeper depth and lateral offset, nearest opponent, keypoints, minute) were fixed in ticket 01 from football conventions and the label-free distributions, since the spec names these categories but not their bins.",
+    "Item 6a's '4 m' is the comparator's gk_depth >= 4 in StatsBomb units (yards), the units of the label-free median 2.1 and p75 3.4 quoted in C4. 'Goalkeeper distance from goal' is the gk_depth category; gk_dist_goal is not binned separately.",
+    "Key-pass type is four binary categories (cross, through ball, cut-back, none) because StatsBomb flags overlap (a cross can also be a cut-back); key-pass height is defined only for shots with a key pass.",
+    "A shot whose category value is missing (no goalkeeper in the freeze frame, no detector descriptor) is left out of both sides of that category's comparison.",
+    "The previous shot of a rebound is any StatsBomb Shot event (penalties included) of the same match, period and possession, by event index; the window is 0 to 5 s (0 to 3 s) inclusive.",
+    "Item 16's adjusted effect uses z_D as its control, like item 10 (C4 names the control for item 10 only).",
+    "Spearman correlations (items 8, 9 and the agreement matrix) are of the raw probabilities, as the spec's Analysis 1 says; they are label-free. Pearson correlations are of the main-scale logits; Pearson of the raw logits is the sensitivity check.",
+    "Item 9 is tested only when headers and foot shots each meet the category floor (50 shots, headers in 20 matches).",
+    "The rebound subtypes (after a save, after a block) are descriptive, as C4 says, so they are not scanned.",
+    "Item 1: StatsBomb 'Saved Off Target' is reported apart, with Blocked, because C4 defines on target as a save and off target as off target, post or wayward, and this outcome is a save of a shot going wide.",
+    "The open scan covers the levels of the categories with role 'category'. The post-shot categories, the 3 s rebound (a sensitivity check of item 2) and the half (the negative control) are not scanned. A two-level category scans one level, because the other is its mirror. 'Floors met in both halves' means the category floor on the whole primary population plus the scan floor in each half.",
+    "The combined population is the paper's: it also leaves out the one StatsBomb-only row of the pre-registered frame exclusion (decode-corrupted frame), so it has 3,401 shots, not 3,402.",
+    "Bootstrap p-values are shares of draws (no +1 correction), as the paper's superiority p.",
+    "Power simulation (C4: 'permute category labels across shots, preserving sizes; inject a 0.15-logit effect'): it holds the paper's frozen recalibration fixed instead of refitting it in every draw and half, which makes the intervals narrower. The shot-level permutation also breaks the match clustering of match-level categories (league-season, camera view) and their correlation with z_D. Both make the power optimistic, most of all for match-level levels. Labels for the log-loss items are drawn from the recalibrated vendor. Log-loss and correlation items plant their own thresholds (0.005 LL, 0.10), since a 0.15-logit gap has no log-loss or correlation unit; scenario '<id>:logit' also shifts F by 0.15 logit for the log-loss items. Item 8 has no category to permute and is simulated as 0 or 0.10 plus the real statistic's bootstrap deviations, so the simulation computes that statistic's spread, never its value."
+  ],
+  "dictionary": {
+    "cuts": {
+      "players_low_max": 11,
+      "players_high_min": 17,
+      "timing_top_min_ms": 46.0
+    },
+    "categories": [
+      {
+        "name": "body",
+        "group": "events",
+        "source": "sb_body: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `body`",
+        "rule": "StatsBomb body part",
+        "levels": [
+          "Right Foot",
+          "Left Foot",
+          "Head",
+          "Other"
+        ],
+        "scan_levels": [
+          "Right Foot",
+          "Left Foot",
+          "Head",
+          "Other"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_body"
+      },
+      {
+        "name": "technique",
+        "group": "events",
+        "source": "sb_technique: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `technique`",
+        "rule": "StatsBomb shot technique",
+        "levels": [
+          "Normal",
+          "Half Volley",
+          "Volley",
+          "Lob",
+          "Overhead Kick",
+          "Diving Header",
+          "Backheel"
+        ],
+        "scan_levels": [
+          "Normal",
+          "Half Volley",
+          "Volley",
+          "Lob",
+          "Overhead Kick",
+          "Diving Header",
+          "Backheel"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_technique"
+      },
+      {
+        "name": "shot_type",
+        "group": "events",
+        "source": "sb_stype: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `stype`",
+        "rule": "StatsBomb shot type (penalties are out of every population)",
+        "levels": [
+          "Open Play",
+          "Free Kick",
+          "Corner",
+          "Kick Off"
+        ],
+        "scan_levels": [
+          "Free Kick"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_shot_type"
+      },
+      {
+        "name": "play_pattern",
+        "group": "events",
+        "source": "sb_pattern: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `pattern`",
+        "rule": "StatsBomb play pattern of the possession",
+        "levels": [
+          "Regular Play",
+          "From Free Kick",
+          "From Throw In",
+          "From Corner",
+          "From Counter",
+          "From Goal Kick",
+          "From Keeper",
+          "From Kick Off",
+          "Other"
+        ],
+        "scan_levels": [
+          "Regular Play",
+          "From Free Kick",
+          "From Throw In",
+          "From Corner",
+          "From Counter",
+          "From Goal Kick",
+          "From Keeper",
+          "From Kick Off",
+          "Other"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_play_pattern"
+      },
+      {
+        "name": "key_pass_cross",
+        "group": "events",
+        "source": "sb_kp_cross: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `kp_cross`",
+        "rule": "the key pass is a cross (pass.cross)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_key_pass_cross"
+      },
+      {
+        "name": "key_pass_through",
+        "group": "events",
+        "source": "sb_kp_through: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `kp_through`",
+        "rule": "the key pass is a through ball",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_key_pass_through"
+      },
+      {
+        "name": "key_pass_cutback",
+        "group": "events",
+        "source": "sb_kp_cutback: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `kp_cutback`",
+        "rule": "the key pass is a cut-back (pass.cut_back)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_key_pass_cutback"
+      },
+      {
+        "name": "key_pass_none",
+        "group": "events",
+        "source": "sb_kp_has: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `kp_has`",
+        "rule": "the shot has no key pass (kp_has == 0)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_key_pass_none"
+      },
+      {
+        "name": "key_pass_height",
+        "group": "events",
+        "source": "sb_kp_height: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `kp_height`",
+        "rule": "StatsBomb height of the key pass; undefined without a key pass",
+        "levels": [
+          "Ground Pass",
+          "Low Pass",
+          "High Pass"
+        ],
+        "scan_levels": [
+          "Ground Pass",
+          "Low Pass",
+          "High Pass"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_key_pass_height"
+      },
+      {
+        "name": "first_time",
+        "group": "events",
+        "source": "sb_first_time: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `first_time`",
+        "rule": "StatsBomb first-time flag",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_first_time"
+      },
+      {
+        "name": "under_pressure",
+        "group": "events",
+        "source": "sb_under_pressure: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `under_pressure`",
+        "rule": "StatsBomb under-pressure flag",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_under_pressure"
+      },
+      {
+        "name": "one_on_one",
+        "group": "events",
+        "source": "sb_one_on_one: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `one_on_one`",
+        "rule": "StatsBomb one-on-one flag",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_one_on_one"
+      },
+      {
+        "name": "open_goal",
+        "group": "events",
+        "source": "sb_open_goal: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `open_goal`",
+        "rule": "StatsBomb open-goal flag (item 6b, descriptive)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_open_goal"
+      },
+      {
+        "name": "follows_dribble",
+        "group": "events",
+        "source": "sb_follows_dribble: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `follows_dribble`",
+        "rule": "StatsBomb follows-dribble flag",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_follows_dribble"
+      },
+      {
+        "name": "aerial_won",
+        "group": "events",
+        "source": "sb_aerial_won: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `aerial_won`",
+        "rule": "StatsBomb aerial-won flag",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_aerial_won"
+      },
+      {
+        "name": "distance",
+        "group": "geometry",
+        "source": "sb_dist: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `dist` (distance to the goal centre, yards)",
+        "rule": "bins [0, 6), [6, 12), [12, 18), [18, 25), [25, inf)",
+        "levels": [
+          "00_06",
+          "06_12",
+          "12_18",
+          "18_25",
+          "25_plus"
+        ],
+        "scan_levels": [
+          "00_06",
+          "06_12",
+          "12_18",
+          "18_25",
+          "25_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_distance"
+      },
+      {
+        "name": "angle",
+        "group": "geometry",
+        "source": "sb_angle: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `angle` (goal-mouth angle, radians, binned in degrees)",
+        "rule": "bins [0, 15), [15, 20), [20, 30), [30, 45), [45, 180] degrees",
+        "levels": [
+          "00_15",
+          "15_20",
+          "20_30",
+          "30_45",
+          "45_plus"
+        ],
+        "scan_levels": [
+          "00_15",
+          "15_20",
+          "20_30",
+          "30_45",
+          "45_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_angle"
+      },
+      {
+        "name": "outside_box",
+        "group": "geometry",
+        "source": "sb_x, sb_y: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `x`, `y`",
+        "rule": "outside the penalty area: x < 102 or |y - 40| > 22",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_outside_box"
+      },
+      {
+        "name": "defenders_in_cone",
+        "group": "freeze_frame",
+        "source": "sb_ff_def_cone: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `ff_def_cone`",
+        "rule": "outfield opponents in the shooter-post-post triangle: 0, 1, 2 or more",
+        "levels": [
+          "0",
+          "1",
+          "2_plus"
+        ],
+        "scan_levels": [
+          "0",
+          "1",
+          "2_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_defenders_in_cone"
+      },
+      {
+        "name": "gk_depth",
+        "group": "freeze_frame",
+        "source": "sb_gk_depth: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `gk_depth` (120 - goalkeeper x, yards)",
+        "rule": "bins [0, 2), [2, 4), [4, inf), a goalkeeper behind the line counts as 0; undefined without a goalkeeper in the freeze frame",
+        "levels": [
+          "00_02",
+          "02_04",
+          "04_plus"
+        ],
+        "scan_levels": [
+          "00_02",
+          "02_04",
+          "04_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_gk_depth"
+      },
+      {
+        "name": "gk_off_line",
+        "group": "freeze_frame",
+        "source": "sb_gk_off_line: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `gk_off_line` (signed distance from the shooter-goal line)",
+        "rule": "bins of |gk_off_line| [0, 0.5), [0.5, 1.5), [1.5, inf); undefined without a goalkeeper",
+        "levels": [
+          "00_0.5",
+          "0.5_1.5",
+          "1.5_plus"
+        ],
+        "scan_levels": [
+          "00_0.5",
+          "0.5_1.5",
+          "1.5_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_gk_off_line"
+      },
+      {
+        "name": "nearest_opponent",
+        "group": "freeze_frame",
+        "source": "sb_ff_near_opp: StatsBomb pre-contact feature (xgpoc.vendor.comparator_features) `ff_near_opp` (nearest outfield opponent, yards)",
+        "rule": "bins [0, 1.5), [1.5, 3), [3, inf)",
+        "levels": [
+          "00_1.5",
+          "1.5_3",
+          "3_plus"
+        ],
+        "scan_levels": [
+          "00_1.5",
+          "1.5_3",
+          "3_plus"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_nearest_opponent"
+      },
+      {
+        "name": "rebound_5s",
+        "group": "sequence",
+        "source": "seq_prev_*: raw StatsBomb events (xgpoc.compare.sequence)",
+        "rule": "the previous shot of the same match, period and possession is by the same team and 0-5 s earlier",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_rebound_5s"
+      },
+      {
+        "name": "rebound_3s",
+        "group": "sequence",
+        "source": "seq_prev_*: raw StatsBomb events (xgpoc.compare.sequence)",
+        "rule": "as rebound_5s with 0-3 s (sensitivity check of item 2)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "sensitivity",
+        "column": "cat_rebound_3s"
+      },
+      {
+        "name": "rebound_subtype",
+        "group": "sequence",
+        "source": "seq_prev_outcome: StatsBomb outcome of the previous shot",
+        "rule": "for a 5 s rebound: after_save (Saved, Saved to Post, Saved Off Target), after_block (Blocked), after_other; none otherwise (descriptive, not scanned)",
+        "levels": [
+          "after_save",
+          "after_block",
+          "after_other",
+          "none"
+        ],
+        "scan_levels": [],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "descriptive",
+        "column": "cat_rebound_subtype"
+      },
+      {
+        "name": "homography",
+        "group": "camera_view",
+        "source": "e3_homography_ok: detector descriptor at offset 0 (cache/xgd_full3/E3, offset_ms == 0)",
+        "rule": "the pitch homography was available",
+        "levels": [
+          "ok",
+          "failed"
+        ],
+        "scan_levels": [
+          "failed"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_homography"
+      },
+      {
+        "name": "players_visible",
+        "group": "camera_view",
+        "source": "e3_n_players: detector descriptor at offset 0 (cache/xgd_full3/E3, offset_ms == 0)",
+        "rule": "terciles of the number of detected players: low <= players_low_max, high >= players_high_min (label-free cuts)",
+        "levels": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "scan_levels": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_players_visible"
+      },
+      {
+        "name": "keypoints_visible",
+        "group": "camera_view",
+        "source": "e3_n_keypoints: detector descriptor at offset 0 (cache/xgd_full3/E3, offset_ms == 0) (a zoom proxy)",
+        "rule": "number of detected pitch keypoints: <= 8, 9, 10, >= 11",
+        "levels": [
+          "le_8",
+          "9",
+          "10",
+          "ge_11"
+        ],
+        "scan_levels": [
+          "le_8",
+          "9",
+          "10",
+          "ge_11"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_keypoints_visible"
+      },
+      {
+        "name": "gk_visible",
+        "group": "camera_view",
+        "source": "e3_gk_detected: detector descriptor at offset 0 (cache/xgd_full3/E3, offset_ms == 0)",
+        "rule": "the goalkeeper was detected",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_gk_visible"
+      },
+      {
+        "name": "ball_detected",
+        "group": "camera_view",
+        "source": "e3_ball_ok: detector descriptor at offset 0 (cache/xgd_full3/E3, offset_ms == 0)",
+        "rule": "the ball was detected",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_ball_detected"
+      },
+      {
+        "name": "league_season",
+        "group": "context",
+        "source": "league_season: the SoccerNet match path",
+        "rule": "league and season of the match",
+        "levels": [
+          "england_epl/2015-2016",
+          "france_ligue-1/2015-2016",
+          "germany_bundesliga/2015-2016",
+          "italy_serie-a/2015-2016",
+          "spain_laliga/2014-2015",
+          "spain_laliga/2015-2016",
+          "spain_laliga/2016-2017"
+        ],
+        "scan_levels": [
+          "england_epl/2015-2016",
+          "france_ligue-1/2015-2016",
+          "germany_bundesliga/2015-2016",
+          "italy_serie-a/2015-2016",
+          "spain_laliga/2014-2015",
+          "spain_laliga/2015-2016",
+          "spain_laliga/2016-2017"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_league_season"
+      },
+      {
+        "name": "minute",
+        "group": "context",
+        "source": "sb_minute, half: StatsBomb minute and period of the shot",
+        "rule": "first half 0-14, 15-29, 30 to the end; second half 45-59, 60-74, 75 to the end; extra time",
+        "levels": [
+          "1h_00_14",
+          "1h_15_29",
+          "1h_30_end",
+          "2h_45_59",
+          "2h_60_74",
+          "2h_75_end",
+          "extra_time"
+        ],
+        "scan_levels": [
+          "1h_00_14",
+          "1h_15_29",
+          "1h_30_end",
+          "2h_45_59",
+          "2h_60_74",
+          "2h_75_end",
+          "extra_time"
+        ],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "category",
+        "column": "cat_minute"
+      },
+      {
+        "name": "timing_residual_top",
+        "group": "context",
+        "source": "timing_residual_ms: SoccerNet anchor minus aligned StatsBomb time",
+        "rule": "|timing residual| >= timing_top_min_ms (label-free top-quartile cut)",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [
+          "yes"
+        ],
+        "populations": [
+          "primary"
+        ],
+        "role": "category",
+        "column": "cat_timing_residual_top"
+      },
+      {
+        "name": "half",
+        "group": "context",
+        "source": "half: the period of the shot",
+        "rule": "first or second half (negative control)",
+        "levels": [
+          "first",
+          "second",
+          "extra_time"
+        ],
+        "scan_levels": [],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "negative_control",
+        "column": "cat_half"
+      },
+      {
+        "name": "on_target_sn",
+        "group": "post_shot",
+        "source": "labels: on_target_sn (SoccerNet 'Shots on target', counts blocked shots)",
+        "rule": "SoccerNet on target",
+        "levels": [
+          "yes",
+          "no"
+        ],
+        "scan_levels": [],
+        "populations": [
+          "primary"
+        ],
+        "role": "post_shot",
+        "column": "cat_on_target_sn"
+      },
+      {
+        "name": "sb_outcome",
+        "group": "post_shot",
+        "source": "labels: sb_outcome (StatsBomb outcome of the shot)",
+        "rule": "StatsBomb outcome",
+        "levels": [
+          "Goal",
+          "Saved",
+          "Saved to Post",
+          "Saved Off Target",
+          "Blocked",
+          "Off T",
+          "Post",
+          "Wayward"
+        ],
+        "scan_levels": [],
+        "populations": [
+          "primary",
+          "combined"
+        ],
+        "role": "post_shot",
+        "column": "cat_sb_outcome"
+      }
+    ]
+  },
+  "shot_table": {
+    "path": "results/xgc_compare/table",
+    "table_sha256": "5661452a17121ea84b1d7674bb1358f44b7a720790a409f1f835e9efec534e6e",
+    "labels_sha256": "f7d5bbd2e614931c0aafe3a1d3c4404ec14b3eb1a6c3862fcbefdf0f1ff087b1",
+    "schema_version": "xgc-shot-table-1",
+    "primary": {
+      "matches": 135,
+      "shots": 2721
+    },
+    "combined": {
+      "matches": 135,
+      "shots": 3401
+    },
+    "by_population": {
+      "primary": 2721,
+      "recovered_goal": 43,
+      "statsbomb_only": 637
+    },
+    "a1_coverage": {
+      "of": 2721,
+      "primary_shots": 2721
+    },
+    "sources": {
+      "a1": "9ba32950e063bb519db2bc52e71e9f52d336a6f6ae5d1996279adcba8a929151",
+      "confirmatory": "b9d7337cd8596a1e37262734939aa1318d1f675ae5bc2c112ec5667518aae4d0",
+      "e3": "6f17d71e467864178a5e612d1ee29f770ebe699832e0b7187fe051f18f709326",
+      "features": "a54cfa914c7359c7563b9d15bd32d6689b586c6d51e08d7d4b094ba3c388f888",
+      "preregistration_record": "1e418bcdd9eecd4e0cb680caa57d3252c5586d8a7dfd4c9b488507be96f51313",
+      "statsbomb_events": null
+    },
+    "statsbomb_pin": {
+      "repo": "statsbomb/open-data",
+      "sha": "4b73468fc5b0f1950f9f66fada70ad3a4f9327cb"
+    },
+    "split": {
+      "matches": {
+        "discovery": 68,
+        "validation": 67
+      },
+      "primary_shots": {
+        "discovery": 1441,
+        "validation": 1280
+      },
+      "by_league_season": {
+        "england_epl/2015-2016": {
+          "discovery": 25,
+          "validation": 24
+        },
+        "france_ligue-1/2015-2016": {
+          "discovery": 1,
+          "validation": 2
+        },
+        "germany_bundesliga/2015-2016": {
+          "discovery": 1,
+          "validation": 1
+        },
+        "italy_serie-a/2015-2016": {
+          "discovery": 5,
+          "validation": 4
+        },
+        "spain_laliga/2014-2015": {
+          "discovery": 4,
+          "validation": 4
+        },
+        "spain_laliga/2015-2016": {
+          "discovery": 18,
+          "validation": 18
+        },
+        "spain_laliga/2016-2017": {
+          "discovery": 14,
+          "validation": 14
+        }
+      },
+      "assignment_digest": "46057f019b2da8b5a36ae992fbb874db45ca030a4410d70c6df56002c9913b4e"
+    }
+  },
+  "family_coverage": {
+    "2": {
+      "primary": {
+        "n_in": 144,
+        "n_out": 2577,
+        "matches_in": 87,
+        "n_undefined": 0,
+        "n_in_discovery": 83,
+        "n_in_validation": 61
+      },
+      "combined": {
+        "n_in": 178,
+        "n_out": 3223,
+        "matches_in": 100,
+        "n_undefined": 0,
+        "n_in_discovery": 95,
+        "n_in_validation": 83
+      }
+    },
+    "3": {
+      "primary": {
+        "n_in": 393,
+        "n_out": 2328,
+        "matches_in": 123,
+        "n_undefined": 0,
+        "n_in_discovery": 216,
+        "n_in_validation": 177
+      },
+      "combined": {
+        "n_in": 516,
+        "n_out": 2885,
+        "matches_in": 130,
+        "n_undefined": 0,
+        "n_in_discovery": 273,
+        "n_in_validation": 243
+      }
+    },
+    "4": {
+      "primary": {
+        "n_in": 384,
+        "n_out": 2337,
+        "matches_in": 124,
+        "n_undefined": 0,
+        "n_in_discovery": 215,
+        "n_in_validation": 169
+      },
+      "combined": {
+        "n_in": 492,
+        "n_out": 2909,
+        "matches_in": 133,
+        "n_undefined": 0,
+        "n_in_discovery": 269,
+        "n_in_validation": 223
+      }
+    },
+    "5": {
+      "primary": {
+        "n_in": 386,
+        "n_out": 2335,
+        "matches_in": 126,
+        "n_undefined": 0,
+        "n_in_discovery": 191,
+        "n_in_validation": 195
+      },
+      "combined": {
+        "n_in": 510,
+        "n_out": 2891,
+        "matches_in": 133,
+        "n_undefined": 0,
+        "n_in_discovery": 242,
+        "n_in_validation": 268
+      }
+    },
+    "6a": {
+      "primary": {
+        "n_in": 501,
+        "n_out": 2218,
+        "matches_in": 121,
+        "n_undefined": 2,
+        "n_in_discovery": 256,
+        "n_in_validation": 245
+      },
+      "combined": {
+        "n_in": 597,
+        "n_out": 2801,
+        "matches_in": 129,
+        "n_undefined": 3,
+        "n_in_discovery": 300,
+        "n_in_validation": 297
+      }
+    },
+    "7": {
+      "primary": {
+        "n_in": 143,
+        "n_out": 2578,
+        "matches_in": 80,
+        "n_undefined": 0,
+        "n_in_discovery": 68,
+        "n_in_validation": 75
+      },
+      "combined": {
+        "n_in": 177,
+        "n_out": 3224,
+        "matches_in": 95,
+        "n_undefined": 0,
+        "n_in_discovery": 86,
+        "n_in_validation": 91
+      }
+    },
+    "8": {
+      "primary": {
+        "n": 2721,
+        "matches": 135
+      },
+      "combined": {
+        "n": 3401,
+        "matches": 135
+      }
+    },
+    "9": {
+      "primary": {
+        "n_headers": 393,
+        "n_foot": 2323
+      },
+      "combined": {
+        "n_headers": 516,
+        "n_foot": 2878
+      }
+    },
+    "10": {
+      "primary": {
+        "n_in": 857,
+        "n_out": 1864,
+        "matches_in": 129,
+        "n_undefined": 0,
+        "n_in_discovery": 443,
+        "n_in_validation": 414
+      }
+    },
+    "11": {
+      "primary": {
+        "n_in": 521,
+        "n_out": 2200,
+        "matches_in": 129,
+        "n_undefined": 0,
+        "n_in_discovery": 273,
+        "n_in_validation": 248
+      },
+      "combined": {
+        "n_in": 669,
+        "n_out": 2732,
+        "matches_in": 131,
+        "n_undefined": 0,
+        "n_in_discovery": 345,
+        "n_in_validation": 324
+      }
+    },
+    "12": {
+      "primary": {
+        "n_in": 162,
+        "n_out": 2559,
+        "matches_in": 92,
+        "n_undefined": 0,
+        "n_in_discovery": 80,
+        "n_in_validation": 82
+      },
+      "combined": {
+        "n_in": 194,
+        "n_out": 3207,
+        "matches_in": 103,
+        "n_undefined": 0,
+        "n_in_discovery": 90,
+        "n_in_validation": 104
+      }
+    },
+    "14": {
+      "primary": {
+        "n_in": 1055,
+        "n_out": 1666,
+        "matches_in": 135,
+        "n_undefined": 0,
+        "n_in_discovery": 540,
+        "n_in_validation": 515
+      },
+      "combined": {
+        "n_in": 1280,
+        "n_out": 2121,
+        "matches_in": 135,
+        "n_undefined": 0,
+        "n_in_discovery": 662,
+        "n_in_validation": 618
+      }
+    },
+    "15": {
+      "primary": {
+        "n_in": 2222,
+        "n_out": 499,
+        "matches_in": 135,
+        "n_undefined": 0,
+        "n_in_discovery": 1176,
+        "n_in_validation": 1046
+      }
+    },
+    "16": {
+      "primary": {
+        "n_in": 687,
+        "n_out": 2034,
+        "matches_in": 133,
+        "n_undefined": 0,
+        "n_in_discovery": 337,
+        "n_in_validation": 350
+      }
+    }
+  },
+  "power": {
+    "path": "results/xgc_compare/power/power.json",
+    "sha256": "05f1415146d1b421627f89282fe5d65b7c51b2523336c5a0d64e955e06708bd8",
+    "family_null_any_bh_rejection": 0.086,
+    "family_null_any_by_rejection": 0.039,
+    "items": {
+      "10": {
+        "kind": "log_loss",
+        "label": "tight view: lowest n_players tercile at offset 0",
+        "mde80_unadjusted": 0.029350873993194894,
+        "mean_point_logit_shift": 0.0011313211483443455,
+        "null_bh_rejection": 0.007,
+        "null_raw_rejection": 0.055,
+        "null_sd": 0.01180421037540892,
+        "planted": 0.005,
+        "power_bh_all": 0.108,
+        "power_bh_alone": 0.017,
+        "power_bh_and_threshold_alone": 0.017,
+        "power_bh_logit_shift": 0.007,
+        "power_by_all": 0.041,
+        "power_by_alone": 0.009,
+        "power_raw_alone": 0.133,
+        "side": "greater",
+        "tested_share": 1.0
+      },
+      "11": {
+        "kind": "gap",
+        "label": "under pressure",
+        "mde80_unadjusted": 0.1115022866699967,
+        "null_bh_rejection": 0.009,
+        "null_raw_rejection": 0.069,
+        "null_sd": 0.039799715757329046,
+        "planted": 0.15,
+        "power_bh_all": 0.975,
+        "power_bh_alone": 0.828,
+        "power_bh_and_threshold_alone": 0.509,
+        "power_by_all": 0.924,
+        "power_by_alone": 0.768,
+        "power_raw_alone": 0.968,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "12": {
+        "kind": "gap",
+        "label": "one-on-one",
+        "mde80_unadjusted": 0.18013010672997265,
+        "null_bh_rejection": 0.006,
+        "null_raw_rejection": 0.055,
+        "null_sd": 0.06429578496814219,
+        "planted": 0.15,
+        "power_bh_all": 0.524,
+        "power_bh_alone": 0.32,
+        "power_bh_and_threshold_alone": 0.32,
+        "power_by_all": 0.357,
+        "power_by_alone": 0.246,
+        "power_raw_alone": 0.66,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "14": {
+        "kind": "gap",
+        "label": "outside the box (x < 102 or |y - 40| > 22)",
+        "mde80_unadjusted": 0.0886221821347589,
+        "null_bh_rejection": 0.009,
+        "null_raw_rejection": 0.058,
+        "null_sd": 0.031632872868308085,
+        "planted": 0.15,
+        "power_bh_all": 0.894,
+        "power_bh_alone": 0.965,
+        "power_bh_and_threshold_alone": 0.527,
+        "power_by_all": 0.781,
+        "power_by_alone": 0.947,
+        "power_raw_alone": 0.995,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "15": {
+        "kind": "gap",
+        "label": "goalkeeper not detected at offset 0 (gk_detected false)",
+        "mde80_unadjusted": 0.10950076039971268,
+        "null_bh_rejection": 0.006,
+        "null_raw_rejection": 0.053,
+        "null_sd": 0.03908528936288304,
+        "planted": 0.15,
+        "power_bh_all": 0.952,
+        "power_bh_alone": 0.808,
+        "power_bh_and_threshold_alone": 0.496,
+        "power_by_all": 0.883,
+        "power_by_alone": 0.736,
+        "power_raw_alone": 0.965,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "16": {
+        "kind": "log_loss",
+        "label": "|timing residual| in the top quartile",
+        "mde80_unadjusted": 0.029958411576272635,
+        "mean_point_logit_shift": 0.0011944561695499524,
+        "null_bh_rejection": 0.003,
+        "null_raw_rejection": 0.048,
+        "null_sd": 0.012048547271246497,
+        "planted": 0.005,
+        "power_bh_all": 0.098,
+        "power_bh_alone": 0.015,
+        "power_bh_and_threshold_alone": 0.015,
+        "power_bh_logit_shift": 0.005,
+        "power_by_all": 0.031,
+        "power_by_alone": 0.004,
+        "power_raw_alone": 0.111,
+        "side": "greater",
+        "tested_share": 1.0
+      },
+      "2": {
+        "kind": "gap",
+        "label": "rebound: same team, <= 5 s after the previous shot, same StatsBomb possession",
+        "mde80_unadjusted": 0.1719865439755588,
+        "null_bh_rejection": 0.01,
+        "null_raw_rejection": 0.064,
+        "null_sd": 0.06916882091135394,
+        "planted": -0.15,
+        "power_bh_all": 0.939,
+        "power_bh_alone": 0.348,
+        "power_bh_and_threshold_alone": 0.343,
+        "power_by_all": 0.834,
+        "power_by_alone": 0.228,
+        "power_raw_alone": 0.707,
+        "side": "less",
+        "tested_share": 1.0
+      },
+      "3": {
+        "kind": "gap",
+        "label": "header (body = Head)",
+        "mde80_unadjusted": 0.11476705008706127,
+        "null_bh_rejection": 0.003,
+        "null_raw_rejection": 0.038,
+        "null_sd": 0.04096504303351898,
+        "planted": 0.15,
+        "power_bh_all": 0.956,
+        "power_bh_alone": 0.762,
+        "power_bh_and_threshold_alone": 0.501,
+        "power_by_all": 0.888,
+        "power_by_alone": 0.668,
+        "power_raw_alone": 0.947,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "4": {
+        "kind": "gap",
+        "label": "key pass is a cross (kp_cross)",
+        "mde80_unadjusted": 0.11982532994296267,
+        "null_bh_rejection": 0.003,
+        "null_raw_rejection": 0.048,
+        "null_sd": 0.04277054950785454,
+        "planted": 0.15,
+        "power_bh_all": 0.741,
+        "power_bh_alone": 0.75,
+        "power_bh_and_threshold_alone": 0.534,
+        "power_by_all": 0.57,
+        "power_by_alone": 0.662,
+        "power_raw_alone": 0.94,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "5": {
+        "kind": "gap",
+        "label": ">= 2 defenders in the shooting cone (ff_def_cone >= 2)",
+        "mde80_unadjusted": 0.12386005548934284,
+        "null_bh_rejection": 0.008,
+        "null_raw_rejection": 0.054,
+        "null_sd": 0.04421070768487939,
+        "planted": 0.15,
+        "power_bh_all": 0.972,
+        "power_bh_alone": 0.712,
+        "power_bh_and_threshold_alone": 0.488,
+        "power_by_all": 0.923,
+        "power_by_alone": 0.624,
+        "power_raw_alone": 0.934,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "6a": {
+        "kind": "gap",
+        "label": "goalkeeper >= 4 off the goal line (gk_depth >= 4, StatsBomb units)",
+        "mde80_unadjusted": 0.11122440986904461,
+        "null_bh_rejection": 0.007,
+        "null_raw_rejection": 0.049,
+        "null_sd": 0.039700530188819756,
+        "planted": 0.15,
+        "power_bh_all": 0.569,
+        "power_bh_alone": 0.824,
+        "power_bh_and_threshold_alone": 0.489,
+        "power_by_all": 0.389,
+        "power_by_alone": 0.742,
+        "power_raw_alone": 0.974,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "7": {
+        "kind": "gap",
+        "label": "direct free kick (stype = Free Kick)",
+        "mde80_unadjusted": 0.19797081100697567,
+        "null_bh_rejection": 0.016,
+        "null_raw_rejection": 0.062,
+        "null_sd": 0.0706638602815819,
+        "planted": 0.15,
+        "power_bh_all": 0.963,
+        "power_bh_alone": 0.286,
+        "power_bh_and_threshold_alone": 0.285,
+        "power_by_all": 0.902,
+        "power_by_alone": 0.2,
+        "power_raw_alone": 0.621,
+        "side": "two-sided",
+        "tested_share": 1.0
+      },
+      "8": {
+        "kind": "correlation_difference",
+        "label": "frame closer to distance + angle than to the vendor",
+        "mde80_unadjusted": 0.02079701811492276,
+        "null_bh_rejection": 0.005,
+        "null_raw_rejection": 0.064,
+        "null_sd": 0.008364056793220427,
+        "planted": 0.1,
+        "power_bh_all": 1.0,
+        "power_bh_alone": 1.0,
+        "power_bh_and_threshold_alone": 0.486,
+        "power_by_all": 1.0,
+        "power_by_alone": 1.0,
+        "power_raw_alone": 1.0,
+        "side": "greater",
+        "tested_share": 1.0
+      },
+      "9": {
+        "kind": "correlation_contrast",
+        "label": "frame-vendor agreement relative to positions-vendor agreement, headers vs foot shots",
+        "mde80_unadjusted": 0.08082808189474558,
+        "null_bh_rejection": 0.005,
+        "null_raw_rejection": 0.05,
+        "null_sd": 0.03250709614805923,
+        "planted": -0.1,
+        "power_bh_all": 0.946,
+        "power_bh_alone": 0.787,
+        "power_bh_and_threshold_alone": 0.515,
+        "power_by_all": 0.875,
+        "power_by_alone": 0.651,
+        "power_raw_alone": 0.961,
+        "side": "less",
+        "tested_share": 1.0
+      }
+    },
+    "n_studies": 1000,
+    "parameters": {
+      "alpha_unadjusted": 0.05,
+      "boot_seed": 0,
+      "n_boot": 2000,
+      "n_sims": 1000,
+      "scale": "paper's frozen out-of-fold Platt recalibration, held fixed across draws and halves",
+      "sim_seed": 0,
+      "truth_for_labels": "sigmoid of the main-scale vendor logit"
+    },
+    "scan": {
+      "all": {
+        "any_replicated": 0.907,
+        "mean_levels_meeting_floors": 66.806,
+        "mean_replicated": 2.253,
+        "mean_replicated_other": 0.574,
+        "mean_replicated_planted": 1.679
+      },
+      "null": {
+        "any_replicated": 0.012,
+        "mean_levels_meeting_floors": 66.806,
+        "mean_replicated": 0.012,
+        "mean_replicated_other": 0.012,
+        "mean_replicated_planted": 0.0
+      }
+    },
+    "scan_levels": {
+      "levels": [
+        {
+          "category": "body",
+          "level": "Right Foot",
+          "meets_floors_share": 1.0,
+          "power": 0.444
+        },
+        {
+          "category": "body",
+          "level": "Left Foot",
+          "meets_floors_share": 1.0,
+          "power": 0.537
+        },
+        {
+          "category": "body",
+          "level": "Head",
+          "meets_floors_share": 1.0,
+          "power": 0.452
+        },
+        {
+          "category": "technique",
+          "level": "Normal",
+          "meets_floors_share": 1.0,
+          "power": 0.462
+        },
+        {
+          "category": "technique",
+          "level": "Half Volley",
+          "meets_floors_share": 1.0,
+          "power": 0.441
+        },
+        {
+          "category": "technique",
+          "level": "Volley",
+          "meets_floors_share": 1.0,
+          "power": 0.321
+        },
+        {
+          "category": "shot_type",
+          "level": "Free Kick",
+          "meets_floors_share": 0.998,
+          "power": 0.298
+        },
+        {
+          "category": "play_pattern",
+          "level": "Regular Play",
+          "meets_floors_share": 1.0,
+          "power": 0.499
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Free Kick",
+          "meets_floors_share": 1.0,
+          "power": 0.465
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Throw In",
+          "meets_floors_share": 1.0,
+          "power": 0.496
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Corner",
+          "meets_floors_share": 1.0,
+          "power": 0.445
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Counter",
+          "meets_floors_share": 1.0,
+          "power": 0.308
+        },
+        {
+          "category": "play_pattern",
+          "level": "From Goal Kick",
+          "meets_floors_share": 0.81,
+          "power": 0.197
+        },
+        {
+          "category": "key_pass_cross",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.472
+        },
+        {
+          "category": "key_pass_through",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.333
+        },
+        {
+          "category": "key_pass_none",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.482
+        },
+        {
+          "category": "key_pass_height",
+          "level": "Ground Pass",
+          "meets_floors_share": 1.0,
+          "power": 0.456
+        },
+        {
+          "category": "key_pass_height",
+          "level": "Low Pass",
+          "meets_floors_share": 1.0,
+          "power": 0.404
+        },
+        {
+          "category": "key_pass_height",
+          "level": "High Pass",
+          "meets_floors_share": 1.0,
+          "power": 0.47
+        },
+        {
+          "category": "first_time",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.474
+        },
+        {
+          "category": "under_pressure",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.459
+        },
+        {
+          "category": "one_on_one",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.345
+        },
+        {
+          "category": "aerial_won",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.363
+        },
+        {
+          "category": "distance",
+          "level": "06_12",
+          "meets_floors_share": 1.0,
+          "power": 0.476
+        },
+        {
+          "category": "distance",
+          "level": "12_18",
+          "meets_floors_share": 1.0,
+          "power": 0.493
+        },
+        {
+          "category": "distance",
+          "level": "18_25",
+          "meets_floors_share": 1.0,
+          "power": 0.473
+        },
+        {
+          "category": "distance",
+          "level": "25_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.509
+        },
+        {
+          "category": "angle",
+          "level": "00_15",
+          "meets_floors_share": 1.0,
+          "power": 0.49
+        },
+        {
+          "category": "angle",
+          "level": "15_20",
+          "meets_floors_share": 1.0,
+          "power": 0.491
+        },
+        {
+          "category": "angle",
+          "level": "20_30",
+          "meets_floors_share": 1.0,
+          "power": 0.491
+        },
+        {
+          "category": "angle",
+          "level": "30_45",
+          "meets_floors_share": 1.0,
+          "power": 0.469
+        },
+        {
+          "category": "angle",
+          "level": "45_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.424
+        },
+        {
+          "category": "outside_box",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.5
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "0",
+          "meets_floors_share": 1.0,
+          "power": 0.495
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "1",
+          "meets_floors_share": 1.0,
+          "power": 0.487
+        },
+        {
+          "category": "defenders_in_cone",
+          "level": "2_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.44
+        },
+        {
+          "category": "gk_depth",
+          "level": "00_02",
+          "meets_floors_share": 1.0,
+          "power": 0.515
+        },
+        {
+          "category": "gk_depth",
+          "level": "02_04",
+          "meets_floors_share": 1.0,
+          "power": 0.493
+        },
+        {
+          "category": "gk_depth",
+          "level": "04_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.495
+        },
+        {
+          "category": "gk_off_line",
+          "level": "00_0.5",
+          "meets_floors_share": 1.0,
+          "power": 0.522
+        },
+        {
+          "category": "gk_off_line",
+          "level": "0.5_1.5",
+          "meets_floors_share": 1.0,
+          "power": 0.476
+        },
+        {
+          "category": "gk_off_line",
+          "level": "1.5_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.45
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "00_1.5",
+          "meets_floors_share": 1.0,
+          "power": 0.477
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "1.5_3",
+          "meets_floors_share": 1.0,
+          "power": 0.514
+        },
+        {
+          "category": "nearest_opponent",
+          "level": "3_plus",
+          "meets_floors_share": 1.0,
+          "power": 0.478
+        },
+        {
+          "category": "rebound_5s",
+          "level": "yes",
+          "meets_floors_share": 0.998,
+          "power": 0.307
+        },
+        {
+          "category": "players_visible",
+          "level": "low",
+          "meets_floors_share": 1.0,
+          "power": 0.512
+        },
+        {
+          "category": "players_visible",
+          "level": "mid",
+          "meets_floors_share": 1.0,
+          "power": 0.492
+        },
+        {
+          "category": "players_visible",
+          "level": "high",
+          "meets_floors_share": 1.0,
+          "power": 0.49
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "le_8",
+          "meets_floors_share": 1.0,
+          "power": 0.481
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "9",
+          "meets_floors_share": 1.0,
+          "power": 0.451
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "10",
+          "meets_floors_share": 1.0,
+          "power": 0.476
+        },
+        {
+          "category": "keypoints_visible",
+          "level": "ge_11",
+          "meets_floors_share": 1.0,
+          "power": 0.477
+        },
+        {
+          "category": "gk_visible",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.48
+        },
+        {
+          "category": "ball_detected",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.31
+        },
+        {
+          "category": "league_season",
+          "level": "england_epl/2015-2016",
+          "meets_floors_share": 1.0,
+          "power": 0.514
+        },
+        {
+          "category": "league_season",
+          "level": "italy_serie-a/2015-2016",
+          "meets_floors_share": 1.0,
+          "power": 0.37
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2014-2015",
+          "meets_floors_share": 1.0,
+          "power": 0.298
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2015-2016",
+          "meets_floors_share": 1.0,
+          "power": 0.494
+        },
+        {
+          "category": "league_season",
+          "level": "spain_laliga/2016-2017",
+          "meets_floors_share": 1.0,
+          "power": 0.484
+        },
+        {
+          "category": "minute",
+          "level": "1h_00_14",
+          "meets_floors_share": 1.0,
+          "power": 0.45
+        },
+        {
+          "category": "minute",
+          "level": "1h_15_29",
+          "meets_floors_share": 1.0,
+          "power": 0.476
+        },
+        {
+          "category": "minute",
+          "level": "1h_30_end",
+          "meets_floors_share": 1.0,
+          "power": 0.463
+        },
+        {
+          "category": "minute",
+          "level": "2h_45_59",
+          "meets_floors_share": 1.0,
+          "power": 0.478
+        },
+        {
+          "category": "minute",
+          "level": "2h_60_74",
+          "meets_floors_share": 1.0,
+          "power": 0.467
+        },
+        {
+          "category": "minute",
+          "level": "2h_75_end",
+          "meets_floors_share": 1.0,
+          "power": 0.486
+        },
+        {
+          "category": "timing_residual_top",
+          "level": "yes",
+          "meets_floors_share": 1.0,
+          "power": 0.483
+        }
+      ],
+      "max_power": 0.537,
+      "median_power": 0.476,
+      "min_power": 0.197,
+      "planted": 0.2,
+      "power": "share of all studies in which the level is replicated (a study where the level misses a floor counts as not replicated)"
+    }
+  }
+}
