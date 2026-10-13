@@ -2,6 +2,7 @@
 
     ./run.sh python scripts/pk_train_yolo.py --name NAME --weights yolo11m-pose.pt --imgsz 960 --epochs 60
         [--batch 16] [--val-step 4] [--workers 8] [--set key=value ...]      Ultralytics options over `YOLO_AUGMENT`
+        [--box-fraction 0.6]                                                  fixed centred instance boxes
         [--train-limit N --val-on-train]                                      smoke / overfit runs
     ./run.sh python scripts/pk_train_yolo.py --name NAME --resume             continue from <run>/weights/last.pt
 
@@ -49,6 +50,8 @@ def train(args: argparse.Namespace, run_dir: Path) -> Path:
     dataset = tv.Dataset.from_yolo(data_yaml)
     if args.val_on_train:                     # overfit check: validate on the training images
         dataset = dataset.with_split("valid", dataset["train"])
+    if args.box_fraction is not None:         # one fixed centred box per image (training.central_boxes)
+        dataset = T.central_boxes(dataset, args.box_fraction)
     options = T.YOLO_AUGMENT | dict(args.set or [])
     result = tv.train("yolo_pose", dataset, weights=args.weights, epochs=args.epochs, batch_size=args.batch,
                       imgsz=args.imgsz, device=args.device, workers=args.workers, seed=args.seed,
@@ -83,6 +86,7 @@ def main() -> None:
     parser.add_argument("--val-step", type=int, default=4)
     parser.add_argument("--train-limit", type=int, default=None)
     parser.add_argument("--val-on-train", action="store_true")
+    parser.add_argument("--box-fraction", type=float, default=None, help="train with centred boxes of this size")
     parser.add_argument("--set", type=option, action="append", metavar="KEY=VALUE")
     parser.add_argument("--dataset", type=Path, default=T.DATASET)
     parser.add_argument("--runs", type=Path, default=T.RUNS)

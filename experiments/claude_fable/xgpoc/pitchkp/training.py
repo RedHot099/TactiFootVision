@@ -10,11 +10,19 @@ several pitches or parts of them into one image); horizontal flips with the data
 broadcast frame shows the far touchline at the top); scale, translation and colour jitter, which map a pitch view to
 another pitch view. Images are letterboxed to the square training size by Ultralytics; the model runs with the
 letterbox input (`stretch=False`) at that size.
+
+The instance box (`central_boxes`): ticket 01 labels each image with the box of the pitch area in view, which is
+usually the whole frame width. At 960 input such a box is at the limit of what YOLO's box head can regress (16 distance
+bins of 32 px from a stride-32 anchor: 480 px per side), so the run y11m_960 learned to miss the instance on 65% of
+GSR valid frames. A YOLO-pose candidate may instead train with one fixed box per image, a centred `fraction` of the
+image: always present, always the same, and well inside the box head's range. Only the box changes, not the keypoints.
 """
 
+import dataclasses
 import random
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 DATASET = Path("/mnt/storage/tactifoot_research/pitch_keypoints_sn")
@@ -60,3 +68,21 @@ def training_yaml(root: Path, out: Path, *, val_step: int = 1, train_limit: int 
     data_yaml = out / "data.yaml"
     data_yaml.write_text(yaml.safe_dump(config, sort_keys=False))
     return data_yaml
+
+
+def central_boxes(dataset, fraction: float):
+    """`dataset` (a `tv.Dataset` of one pitch per image) with every instance box replaced by the centred box covering
+    `fraction` of the image's width and height; keypoints unchanged."""
+    if not 0 < fraction <= 1:
+        raise ValueError(f"fraction must be in (0, 1], got {fraction}")
+    out = dataset
+    for split in dataset.split_names:
+        samples = []
+        for sample in dataset[split]:
+            w, h = sample.width, sample.height
+            box = np.float32([w * (1 - fraction) / 2, h * (1 - fraction) / 2, w * (1 + fraction) / 2,
+                              h * (1 + fraction) / 2])
+            boxes = np.tile(box, (len(sample.annotations), 1))
+            samples.append(dataclasses.replace(sample, annotations=dataclasses.replace(sample.annotations, boxes=boxes)))
+        out = out.with_split(split, samples)
+    return out

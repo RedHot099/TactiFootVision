@@ -1,0 +1,2 @@
+{"kp05": {"min_confidence": 0.5, "ransac_threshold": 10.0, "refine_with_lines": false, "mask": "none"},
+ "kp05_refined": {"min_confidence": 0.5, "ransac_threshold": 10.0, "refine_with_lines": true, "mask": "detector"}}
