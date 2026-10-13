@@ -282,6 +282,65 @@ def test_exclusions_drop_held_out_games_shared_games_and_duplicates():
     assert reason == {"c1": "xg held-out game", "c2": "xg held-out game", "c3": "", "c4": "",
                       "g1": "game in GSR evaluation split", "g2": "", "g3": "duplicate of a higher-priority split",
                       "g4": "", "c5": ""}
-    assert [sorted(p[:2]) for p in evidence["cross_split_duplicates"]] == [["g2", "g3"]]
-    assert ["c4", "c5"] in [sorted(p[:2]) for p in evidence["cross_split_candidates"]]
+    assert [sorted(p[:2]) for p in evidence["duplicates"]] == [["g2", "g3"]]
+    assert ["c4", "c5"] in [sorted(p[:2]) for p in evidence["candidates"]]
     assert evidence["gsr_games"]["test_gsr"] == ["2"]
+
+
+def test_an_ill_conditioned_fit_is_refused(monkeypatch):
+    """Regression: a fit whose matrix maps the frame (almost) onto a line crashed the labels (`inv` of a singular H)."""
+    lines = annotate(VIEWS["right box"])
+    flat = np.diag([1.0, 1e-13, 1.0])                              # squashes the frame's y: a near-singular map
+    monkeypatch.setattr(F, "_compose", lambda G0, params: G0 @ flat)
+    fit = F.fit_lines(F.annotation_points(lines))
+    assert not fit.ok and fit.reason == "no camera view fits"
+
+
+class _Response:
+    def __init__(self, body: bytes, status: int, fail_after: int | None = None):
+        self.body, self.status, self.fail_after, self.sent = body, status, fail_after, 0
+        self.headers = {"Content-Length": str(len(body))}
+
+    def read(self, n):
+        if self.fail_after is not None and self.sent >= self.fail_after:
+            raise OSError("connection reset")
+        chunk = self.body[self.sent:self.sent + min(n, (self.fail_after or 1 << 30) - self.sent)]
+        self.sent += len(chunk)
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_resumable_download_resumes_after_a_dropped_connection(tmp_path, monkeypatch):
+    import pk_fetch_soccernet as fetch
+
+    payload = bytes(range(256)) * 40
+    ranges = []
+
+    def urlopen(request, timeout):
+        start = int(request.headers["Range"].split("=")[1].rstrip("-"))
+        ranges.append(start)
+        if len(ranges) == 1:
+            return _Response(payload, 200, fail_after=3000)          # drops after 3,000 bytes
+        return _Response(payload[start:], 206)
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
+    dest = tmp_path / "x.zip"
+    assert fetch.resumable_download("https://example.org/x.zip", "u", "p", dest, chunk=1000) == len(payload)
+    assert ranges == [0, 3000] and dest.read_bytes() == payload and not (tmp_path / "x.zip.part").exists()
+
+
+def test_resumable_download_restarts_when_the_range_is_ignored(tmp_path, monkeypatch):
+    import pk_fetch_soccernet as fetch
+
+    payload = b"abcdef" * 100
+    (tmp_path / "x.zip.part").write_bytes(payload[:100])
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", lambda request, timeout: _Response(payload, 200))
+    dest = tmp_path / "x.zip"
+    assert fetch.resumable_download("https://example.org/x.zip", "u", "p", dest) == len(payload)
+    assert dest.read_bytes() == payload

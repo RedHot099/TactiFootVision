@@ -6,11 +6,12 @@ Applied after the label rule, in this order, to the training (`train`) and devel
    date, teams); GSR only has a `game_id` index (`unresolved`).
 2. **GSR evaluation games**: train/val images of a game that also appears in GSR valid or test. GSR games have no
    names, so this is checked only within GSR (`game_id`); Calibration-2023 vs GSR is unresolved.
-3. **Duplicate frames**: candidates are pairs in different splits whose 64-bit difference hashes (`dhash`) differ in
-   at most `DUPLICATE_BITS` bits; a candidate is a duplicate when the two pictures also agree pixel by pixel (Pearson
+3. **Duplicate frames**: candidates are pairs in different splits or from different sources whose 64-bit difference
+   hashes (`dhash`) differ in at most `DUPLICATE_BITS` bits; a candidate is a duplicate when the two pictures also agree pixel by pixel (Pearson
    correlation >= `SAME_PICTURE_CORR` of 64 x 36 grey thumbnails), because the 64-bit hash alone pairs different
-   frames dominated by grass stripes. Of a duplicate pair, the copy in the lower-priority split (test_gsr / test_calib >
-   val > train) leaves. Frames of one GSR clip or one Calibration game share a split, so their near-identical
+   frames dominated by grass stripes. Of a duplicate pair in two splits, the copy in the lower-priority split
+   (test_gsr / test_calib > val > train) leaves; a cross-source pair within one split is reported, not excluded. The
+   check covers the images that pass the label rule (the only ones exported). Frames of one GSR clip or one Calibration game share a split, so their near-identical
    neighbours are not duplicates across splits.
 """
 
@@ -25,7 +26,6 @@ HELD_OUT_ROLES = ("evaluation", "gate")
 DUPLICATE_BITS = 4
 SAME_PICTURE_CORR = 0.95
 PRIORITY = {"test_gsr": 0, "test_calib": 0, "val": 1, "train": 2}
-_CHUNKS = DUPLICATE_BITS + 1          # pigeonhole: within 4 bits, at least one of 5 chunks is identical
 
 PLAN_GAME = re.compile(r"^(?P<league>[^/]+)/(?P<season>[^/]+)/(?P<date>\d{4}-\d{2}-\d{2}) - \d{2}-\d{2} "
                        r"(?P<home>.+?) \d+ - \d+ (?P<away>.+)$")
@@ -39,8 +39,9 @@ def game_key(game: str, pattern: re.Pattern) -> tuple | None:
 
 
 def plan_roles(plan: pd.DataFrame) -> dict[tuple, str]:
-    """Split-plan game key -> role."""
-    return {game_key(g, PLAN_GAME): r for g, r in zip(plan["game"], plan["role"], strict=True)}
+    """Split-plan game key -> role (games whose name does not parse are left out)."""
+    keys = ((game_key(g, PLAN_GAME), r) for g, r in zip(plan["game"], plan["role"], strict=True))
+    return {k: r for k, r in keys if k is not None}
 
 
 def dhash(image: np.ndarray) -> int:
@@ -98,10 +99,9 @@ def apply(kept: pd.DataFrame, plan: pd.DataFrame, correlation=picture_correlatio
     held = trainval & kept["plan_role"].isin(HELD_OUT_ROLES)
     kept.loc[held, "exclusion"] = "xg held-out game"
     gsr = kept["source"] == "gsr"
-    eval_games = set(kept.loc[gsr & kept["export_split"].eq("test_gsr"), "game"]) | \
-        set(kept.loc[gsr & kept["export_split"].eq("val"), "game"])
     gsr_test_games = set(kept.loc[gsr & kept["export_split"].eq("test_gsr"), "game"])
     gsr_val_games = set(kept.loc[gsr & kept["export_split"].eq("val"), "game"])
+    eval_games = gsr_test_games | gsr_val_games
     # GSR train frames of a GSR valid/test game, and GSR valid frames of a GSR test game
     shared = (gsr & kept["export_split"].eq("train") & kept["game"].isin(eval_games)) | \
         (gsr & kept["export_split"].eq("val") & kept["game"].isin(gsr_test_games))
@@ -110,9 +110,10 @@ def apply(kept: pd.DataFrame, plan: pd.DataFrame, correlation=picture_correlatio
     split = kept["export_split"].to_numpy()
     images = kept["image"].to_numpy()
     priority = np.array([PRIORITY[s] for s in split])
+    source = kept["source"].to_numpy()
     candidates, duplicates = [], []
     for i, j in pairs:
-        if split[i] == split[j]:
+        if split[i] == split[j] and source[i] == source[j]:
             continue
         r = correlation(images[i], images[j])
         candidates.append((i, j, r))
@@ -126,13 +127,15 @@ def apply(kept: pd.DataFrame, plan: pd.DataFrame, correlation=picture_correlatio
     evidence = {
         "duplicate_bits": DUPLICATE_BITS, "same_picture_corr": SAME_PICTURE_CORR,
         "hash_pairs": len(pairs),
-        "cross_split_candidates": [[keys[i], keys[j], round(r, 4)] for i, j, r in candidates],
-        "cross_split_duplicates": [[keys[i], keys[j], round(r, 4)] for i, j, r in duplicates],
-        "cross_source_hash_pairs": int(sum(kept.iloc[i]["source"] != kept.iloc[j]["source"] for i, j in pairs)),
+        "candidates": [[keys[i], keys[j], round(r, 4)] for i, j, r in candidates],
+        "duplicates": [[keys[i], keys[j], round(r, 4)] for i, j, r in duplicates],
+        "cross_source_candidates": int(sum(source[i] != source[j] for i, j, _ in candidates)),
+        "cross_source_duplicates": int(sum(source[i] != source[j] for i, j, _ in duplicates)),
         "gsr_games": {"train": sorted(set(kept.loc[gsr & kept["export_split"].eq("train"), "game"])),
                       "val": sorted(gsr_val_games), "test_gsr": sorted(gsr_test_games)},
-        "gsr_vs_calibration": "unresolved: GSR game_id has no match name; GSR is the 2019 Swiss Super League "
-                              "(SoccerNet-Tracking), Calibration-2023 is SoccerNet-v2 (2014-2017, six other "
-                              "competitions), so no game can be shared",
+        "gsr_vs_calibration": "not matchable by name (GSR game_id is an index without a match name); no overlap by "
+                              "construction: GSR is the 2019 Swiss Super League (SoccerNet-Tracking), Calibration-2023 "
+                              "and the xG plan are SoccerNet-v2 games (2014-2017 EPL, La Liga, Ligue 1, Bundesliga, "
+                              "Serie A, UCL), so step 2 removes no Calibration image",
     }
     return kept, evidence

@@ -20,7 +20,6 @@ The personal SoccerNet password file is never read. One split at a time:
 
 import argparse
 import base64
-import hashlib
 import json
 import shutil
 import time
@@ -30,6 +29,7 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from xgpoc.bundle import sha256_file
 from xgpoc.pitchkp.gsr_eval import FRAME_STEP, keeps_frame
 
 DATA = Path("/home/kuba/projects/tactifoot_vision/data")
@@ -48,14 +48,6 @@ def free_gb(path: Path) -> float:
     return shutil.disk_usage(path).free / 1e9
 
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 24), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def resumable_download(url: str, user: str, password: str, dest: Path, attempts: int = 30, chunk: int = 1 << 22) -> int:
     """Download `url` (HTTP basic auth) to `dest`, resuming a `.part` file with Range requests; returns the size."""
     part = dest.with_name(dest.name + ".part")
@@ -72,7 +64,7 @@ def resumable_download(url: str, user: str, password: str, dest: Path, attempts:
                     for block in iter(lambda: response.read(chunk), b""):
                         out.write(block)
         except urllib.error.HTTPError as error:
-            if error.code == 416 and have:                       # range past the end: the part is complete
+            if error.code == 416 and have and zipfile.is_zipfile(part):   # range past the end: the part is whole
                 part.rename(dest)
                 return dest.stat().st_size
             print(f"attempt {attempt + 1}: {error}", flush=True)
@@ -136,7 +128,7 @@ def fetch(task: str, split: str) -> dict:
     if not archive.exists():
         raise SystemExit(f"download produced no {archive}")
     zip_bytes = archive.stat().st_size
-    digest = sha256(archive)
+    digest = sha256_file(archive)
     downloaded = time.time()
     kept, skipped = safe_extract(archive, root if task == "calibration-2023" else root / split, task)
     if task == "gamestate-2024":

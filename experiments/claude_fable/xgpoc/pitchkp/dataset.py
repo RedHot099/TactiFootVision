@@ -39,8 +39,7 @@ def flipped_lines(lines: dict) -> dict:
     """Annotations of the horizontally flipped image ({name: (N, 2) fractions}): x -> 1 - x, left/right names swapped."""
     out = {}
     for name, points in lines.items():
-        xy = np.asarray(points, dtype=float) if isinstance(points, np.ndarray) else \
-            np.array([[p["x"], p["y"]] for p in points], dtype=float).reshape(-1, 2)
+        xy = F.fractions(points)
         out[F.FLIP_NAMES.get(name, name)] = np.column_stack([1.0 - xy[:, 0], xy[:, 1]])
     return out
 

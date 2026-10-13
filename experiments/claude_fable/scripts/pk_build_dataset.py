@@ -1,6 +1,7 @@
 """SoccerNet line annotations -> a 32-vertex YOLO-pose pitch keypoint dataset (pitch-keypoints 01).
 
-    ./run.sh --no-sync python scripts/pk_build_dataset.py [--out results/pk_dataset] [--dataset <data>/pitch_keypoints_sn]
+    ./run.sh --no-sync python scripts/pk_build_dataset.py [--out results/pk_dataset]
+                                                          [--dataset /mnt/storage/tactifoot_research/pitch_keypoints_sn]
                                                           [--workers 14] [--overlays 30] [--refit]
 
 Sources (downloaded by `scripts/pk_fetch_soccernet.py`): SoccerNet GSR 2024 train / valid / test (every 5th frame of
@@ -11,8 +12,9 @@ action-spotting video, StatsBomb data or goal label.
    annotated pitch lines (`xgpoc.pitchkp.fit`), the 32 package vertices projected into the frame (visibility 2 in the
    frame and in front of the camera, else 0), the residuals, the vertex uncertainty, the rejection rule
    (`xgpoc.pitchkp.dataset.rejection`), and the checks:
-   - (b) GSR: persons' `bbox_image` bottom-middle mapped through the line fit vs their `bbox_pitch` (and
-     `bbox_pitch_raw`) bottom-middle, centre origin converted to the corner origin;
+   - (b) GSR: persons' `bbox_image` bottom-middle mapped through the line fit vs their `bbox_pitch` bottom-middle,
+     centre origin converted to the corner origin (GSR's labels carry no camera parameters, so the spec's
+     "camera-projected vertices vs line-fit vertices" check is replaced by this position check);
    - (c) the horizontal-flip check on every image (rule 7): the fit of the mirrored annotations (x -> 1 - x, left/right
      names swapped) must give the original labels re-indexed by `flip_idx` with x -> W - x.
 2. **Axis check** (`axis_check.json`): on GSR valid, a homography fitted directly from persons' feet pixels to their
@@ -45,7 +47,8 @@ from xgpoc.pitchkp import gsr_eval as ge
 from xgpoc.pitchkp import sources as S
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = Path("/home/kuba/projects/tactifoot_vision/data")
+DATA = Path("/home/kuba/projects/tactifoot_vision/data")        # the downloads (scripts/pk_fetch_soccernet.py)
+STORAGE = Path("/mnt/storage/tactifoot_research")                # the owner's research disk (spec, Data: storage)
 GSR_ROOT, CALIB_ROOT = DATA / "SoccerNetGS", DATA / "SoccerNetCalibration"
 SPLITS = ("train", "valid", "test")
 EXPORT_SPLIT = {("gsr", "train"): "train", ("calib", "train"): "train", ("gsr", "valid"): "val",
@@ -189,7 +192,8 @@ def summarise(fits: pd.DataFrame, labelled: pd.DataFrame, axis: dict, evidence: 
                       for (s, p), g in kept.groupby(["source", "split"])}
     visible_hist = {f"{s}/{p}": {int(k): int(v) for k, v in g["n_visible"].value_counts().sort_index().items()}
                     for (s, p), g in kept.groupby(["source", "split"])}
-    per_vertex = np.array([v for v in kept["visible"]]).mean(axis=0).round(3).tolist()
+    per_vertex = np.array(list(kept["visible"]), dtype=float).reshape(-1, 32).mean(axis=0).round(3).tolist() \
+        if len(kept) else []
     gsr = fits[(fits["source"] == "gsr") & fits["fitted"]]
     feet = {}
     for label, frame in (("all fitted", gsr), ("kept", gsr[gsr["reject"] == ""]),
@@ -199,7 +203,7 @@ def summarise(fits: pd.DataFrame, labelled: pd.DataFrame, axis: dict, evidence: 
             feet[f"{label}/{split}"] = {"frames": int(med.notna().sum()), "frame_median_m": _quantiles(med),
                                         "share_under_0.5m": float((med < 0.5).mean()), "share_under_1m":
                                         float((med < 1.0).mean()), "share_under_2m": float((med < 2.0).mean())}
-    flipped = fits[fits["fitted"]]
+    flipped = fitted
     views = {f"{s}/{p}": g["view"].value_counts().to_dict() for (s, p), g in fitted.groupby(["source", "split"])}
     up_dy = {f"{s}/{p}": _quantiles(g["up_dy"], (0.01, 0.5, 0.99)) for (s, p), g in kept.groupby(["source", "split"])}
     return {
@@ -277,6 +281,8 @@ def data_card(summary: dict, record: dict) -> str:
         lines.append(f"| {key} | {_q(r['rms_px'])} | {_q(r['rms_px'], 'p95')} | {_q(r['sd_max_px'])} | "
                      f"{_q(r['sd_max_px'], 'p95')} |")
     lines += ["", "## Checks", "",
+              "GSR's labels carry no camera parameters (only `object` and `pitch` annotations), so the spec's check "
+              "of camera-projected against line-fit vertices is replaced by the position check below.", "",
               "GSR positions: each kept frame's persons (`bbox_image` bottom-middle through the line fit vs "
               "`bbox_pitch` bottom-middle, centre origin + (52.5, 34)); per-frame median error in metres:", "",
               "| frames | n | p50 | p90 | p99 | < 0.5 m | < 1 m | < 2 m |", "|---|---|---|---|---|---|---|---|"]
@@ -311,11 +317,13 @@ def data_card(summary: dict, record: dict) -> str:
                      f"by role {c['labelled_images_by_role']}.")
     games = hygiene["gsr_games"]
     lines += [f"- GSR game ids (an index without match names): train {games['train']}, val {games['val']}, "
-              f"test {games['test_gsr']}; GSR vs xG plan and vs Calibration: {hygiene['gsr_vs_calibration']}.",
-              f"- Duplicates: {hygiene['hash_pairs']} image pairs within {hygiene['duplicate_bits']} hash bits "
-              f"({hygiene['cross_source_hash_pairs']} across sources), {len(hygiene['cross_split_candidates'])} of "
-              f"them across splits; {len(hygiene['cross_split_duplicates'])} confirmed as the same picture "
-              f"(thumbnail correlation >= {hygiene['same_picture_corr']}).", "",
+              f"test {games['test_gsr']}. GSR vs the xG plan and vs Calibration: {hygiene['gsr_vs_calibration']}.",
+              f"- Duplicates, among the images passing the label rule: {hygiene['hash_pairs']} pairs within "
+              f"{hygiene['duplicate_bits']} of 64 difference-hash bits, mostly neighbouring frames of one clip or game; "
+              f"{len(hygiene['candidates'])} of them across splits or sources "
+              f"({hygiene['cross_source_candidates']} across sources), of which {len(hygiene['duplicates'])} are the "
+              f"same picture (thumbnail correlation >= {hygiene['same_picture_corr']}; "
+              f"{hygiene['cross_source_duplicates']} across sources).", "",
               "The keypoint model sees no goal label and no StatsBomb data; the held-out matches stay in "
               "`test_calib` (evaluation only).", ""]
     return "\n".join(lines)
@@ -351,7 +359,7 @@ def _lines_of(rec: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=ROOT / "results/pk_dataset")
-    parser.add_argument("--dataset", type=Path, default=DATA / "pitch_keypoints_sn")
+    parser.add_argument("--dataset", type=Path, default=STORAGE / "pitch_keypoints_sn")
     parser.add_argument("--workers", type=int, default=14)
     parser.add_argument("--overlays", type=int, default=30)
     parser.add_argument("--refit", action="store_true")

@@ -74,6 +74,13 @@ def circle_conic(centre: tuple[float, float], radius: float = RADIUS) -> np.ndar
     return np.array([[1.0, 0, -cx], [0, 1.0, -cy], [-cx, -cy, cx * cx + cy * cy - radius * radius]])
 
 
+def fractions(points) -> np.ndarray:
+    """One annotated line as an (N, 2) array of image fractions, from SoccerNet's [{"x", "y"}, ...] or an array."""
+    if isinstance(points, np.ndarray):
+        return points.astype(float).reshape(-1, 2)
+    return np.array([[p["x"], p["y"]] for p in points], dtype=float).reshape(-1, 2)
+
+
 def annotation_points(lines: dict, size: tuple[int, int] = (FRAME_W, FRAME_H)) -> dict[str, np.ndarray]:
     """SoccerNet `{name: [{"x": fx, "y": fy}, ...]}` or `{name: (N, 2) array}` (fractions of the image) -> {name: (N, 2)
     720p pixels}.
@@ -84,8 +91,7 @@ def annotation_points(lines: dict, size: tuple[int, int] = (FRAME_W, FRAME_H)) -
     for name, points in lines.items():
         if name not in STRAIGHT and name not in CIRCLES:
             continue
-        xy = points if isinstance(points, np.ndarray) else [[p["x"], p["y"]] for p in points]
-        xy = np.unique(np.asarray(xy, dtype=float).reshape(-1, 2), axis=0) * size
+        xy = np.unique(fractions(points), axis=0) * size
         if len(xy) >= 2:
             out[name] = xy
     return out
