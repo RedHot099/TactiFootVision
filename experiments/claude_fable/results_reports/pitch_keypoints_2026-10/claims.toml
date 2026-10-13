@@ -1,0 +1,345 @@
+# Sources of every number in AUDIT3.md (pitch-keypoints 04). Checked by
+# scripts/check_xgd_audit.py (scripts/check_vendor_report.py). Paths are relative to experiments/claude_fable; "alias:file" resolves through [folders].
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wyniki konfirmacyjne"
+# Design constants, not results: input sizes, the offsets of the study frames, the timing-residual bins, names.
+untagged = ["960", "1920", "400 ms", "800 ms", "50 ms", "200 ms", "SHA-256", "Calibration-2023", "tickecie 03"]
+
+[folders]
+a1 = { path = "results/xgd_audit" }
+a3 = { path = "results/xgd_audit3" }
+dg2 = { path = "results/xgd_audit2_diag" }
+dg3 = { path = "results/xgd_audit3_diag" }
+ev = { path = "results/pk_ball_evidence" }
+sq = { path = "results/pk_square_input" }
+t3 = { path = "results/pk_candidates/y11m_960_e18_square/retune_valid" }
+t2 = { path = "results/pitchkp_gsr_eval/valid" }
+fu3 = { path = "results/xgd_full3" }
+fc3 = { path = "cache/xgd_full3/E3" }
+
+[claims]
+"a3.gate" = { src = "a3:choice.json", keys = ["gate.result"], fmt = "{}" }
+"a3.chosen" = { src = "a3:choice.json", keys = ["chosen"], fmt = "{}" }
+"a3.cov_min" = { src = "a3:complete.json", keys = ["parameters.coverage_min"], scale = 100, fmt = "{:.0f}%" }
+"a3.e1.med2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.2f} m" }
+"a3.e2.med2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.2f} m" }
+"a3.e3.med2" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.2f} m" }
+"a3.g.cov" = { src = "a3:choice.json", keys = ["gate.checks.shot_location_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"a3.med_max" = { src = "a3:complete.json", keys = ["parameters.median_max_m"], fmt = "{:.0f} m" }
+"a3.g.med" = { src = "a3:choice.json", keys = ["gate.checks.shot_location_median_m.value"], fmt = "{:.1f} m" }
+"a3.gk_min" = { src = "a3:complete.json", keys = ["parameters.gk_coverage_min"], scale = 100, fmt = "{:.0f}%" }
+"a3.g.gk" = { src = "a3:choice.json", keys = ["gate.checks.gk_information_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"a1.c4.cov" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a1.c4.med" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a1.c4.gk.cov1" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.cov" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.d3.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.d3.gk.cov1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.cov" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.e3.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e3.gk.cov1" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"t3.avail" = { src = "t3:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"t3.med" = { src = "t3:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"t3.d3.med" = { src = "t2:summary.csv", row = { method = "D3", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"sq.frames" = { src = "sq:complete.json", keys = ["summary.frames"], fmt = "{:,d}" }
+"sq.new" = { src = "sq:complete.json", keys = ["summary.instance_new"], fmt = "{:,d}" }
+"sq.max" = { src = "sq:complete.json", keys = ["summary.max_xy_px"], fmt = "{:.1f} px" }
+"dc.kp" = { src = "research/pitchkp_audit3_configs.json", quote = "min_confidence=0.3", values = [0.3], fmt = "{:.1f}" }
+"dc.ransac" = { src = "research/pitchkp_audit3_configs.json", quote = "ransac_threshold=2.0", values = [2], fmt = "{:d} m" }
+"dg2.m400.med" = { src = "dg2:diag.csv", row = { split = "source", group = "ball_m400", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg2.t0.med" = { src = "dg2:diag.csv", row = { split = "source", group = "ball_t0", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"ev.clips" = { src = "ev:summary.json", keys = ["timing.clips"], fmt = "{:d}" }
+"ev.kicks" = { src = "ev:summary.json", keys = ["timing.with_kick"], fmt = "{:d}" }
+"ev.kick_ms" = { src = "ev:summary.json", keys = ["timing.kick_ms_median"], abs = true, fmt = "{:.0f} ms" }
+"ev.to400" = { src = "ev:summary.json", keys = ["timing.to_kick_400_median_m"], fmt = "{:.1f} m" }
+"ev.to800" = { src = "ev:summary.json", keys = ["timing.to_kick_800_median_m"], fmt = "{:.1f} m" }
+"ev.to0" = { src = "ev:summary.json", keys = ["timing.to_kick_0_median_m"], fmt = "{:.1f} m" }
+"ev.move400" = { src = "ev:summary.json", keys = ["timing.move_400_0_median_m"], fmt = "{:.1f} m" }
+"ev.move800" = { src = "ev:summary.json", keys = ["timing.move_800_400_median_m"], fmt = "{:.1f} m" }
+"ev.e1" = { src = "ev:summary.json", keys = ["sources.E1.median_to_truth_kick_m"], fmt = "{:.1f} m" }
+"ev.e2" = { src = "ev:summary.json", keys = ["sources.E2.median_to_truth_kick_m"], fmt = "{:.1f} m" }
+"ev.ball.frames" = { src = "ev:ball.csv", row = { stratum = "all", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"ev.ball.placed" = { src = "ev:ball.csv", row = { stratum = "all", metric = "placed" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"ev.ball.med" = { src = "ev:ball.csv", row = { stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ev.ball.far" = { src = "ev:ball.csv", row = { stratum = "all", metric = "far" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ev.kick" = { src = "ev:summary.json", keys = ["sources.kick.median_to_truth_kick_m"], fmt = "{:.1f} m" }
+"a3.shots" = { src = "a3:complete.json", keys = ["population.shots"], fmt = "{:,d}" }
+"a3.matches" = { src = "a3:complete.json", keys = ["population.matches"], fmt = "{:d}" }
+"a3.ci" = { src = "xgpoc/detector/audit.py", quote = "95% percentile intervals of a match bootstrap", values = [95], fmt = "{:d}%" }
+"a3.n_boot" = { src = "a3:complete.json", keys = ["parameters.n_boot"], fmt = "{:,d}" }
+"a3.ref.rows" = { src = "a3:complete.json", keys = ["reference_check.rows"], fmt = "{:d}" }
+"a3.ref.diff" = { src = "a3:complete.json", keys = ["reference_check.differing"], fmt = "{:d}" }
+"a3.e1.cov1" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e1.p90" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "p90" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.lt1" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "lt1" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.lt2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.lt5" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "lt5" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.off" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "off_pitch" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.cov1" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e2.p90" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "p90" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.lt1" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "lt1" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.lt2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.lt5" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "lt5" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.off" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "off_pitch" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.cov1" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.p90" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "p90" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.lt1" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "lt1" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.lt2" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.lt5" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "lt5" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.off" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "off_pitch" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.cov1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.p90" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "p90" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.lt1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "lt1" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.lt2" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.lt5" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "lt5" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.off" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "off_pitch" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.kp" = { src = "a3:complete.json", keys = ["parameters.kp_strict"], fmt = "{:.1f}" }
+"a3.e1.ball.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.ball.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.flag.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.flag.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.fb.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "fallback", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.fb.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "fallback", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.kp.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "kp05", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.kp.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.ball.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.ball.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.flag.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.flag.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.fb.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "fallback", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.fb.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "fallback", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.kp.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "kp05", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.kp.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.ball.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.ball.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.flag.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.flag.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.fb.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "fallback", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.fb.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "fallback", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.kp.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "kp05", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.kp.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.ball.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "ball", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.ball.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "ball", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.flag.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "flag", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.flag.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "flag", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.fb.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "fallback", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.fb.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "fallback", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.kp.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "kp05", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.kp.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "kp05", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.mirror" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median_mirror_y" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.dx" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"a3.e3.dy" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median_dy" }, cols = ["value"], fmt = "{:+.1f} m" }
+"a3.e1.rx" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e1.ry" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e1.px" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e1.py" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e1.const" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e2.rx" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e2.ry" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e2.px" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e2.py" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e2.const" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e3.rx" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e3.ry" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e3.px" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e3.py" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e3.const" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.d3.rx" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.d3.ry" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.d3.px" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.d3.py" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.d3.const" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.d3.rx1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value"], fmt = "{:.2f}" }
+"a3.e3.rx1" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value"], fmt = "{:.2f}" }
+"a3.e1.gk.cov1" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.gk.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e1.gk.lt2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_any", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.gkd.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_detected", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.gkd.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_detected", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.same.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_proxy_same", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.same.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_proxy_same", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.other.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.other.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.gkc.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.gkc.lt2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_constant", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.gk.cov1" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.gk.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e2.gk.lt2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_any", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.gkd.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_detected", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.gkd.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_detected", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.same.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_proxy_same", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.same.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_proxy_same", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.other.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.other.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.gkc.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.gkc.lt2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_constant", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.gk.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e3.gk.lt2" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.gkd.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_detected", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.gkd.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_detected", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.same.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_proxy_same", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.same.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_proxy_same", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.other.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.other.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.gkc.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.gkc.lt2" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_constant", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.gk.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.d3.gk.lt2" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.gkd.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_detected", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.gkd.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_detected", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.same.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_proxy_same", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.same.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_proxy_same", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.other.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_proxy_other", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.other.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_proxy_other", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.gkc.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.gkc.lt2" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_constant", subset = "all", stat = "lt2" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.gk.rx" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e3.gk.ry" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a3.e1.cone.n" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e1.cone.exact" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.e1.cone.ge1" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.cone.ge2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "def_cone", subset = "all", stat = "ge2_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e1.cone.diff" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "def_cone", subset = "all", stat = "mean_diff" }, cols = ["value"], fmt = "{:+.2f}" }
+"a3.e2.cone.n" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e2.cone.exact" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.e2.cone.ge1" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.cone.ge2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "def_cone", subset = "all", stat = "ge2_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e2.cone.diff" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "def_cone", subset = "all", stat = "mean_diff" }, cols = ["value"], fmt = "{:+.2f}" }
+"a3.e3.cone.n" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.e3.cone.exact" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.e3.cone.ge1" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.cone.ge2" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "def_cone", subset = "all", stat = "ge2_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.e3.cone.diff" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "def_cone", subset = "all", stat = "mean_diff" }, cols = ["value"], fmt = "{:+.2f}" }
+"a3.d3.cone.n" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "def_cone", subset = "all", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"a3.d3.cone.exact" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "def_cone", subset = "all", stat = "exact" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a3.d3.cone.ge1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "def_cone", subset = "all", stat = "ge1_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.cone.ge2" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "def_cone", subset = "all", stat = "ge2_agree" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.cone.diff" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "def_cone", subset = "all", stat = "mean_diff" }, cols = ["value"], fmt = "{:+.2f}" }
+"a3.cf.00" = { src = "a3:cone_confusion.csv", row = { config = "E3", table = "ge1", detected = "0", statsbomb = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"a3.cf.01" = { src = "a3:cone_confusion.csv", row = { config = "E3", table = "ge1", detected = "0", statsbomb = "1" }, cols = ["shots"], fmt = "{:,d}" }
+"a3.cf.10" = { src = "a3:cone_confusion.csv", row = { config = "E3", table = "ge1", detected = "1", statsbomb = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"a3.cf.11" = { src = "a3:cone_confusion.csv", row = { config = "E3", table = "ge1", detected = "1", statsbomb = "1" }, cols = ["shots"], fmt = "{:,d}" }
+"dg3.e1.ball_t0.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e1.ball_t0.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e1.ball_t0.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e1.ball_t0.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e1.ball_m400.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e1.ball_m400.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e1.ball_m400.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e1.ball_m400.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e1.ball_m800.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E1", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e1.ball_m800.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E1", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e1.ball_m800.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e1.ball_m800.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E1", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e1.flag.share" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E1", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e1.flag.n" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E1", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e1.flag.med" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e1.flag.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E1", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e3.ball_m400.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e3.ball_m400.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e3.ball_m400.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e3.ball_m400.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e3.ball_m800.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E3", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e3.ball_m800.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E3", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e3.ball_m800.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e3.ball_m800.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m800", config = "E3", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e3.ball_t0.share" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E3", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e3.ball_t0.n" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E3", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e3.ball_t0.med" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e3.ball_t0.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E3", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e3.flag.share" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E3", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg3.e3.flag.n" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E3", quantity = "shot_location", stat = "n" }, cols = ["value"], fmt = "{:,d}" }
+"dg3.e3.flag.med" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.e3.flag.dx" = { src = "dg3:diag.csv", row = { split = "source", group = "flag", config = "E3", quantity = "shot_location", stat = "median_dx" }, cols = ["value"], fmt = "{:+.1f} m" }
+"dg3.e1.ball_t0.med1" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg3.e1.ball_m400.med1" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg3.e3.ball_m400.med1" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.tm.t1.med" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "-0.001-50" }, cols = ["shot_err_median"], fmt = "{:.1f} m" }
+"a3.tm.t1.n" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "-0.001-50" }, cols = ["located"], fmt = "{:,d}" }
+"a3.tm.t2.med" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "50-200" }, cols = ["shot_err_median"], fmt = "{:.1f} m" }
+"a3.tm.t2.n" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "50-200" }, cols = ["located"], fmt = "{:,d}" }
+"a3.tm.t3.med" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "200-inf" }, cols = ["shot_err_median"], fmt = "{:.1f} m" }
+"a3.tm.t3.n" = { src = "a3:timing.csv", row = { config = "E3", residual_ms = "200-inf" }, cols = ["located"], fmt = "{:,d}" }
+"dg3.matches" = { src = "dg3:complete.json", keys = ["population_roles.evaluation"], fmt = "{:d}" }
+"dg3.train" = { src = "dg3:complete.json", keys = ["calibration_matches.calib_train"], fmt = "{:d}" }
+"dg3.val" = { src = "dg3:complete.json", keys = ["calibration_matches.calib_val"], fmt = "{:d}" }
+"dg3.plan.train" = { src = "dg3:calibration_plan.csv", row = { role = "training" }, cols = ["calib_train"], fmt = "{:d}" }
+"dg3.other.cov" = { src = "dg3:diag.csv", row = { split = "calibration", group = "other", config = "E3", quantity = "shot_location", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"dg3.other.med" = { src = "dg3:diag.csv", row = { split = "calibration", group = "other", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg3.other.gk" = { src = "dg3:diag.csv", row = { split = "calibration", group = "other", config = "E3", quantity = "gk_any", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"fc3.chunk" = { src = "fc3:complete.json", keys = ["identity.chunk"], fmt = "{:d}" }
+"fu3.seconds" = { src = "fc3:complete.json", keys = ["run.seconds"], scale = 0.016666666666666666, fmt = "{:.0f} min" }
+"fu3.ms" = { src = "fc3:complete.json", keys = ["run.ms_per_shot"], fmt = "{:.0f} ms" }
+"fu3.frames" = { src = "fc3:complete.json", keys = ["coverage.frames_analysed"], fmt = "{:,d}" }
+"fu3.ref" = { src = "fc3:complete.json", keys = ["audit_cache_t0_differences.shots"], fmt = "{:,d}" }
+"fu3.ref_diff" = { src = "fc3:complete.json", keys = ["audit_cache_t0_differences.shots_differing"], fmt = "{:d}" }
+"fu3.training.t0.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.training.t0.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.training.t0.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.t0.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.t0.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.t0.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.t0.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.t0.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "0" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.training.m400.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.training.m400.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.training.m400.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "training", offset_ms = "-400" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.gate.t0.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.gate.t0.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.t0.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "0" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.gate.m400.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.gate.m400.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.gate.m400.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "gate", offset_ms = "-400" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.evaluation.t0.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.evaluation.t0.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.t0.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "0" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.evaluation.m400.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.evaluation.m400.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.evaluation.m400.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "evaluation", offset_ms = "-400" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.all.t0.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.all.t0.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.t0.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["shots"], fmt = "{:,d}" }
+"fu3.all.m400.matches" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["matches"], fmt = "{:,d}" }
+"fu3.all.m400.homography_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["homography_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.ball_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["ball_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.shot_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["shot_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.shooter_by_goal" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["shooter_by_goal"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.gk_ok" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["gk_ok"], fmt = "{:.1f}%", scale = 100 }
+"fu3.all.m400.def_cone" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "-400" }, cols = ["def_cone"], fmt = "{:.1f}%", scale = 100 }
+"a3.d3.med1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"t3.med1" = { src = "t3:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }

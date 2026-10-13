@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from check_vendor_report import EXP, check  # noqa: E402
-from check_xgd_audit import AUDIT, DOCUMENTS, REPORT, main  # noqa: E402
+from check_xgd_audit import AUDIT, AUDIT3, DOCUMENTS, REPORT, main  # noqa: E402
 from test_check_vendor_report import write_tree  # noqa: E402
 
 RESULTS = ("results/xgd_audit", "results/xgd_full", "results/xgd_audit2", "results/xgd_audit2_diag", "results/xgd_full2")
@@ -62,7 +62,8 @@ def test_without_a_path_the_check_reads_both_documents(monkeypatch):
     monkeypatch.setattr(check_xgd_audit.cvr, "main", lambda argv: seen.append(argv) or 0)
     assert main(["--root", "/x"]) == 0
     assert seen == [[str(AUDIT), "--claims", str(AUDIT.with_name("claims.toml")), "--root", "/x"],
-                    [str(REPORT), "--claims", str(REPORT.with_name("report_claims.toml")), "--root", "/x"]]
+                    [str(REPORT), "--claims", str(REPORT.with_name("report_claims.toml")), "--root", "/x"],
+                    [str(AUDIT3), "--claims", str(AUDIT3.with_name("claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -71,7 +72,7 @@ def test_without_a_path_one_failing_document_fails_the_check(monkeypatch):
 
     seen = []
     monkeypatch.setattr(check_xgd_audit.cvr, "main", lambda argv: seen.append(argv) or int(argv[0] == str(AUDIT)))
-    assert main([]) == 1 and len(seen) == 2        # the second document is still checked
+    assert main([]) == 1 and len(seen) == 3        # the other documents are still checked
 
 
 def test_claims_without_a_report_is_refused():
@@ -137,3 +138,28 @@ def test_an_untagged_number_in_the_final_report_fails(tmp_path):
     errors = check(copy, FINAL_CLAIMS, EXP)
     assert any("'−0.0031' is not tied to a source" in e for e in errors)
     assert any("integer '1234'" in e for e in errors)
+
+
+# --- audit 3 (pitch-keypoints 04) ---
+
+AUDIT3_RESULTS = ("results/xgd_audit3", "results/xgd_audit3_diag", "results/pk_ball_evidence", "results/pk_square_input",
+                  "results/xgd_full3")
+AUDIT3_READY = AUDIT3.is_file() and all((EXP / folder / "complete.json").is_file() for folder in AUDIT3_RESULTS)
+needs_audit3 = pytest.mark.skipif(not AUDIT3_READY, reason="needs the audit-3 note and its results")
+
+
+@needs_audit3
+def test_the_real_audit_3_note_passes():
+    assert check(AUDIT3, AUDIT3.with_name("claims.toml"), EXP) == []
+
+
+@needs_audit3
+@pytest.mark.parametrize("claim", ["a3.g.med", "a3.e1.med", "ev.to400", "dg3.e3.ball_m400.med", "fu3.all.t0.shot_ok"])
+def test_a_changed_number_in_the_audit_3_note_fails(tmp_path, claim):
+    text = AUDIT3.read_text()
+    tag = f"<!--n:{claim}-->"
+    assert tag in text
+    head, tail = text.split(tag, 1)
+    copy = tmp_path / "AUDIT3.md"
+    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
+    assert any(f"{claim} expects" in e for e in check(copy, AUDIT3.with_name("claims.toml"), EXP))

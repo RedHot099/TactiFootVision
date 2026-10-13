@@ -1,10 +1,12 @@
-"""Read every number of the xg-detector audit note and final report back from its source (xg-detector 02, 09, 07).
+"""Read every number of the detector audit notes and the xg-detector final report back from its source (xg-detector 02,
+09, 07; pitch-keypoints 04).
 
-    ./run.sh python scripts/check_xgd_audit.py                     # both documents of results_reports/xg_detector_2026-10
+    ./run.sh python scripts/check_xgd_audit.py                     # every document of DOCUMENTS
     ./run.sh python scripts/check_xgd_audit.py REPORT.md [--claims C]   # one document
 
 The checks of `scripts/check_vendor_report.py` on each document and its claims file (`AUDIT.md` with `claims.toml`,
-`REPORT.md` with `report_claims.toml`; a document given on the command line takes `claims.toml` next to it unless
+`REPORT.md` with `report_claims.toml`, audit 3's `results_reports/pitch_keypoints_2026-10/AUDIT3.md` with the
+`claims.toml` next to it; a document given on the command line takes `claims.toml` next to it unless
 `--claims` says otherwise): each tagged number is rendered from its result file and must match the text, every
 decimal number, percentage and integer of two or more digits must be tagged (dates, ticket numbers, code and the
 `[report].untagged` phrases excepted), and every source file is listed with its SHA-256 in the document's source
@@ -25,12 +27,14 @@ import check_vendor_report as cvr
 FOLDER = cvr.EXP / "results_reports" / "xg_detector_2026-10"
 AUDIT = FOLDER / "AUDIT.md"
 REPORT = FOLDER / "REPORT.md"
-DOCUMENTS = {AUDIT: FOLDER / "claims.toml", REPORT: FOLDER / "report_claims.toml"}     # document: its claims file
+AUDIT3 = cvr.EXP / "results_reports" / "pitch_keypoints_2026-10" / "AUDIT3.md"
+DOCUMENTS = {AUDIT: FOLDER / "claims.toml", REPORT: FOLDER / "report_claims.toml",       # document: its claims file
+             AUDIT3: AUDIT3.with_name("claims.toml")}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("report", type=Path, nargs="?", help="default: both documents (DOCUMENTS)")
+    ap.add_argument("report", type=Path, nargs="?", help="default: every document of DOCUMENTS")
     ap.add_argument("--claims", type=Path, help="default: claims.toml next to the report")
     ap.add_argument("--root", type=Path, default=cvr.EXP, help="base of the claim paths")
     args = ap.parse_args(argv)
