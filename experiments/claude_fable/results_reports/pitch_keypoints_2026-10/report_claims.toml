@@ -42,12 +42,13 @@ fu3 = { path = "results/xgd_full3" }
 [claims]
 
 # --- protocol: council C3 (decision log row added by this ticket), the held-out matches ---
-"c3.avail" = { src = "research/quality_v13_decisions.tsv", quote = "availability >= 0.85, median <= 1.0 m, p90 <= 3 m, refinement mask from the package detector", values = [0.85], scale = 100, fmt = "{:.0f}%" }
-"c3.med" = { src = "research/quality_v13_decisions.tsv", quote = "availability >= 0.85, median <= 1.0 m, p90 <= 3 m, refinement mask from the package detector", values = [1.0], fmt = "{:.1f} m" }
-"c3.budget" = { src = "research/quality_v13_decisions.tsv", quote = "stop at the first of 3 model families, 30 GPU-hours", values = [30], fmt = "{:d}" }
+"c3.avail" = { src = "research/pitchkp_protocol.json", keys = ["council_c3.target_gsr_test.availability_min"], scale = 100, fmt = "{:.0f}%" }
+"c3.med" = { src = "research/pitchkp_protocol.json", keys = ["council_c3.target_gsr_test.median_max_m"], fmt = "{:.1f} m" }
+"c3.budget" = { src = "research/pitchkp_protocol.json", keys = ["council_c3.stop_rule.gpu_hours_max"], fmt = "{:d}" }
 "pl.heldout" = { src = "research/xg_detector_test_rule.json", keys = ["population.matches"], fmt = "{:d}" }
 
 # --- ticket 01: the dataset ---
+"ds.gsr.games" = { src = "ds:data_card.md", quote = "clips of 12 games of the 2019 Swiss Super League", values = [12], fmt = "{:d}" }
 "ds.maxres" = { src = "ds:summary.json", keys = ["rule.max_residual_px"], fmt = "{:.0f} px" }
 "ds.sd" = { src = "ds:summary.json", keys = ["rule.sd_max_px"], fmt = "{:.0f} px" }
 "ds.gtr.images" = { src = "ds:summary.json", keys = ["counts.gsr/train.images"], fmt = "{:,d}" }
@@ -169,16 +170,12 @@ fu3 = { path = "results/xgd_full3" }
 "bcv.px" = { src = "bcv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
 
 # --- ticket 03: training and the choice on the validation splits (development) ---
-"tr.scale" = { src = "research/quality_v13_decisions.tsv", quote = "fliplr 0.5 with flip_idx, scale 0.3, translate 0.1", values = [0.3], fmt = "{:.1f}" }
-"tr.translate" = { src = "research/quality_v13_decisions.tsv", quote = "fliplr 0.5 with flip_idx, scale 0.3, translate 0.1", values = [0.1], fmt = "{:.1f}" }
-"tr.recall" = { src = "research/quality_v13_decisions.tsv", quote = "box recall fell from 0.90 (epoch 7)", values = [0.9], fmt = "{:.2f}" }
-"tr.epoch" = { src = "research/quality_v13_decisions.tsv", quote = "SIGINT after epoch 18 of 40", values = [18], fmt = "{:d}" }
-"tr.epochs" = { src = "research/quality_v13_decisions.tsv", quote = "SIGINT after epoch 18 of 40", values = [40], fmt = "{:d}" }
-"tr.gpuh" = { src = "research/quality_v13_decisions.tsv", quote = "(7,414 s = 2.06 GPU h;", values = [2.06], fmt = "{:.2f}" }
-"tr.cbox" = { src = "research/quality_v13_decisions.tsv", quote = "13:35:47Z -> 13:51:34Z (946 s;", values = [946], fmt = "{:d} s" }
-"tr.rect" = { src = "research/quality_v13_decisions.tsv", quote = "finds the instance (conf >= 0.1) on 20% with Ultralytics' stride-padded letterbox", values = [20], fmt = "{:d}%" }
-"tr.square" = { src = "research/quality_v13_decisions.tsv", quote = "and on 100% (median conf 0.96) on the square 960 x 960 canvas", values = [100], fmt = "{:d}%" }
-"tr.stop" = { src = "research/quality_v13_decisions.tsv", quote = "family 1, 2.6 GPU h", values = [2.6], fmt = "{:.1f}" }
+"tr.scale" = { src = "../../models/pitch_yolo11m_pose_sn960.pt.json", keys = ["training.config.scale"], fmt = "{:.1f}" }
+"tr.translate" = { src = "../../models/pitch_yolo11m_pose_sn960.pt.json", keys = ["training.config.translate"], fmt = "{:.1f}" }
+"tr.epoch" = { src = "../../models/pitch_yolo11m_pose_sn960.pt.json", quote = "y11m_960 epoch 18 of 40", values = [18], fmt = "{:d}" }
+"tr.epochs" = { src = "../../models/pitch_yolo11m_pose_sn960.pt.json", keys = ["training.config.epochs"], fmt = "{:d}" }
+"tr.gpuh" = { src = "../../models/pitch_yolo11m_pose_sn960.pt.json", keys = ["training.gpu_seconds"], scale = 0.0002777777777777778, fmt = "{:.2f}" }
+"lb.inst" = { src = "lb:complete.json", keys = ["caches.keypoints.identity.model.instance_conf"], fmt = "{:.3f}" }
 "cv.kp05" = { src = "cv:complete.json", keys = ["methods.kp05_refined.min_confidence"], fmt = "{:.1f}" }
 "cv.ransac" = { src = "cv:complete.json", keys = ["methods.kp05_refined.ransac_threshold"], fmt = "{:.0f} m" }
 "lb.avail" = { src = "lb:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
@@ -195,8 +192,10 @@ fu3 = { path = "results/xgd_full3" }
 "cv.k.lt1" = { src = "cv:summary.csv", row = { method = "kp05", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
 "cv.px" = { src = "cv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value"], fmt = "{:.1f} px" }
 "ccv.px" = { src = "ccv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
-"rt.tie" = { src = "research/quality_v13_decisions.tsv", quote = "the lowest median; within 0.01 m the higher availability", values = [0.01], fmt = "{:.2f} m" }
+"rt.tie" = { src = "research/pitchkp_protocol.json", keys = ["retune_rule.tie_m"], fmt = "{:.2f} m" }
 "rt.methods" = { src = "rt:summary.csv", row = { stratum = "all", metric = "availability" }, cols = [], agg = "count", fmt = "{:d}" }
+"rt.best.med" = { src = "rt:summary.csv", row = { method = "kp05_r10_refined", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.3f} m" }
+"rt.med3" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.3f} m" }
 "rt.kp" = { src = "rt:complete.json", keys = ["methods.kp03_r2_refined.min_confidence"], fmt = "{:.1f}" }
 "rt.avail" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
 "rt.med" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }

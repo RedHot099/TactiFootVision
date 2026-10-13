@@ -7,8 +7,8 @@ its source (xg-detector 02, 09, 07; pitch-keypoints 04, 06).
 The checks of `scripts/check_vendor_report.py` on each document and its claims file (`AUDIT.md` with `claims.toml`,
 `REPORT.md` with `report_claims.toml`, audit 3's `results_reports/pitch_keypoints_2026-10/AUDIT3.md` with the
 `claims.toml` next to it, and that folder's phase report `REPORT.md` with its `report_claims.toml`; a document given on
-the command line takes `claims.toml` next to it unless `--claims` says otherwise): each tagged number is rendered from its result file and must match the text, every
-decimal number, percentage and integer of two or more digits must be tagged (dates, ticket numbers, code and the
+the command line takes `claims.toml` next to it unless `--claims` says otherwise): each tagged number is rendered from
+its result file and must match the text, every decimal number, percentage and integer of two or more digits must be tagged (dates, ticket numbers, code and the
 `[report].untagged` phrases excepted), and every source file is listed with its SHA-256 in the document's source
 table and agrees with its folder's completion record. In the report, development numbers (folders with
 `dev = true`) must stand under a heading with "wyniki rozwojowe" and the test's numbers (`confirmatory = true`) under

@@ -24,6 +24,17 @@ READY = AUDIT.is_file() and all((EXP / folder / "complete.json").is_file() for f
 needs_results = pytest.mark.skipif(not READY, reason="needs the audit note and the results of both audits")
 
 
+def changed_copy(document: Path, tmp_path: Path, claim: str) -> Path:
+    """A copy of `document` in `tmp_path` with the last digit before `claim`'s tag changed."""
+    text = document.read_text()
+    tag = f"<!--n:{claim}-->"
+    assert tag in text
+    head, tail = text.split(tag, 1)
+    copy = tmp_path / document.name
+    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
+    return copy
+
+
 @needs_results
 def test_the_real_audit_note_passes():
     assert check(AUDIT, AUDIT.with_name("claims.toml"), EXP) == []
@@ -33,13 +44,7 @@ def test_the_real_audit_note_passes():
 @needs_results
 @pytest.mark.parametrize("claim", ["au.c4.median", "a2.d3.median", "dg.src.d3.ball_m400.med", "fu2.evaluation.t0.shot_ok"])
 def test_a_changed_number_in_the_note_fails(tmp_path, capsys, claim):
-    text = AUDIT.read_text()
-    tag = f"<!--n:{claim}-->"
-    assert tag in text
-    head, tail = text.split(tag, 1)
-    changed = head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail      # the last digit before the tag
-    copy = tmp_path / "AUDIT.md"
-    copy.write_text(changed)
+    copy = changed_copy(AUDIT, tmp_path, claim)
     errors = check(copy, AUDIT.with_name("claims.toml"), EXP)
     assert any(f"{claim} expects" in e for e in errors)
     assert main([str(copy), "--claims", str(AUDIT.with_name("claims.toml"))]) == 1
@@ -80,7 +85,7 @@ def test_without_a_path_one_failing_document_fails_the_check(monkeypatch):
 
     seen = []
     monkeypatch.setattr(check_xgd_audit.cvr, "main", lambda argv: seen.append(argv) or int(argv[0] == str(AUDIT)))
-    assert main([]) == 1 and len(seen) == 4        # the other documents are still checked
+    assert main([]) == 1 and len(seen) == len(DOCUMENTS)        # the other documents are still checked
 
 
 def test_claims_without_a_report_is_refused():
@@ -106,13 +111,7 @@ def test_the_real_final_report_passes():
 @needs_final
 @pytest.mark.parametrize("claim", ["ts.d95", "ts.margin", "ts.a1.ll", "ap.a1.d", "pw.p0", "a2.d3.median", "rf.stretch.med"])
 def test_a_changed_number_in_the_final_report_fails(tmp_path, claim):
-    text = REPORT.read_text()
-    tag = f"<!--n:{claim}-->"
-    assert tag in text
-    head, tail = text.split(tag, 1)
-    copy = tmp_path / "REPORT.md"
-    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
-    assert any(f"{claim} expects" in e for e in check(copy, FINAL_CLAIMS, EXP))
+    assert any(f"{claim} expects" in e for e in check(changed_copy(REPORT, tmp_path, claim), FINAL_CLAIMS, EXP))
 
 
 @needs_final
@@ -164,12 +163,7 @@ def test_the_real_audit_3_note_passes():
 @needs_audit3
 @pytest.mark.parametrize("claim", ["a3.g.med", "a3.e1.med", "ev.to400", "dg3.e3.ball_m400.med", "fu3.all.t0.shot_ok"])
 def test_a_changed_number_in_the_audit_3_note_fails(tmp_path, claim):
-    text = AUDIT3.read_text()
-    tag = f"<!--n:{claim}-->"
-    assert tag in text
-    head, tail = text.split(tag, 1)
-    copy = tmp_path / "AUDIT3.md"
-    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
+    copy = changed_copy(AUDIT3, tmp_path, claim)
     assert any(f"{claim} expects" in e for e in check(copy, AUDIT3.with_name("claims.toml"), EXP))
 
 
@@ -183,17 +177,6 @@ PK_READY = AUDIT3_READY and PK_REPORT.is_file() and all((EXP / folder / "complet
 needs_pk_report = pytest.mark.skipif(not PK_READY, reason="needs the pitch-keypoints report and the phase's results")
 
 
-def changed_copy(tmp_path, claim: str) -> Path:
-    """A copy of the pitch-keypoints report with the last digit before `claim`'s tag changed."""
-    text = PK_REPORT.read_text()
-    tag = f"<!--n:{claim}-->"
-    assert tag in text
-    head, tail = text.split(tag, 1)
-    copy = tmp_path / "REPORT.md"
-    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
-    return copy
-
-
 @needs_pk_report
 def test_the_real_pitch_keypoints_report_passes():
     assert DOCUMENTS[PK_REPORT] == PK_CLAIMS
@@ -204,7 +187,7 @@ def test_the_real_pitch_keypoints_report_passes():
 @pytest.mark.parametrize("claim", ["ct.med", "ct.avail.lo", "bt.d3.med", "rt.paired", "ds.excluded", "a3.e3.med2ci",
                                    "c3.budget", "lf.res.px"])
 def test_a_changed_number_in_the_pitch_keypoints_report_fails(tmp_path, claim):
-    assert any(f"{claim} expects" in e for e in check(changed_copy(tmp_path, claim), PK_CLAIMS, EXP))
+    assert any(f"{claim} expects" in e for e in check(changed_copy(PK_REPORT, tmp_path, claim), PK_CLAIMS, EXP))
 
 
 @needs_pk_report

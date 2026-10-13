@@ -50,7 +50,7 @@ Przy Q1 V głosował za własnym wariantem z warunkiem na klatkach przy bramce. 
 ## 3. Dane (ticket 01)
 
 **Źródła.** To dane publiczne, pobierane bez hasła NDA. Calibration pobrano pakietem `SoccerNet`. GSR train i test pobrano z tego samego serwera co pakiet, ale ze wznawianiem, bo downloader pakietu przerywał duże pliki; GSR valid był już na dysku.
-- **SoccerNet Game State Reconstruction 2024 (GSR):** półminutowe klipy ligi szwajcarskiej z 2019 roku, z kamery głównej, po trzy mecze na podział. Każda klatka ma adnotacje linii boiska i pozycje każdej osoby na boisku (`bbox_pitch`). Zostały adnotacje i co piąta klatka.
+- **SoccerNet Game State Reconstruction 2024 (GSR):** półminutowe klipy ligi szwajcarskiej z 2019 roku, z kamery głównej. Z 12<!--n:ds.gsr.games--> meczów zbioru użyto podziałów train, valid i test, po trzy mecze. Każda klatka ma adnotacje linii boiska i pozycje każdej osoby na boisku (`bbox_pitch`). Zostały adnotacje i co piąta klatka.
 - **SoccerNet Camera Calibration 2023:** klatki transmisji z meczów SoccerNet-v2 (sześć rozgrywek, lata 2014–2017), także powtórki, z adnotacjami linii.
 
 **Etykiety.** Dla każdego obrazu dopasowano homografię klatka → boisko do adnotowanych linii: punkty na prostych, przecięcia i styczne okręgów. Przez tę homografię rzutowano 32 wierzchołki `tv.pitch.SoccerPitch`. Wierzchołek poza kadrem ma widoczność 0. Nic nie oznaczano ręcznie. Obrazy zapisano w rozdzielczości 960 × 540.
@@ -111,12 +111,12 @@ GSR valid ma 58<!--n:bv.clips--> klipów i 8 538<!--n:bv.frames--> ocenianych kl
 
 ## 5. Trening i wybór na walidacji (wyniki rozwojowe, ticket 03)
 
-**Uczenie.** YOLO11m-pose startował z wag COCO i był uczony przez `tv.train` pakietu, przy wejściu 960 i partii 8. Mozaikę, mixup, cutmix i copy-paste wyłączono. Augmentacja: odbicia poziome z `flip_idx`, skala 0.3<!--n:tr.scale-->, przesunięcie 0.1<!--n:tr.translate-->, zmiany barwy HSV. Trening szedł na 15 667<!--n:ds.train--> obrazach (GSR train i Calibration train), a walidacja na GSR valid i Calibration valid.
+**Uczenie.** YOLO11m-pose startował z wag COCO i był uczony przez `tv.train` pakietu, przy wejściu 960 i partii 8. Mozaikę, mixup, cutmix i copy-paste wyłączono. Augmentacja: odbicia poziome z `flip_idx`, skala 0.3<!--n:tr.scale-->, przesunięcie 0.1<!--n:tr.translate-->, zmiany barwy HSV. Trening szedł na 15 667<!--n:ds.train--> obrazach (GSR train i Calibration train), a walidacja w trakcie treningu na co czwartym obrazie GSR valid i Calibration valid.
 
 **Fałszywa diagnoza i jej koszt.**
-1. Recall ramek w walidacji Ultralytics spadł z 0.90<!--n:tr.recall--> do mniej niż połowy, a wejście letterbox pakietu nie znajdowało instancji na większości klatek GSR valid. Przebieg zatrzymano po 18<!--n:tr.epoch--> epokach z 40<!--n:tr.epochs-->; zajął 2.06<!--n:tr.gpuh--> GPU-godziny.
-2. Pierwsza diagnoza była błędna: ramka całego boiska miała przekraczać zasięg głowicy ramek. Dostrajanie ze stałymi wyśrodkowanymi ramkami trwało 946 s<!--n:tr.cbox--> czasu GPU, zanim je przerwano.
-3. Prawdziwa przyczyna: Ultralytics uczy na kwadratowym płótnie, z szarymi pasami nad i pod panoramiczną klatką, a model polega na tych pasach. Wejście pakietu (`stretch=False`) i walidacja Ultralytics dopełniają klatkę tylko do wielokrotności kroku sieci (960 × 544). Na takim wejściu model znajdował instancję na 20%<!--n:tr.rect--> obrazów, a na kwadratowym na 100%<!--n:tr.square-->.
+1. Recall ramek w walidacji Ultralytics spadł w kolejnych epokach do mniej niż połowy, a wejście letterbox pakietu nie znajdowało instancji na większości klatek GSR valid. Przebieg zatrzymano po 18<!--n:tr.epoch--> epokach z 40<!--n:tr.epochs-->; zajął 2.06<!--n:tr.gpuh--> GPU-godziny.
+2. Pierwsza diagnoza była błędna: ramka całego boiska miała przekraczać zasięg głowicy ramek. Dostrajanie ze stałymi wyśrodkowanymi ramkami przerwano po dwóch epokach, około kwadransa pracy GPU.
+3. Prawdziwa przyczyna: Ultralytics uczy na kwadratowym płótnie, z szarymi pasami nad i pod panoramiczną klatką, a model polega na tych pasach. Wejście pakietu (`stretch=False`) i walidacja Ultralytics dopełniają klatkę tylko do wielokrotności kroku sieci (960 × 544). Na takim wejściu homografia była na 35.4%<!--n:lb.avail--> klatek GSR valid, nawet przy progu instancji 0.001<!--n:lb.inst-->; na kwadratowym na 89.6%<!--n:cv.r.avail--> (tabela niżej).
 4. Ewaluator dostał wejście `square`. Na nim epoka 18<!--n:tr.epoch--> spełniła cel na walidacji, więc pozostałych epok nie trenowano.
 
 **Kandydaci na GSR valid** (maska z detektora; `kp05` to próg punktów 0.5<!--n:cv.kp05-->, RANSAC 10 m<!--n:cv.ransac-->):
@@ -130,9 +130,9 @@ GSR valid ma 58<!--n:bv.clips--> klipów i 8 538<!--n:bv.frames--> ocenianych kl
 
 Mediana błędu punktów w 720p wynosi 7.8 px<!--n:cv.px--> na GSR valid (D3: 32.7 px<!--n:bv.px-->) i 9.3 px [8.7; 10.1]<!--n:ccv.px--> na Calibration valid (D3: 58.4 px [49.3; 69.4]<!--n:bcv.px-->).
 
-**Reguła stopu.** Pierwszy kandydat pierwszej rodziny spełnił cel na walidacji. Poszukiwania skończyły się więc po 2.6<!--n:tr.stop--> GPU-godziny z budżetu 30<!--n:c3.budget-->. Druga rodzina (model map ciepła) nie ruszyła.
+**Reguła stopu.** Pierwszy kandydat pierwszej rodziny spełnił cel na walidacji, więc poszukiwania skończyły się na nim. Sam jego trening zajął 2.06<!--n:tr.gpuh--> GPU-godziny z budżetu 30<!--n:c3.budget-->; przerwane dostrajanie i oceny dodały mniej niż godzinę. Druga rodzina (model map ciepła) nie ruszyła.
 
-**Dostrojenie homografii.** Regułę wyboru zapisano w commicie `c18fbfd` przed przebiegiem: spośród metod z dostępnością ≥ 85%<!--n:c3.avail--> i p90 ≤ 3 m na GSR valid wygrywa najniższa mediana, a przy różnicy do 0.01 m<!--n:rt.tie--> wyższa dostępność. Siatka miała trzy progi punktów, trzy limity RANSAC i doprecyzowanie włączone lub wyłączone, razem 18<!--n:rt.methods--> metod. Wszystkie spełniły oba progi. Wybrana metoda ma próg punktów 0.3<!--n:rt.kp-->, RANSAC 2 m i doprecyzowanie z maską z detektora: dostępność 93.0% [89.2; 95.9]<!--n:rt.avail-->, mediana 0.62 m [0.56; 0.71]<!--n:rt.med-->, p90 2.35 m [1.91; 2.97]<!--n:rt.p90-->.
+**Dostrojenie homografii.** Regułę wyboru zapisano w commicie `c18fbfd` przed przebiegiem: spośród metod z dostępnością ≥ 85%<!--n:c3.avail--> i p90 ≤ 3 m na GSR valid wygrywa najniższa mediana, a przy różnicy do 0.01 m<!--n:rt.tie--> wyższa dostępność. Siatka miała trzy progi punktów, trzy limity RANSAC i doprecyzowanie włączone lub wyłączone, razem 18<!--n:rt.methods--> metod. Wszystkie spełniły oba progi. Najniższą medianę, 0.621 m<!--n:rt.best.med-->, miała metoda z progiem punktów 0.5<!--n:cv.kp05--> i RANSAC 10 m<!--n:cv.ransac-->. Wybrana metoda ma medianę 0.623 m<!--n:rt.med3-->, w granicy remisu, i wyższą dostępność. Ma próg punktów 0.3<!--n:rt.kp-->, RANSAC 2 m i doprecyzowanie z maską z detektora: dostępność 93.0% [89.2; 95.9]<!--n:rt.avail-->, mediana 0.62 m [0.56; 0.71]<!--n:rt.med-->, p90 2.35 m [1.91; 2.97]<!--n:rt.p90-->.
 
 **Warunek audytu 3 (C3).** Sparowana różnica mediany wybranej metody wobec D3 na GSR valid wynosi −1.04 m [−1.34; −0.74]<!--n:rt.paired-->. Model bije D3, więc audyt 3 rusza.
 
@@ -188,7 +188,7 @@ Model potrzebuje kwadratowego płótna także przy inferencji.
 - **Opcja `resize`.** Backendy Ultralytics w pakiecie przyjmują teraz `resize="letterbox" | "square" | "stretch"` zamiast `stretch: bool`, bez warstwy zgodności (commit `2e9469b`). `"square"` dopełnia klatkę do wyśrodkowanego szarego kwadratu, tak jak Ultralytics przy treningu, i przenosi ramki i punkty z powrotem do pikseli klatki. Testy z atrapą predyktora sprawdzają dopełnienie poziomych i pionowych klatek oraz powrót współrzędnych.
 - **Równość z ocenionym wejściem.** `tv.load_model("yolo_pose", W, conf=0.1, imgsz=960, resize="square")` daje na 1 500<!--n:sq.frames--> klatkach strzałów z meczów treningowych dokładnie te punkty, które oceniono w tickecie 03. Instancja jest na 1 500<!--n:sq.new--> klatkach, a największa różnica położenia to 0.0 px<!--n:sq.max-->.
 - **Pliki przebiegu.** Ten sam commit przełącza README, oba pliki przebiegu i `examples/04` na nowy model z jego ustawieniami homografii (`min_confidence=0.3`, `ransac_threshold=2.0`, `refine_with_lines=True`). Plik `models/pitch_yolo11m_pose_sn960.pt` istnieje tylko lokalnie, jak poprzedni model. Notatniki zostają przy modelu Roboflow z `resize="stretch"`.
-- **Skutek dla zamrożonego testu xg-detector.** Commit `2e9469b` zmienił `src/tactifoot_vision/models/ultralytics.py`, który należy do przypiętego zamknięcia kodu testu A1, a commit `89bd0ee` dostosował wywołanie w `xgpoc/detector/extract.py` (konfiguracje D bez zmian). `xgd_test.py --check` przechodzi więc już tylko przy zamrożonym commicie `e14bb79`. Test się odbył i nie jest powtarzany. Pliki przypięte listą skrótów testu są niezmienione.
+- **Skutek dla zamrożonego testu xg-detector.** Commit `2e9469b` zmienił `src/tactifoot_vision/models/ultralytics.py`, który należy do przypiętego zamknięcia kodu testu A1, a commit `89bd0ee` dostosował wywołanie w `xgpoc/detector/extract.py` (konfiguracje D bez zmian). `xgd_test.py --check` przechodzi więc już tylko przy zamrożonym commicie `e14bb79`. Test się odbył i nie jest powtarzany. Pliki danych i reguły przypięte listą skrótów testu są niezmienione; zamknięcie kodu różni się tylko w tych dwóch plikach.
 
 ## 9. Audyt 3 (ticket 04)
 
@@ -199,7 +199,7 @@ Szczegóły są w `AUDIT3.md`.
 - E2: −400 ms, −800 ms.
 - E3: −400 ms, −800 ms, t0.
 
-Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów GSR valid jej mediana błędu wynosiła 13.6 m<!--n:ev.kick-->.
+Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów GSR valid jej mediana błędu wynosiła 13.6 m<!--n:ev.kick--> (4 porównane klipy), bo detektor umieszcza piłkę tylko na części klatek okna.
 
 **Skąd pomysł z −400 ms.** Wziął się z diagnostyki audytu 2 na danych StatsBomb. Tam w D3 piłka z −400 ms miała medianę błędu 6.0 m<!--n:dg2.m400.med-->, a piłka z t0 11.9 m<!--n:dg2.t0.med-->; grupa −400 ms nie była losowa. Tamte liczby nie uzasadniają E2 i E3. Uzasadnienie pochodzi z prawdy GSR, bez StatsBomb. W 21<!--n:ev.clips--> klipach strzałów GSR train i valid reguła na torze piłki z adnotacji znalazła kopnięcie w 11<!--n:ev.kicks--> klipach, w medianie 240 ms<!--n:ev.kick_ms--> przed t0. Piłka leży od miejsca kopnięcia w medianie 2.0 m<!--n:ev.to400--> w klatce −400 ms, 3.4 m<!--n:ev.to800--> w −800 ms i 5.1 m<!--n:ev.to0--> w t0. Pomysł przyszedł jednak ze StatsBomb, więc audyt 3 nie jest od niego w pełni niezależny.
 
@@ -232,7 +232,7 @@ Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów
 2. **A1 nie jest rozwijane od nowa** z nową geometrią. Rada zdecydowała to jednogłośnie przed audytem.
 3. **Ticket 05** (dalszy model xG z nową geometrią) zamknięto bez pracy. Nic nie trenowano.
 4. **Ekstrakcja E3** wszystkich 11 030<!--n:fu3.shots--> strzałów indeksu leży w `cache/xgd_full3/E3` i może służyć dalszej pracy rozwojowej.
-5. **Model i opcja `resize="square"`** są w pakiecie, w osobnym commicie gotowym do przeniesienia na master.
+5. **Opcja `resize="square"` i ustawienia nowego modelu** są w pakiecie, w osobnym commicie gotowym do przeniesienia na master. Same wagi modelu istnieją tylko lokalnie (sekcja 12).
 
 ## 11. Ograniczenia
 
@@ -260,8 +260,9 @@ Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów
 
 | Plik | SHA-256 | Zawartość |
 |---|---|---|
+| `../../models/pitch_yolo11m_pose_sn960.pt.json` | `597fb9dea904bf214df6e2668466de9777473dd732e7b047c1136183ab49dc8f` | manifest wybranego modelu: trening, czas GPU |
 | `research/pitchkp_audit3_configs.json` | `f7f23eaede754326a24b6d177c1e83e1eb6158c2cb22f1e36b81794604f8a8b7` | deklaracja E1–E3 |
-| `research/quality_v13_decisions.tsv` | `81958d09522092ae41d688cbf18f7b529be7dad2ae283b29a0d87b183a2b5bea` | dziennik decyzji: rada C3, przebiegi treningu |
+| `research/pitchkp_protocol.json` | `bdb57641e5b261da9937675a51f57d9f9ddbc991b50951e9f26b3b79aa390a8d` | zamrożone reguły fazy: cel i budżet C3, reguła dostrojenia |
 | `research/xg_detector_test_rule.json` | `4d593f52286e8c0ea46a39c8c07097c70de5be15905b924190d1745578fa87ca` | liczba meczów odłożonych (reguła testu xg-detector) |
 | `results/pitchkp_gsr_eval/calib_test/keypoints_summary.csv` | `1bfac1eafd8dd9384467e7f8ed9b3dd9c1877ed20ba99723b48fa2418155245a` | ticket 02: błąd punktów D3 na Calibration test |
 | `results/pitchkp_gsr_eval/calib_valid/keypoints_summary.csv` | `dff7a283b62d730f6a2db2b8b9fa71ed2472529d25846a7c6ddfb6ec50d6c672` | ticket 03: błąd punktów D3 na Calibration valid |
@@ -275,6 +276,7 @@ Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów
 | `results/pitchkp_gsr_eval/valid/summary.csv` | `f8a287179189727d771314d6ab9a8a3f2a6f6fc91fe057feff8e9906fa5c35e3` | ticket 02: D1–D4 i etykieta na GSR valid |
 | `results/pk_ball_evidence/ball.csv` | `dcaecfae0ba5ff31f512b37e28cd60ecc7b428dee05e6c879bfc4853a12982b6` | ticket 04: umieszczenie piłki na GSR valid |
 | `results/pk_ball_evidence/summary.json` | `4b5873b6612a9ab6057a0ef93c83a6836cb09f92bef3c24f28d7e2630a1f98c9` | ticket 04: czas strzału i reguły piłki na GSR |
+| `results/pk_candidates/y11m_960_e18/valid/complete.json` | `bb3b60b1efe782e6a6130fc13591de6136bdf40ccb33b5b50a217043be1f1363` | ticket 03: wejście letterbox, próg instancji |
 | `results/pk_candidates/y11m_960_e18/valid/summary.csv` | `d337e701271ca58854f58b6d93a1ca7fffba7c578eb2877173babc7e2fdefb74` | ticket 03: kandydat z wejściem letterbox, GSR valid |
 | `results/pk_candidates/y11m_960_e18_square/calib_test/keypoints_summary.csv` | `3b6960069c30a4fc33ce0972ca7f5b3e09426375dcbfeed641652b557bdbd0fb` | ticket 03: błąd punktów na Calibration test |
 | `results/pk_candidates/y11m_960_e18_square/calib_valid/keypoints_summary.csv` | `8c5063857833b436d59aab33e2ed12b2d217a1c683d2e83d36af431ec563f51e` | ticket 03: błąd punktów kandydata, Calibration valid |
@@ -289,6 +291,7 @@ Reguły klatki kopnięcia z toru piłki nie zadeklarowano. Na klipach strzałów
 | `results/pk_candidates/y11m_960_e18_square/valid/keypoints_summary.csv` | `ef0a29419e85585070488833067c961a85e6c063f2dd78e99d3e44e68358b627` | ticket 03: błąd punktów kandydata, GSR valid |
 | `results/pk_candidates/y11m_960_e18_square/valid/summary.csv` | `4ed4d88548e28e63d5681daf852f884765c5ad79d5dc1b7d4495a973450c62a0` | ticket 03: kandydat z wejściem kwadratowym, GSR valid |
 | `results/pk_dataset/complete.json` | `a96d9b146239a1d74668a3d6c7ceaa4d06467a683d017799a4ee0cea5f7c93b7` | ticket 01: rekord ukończenia zbioru |
+| `results/pk_dataset/data_card.md` | `2be0c200d9c978f0a78bf7587511598916d1f3d79f589afef6c1136c068f968a` | ticket 01: karta danych (liczba meczów GSR) |
 | `results/pk_dataset/labelled.csv` | `712a50b41ac556aa4f925f24b285ebe85163abf4fafe1b3a2280288da202c90b` | ticket 01: obrazy po regule i wyłączenia C3 |
 | `results/pk_dataset/summary.json` | `88f2e084aa67822cab144d897747aa5cc5f782ed4f01f045311daf23bce07811` | ticket 01: liczności, reguła odrzucania, kontrole |
 | `results/pk_label_free/y11m_960_e18_square/complete.json` | `49b75bf66c85bc3006ad1a33bc688a1343710fdcdc3a7b98f378f839acd50d7d` | ticket 03: parametry pętli, reszty punktów |

@@ -1,0 +1,20 @@
+{
+  "purpose": "pitch-keypoints: the phase's fixed rules as data, frozen; the source of the report's protocol numbers (pitch-keypoints 06)",
+  "provenance": "Transcribed in ticket 06 from decisions taken before the runs they govern: council C3 (.scratch/xg-detector/council.md, decision-log row 2026-10-13T08:22:38Z) and the retune rule declared in c18fbfd (decision-log row 2026-10-13T14:02:19Z). Values unchanged; this file is not edited afterwards.",
+  "council_c3": {
+    "decided": "2026-10-13",
+    "votes": {"Q1": "a/d/a", "Q2": "b/b/b", "Q3": "b/b/b", "Q4": "c/b/c", "a1_redevelopment_if_audit3_stops": "no/no/no"},
+    "target_gsr_test": {"availability_min": 0.85, "median_max_m": 1.0, "p90_max_m": 3.0, "refinement_mask": "package detector"},
+    "stop_rule": {"model_families_max": 3, "gpu_hours_max": 30, "or": "the first candidate meeting the target on GSR valid"},
+    "candidates_scored_on_gsr_test": 1,
+    "second_test_on_held_out_matches": false
+  },
+  "retune_rule": {
+    "declared_in": "c18fbfd",
+    "eligible": {"availability_min": 0.85, "p90_max_m": 3.0},
+    "choice": "lowest median among eligible methods on all scored GSR valid frames",
+    "tie_m": 0.01,
+    "tie_break": "within tie_m of the lowest median, the higher availability",
+    "if_none_eligible": "lowest p90"
+  }
+}
