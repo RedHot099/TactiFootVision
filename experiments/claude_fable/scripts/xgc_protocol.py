@@ -35,9 +35,11 @@ READINGS = [
     "The previous shot of a rebound is any StatsBomb Shot event (penalties included) of the same match, period and possession, "
     "by event index; the window is 0 to 5 s (0 to 3 s) inclusive.",
     "Item 16's adjusted effect uses z_D as its control, like item 10 (C4 names the control for item 10 only).",
-    "Spearman correlations (items 8, 9 and the agreement matrix) use the main-scale logits, like every other "
-    "statistic; the cross-fitted recalibration is not one increasing map, so this is not identical to Spearman of the raw "
-    "probabilities, which is a sensitivity check under 'scale'.",
+    "Spearman correlations (items 8, 9 and the agreement matrix) are of the raw probabilities, as the spec's Analysis 1 "
+    "says; they are label-free. Pearson correlations are of the main-scale logits; Pearson of the raw logits is the "
+    "sensitivity check.",
+    "Item 9 is tested only when headers and foot shots each meet the category floor (50 shots, headers in 20 matches).",
+    "The rebound subtypes (after a save, after a block) are descriptive, as C4 says, so they are not scanned.",
     "Item 1: StatsBomb 'Saved Off Target' is reported apart, with Blocked, because C4 defines on target as a save and off "
     "target as off target, post or wayward, and this outcome is a save of a shot going wide.",
     "The open scan covers the levels of the categories with role 'category'. The post-shot categories, the 3 s rebound "
@@ -47,6 +49,14 @@ READINGS = [
     "The combined population is the paper's: it also leaves out the one StatsBomb-only row of the pre-registered frame "
     "exclusion (decode-corrupted frame), so it has 3,401 shots, not 3,402.",
     "Bootstrap p-values are shares of draws (no +1 correction), as the paper's superiority p.",
+    "Power simulation (C4: 'permute category labels across shots, preserving sizes; inject a 0.15-logit effect'): it holds "
+    "the paper's frozen recalibration fixed instead of refitting it in every draw and half, which makes the intervals "
+    "narrower. The shot-level permutation also breaks the match clustering of match-level categories (league-season, "
+    "camera view) and their correlation with z_D. Both make the power optimistic, most of all for match-level levels. "
+    "Labels for the log-loss items are drawn from the recalibrated vendor. Log-loss and correlation items plant their "
+    "own thresholds (0.005 LL, 0.10), since a 0.15-logit gap has no log-loss or correlation unit; scenario '<id>:logit' "
+    "also shifts F by 0.15 logit for the log-loss items. Item 8 has no category to permute and is simulated as 0 or 0.10 "
+    "plus the real statistic's bootstrap deviations, so the simulation computes that statistic's spread, never its value.",
 ]
 
 

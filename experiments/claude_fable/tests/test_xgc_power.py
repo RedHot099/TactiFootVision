@@ -25,7 +25,7 @@ def synthetic_basis(n_matches: int = 60, per_match: int = 30, n_boot: int = 300,
     categories = pd.DataFrame({c.column: rng.choice(np.array(c.levels, dtype=object), n) for c in cat.PRE_SHOT})
     counts = ld.bootstrap(np.arange(n_matches), n_boot).counts
     half = np.where(match % 2 == 0, "discovery", "validation")
-    return pw.Basis(z, match, half, categories, np.vstack([np.ones(n_matches), counts]).astype(float))
+    return pw.Basis(z, {k: v + 0.1 for k, v in z.items()}, match, half, categories, np.vstack([np.ones(n_matches), counts]).astype(float))
 
 
 # ------------------------------------------------------------------ statistics
@@ -137,7 +137,7 @@ def test_every_family_item_names_a_dictionary_level_and_the_scan_skips_post_shot
         if item.category is not None:
             assert item.level in cat.BY_NAME[item.category].levels
     scanned = {c for c, _ in pr.scan_levels()}
-    assert not scanned & {"on_target_sn", "sb_outcome", "half", "rebound_3s"}
+    assert not scanned & {"on_target_sn", "sb_outcome", "half", "rebound_3s", "rebound_subtype"}
     assert len(pr.FAMILY) == 14 and [i.id for i in pr.FAMILY if i.side != "two-sided"] == ["2", "8", "9", "10", "16"]
     assert pr.BY_ID["2"].injection == -0.15 and pr.BY_ID["10"].injection == 0.005 and pr.BY_ID["9"].injection == -0.10
 

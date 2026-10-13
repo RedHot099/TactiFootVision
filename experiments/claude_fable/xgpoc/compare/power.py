@@ -23,6 +23,7 @@ Planted effects (`protocol.Item.injection`)
                     the centred bootstrap deviations of the real statistic. Only the deviations are kept; the point
                     estimate is never returned
     item 9          the headers-vs-foot contrast on the permuted body labels, shifted by -0.10
+    Items 8 and 9 use Spearman of the raw probabilities (spec, Analysis 1), the gap and log-loss items the main scale.
     scan level      0.20 logit added to g inside one scan level (scenario "scan:<category>=<level>")
 Scenarios: "null" (nothing planted), "all" (every family item planted), "item:<id>" (one item), "item:<id>:logit" for
 items 10 and 16, and "scan:<category>=<level>" for every scan level that meets the floors in the study.
@@ -55,6 +56,7 @@ class Basis:
     other rows are the shared draws' match counts; `match` is each shot's column in them."""
 
     z: dict[str, np.ndarray]       # main-scale logits: "F", "V", "D", "P"
+    raw: dict[str, np.ndarray]     # raw logits of the same methods (Spearman, items 8 and 9)
     match: np.ndarray
     half: np.ndarray
     categories: pd.DataFrame       # cat_<name> columns of the pre-shot categories
@@ -86,7 +88,8 @@ def basis_from_table(table: pd.DataFrame, coefficients: dict, folds: pd.DataFram
     rows = table[table.in_primary].reset_index(drop=True)
     boot = ld.draws_for(draws, rows.match.to_numpy())
     weights = np.vstack([np.ones(len(boot.keys)), boot.counts]).astype(float)
-    return Basis(frozen_main_scale(rows, coefficients, folds), boot.match, rows.scan_half.to_numpy(),
+    raw = {name: rows[column].to_numpy(float) for name, (_, column) in MAIN_SCALE.items()}
+    return Basis(frozen_main_scale(rows, coefficients, folds), raw, boot.match, rows.scan_half.to_numpy(),
                  rows[[c.column for c in cat.PRE_SHOT]].reset_index(drop=True), weights)
 
 
@@ -187,16 +190,17 @@ def spearman(a: np.ndarray, b: np.ndarray, weights: np.ndarray) -> np.ndarray:
 
 
 def correlation_difference_deviations(basis: Basis) -> np.ndarray:
-    """Item 8's bootstrap deviations: draws of Spearman(F, D) - Spearman(F, V) minus the observed value (module
-    docstring). The observed value itself is not returned."""
+    """Item 8's bootstrap deviations: draws of Spearman(F, D) - Spearman(F, V) of the raw probabilities minus the
+    observed value (module docstring). The observed value itself is not returned."""
     w = basis.weights[:, basis.match]
-    stat = spearman(basis.z["F"], basis.z["D"], w) - spearman(basis.z["F"], basis.z["V"], w)
+    stat = spearman(basis.raw["F"], basis.raw["D"], w) - spearman(basis.raw["F"], basis.raw["V"], w)
     return stat[1:] - stat[0]
 
 
 def agreement_contrast(z: dict[str, np.ndarray], level: np.ndarray, reference: np.ndarray, match: np.ndarray,
                        weights: np.ndarray) -> tuple[float, np.ndarray]:
-    """Item 9's (point, draws): [Spearman(F, V) - Spearman(P, V)] in `level` minus the same in `reference`."""
+    """Item 9's (point, draws): [Spearman(F, V) - Spearman(P, V)] in `level` minus the same in `reference`, from the
+    raw logits `z` (Spearman of the probabilities)."""
     def within(mask):
         w = weights[:, match[mask]]
         return spearman(z["F"][mask], z["V"][mask], w) - spearman(z["P"][mask], z["V"][mask], w)
@@ -250,7 +254,9 @@ class Study:
         self.scannable = meets(whole) & half_floor(self.halves["discovery"]) & half_floor(self.halves["validation"])
         self.p_f = sigmoid(basis.z["F"])
         self.ll_v = ld.per_shot_log_loss(self.y, sigmoid(basis.z["V"]))
-        self.item9 = agreement_contrast(basis.z, self.head, self.foot, basis.match, basis.weights)
+        self.item9 = agreement_contrast(basis.raw, self.head, self.foot, basis.match, basis.weights)
+        self.item9_floor = all(int(m.sum()) >= pr.FLOORS["category_in"] for m in (self.head, self.foot)) and \
+            len(np.unique(basis.match[self.head])) >= pr.FLOORS["category_matches_in"]
 
     def run_family(self, planted: Sequence[str], logit_shift: str | None = None) -> pd.DataFrame:
         """One row per family item: point, p, tested, BH and BY rejection, interesting (module docstring)."""
@@ -278,7 +284,7 @@ class Study:
         rows["8"] = (shift8 + self.e8, shift8 + self.e8 + self.deviations, True)
         point9, draws9 = self.item9
         shift9 = pr.BY_ID["9"].injection if "9" in planted else 0.0
-        rows["9"] = (point9 + shift9, draws9 + shift9, bool(self.head.sum() >= pr.FLOORS["category_in"]))
+        rows["9"] = (point9 + shift9, draws9 + shift9, self.item9_floor)
         items = list(pr.FAMILY)
         p = np.array([p_values(rows[i.id][1][:, None], [i.side])[0] if rows[i.id][2] else np.nan for i in items])
         out = pd.DataFrame({"item": [i.id for i in items], "point": [rows[i.id][0] for i in items], "p": p,

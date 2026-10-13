@@ -39,9 +39,9 @@ KINDS = {
            "is defined; g = z_F - z_V on the main scale",
     "log_loss": "coefficient of the level indicator in the OLS fit (LL(F) - LL(V)) ~ 1 + indicator + z_D, with LL the "
                 "per-shot log-loss of the main-scale probabilities",
-    "correlation_difference": "Spearman(F, D) - Spearman(F, V) of the main-scale logits over the population",
-    "correlation_contrast": "[Spearman(F, V) - Spearman(P, V)] among the level's shots minus the same among the "
-                            "reference shots",
+    "correlation_difference": "Spearman(F, D) - Spearman(F, V) of the probabilities over the population",
+    "correlation_contrast": "[Spearman(F, V) - Spearman(P, V)] of the probabilities among the level's shots minus the "
+                            "same among the reference shots; each group meets the category floor",
 }
 METHODS = {"V": "vendor: StatsBomb xG (pred_vendor_xg)", "P": "positions: event + freeze-frame rung (pred_freeze_frame)",
            "E": "events: event rung (pred_event)", "D": "distance + angle rung (pred_dist_angle)",
@@ -160,8 +160,8 @@ def design() -> dict:
             "negative_control": "half: first against second half, expected to stay inside the threshold",
         },
         "scan": {
-            "scope": "F - V only, every scan level of the dictionary (category role 'category'); post-shot, sensitivity and "
-                     "negative-control categories are not scanned",
+            "scope": "F - V only, every scan level of the dictionary (category role 'category'); descriptive, post-shot, "
+                     "sensitivity and negative-control categories are not scanned",
             "levels": [{"category": c, "level": level} for c, level in scan_levels()],
             "split": {"seed": SPLIT_SEED, "halves": list(HALVES), "unit": "match", "stratified_by": "league_season",
                       "rule": "for each league-season in sorted order, its sorted matches are permuted by one default_rng(seed); "

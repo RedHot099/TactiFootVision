@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 GROUPS = ("events", "geometry", "freeze_frame", "sequence", "camera_view", "context", "post_shot")
-ROLES = ("category", "sensitivity", "negative_control", "post_shot")
+ROLES = ("category", "descriptive", "sensitivity", "negative_control", "post_shot")
 YES_NO = ("yes", "no")
 PREFIX = "cat_"                       # the table column of category c is PREFIX + c
 SAVE_OUTCOMES = frozenset({"Saved", "Saved to Post", "Saved Off Target"})
@@ -225,7 +225,7 @@ CATEGORIES: tuple[Category, ...] = (
             "as rebound_5s with 0-3 s (sensitivity check of item 2)", scan=False, role="sensitivity"),
     Category("rebound_subtype", "sequence", "seq_prev_outcome: StatsBomb outcome of the previous shot",
              "for a 5 s rebound: after_save (Saved, Saved to Post, Saved Off Target), after_block (Blocked), after_other; "
-             "none otherwise", ("after_save", "after_block", "after_other", "none"), ("after_save", "after_block", "after_other")),
+             "none otherwise (descriptive, not scanned)", ("after_save", "after_block", "after_other", "none"), (), role="descriptive"),
     # camera view (primary only: StatsBomb-only shots have no detector descriptor)
     Category("homography", "camera_view", f"e3_homography_ok: {E3}", "the pitch homography was available",
              ("ok", "failed"), ("failed",), PRIMARY_ONLY),
