@@ -1,0 +1,110 @@
+{
+ "kp03_r10": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp03_r10_refined": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp03_r5": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp03_r5_refined": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp03_r2": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp03_r2_refined": {
+  "min_confidence": 0.3,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp05_r10": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp05_r10_refined": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp05_r5": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp05_r5_refined": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp05_r2": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp05_r2_refined": {
+  "min_confidence": 0.5,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp07_r10": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp07_r10_refined": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 10.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp07_r5": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp07_r5_refined": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 5.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ },
+ "kp07_r2": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": false,
+  "mask": "none"
+ },
+ "kp07_r2_refined": {
+  "min_confidence": 0.7,
+  "ransac_threshold": 2.0,
+  "refine_with_lines": true,
+  "mask": "detector"
+ }
+}
