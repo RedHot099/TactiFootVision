@@ -143,7 +143,7 @@ def ball_summary(table: pd.DataFrame) -> pd.DataFrame:
     for stratum, part in (("all", table), ("near_goal", table[table.near_goal])):
         part = part.reset_index(drop=True)
         point = ball_statistics(part)
-        draws = ge.bootstrap(part.clip.to_numpy(), lambda idx, part=part: ball_statistics(part.iloc[idx]))
+        draws = ge.bootstrap(part["clip"].to_numpy(), lambda idx, part=part: ball_statistics(part.iloc[idx]))
         rows += ge.interval_rows(point, draws, {"stratum": stratum})
     return pd.DataFrame(rows)
 
@@ -178,7 +178,7 @@ def main() -> None:
         retune = pd.read_parquet(RETUNE / "per_frame.parquet", columns=["clip", "frame", "method", "homography"])
         retune = retune[(retune.method == METHOD) & retune.homography.notna()]
         homographies = {(c, int(f)): np.asarray(h, float).reshape(3, 3)
-                        for c, f, h in zip(retune.clip, retune.frame, retune.homography, strict=True)}
+                        for c, f, h in zip(retune["clip"], retune["frame"], retune["homography"], strict=True)}
         detector = ball_only.detector
         ball = pd.DataFrame([row for folder in tqdm(clips("valid")[: args.clips], desc="ball", mininterval=30)
                              for row in ball_rows(folder, detector, homographies)])
@@ -222,7 +222,7 @@ def summarise(timing: pd.DataFrame, shot_frames: pd.DataFrame, sources: pd.DataF
                       "move_400_0_median_m": float(timing.move_400_0.median()),
                       "move_n": int((timing.move_800_400.notna() & timing.move_400_0.notna()).sum())}}
     frames = shot_frames.assign(has_truth=shot_frames.truth_x.notna(), placed=shot_frames.x.notna())
-    out["shot_frames"] = {"frames": len(frames), "clips": int(frames.clip.nunique()),
+    out["shot_frames"] = {"frames": len(frames), "clips": int(frames["clip"].nunique()),
                           "truth": float(frames.has_truth.mean()), "placed": float(frames.placed.mean()),
                           "placed_where_truth": float(frames.placed[frames.has_truth].mean()),
                           "median_error_m": float(frames.error_m.median()),
