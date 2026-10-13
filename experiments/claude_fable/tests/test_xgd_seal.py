@@ -99,10 +99,10 @@ def test_on_the_real_index_the_seal_keeps_the_development_pool_and_drops_every_h
 
 
 # ------------------------------------------------------------------ every sealed script runs its work inside the seal
-SEALED_SCRIPTS = ["xgd_approach1.py"]
+SEALED_SCRIPTS = ["xgd_approach1.py", "xgd_a1_ensemble.py", "xgd_gcombo_test.py", "xgd_test_power.py"]
 SEALS = ("development_labels_only", "held_out_labels_sealed", "sealed_test")
 OUTSIDE_OK = {"ArgumentParser", "add_argument", "parse_args", "Path", "print", "check_gpu_free", "results_dir", "SystemExit",
-              "dumps", "str", "isoformat", "now", "add_mutually_exclusive_group", "strftime"}
+              "dumps", "str", "isoformat", "now", "add_mutually_exclusive_group", "strftime", "exists", "split"}
 
 
 def _seal_blocks(main: ast.FunctionDef) -> list[ast.With]:

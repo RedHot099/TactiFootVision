@@ -81,7 +81,8 @@ def test_detector_code_imports_no_vendor_module_and_names_no_statsbomb_file(path
     named = [s for s in _strings(tree) if FORBIDDEN.search(s)]
     if path.name in AUDIT_FILES + ("guard.py",):
         return                                     # the pattern itself, and the audit: the one allowed StatsBomb reader
-    allowed = {"xgd_extract.py": ["results/xgv_pairing/pairs.parquet"], "xgd_extract_full.py": ["results/xgd_audit2/choice.json"]}
+    allowed = {"xgd_extract.py": ["results/xgv_pairing/pairs.parquet"], "xgd_extract_full.py": ["results/xgd_audit2/choice.json"],
+               "xgd_gcombo_test.py": ["results/xgv_eval_primary"]}   # G-combo's own predictions, no new model reads them
     assert named == allowed.get(path.name, []), f"{path.name} names StatsBomb or pairing files: {named}"
 
 

@@ -1,0 +1,133 @@
+{
+  "study": "xg-detector",
+  "document": "research/xg_detector_test_rule.md",
+  "ticket": "06",
+  "council_decision": "C2 (2026-10-13)",
+  "variant": "A1",
+  "variant_definition": "G-combo with the sanitised D3 geometry branch in the head, ticket 03's frozen recipe, sanitation and hyperparameters (xgpoc/detector/approach1.py, sanitation.py), trained as 10 models: 5 home-team folds x seeds 0 and 1 on the plan's 328 training matches",
+  "baseline": "G-combo, the 10 retrained fold models of results/xgv_g_combo with their ensemble.json, unchanged",
+  "development_selection": "ticket 03: A1 had the lower out-of-fold log-loss of A1 and A2 (dLL vs G-combo seed 0: A1 -0.0007 [-0.0032; +0.0018], A2 -0.0000 [-0.0021; +0.0020]); A3 not triggered (ticket 04), approach 2 closed at the gate (ticket 05)",
+  "population": {
+    "plan_sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a",
+    "roles": [
+      "evaluation",
+      "gate"
+    ],
+    "matches": 172,
+    "index": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+    "index_sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+    "inclusion": "every index v1.2 shot whose game has plan role evaluation or gate and whose is_penalty is false; no other exclusion (every such shot has a t0 frame and a sanitised D3 row; a shot either arm cannot score stops the test)",
+    "expected_shots": 3819,
+    "expected_shots_by_role": {
+      "evaluation": 3005,
+      "gate": 814
+    },
+    "label": "index v1.2 goal"
+  },
+  "metric": {
+    "name": "shot-weighted log-loss",
+    "delta": "LL(A1) - LL(G-combo), each the mean over the population's shots of -(y log p + (1 - y) log(1 - p))",
+    "clip": 1e-06
+  },
+  "bootstrap": {
+    "unit": "match (paired: one draw of matches weights both arms' shots)",
+    "draws": 5000,
+    "seed": 0,
+    "implementation": "xgpoc.probe.readability.match_draw_counts over the sorted unique matches; replicate = sum(w * d) / sum(w), w = the shot's match draw count",
+    "interval": "percentile"
+  },
+  "success": {
+    "interval": 0.95,
+    "rule": "the upper bound of the 95% percentile interval of dLL is below 0",
+    "multiplicity": "one variant, no correction (Bonferroni over one)"
+  },
+  "worse": {
+    "interval": 0.95,
+    "rule": "the lower bound of the 95% percentile interval of dLL is above 0"
+  },
+  "equivalence": {
+    "test": "TOST at alpha 0.05",
+    "margin": 0.005,
+    "interval": 0.9,
+    "rule": "the 90% percentile interval of dLL from the same draws lies wholly inside (-0.005, +0.005)",
+    "status": "descriptive; never a success; cannot rescue a failed success rule"
+  },
+  "labels": [
+    "success and equivalent",
+    "success",
+    "equivalent within δ",
+    "worse",
+    "inconclusive"
+  ],
+  "label_precedence": "the first that applies, in the order of labels; the equivalence flag is reported in its own field in every case",
+  "smallest_equivalence_margin": "max(|lower 90% bound|, |upper 90% bound|)",
+  "ensemble": {
+    "members": "for each arm the 10 fold models (folds 0-4 x seeds 0, 1)",
+    "aggregation": "each member's goal logit divided by its temperature (stored in its bundle, fitted on its held-out fold), the 10 results averaged in logit space",
+    "calibration": "Platt (unregularised logistic regression on the averaged logit) fitted on the pool's out-of-fold ensemble (each pool shot: the mean of logit(stored p) of the 2 models that held it out; all 7,166 pool shots, penalties included), prior correction from the out-of-fold goal rate to the pool's goal rate, penalties routed to the pool's penalty rate (Beta prior 0.76 x 40 updated with the pool's penalties)",
+    "implementation": "xgpoc.models.g_bundle.fit_ensemble_calibration and ensemble_probability; A1: results/xgd_a1_ensemble/ensemble.json, G-combo: results/xgv_g_combo/ensemble.json",
+    "a1_scoring": "scripts/xgd_test.py scores the 10 A1 bundles on the population at test time (t0 frame, the bundle's training-fold standardiser on the sanitised D3 table, batch 8, eval mode)",
+    "g_combo_predictions": "results/xgd_gcombo_test/predictions.csv, prepared in ticket 06: paired shots from the xg-vendor evaluation table, gate shots from the stored gate predictions, the other evaluation shots scored with the same bundles"
+  },
+  "power": {
+    "source": "results/xgd_test_power/power.json (scripts/xgd_test_power.py, development data only)",
+    "rule": "the development out-of-fold paired match variance of ticket 03 (A1 seed 0 - G-combo seed 0), scaled to the test population by sqrt(N_dev / N_test) shots; normal approximation with the rule's levels",
+    "development": {
+      "shots": 7062,
+      "matches": 328,
+      "delta_ll": -0.0006860747510273011,
+      "lo95": -0.003182543565519435,
+      "hi95": 0.0018013974002490873,
+      "se_bootstrap": 0.0012699002900471946,
+      "se_cluster": 0.0012353981542544145,
+      "bootstrap": {
+        "draws": 5000,
+        "seed": 0
+      }
+    },
+    "test_population": {
+      "shots": 3819,
+      "matches": 172,
+      "shots_by_role": {
+        "evaluation": 3005,
+        "gate": 814
+      }
+    },
+    "scaling": {
+      "shots": 1.3598438060114992,
+      "matches": 1.3809332873770719
+    },
+    "se_test": 0.001726866043672884,
+    "se_test_match_scaling": 0.0017536475821759696,
+    "at": [
+      {
+        "delta": -0.0007,
+        "se": 0.001726866043672884,
+        "p_success": 0.06002004017338386,
+        "p_worse": 0.009007186125586986,
+        "p_equivalent": 0.7521335255061167,
+        "half_width_95": 0.003384595251724024,
+        "half_width_90": 0.0028404418751946815,
+        "expected_smallest_margin": 0.0035404418751946816
+      },
+      {
+        "delta": -0.002,
+        "se": 0.001726866043672884,
+        "p_success": 0.21133532471489613,
+        "p_worse": 0.0009100081723863451,
+        "p_equivalent": 0.5288048754830406,
+        "half_width_95": 0.003384595251724024,
+        "half_width_90": 0.0028404418751946815,
+        "expected_smallest_margin": 0.0048404418751946815
+      }
+    ]
+  },
+  "scope": "The result applies to the D3 detector and homography as audited in ticket 09, not to detector-derived structure in general.",
+  "limitations": [
+    "The equivalence margin delta = 0.005 was adopted after development, borrowed from xg-vendor, and is loose (about 1.5% of G-combo's log-loss, several times the development difference).",
+    "The labels of the 135 evaluation matches were seen in xg-vendor; no model of this study was selected on them.",
+    "The match bootstrap does not capture retraining variability: a new set of seeds would give a different ensemble.",
+    "The expected power of the success rule is low (see power); a success would be read with that caveat."
+  ],
+  "rerun": "only after a purely technical failure, with the same inputs, by the owner's decision"
+}
