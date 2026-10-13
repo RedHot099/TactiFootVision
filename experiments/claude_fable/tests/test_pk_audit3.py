@@ -193,3 +193,46 @@ def test_the_truth_timing_of_a_ball_struck_before_t0(tmp_path):
     assert -680 <= row["kick_ms"] <= -600
     assert row["to_kick_800"] < 1.0 and row["to_kick_400"] == pytest.approx(5 * 0.04 * 25, abs=1.2)
     assert row["move_400_0"] == pytest.approx(10 * 0.04 * 25) and row["to_kick_0"] > row["to_kick_400"]
+
+
+# ------------------------------------------------------------------ declaration
+def test_the_configurations_are_the_committed_declaration():
+    from xgpoc.bundle import sha256_file
+
+    assert sha256_file(e3.AUDIT_3_DECLARATION) == e3.AUDIT_3_DECLARATION_SHA256
+    declared = e3.declaration()
+    assert {n: tuple(c["source_ms"]) for n, c in declared["configs"].items()} == {n: c.source for n, c in e3.CONFIGS.items()}
+    common = declared["common"]
+    assert common["keypoints"]["weights_sha256"] == e3.KEYPOINT_SHA256
+    assert common["keypoints"]["load"] == "tv.load_model('yolo_pose', weights, conf=0.1, imgsz=960, resize='square')"
+    assert (e3.COMMON["keypoint_conf"], e3.COMMON["keypoint_imgsz"], e3.COMMON["keypoint_resize"]) == (0.1, 960, "square")
+    assert common["homography"]["estimator"] == ("tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, "
+                                                 "refine_with_lines=True)")
+    assert (e3.COMMON["homography_min_confidence"], e3.COMMON["homography_ransac_threshold"]) == (0.3, 2.0)
+    detector = common["detector"]
+    assert (detector["imgsz"], detector["conf"], detector["iou"], detector["class_conf"]["ball"]) == (
+        e3.COMMON["detector_imgsz"], e3.COMMON["detector_conf"], e3.COMMON["detector_iou"], e3.COMMON["ball_conf"])
+    assert "audit 2's StatsBomb diagnostics" in declared["evidence"]["provenance"]
+
+
+def test_real_analysers_load_the_declared_models(monkeypatch):
+    import tactifoot_vision as tv
+    from tactifoot_vision.models.ultralytics import YOLODetector, YOLOPoseModel
+
+    class Names:
+        names = {0: "ball", 1: "goalkeeper", 2: "player", 3: "referee"}
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+    monkeypatch.setattr(YOLOPoseModel, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+
+    class Embedder(tv.teams.Embedder):
+        name = "fake"
+
+        def embed(self, crops):
+            return np.zeros((len(crops), 2), np.float32)
+    analyser, ball_only = e3.build_analyzers(Embedder(), device="cpu")
+    assert analyser.detector is ball_only.detector and analyser.keypoint_model is ball_only.keypoint_model
+    assert analyser.keypoint_model.resize == "square" and analyser.keypoint_model.imgsz == 960
+    assert analyser.keypoint_model.weights == e3.KEYPOINT_WEIGHTS and ball_only.team_classifier is None
+    h = analyser.homography
+    assert (h.min_confidence, h.ransac_threshold, h.refine_with_lines) == (0.3, 2.0, True)
+    assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.imgsz == 1920

@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import xgd_extract  # noqa: E402
 
-CODE = sorted((ROOT / "xgpoc/detector").glob("*.py")) + sorted((ROOT / "scripts").glob("xgd_*.py"))
+CODE = (sorted((ROOT / "xgpoc/detector").glob("*.py")) + sorted((ROOT / "scripts").glob("xgd_*.py"))
+        + sorted((ROOT / "scripts").glob("pk_extract3*.py")) + [ROOT / "scripts/pk_audit3_diag.py"])
 FORBIDDEN_PATHS = ["results/xgv_pairing/pairs.parquet", "/home/kuba/projects/football_data/statsbomb_open_v1/events/1.json",
                    "results/xgv_statsbomb_data/shots.parquet", "results/xgv_release_v1/pairs.parquet",
                    "results/xgv_comparator/predictions.parquet", "cache/StatsBomb/x.csv"]
@@ -82,11 +83,12 @@ def test_detector_code_imports_no_vendor_module_and_names_no_statsbomb_file(path
     if path.name in AUDIT_FILES + ("guard.py",):
         return                                     # the pattern itself, and the audit: the one allowed StatsBomb reader
     allowed = {"xgd_extract.py": ["results/xgv_pairing/pairs.parquet"], "xgd_extract_full.py": ["results/xgd_audit2/choice.json"],
+               "pk_extract3_full.py": ["results/xgd_audit3/choice.json"],
                "xgd_gcombo_test.py": ["results/xgv_eval_primary"]}   # G-combo's own predictions, no new model reads them
     assert named == allowed.get(path.name, []), f"{path.name} names StatsBomb or pairing files: {named}"
 
 
-AUDIT_FILES = ("audit.py", "xgd_audit.py", "xgd_kp_diag.py", "xgd_audit2_diag.py")
+AUDIT_FILES = ("audit.py", "xgd_audit.py", "xgd_kp_diag.py", "xgd_audit2_diag.py", "pk_audit3_diag.py")
 
 
 def _imports_audit(tree: ast.AST) -> bool:
@@ -104,13 +106,14 @@ def test_no_feature_model_or_extraction_code_imports_the_audit(path):
     assert not _imports_audit(ast.parse(path.read_text())), f"{path.name} imports the StatsBomb audit"
 
 
-@pytest.mark.parametrize("script", ["xgd_audit.py", "xgd_kp_diag.py", "xgd_audit2_diag.py"])
+@pytest.mark.parametrize("script", ["xgd_audit.py", "xgd_kp_diag.py", "xgd_audit2_diag.py", "pk_audit3_diag.py"])
 def test_the_audit_scripts_are_the_ones_that_import_it(script):
     assert _imports_audit(ast.parse((ROOT / "scripts" / script).read_text()))
 
 
 @pytest.mark.parametrize("relative", ["results/xgd_audit/per_shot.parquet", "results/xgd_audit/metrics.csv",
                                       "results/xgd_audit2/per_shot.parquet", "results/xgd_audit2_diag/diag.csv",
+                                      "results/xgd_audit3/per_shot.parquet", "results/xgd_audit3_diag/diag.csv",
                                       "results/xgd_kp_diag/per_shot.parquet", "results/xgv_timing_source/shot_residuals.parquet"])
 def test_the_audit_outputs_and_timing_residuals_are_refused_inside_the_guard(tmp_path, relative):
     path = _forbidden_file(tmp_path, relative)

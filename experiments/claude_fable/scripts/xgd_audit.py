@@ -1,15 +1,20 @@
 """Audit the declared configurations against StatsBomb freeze frames, choose one and apply the gate (xg-detector
-tickets 02 and 09).
+tickets 02 and 09, pitch-keypoints 04).
 
-    audit 2 (ticket 09, the defaults): D1-D4 from cache/xgd_extract2, audit 1's C4 from cache/xgd_extract as a reference
-    ./run.sh python scripts/xgd_audit.py [--out results/xgd_audit2] [--n-boot 5000]
+    audit 3 (pitch-keypoints 04, the defaults): E1-E3 from cache/xgd_extract3, audit 2's D3 from cache/xgd_extract2 as
+    a reference: ./run.sh python scripts/xgd_audit.py [--out results/xgd_audit3] [--n-boot 5000]
+
+    audit 2 (ticket 09): ./run.sh python scripts/xgd_audit.py --extract cache/xgd_extract2 --configs D1 D2 D3 D4 \
+        --reference-configs C4 --reference-extract cache/xgd_extract --reference-metrics results/xgd_audit/metrics.csv \
+        --out results/xgd_audit2
 
     audit 1 (ticket 02): ./run.sh python scripts/xgd_audit.py --extract cache/xgd_extract --configs C1 C2 C3 C4 \
         --reference-configs --out results/xgd_audit
 
 Diagnostic only (`xgpoc.detector.audit`): the one detector script allowed to read StatsBomb data and the pairing,
-each with its columns named (no goal or outcome column). Auditing any of D1-D4 requires the committed declaration
-(`research/xg_detector_audit2_configs.json`) to have its committed sha256. For every configuration, candidate or
+each with its columns named (no goal or outcome column). Auditing any of D1-D4 or E1-E3 requires that audit's committed
+declaration (`research/xg_detector_audit2_configs.json`, `research/pitchkp_audit3_configs.json`) to have its committed
+sha256; one run audits the candidates of one declaration. For every configuration, candidate or
 reference, it checks the cache against its completion record, replays the t0 features from the cached frames (they
 must equal the cached feature table, and add the goalkeeper position) and compares them with the StatsBomb positions of
 the paired non-penalty shots. The choice and the gate see the candidates (`--configs`) only. The reference
@@ -33,8 +38,35 @@ import pandas as pd
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import audit, records
 from xgpoc.detector import extract as ex
+from xgpoc.detector import extract3 as e3
 
 ROOT = Path(__file__).resolve().parents[1]
+CONFIGS = ex.CONFIGS | e3.CONFIGS
+# Declared candidate sets: configurations, the committed declaration file and its sha256.
+DECLARATIONS = {"D1-D4": (ex.AUDIT_2, ex.AUDIT_2_DECLARATION, ex.AUDIT_2_DECLARATION_SHA256),
+                "E1-E3": (e3.AUDIT_3, e3.AUDIT_3_DECLARATION, e3.AUDIT_3_DECLARATION_SHA256)}
+
+
+def replayed_features(frames: pd.DataFrame, name: str) -> pd.DataFrame:
+    """The configuration's t0 features recomputed from its cached frames."""
+    config = CONFIGS[name]
+    return e3.replay_features(frames, config) if isinstance(config, e3.SourceConfig) else ex.replay_features(frames, config)
+
+
+def checked_declaration(configs: list[str], path: Path | None) -> dict | None:
+    """The committed declaration of the candidates (path and sha256), or None for undeclared audit-1 candidates;
+    `SystemExit` when the file is not the committed one or the candidates mix declarations."""
+    sets = [label for label, (names, _, _) in DECLARATIONS.items() if set(configs) & set(names)]
+    if not sets:
+        return None
+    if len(sets) > 1:
+        raise SystemExit(f"one audit audits the candidates of one declaration, got {' and '.join(sets)}")
+    _, default, expected = DECLARATIONS[sets[0]]
+    path = path or default
+    digest = sha256_file(path) if path.is_file() else None
+    if expected is None or digest != expected:
+        raise SystemExit(f"{path} is not the committed {sets[0]} declaration (sha256 {expected})")
+    return {"path": str(path), "sha256": digest}
 
 
 def verified_cache(folder: Path) -> dict:
@@ -60,18 +92,18 @@ def write_json(path: Path, obj) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--extract", type=Path, default=ROOT / "cache/xgd_extract2")
-    parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_audit2")
+    parser.add_argument("--extract", type=Path, default=ROOT / "cache/xgd_extract3")
+    parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_audit3")
     parser.add_argument("--pairs", type=Path, default=audit.PAIRS)
     parser.add_argument("--shots", type=Path, default=audit.SHOTS)
-    parser.add_argument("--configs", nargs="+", default=list(ex.AUDIT_2), choices=list(ex.CONFIGS),
+    parser.add_argument("--configs", nargs="+", default=list(e3.AUDIT_3), choices=list(CONFIGS),
                         help="the candidates of the choice")
-    parser.add_argument("--reference-configs", nargs="*", default=["C4"], choices=list(ex.CONFIGS),
+    parser.add_argument("--reference-configs", nargs="*", default=["D3"], choices=list(CONFIGS),
                         help="audited next to the candidates, never chosen")
-    parser.add_argument("--reference-extract", type=Path, default=ROOT / "cache/xgd_extract")
-    parser.add_argument("--reference-metrics", type=Path, default=ROOT / "results/xgd_audit/metrics.csv",
+    parser.add_argument("--reference-extract", type=Path, default=ROOT / "cache/xgd_extract2")
+    parser.add_argument("--reference-metrics", type=Path, default=ROOT / "results/xgd_audit2/metrics.csv",
                         help="the earlier audit whose rows the reference configurations must reproduce")
-    parser.add_argument("--declaration", type=Path, default=ex.AUDIT_2_DECLARATION)
+    parser.add_argument("--declaration", type=Path, default=None, help="default: the candidates' committed declaration")
     parser.add_argument("--n-boot", type=int, default=audit.N_BOOT)
     parser.add_argument("--seed", type=int, default=audit.SEED)
     args = parser.parse_args()
@@ -79,11 +111,7 @@ def main() -> None:
         raise SystemExit(f"{args.out} is complete; use a new --out")
     if set(args.configs) & set(args.reference_configs):
         raise SystemExit("a configuration cannot be both a candidate and a reference")
-    declaration = None
-    if set(args.configs) & set(ex.AUDIT_2):
-        declaration = {"path": str(args.declaration), "sha256": sha256_file(args.declaration)}
-        if declaration["sha256"] != ex.AUDIT_2_DECLARATION_SHA256:
-            raise SystemExit(f"{args.declaration} is not the committed D1-D4 declaration (sha256 {ex.AUDIT_2_DECLARATION_SHA256})")
+    declaration = checked_declaration(args.configs, args.declaration)
     started = datetime.now(UTC)
 
     pop = audit.read_population(args.pairs)
@@ -97,7 +125,7 @@ def main() -> None:
             raise SystemExit(f"{folder} holds {record['config']['name']}, not {name}")
         frames = pd.read_parquet(folder / "frames.parquet", columns=audit.FRAME_READ_COLUMNS)
         cached = pd.read_parquet(folder / "features.parquet")
-        replayed = ex.replay_features(frames, ex.CONFIGS[name])
+        replayed = replayed_features(frames, name)
         replay[name] = audit.check_replay(cached, replayed)
         if replay[name]:
             raise SystemExit(f"{name}: replayed features differ from the cache: {replay[name]}")

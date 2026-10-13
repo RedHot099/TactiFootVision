@@ -1,0 +1,75 @@
+{
+  "title": "pitch-keypoints audit 3: the extractor configurations E1-E3, declared before the audit reads any StatsBomb data (ticket 04)",
+  "declared": "2026-10-13",
+  "ticket": "pitch-keypoints 04 (declaration and audit); council C3 Q3 (config space); the owner lifted Q26 for this audit (spec, Owner's decision 2026-10-13)",
+  "rules": "Unchanged and frozen (xg-detector spec, Audit; tickets 02 and 09): the chosen configuration has the lowest median shot-location error among those with shot-location coverage >= 70% of the paired non-penalty shots, ties broken by coverage; approach 2 reopens only if that median is <= 3 m at coverage >= 70% and goalkeeper information covers >= 50%. Same paired shots (2,721 non-penalty shots in 135 matches), same match draws (5,000, seed 0). StatsBomb is diagnostic only: no configuration is added, changed or tuned after the audit runs. Audit 2's choice D3 is audited alongside as a reference, never a candidate, and must reproduce audit 2's metric rows exactly.",
+  "package": {
+    "commits": [
+      "2e9469b models: resize='letterbox' | 'square' | 'stretch' on the Ultralytics backends (replacing stretch: bool); 'square' pads the frame to a centred grey square as Ultralytics' training letterbox does",
+      "89bd0ee research callers of the resize option; the evaluator's own square canvas removed"
+    ],
+    "square_input_check": "results/pk_square_input (scripts/pk_square_input_check.py at 89bd0ee): the package's resize='square' on ticket 08's 1,500 training-match t0 frames equals ticket 03's evaluated keypoints exactly (1,500/1,500 instances, max 0.0 px, confidences identical)"
+  },
+  "common": {
+    "detector": {
+      "weights": "results/project/raw/yolo11m/training/detect_yolo11m/weights/best.pt",
+      "weights_sha256": "7183d342353752a067035bcee46062fc50f81261258257296d7cbc0dd3a5baf7",
+      "imgsz": 1920,
+      "conf": 0.3,
+      "iou": 0.5,
+      "class_conf": {"ball": 0.15},
+      "resize": "letterbox",
+      "note": "C4/D3's detector, unchanged: the audit-1 choice and the detector of D1-D4; no GSR or label-free evidence of this ticket was used to choose detector settings"
+    },
+    "keypoints": {
+      "weights": "models/pitch_yolo11m_pose_sn960.pt",
+      "weights_sha256": "5be9954a0682bfd6827a4b293cf33e2b348c7a3ef7e086415de4c7d9199f005d",
+      "load": "tv.load_model('yolo_pose', weights, conf=0.1, imgsz=960, resize='square')",
+      "origin": "pitch-keypoints 03: YOLO11m-pose at 960, epoch 18 of y11m_960, trained on SoccerNet GSR train and Calibration-2023 train frames"
+    },
+    "homography": {
+      "estimator": "tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)",
+      "line_mask": "the detector's people boxes are left out of the refinement's line mask (FrameAnalyzer passes them)",
+      "mode": "stateless fit per frame (FrameAnalyzer), every analysed frame",
+      "chosen_on": "pitch-keypoints 03's retune on GSR valid (declared rule, research/pitchkp_methods/retune.json, run at c18fbfd): kp03_r2_refined, availability 0.930 [0.892; 0.959], median 0.623 m [0.562; 0.706], p90 2.35 m; GSR test (single scoring) availability 0.855, median 0.459 m, p90 1.47 m"
+    },
+    "teams": {"embedder": "google/siglip-base-patch16-224", "n_teams": 2, "reducer": null, "crop_scale": 0.8},
+    "people_and_goalkeeper": "always from the row's own frame (t0 in the audit), as in audits 1-2",
+    "label_free_check": "ticket 08's loop on its 1,500 training-match t0 frames (results/pk_label_free/y11m_960_e18_square, pitch-keypoints 03): homography 0.982, lines good 0.850 with the refinement (0.787 keypoints only), median keypoint residual 7.2 px on 773 line-confirmed frames (the audit-2 model: 0.713 / 0.363 / 48 px)"
+  },
+  "extractor": "experiments/claude_fable/xgpoc/detector/extract3.py CONFIGS['E1'..'E3'] (SourceConfig.source: the ordered offsets whose ball places the shot; a row never reads a frame after its own; without a ball of the order the flagged shooter of xg-detector's rule); scripts/pk_extract3.py runs them on the paired shots, one shared pass; tests/test_pk_audit3.py ties CONFIGS to this file",
+  "configs": {
+    "E1": {"source_ms": [0, -400, -800],
+           "role": "audit 2's source rule (D3's: the t0 ball, else the -400 ms ball, else the -800 ms ball), with only the pitch keypoint model and its homography settings swapped (council C3 Q3)"},
+    "E2": {"source_ms": [-400, -800],
+           "role": "a fixed order over -400 / -800 ms: the -400 ms ball, else the -800 ms ball; never the t0 ball (without either, the flagged shooter)"},
+    "E3": {"source_ms": [-400, -800, 0],
+           "role": "E2's order with the t0 ball as the last fallback, before the flagged shooter"}
+  },
+  "evidence": {
+    "provenance": "The idea of taking the ball from the -400 ms frame came from audit 2's StatsBomb diagnostics (results_reports/xg_detector_2026-10/AUDIT.md, section 10.7: in D3 the -400 ms ball group had a 6.0 m median error against 11.9 m for the t0 ball). Those StatsBomb numbers do not justify E2/E3; the evidence below uses SoccerNet GSR ball positions only and no StatsBomb data (council C3 Q3).",
+    "run": "scripts/pk_ball_evidence.py at 7dd1468 (clean tracked tree), GPU 2026-10-13T15:17:10Z -> 15:22:17Z, inside no_statsbomb_reads; results/pk_ball_evidence; GSR test is never read",
+    "complete_json_sha256": "3a88901bc0dd95e4fd5bc6b1f3af2cb80b2293227b650f79fc543cc165df09f6",
+    "summary_json_sha256": "4b5873b6612a9ab6057a0ef93c83a6836cb09f92bef3c24f28d7e2630a1f98c9",
+    "truth_timing": {
+      "data": "GSR's ball positions (bbox_pitch) of the 21 GSR train + valid clips whose action is 'Shots on target' / 'Shots off target' (the xG index's classes), anchored like the index's shots (t0 = the latest frame at or before the action time); annotations only, no detector",
+      "kick": "kick.kick on the truth's track over t0 - 1 s .. t0 + 0.28 s finds a kick in 11 of 21 clips (GSR's ball tracks are smooth, so many shots do not pass the velocity-change test); median kick time -240 ms",
+      "distance_to_kick_spot_median_m": {"t0": 5.14, "-400 ms": 1.97, "-800 ms": 3.45, "n": "11 / 11 / 10 clips"},
+      "ball_travel_median_m": {"-800 -> -400 ms": 2.37, "-400 ms -> t0": 3.95, "n": "19 clips"},
+      "reading": "By t0 the ball has usually left the spot it was struck from; the -400 ms ball is nearest to it and the -800 ms ball next, the t0 ball farthest. This orders the sources as -400, -800, t0 (E2, E3)."
+    },
+    "pipeline_on_gsr_valid_shot_clips": {
+      "data": "the 9 GSR valid shot clips, every frame of t0 - 1 s .. t0 + 0.28 s at 720p through audit 3's ball-only analyzer",
+      "ball_placed": "51% of the frames (truth ball on 97%); placed balls 1.55 m median from the truth, 27% more than 5 m away (another object)",
+      "rules_against_the_truth_kick_spot": {"E1": "6 clips compared, median 1.91 m, 5 within 5 m", "E2": "6 clips, median 4.51 m, 3 within 5 m", "E3": "as E2 (every clip had a -400 or -800 ms ball)"},
+      "reading": "Too few clips to rank the orders; where the detector finds the ball at -400 ms it is sometimes another object. E1 stays the reference rule; E2 and E3 rest on the truth timing above."
+    },
+    "ball_placement_gsr_valid": {
+      "data": "every 5th frame of the 58 GSR valid clips with a truth ball on the pitch (6,404 frames); the detector's most confident ball placed by ticket 03's cached kp03_r2_refined homography",
+      "all": "placed on 50.2% [42.1; 58.2] of the frames; median error 1.42 m [1.22; 1.77]; < 2 m 59.6%; > 5 m 25.1% of the placed balls",
+      "near_goal": "3,406 frames: placed 53.2%; median 1.16 m; > 5 m 18.4%",
+      "reading": "When the detector finds the ball, the new homography places it about 1-1.5 m from GSR's position; a quarter of the placed balls are another object. The ball detector, not the homography, limits the shot location; no detector setting is changed in this audit."
+    },
+    "kick_rule_not_declared": "Council C3 Q3 also allowed a label-free kick-frame rule from the ball track over t0 - 1 s .. t0 + 0.3 s. On the 9 GSR valid shot clips the rule on the detector's track (kick.kick, the same thresholds as on the truth) found a kick in 5 clips; against the truth kick spot (4 clips compared) its median error is 13.6 m, with 2 of 4 on another object about 24 m away, because the detector places the ball on only half of the window's frames and a quarter of those elsewhere. It is therefore not declared."
+  }
+}

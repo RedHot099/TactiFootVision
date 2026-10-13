@@ -412,9 +412,23 @@ def test_a_candidate_cannot_be_a_reference_and_audit_2_needs_the_committed_decla
     changed = tmp_path / "declaration.json"
     changed.write_text(ex.AUDIT_2_DECLARATION.read_text().replace('"D4"', '"D5"'))
     monkeypatch.setattr(sys, "argv", ["xgd_audit.py", "--configs", "D1", "D2", "D3", "D4", "--declaration", str(changed),
-                                      "--out", str(tmp_path / "o")])
+                                      "--reference-configs", "--out", str(tmp_path / "o")])
     with pytest.raises(SystemExit, match="not the committed D1-D4 declaration"):
         xgd_audit.main()
+
+
+def test_audit_3_needs_its_committed_declaration_and_one_audit_one_declaration(monkeypatch, tmp_path):
+    declared = tmp_path / "declared.json"
+    declared.write_text("{}")
+    names, _, _ = xgd_audit.DECLARATIONS["E1-E3"]
+    monkeypatch.setitem(xgd_audit.DECLARATIONS, "E1-E3", (names, declared, sha256_file(declared)))
+    assert xgd_audit.checked_declaration(["E1", "E2"], None) == {"path": str(declared), "sha256": sha256_file(declared)}
+    assert xgd_audit.checked_declaration(["C1", "C4"], None) is None                 # audit 1 had no declaration
+    declared.write_text('{"changed": true}')
+    with pytest.raises(SystemExit, match="not the committed E1-E3 declaration"):
+        xgd_audit.checked_declaration(["E1"], None)
+    with pytest.raises(SystemExit, match="one declaration, got D1-D4 and E1-E3"):
+        xgd_audit.checked_declaration(["D3", "E1"], None)
 
 
 def test_a_cache_that_does_not_match_its_record_is_refused(monkeypatch, tmp_path):

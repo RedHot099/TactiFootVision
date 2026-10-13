@@ -67,7 +67,7 @@ CONFIGS = {c.name: c for c in (
     SourceConfig("E3", (-400, -800, 0)))}     # the same, with the t0 ball as the last fallback
 AUDIT_3 = tuple(CONFIGS)
 AUDIT_3_DECLARATION = Path(__file__).resolve().parents[2] / "research/pitchkp_audit3_configs.json"
-AUDIT_3_DECLARATION_SHA256 = None         # set when the declaration is committed, before audit 3
+AUDIT_3_DECLARATION_SHA256 = "f7f23eaede754326a24b6d177c1e83e1eb6158c2cb22f1e36b81794604f8a8b7"  # committed before audit 3
 
 
 def settings(config: SourceConfig) -> dict:
