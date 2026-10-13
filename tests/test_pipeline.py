@@ -396,7 +396,7 @@ def test_real_video_pipeline(tmp_path):
         pytest.skip("yolo backend not available")
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model("yolo_pose", pose_weights, stretch=True),
+        keypoint_model=tv.load_model("yolo_pose", pose_weights, resize="stretch"),
         team_classifier=TeamClassifier("siglip"),
     )
     result = pipeline.run(video, end=50, progress=False)

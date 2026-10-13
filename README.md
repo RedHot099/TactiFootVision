@@ -20,7 +20,9 @@ import tactifoot_vision as tv
 
 pipeline = tv.Pipeline(
     detector=tv.load_model("yolo", "models/football_yolo11m.pt"),
-    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", stretch=True),
+    # The pitch keypoint model trained on SoccerNet frames, on the square canvas it learnt on.
+    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolo11m_pose_sn960.pt", conf=0.1, resize="square"),
+    homography=tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True),
     team_classifier=tv.teams.TeamClassifier("siglip"),
 )
 result = pipeline.run("match.mp4")

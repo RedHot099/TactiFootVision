@@ -30,10 +30,18 @@ for name, model in detectors.items():
     )
 
 # Pitch keypoints -> homography -> pitch coordinates of the players' feet.
-pitch_model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", stretch=True)
+# The SoccerNet pitch model sees the frame on a square canvas, as in its training;
+# the line refinement masks out the people's boxes.
+pitch_model = tv.load_model(
+    "yolo_pose", "models/pitch_yolo11m_pose_sn960.pt", conf=0.1, resize="square"
+)
 keypoints = pitch_model(frame)
-homography = tv.pitch.HomographyEstimator().update(keypoints)
-feet = detectors["yolo"](frame).get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+people = detectors["yolo"](frame)
+estimator = tv.pitch.HomographyEstimator(
+    min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True
+)
+homography = estimator.fit(keypoints, frame, people.xyxy)
+feet = people.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 print(
     "first players on the pitch (m):",
     tv.pitch.frame_to_pitch(feet, homography)[:3].round(1),
@@ -43,6 +51,7 @@ print(
 pipeline = tv.Pipeline(
     detector=detectors["yolo"],
     keypoint_model=pitch_model,
+    homography=estimator,
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )

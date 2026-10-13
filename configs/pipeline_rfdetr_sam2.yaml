@@ -8,7 +8,12 @@
 #               sam2 = "external/segment-anything-2-real-time"
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.5, size="base"),
-#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5, stretch=True),
+#                   keypoint_model=tv.load_model(
+#                       "yolo_pose", "models/pitch_yolo11m_pose_sn960.pt", conf=0.1, resize="square"
+#                   ),
+#                   homography=tv.pitch.HomographyEstimator(
+#                       min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True
+#                   ),
 #                   tracker=tv.tracking.create_tracker(
 #                       "sam2",
 #                       checkpoint=f"{sam2}/checkpoints/sam2.1_hiera_tiny.pt",
@@ -29,9 +34,14 @@ detector:
 
 keypoints:
   type: yolo_pose
-  weights: ../models/pitch_yolov8n_pose.pt
-  conf: 0.5
-  stretch: true             # trained on frames stretched to 640x640, not letterboxed
+  weights: ../models/pitch_yolo11m_pose_sn960.pt   # trained on SoccerNet frames (GSR, Calibration 2023)
+  conf: 0.1
+  resize: square            # trained on frames letterboxed onto a square canvas
+
+homography:                 # tv.pitch.HomographyEstimator(pitch, **homography): the pitch model's settings
+  min_confidence: 0.3
+  ransac_threshold: 2.0
+  refine_with_lines: true
 
 tracker:
   type: sam2

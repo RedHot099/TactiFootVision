@@ -203,16 +203,30 @@ configs/              example run files
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
   `yolo_pose.predict` returns `sv.KeyPoints` of all instances sorted by confidence.
-  `imgsz` sets the inference size (`None`: the training size). `stretch=True`
-  resizes the frame to `imgsz` x `imgsz` ignoring its aspect ratio instead of
-  Ultralytics' letterbox, and scales outputs back to frame pixels: for
-  checkpoints trained on stretched Roboflow exports, such as the pitch model
-  `pitch_yolov8n_pose.pt` (on its own labelled images the letterbox more than
-  doubles the keypoint error, about 24 px against 10 px at 1280 x 720). `yolo` takes
-  `class_conf={"ball": 0.15}`: a threshold per class name that replaces
-  `conf` for the classes it names; the model runs at the lowest threshold and
-  every other class keeps exactly its `conf` detections (non-maximum
-  suppression is per class). Unknown class names fail when the model loads.
+  `imgsz` sets the inference size (`None`: the training size). `resize` says
+  how a frame becomes the model's input, which must match how the checkpoint saw
+  its training images; outputs are always in frame pixels:
+  * `"letterbox"` (default): Ultralytics' inference letterbox, padded only to a
+    multiple of the stride (960 x 544 for a 16:9 frame at 960);
+  * `"square"`: the frame padded to a centred grey square, as Ultralytics'
+    training letterboxes every image. The SoccerNet pitch model
+    `pitch_yolo11m_pose_sn960.pt` (YOLO11m-pose at 960, trained on SoccerNet
+    GSR and Calibration-2023 frames) learnt from those bands: with the stride
+    letterbox it finds the pitch on 20% of GSR frames, on the square canvas on
+    all of them. Its homography settings are `HomographyEstimator(min_confidence=0.3,
+    ransac_threshold=2.0, refine_with_lines=True)`, chosen on GSR valid; on GSR
+    test the players' feet then land a median 0.46 m from their annotated
+    positions (p90 1.47 m), with a homography on 86% of frames;
+  * `"stretch"`: resized to `imgsz` x `imgsz` ignoring the aspect ratio, for
+    checkpoints trained on stretched Roboflow exports, such as the earlier pitch
+    model `pitch_yolov8n_pose.pt` (on its own labelled images the letterbox more
+    than doubles its keypoint error, about 24 px against 10 px at 1280 x 720).
+
+  `yolo` takes `class_conf={"ball": 0.15}`: a threshold per class name that
+  replaces `conf` for the classes it names; the model runs at the lowest
+  threshold and every other class keeps exactly its `conf` detections
+  (non-maximum suppression is per class). Unknown class names fail when the
+  model loads.
 * `rfdetr`: RF-DETR (`size` option: nano/small/medium/base/large); training
   exports with `to_coco`; class names come from the checkpoint.
 * `Model.train` picks the run folder (`output_dir/name`, then `name2`, ... unless
@@ -342,10 +356,12 @@ configs/              example run files
   them perfectly) and no horizon across the seen markings or the lower half's
   grass (a fit that shrank the markings into a corner of the frame), and its
   markings did not shrink onto one painted line. Off by default.
-  On 1,500 SoccerNet shot frames the pitch model's keypoints are ~50 px off
-  at 720 p even with `stretch=True` (~10 px on its own images), and ~1% of the
-  frames get a fit that puts half of the projected markings within 5 px of a
-  painted line; with the refinement 36-42% do.
+  On 1,500 SoccerNet shot frames the Roboflow pitch model's keypoints are
+  ~50 px off at 720 p even with `resize="stretch"` (~10 px on its own images),
+  and ~1% of the frames get a fit that puts half of the projected markings
+  within 5 px of a painted line; with the refinement 36-42% do. The SoccerNet
+  model's keypoints are ~7 px off on the same frames: 79% of them get such a
+  fit from the keypoints alone and 85% with the refinement.
 
 ### Results visualisation (`tv.viz`)
 

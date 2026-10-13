@@ -4,7 +4,7 @@ Each section maps onto one package constructor or function, and its keys are
 that callable's keyword arguments::
 
     detector: {type: yolo, weights: ../models/football_yolo11m.pt, conf: 0.3}
-    keypoints: {type: yolo_pose, weights: ../models/pitch_yolov8n_pose.pt, stretch: true}
+    keypoints: {type: yolo_pose, weights: ../models/pitch_yolo11m_pose_sn960.pt, resize: square}
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
