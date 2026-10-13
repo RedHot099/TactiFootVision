@@ -2,7 +2,7 @@
 
 Status: frozen in ticket 06 (2026-10-13), before any test prediction of A1 exists. Ticket 07 runs it once.
 Parameters: `research/xg_detector_test_rule.json` (machine-readable, read by the test script).
-Hash list: `research/xg_detector_test_hashes.json`; its sha256 is quoted in ticket 06's Comments.
+Hash list: `research/xg_detector_test_hashes.json`; its sha256 is quoted in ticket 06's Comments and in the message of the commit that adds it.
 Basis: council decision C2 (`.scratch/xg-detector/council.md`), ticket 06 and the spec (stories 5–6, 21–22).
 
 ## 1. The variant

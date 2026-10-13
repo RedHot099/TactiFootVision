@@ -124,33 +124,33 @@
     "sensitivity_10_model": {
       "source": "results/xgd_a1_ensemble/comparison.json (orientation only; the stated power is 'at')",
       "development_delta": {
-        "delta_ll": -0.000792134285680881,
-        "lo95": -0.002633669618682459,
-        "hi95": 0.0010629433714273852,
-        "boot_sd": 0.0009344276544199665
+        "delta_ll": -0.00079213428568088,
+        "lo95": -0.0026336696186824594,
+        "hi95": 0.0010629433714273839,
+        "boot_sd": 0.0009344276544199663
       },
       "rule": "this Δ's bootstrap SE scaled to the test population as the rule's power",
-      "se_test": 0.0012706756580288451,
+      "se_test": 0.001270675658028845,
       "at": [
         {
           "delta": -0.0007,
-          "se": 0.0012706756580288451,
+          "se": 0.001270675658028845,
           "p_success": 0.07940635387032025,
           "p_worse": 0.006022008871747309,
-          "p_equivalent": 0.9567488369696854,
-          "half_width_95": 0.00249047852576827,
-          "half_width_90": 0.002090075464787694,
-          "expected_smallest_margin": 0.002790075464787694
+          "p_equivalent": 0.9567488369696855,
+          "half_width_95": 0.0024904785257682696,
+          "half_width_90": 0.0020900754647876934,
+          "expected_smallest_margin": 0.0027900754647876935
         },
         {
           "delta": -0.002,
-          "se": 0.0012706756580288451,
-          "p_success": 0.3497489983277692,
+          "se": 0.001270675658028845,
+          "p_success": 0.34974899832776923,
           "p_worse": 0.00020471493319540457,
-          "p_equivalent": 0.7629779001122848,
-          "half_width_95": 0.00249047852576827,
-          "half_width_90": 0.002090075464787694,
-          "expected_smallest_margin": 0.004090075464787694
+          "p_equivalent": 0.762977900112285,
+          "half_width_95": 0.0024904785257682696,
+          "half_width_90": 0.0020900754647876934,
+          "expected_smallest_margin": 0.004090075464787693
         }
       ]
     }
