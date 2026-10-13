@@ -24,7 +24,7 @@ from xgpoc.detector import kick
 from xgpoc.pitchkp.gsr_eval import to_corner
 
 SHOT_CLASSES = ("Shots on target", "Shots off target")
-FRAME_MS = 40
+FRAME_MS = int(kick.FRAME_MS)    # 25 fps
 OFFSETS_MS = (0, -400, -800)
 WINDOW = (-25, 7)                 # kick window in frames from t0: -1000 ms .. +280 ms (council C3: t0 - 1 s .. t0 + 0.3 s)
 
@@ -58,7 +58,13 @@ def track(ball: pd.DataFrame, frames: np.ndarray) -> np.ndarray:
     return by_frame.reindex(frames).to_numpy(float)
 
 
+def offset_ms(frame: int, t0: int) -> int:
+    """A frame's offset from t0 in ms."""
+    return int((frame - t0) * FRAME_MS)
+
+
 def window_frames(t0: int) -> np.ndarray:
+    """The 1-based frames of the kick window around t0."""
     return np.arange(t0 + WINDOW[0], t0 + WINDOW[1] + 1)
 
 
@@ -69,7 +75,7 @@ def timing_row(info: dict, ball: pd.DataFrame) -> dict:
     index, location = kick.kick(track(ball, frames))
     at = {o: track(ball, np.array([t0 + o // FRAME_MS]))[0] for o in OFFSETS_MS}
     row = {"clip": info["name"], "action_class": info["action_class"], "t0_frame": t0,
-           "kick_ms": np.nan if index is None else float((frames[index] - t0) * FRAME_MS)}
+           "kick_ms": np.nan if index is None else float(offset_ms(frames[index], t0))}
     for o in OFFSETS_MS:
         row[f"to_kick_{abs(o)}"] = float(np.hypot(*(at[o] - location))) if index is not None else np.nan
     row["move_800_400"] = float(np.hypot(*(at[-400] - at[-800])))

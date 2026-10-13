@@ -63,7 +63,7 @@ def test_a_first_time_shot_changes_the_motion():
 def test_without_both_neighbours_a_frame_cannot_be_the_kick():
     xy = _track([2.0] * 5 + [25.0] * 25)
     xy[:5] = np.nan                                                # nothing before the strike
-    assert kick.kick(xy)[0] is None or kick.kick(xy)[0] >= 5 + kick.SPAN
+    assert kick.kick(xy)[0] is None                                # the strike itself has no frame before it
 
 
 # ------------------------------------------------------------------ sources
@@ -302,3 +302,28 @@ def test_parts_of_other_inputs_are_refused(tmp_path):
     full.pinned_identity(tmp_path, {"config": "E3", "code_digest": "a"})            # a resumed run with the same inputs
     with pytest.raises(SystemExit, match="other inputs"):
         full.pinned_identity(tmp_path, {"config": "E3", "code_digest": "b"})
+
+
+# ------------------------------------------------------------------ GSR evidence summaries
+def _evidence_script():
+    import sys
+    sys.path.insert(0, str(e3.AUDIT_3_DECLARATION.parents[1] / "scripts"))
+    import pk_ball_evidence
+    return pk_ball_evidence
+
+
+def test_the_evidence_summaries_read_the_clip_column_by_name():
+    # Regression: `table.clip` is DataFrame.clip (a method), so the summaries must read the column by name.
+    ev = _evidence_script()
+    frames = pd.DataFrame({"clip": ["A", "A", "B", "B"], "game": "1", "frame": [1, 6, 1, 6], "near_goal": [True, False, True, True],
+                           "truth_x": [10.0, 20, 30, 40], "truth_y": 5.0, "x": [10.5, np.nan, 38, 40], "y": 5.0,
+                           "error_m": [0.5, np.nan, 8.0, 0.0]})
+    table = ev.ball_summary(frames).set_index(["stratum", "metric"]).value
+    assert table["all", "placed"] == 0.75 and table["all", "median_m"] == 0.5 and table["all", "far"] == pytest.approx(1 / 3)
+    timing = pd.DataFrame({"split": ["valid"], "kick_ms": [-240.0], "to_kick_0": [5.0], "to_kick_400": [2.0], "to_kick_800": [3.0],
+                           "move_800_400": [2.0], "move_400_0": [4.0]})
+    sources = pd.DataFrame({"clip": ["A", "A"], "rule": ["E1", "kick"], "source_ms": [0.0, np.nan], "to_truth_kick_m": [1.0, np.nan]})
+    shot = frames.assign(offset_ms=[0, -400, -800, 0])
+    summary = ev.summarise(timing, shot, sources)
+    assert summary["shot_frames"]["clips"] == 2 and summary["sources"]["E1"]["within_5m"] == 1
+    assert summary["timing"]["to_kick_400_median_m"] == 2.0

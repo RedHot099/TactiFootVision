@@ -55,6 +55,7 @@ FAR_M = 5.0
 
 
 def clips(split: str) -> list[Path]:
+    """The clip folders of a GSR split."""
     return sorted(p.parent for p in (GSR / split).glob("*/Labels-GameState.json"))
 
 
@@ -66,6 +67,7 @@ def placed_ball(result) -> np.ndarray:
 
 
 def distance(a, b) -> float:
+    """Metres between two pitch points (NaN when either is missing)."""
     return float(np.hypot(*(np.asarray(a, float) - np.asarray(b, float))))
 
 
@@ -79,22 +81,22 @@ def shot_clip_rows(folder: Path, analyzer) -> tuple[list[dict], list[dict]]:
     results, frame_rows = {}, []
     for frame, true_xy in zip(frames, truth, strict=True):
         result = analyzer(ev.eval_frame(folder / "img1" / f"{frame:06d}.jpg"))
-        offset = int((frame - t0) * gb.FRAME_MS)
+        offset = gb.offset_ms(frame, t0)
         results[offset] = result
         xy = placed_ball(result)
         frame_rows.append({"clip": info["name"], "offset_ms": offset, "truth_x": true_xy[0], "truth_y": true_xy[1],
                            "x": xy[0], "y": xy[1], "homography": result.homography is not None,
                            "error_m": distance(xy, true_xy)})
     rows = []
-    base = {"clip": info["name"], "truth_kick_ms": np.nan if kick_index is None else float((frames[kick_index] - t0) * gb.FRAME_MS)}
+    base = {"clip": info["name"], "truth_kick_ms": np.nan if kick_index is None else float(gb.offset_ms(frames[kick_index], t0))}
     for config in e3.CONFIGS.values():
         picked = e3.chosen_ball(results, config.order(0))
         xy = placed_ball(results[picked[1]]) if picked else np.full(2, np.nan)
         rows.append(base | {"rule": config.name, "source_ms": np.nan if picked is None else float(picked[1]),
                             "to_truth_kick_m": distance(xy, kick_truth) if kick_index is not None else np.nan})
-    track = np.array([placed_ball(results[int((f - t0) * gb.FRAME_MS)]) for f in frames])
+    track = np.array([placed_ball(results[gb.offset_ms(f, t0)]) for f in frames])
     index, location = kick.kick(track)
-    rows.append(base | {"rule": "kick", "source_ms": np.nan if index is None else float((frames[index] - t0) * gb.FRAME_MS),
+    rows.append(base | {"rule": "kick", "source_ms": np.nan if index is None else float(gb.offset_ms(frames[index], t0)),
                         "to_truth_kick_m": distance(location, kick_truth) if index is not None and kick_index is not None
                         else np.nan})
     return frame_rows, rows
@@ -126,6 +128,8 @@ def ball_rows(folder: Path, detector, homographies: pd.DataFrame) -> list[dict]:
 
 
 def ball_statistics(table: pd.DataFrame) -> dict:
+    """Part 3's statistics over frames with a truth ball: share placed, error median / p90, shares under 1 / 2 / 5 m
+    and beyond `FAR_M` of the placed balls."""
     placed = np.isfinite(table.error_m.to_numpy(float))
     error = table.error_m.to_numpy(float)[placed]
     n = len(table)
@@ -139,6 +143,7 @@ def ball_statistics(table: pd.DataFrame) -> dict:
 
 
 def ball_summary(table: pd.DataFrame) -> pd.DataFrame:
+    """`ball_statistics` over all frames and the near-goal stratum, with clip-bootstrap intervals."""
     rows = []
     for stratum, part in (("all", table), ("near_goal", table[table.near_goal])):
         part = part.reset_index(drop=True)

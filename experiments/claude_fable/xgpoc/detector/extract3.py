@@ -103,6 +103,7 @@ def build_analyzers(embedder, device: str | None = None) -> tuple[FrameAnalyzer,
 
 # ------------------------------------------------------------------ the source rule
 def has_pitch_ball(result: FrameResult | None) -> bool:
+    """Whether an analysed frame has a ball with a pitch position."""
     return result is not None and bool(np.isfinite(result.ball_xy).all(axis=1).any())
 
 
@@ -163,6 +164,8 @@ def needed(frames: dict[int, FrameResult | None], order: Sequence[int]) -> Itera
 # ------------------------------------------------------------------ extraction
 @dataclass
 class Extraction:
+    """One pass: the configurations, every analysed frame row and each configuration's feature rows."""
+
     configs: tuple[SourceConfig, ...]
     frames: list[dict]
     features: dict[str, list[dict]]
@@ -211,4 +214,5 @@ def replay_features(frames: pd.DataFrame, config: SourceConfig, offsets: Sequenc
 
 
 def declaration() -> dict:
+    """The committed declaration file, parsed."""
     return json.loads(AUDIT_3_DECLARATION.read_text())

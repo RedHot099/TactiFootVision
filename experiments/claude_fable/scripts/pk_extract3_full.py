@@ -45,6 +45,7 @@ CHOICE = ROOT / "results/xgd_audit3/choice.json"
 
 
 def chunks(shot_ids: list[str], size: int) -> list[list[str]]:
+    """Consecutive chunks of at most `size` shots."""
     return [shot_ids[i:i + size] for i in range(0, len(shot_ids), size)]
 
 
@@ -68,6 +69,7 @@ def write_part(parts: Path, n: int, frames: pd.DataFrame, features: pd.DataFrame
 
 
 def done(parts: Path, n: int) -> bool:
+    """Whether chunk `n` has both of its tables in place."""
     return all((parts / f"{n:03d}.{kind}.parquet").exists() for kind in ("frames", "features"))
 
 

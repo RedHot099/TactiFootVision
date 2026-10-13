@@ -36,8 +36,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def check_declaration() -> dict:
+    """The committed declaration (path, sha256) after checking the file and that `extract3.CONFIGS` equal it."""
     digest = sha256_file(e3.AUDIT_3_DECLARATION) if e3.AUDIT_3_DECLARATION.is_file() else None
-    if e3.AUDIT_3_DECLARATION_SHA256 is None or digest != e3.AUDIT_3_DECLARATION_SHA256:
+    if digest != e3.AUDIT_3_DECLARATION_SHA256:
         raise SystemExit(f"{e3.AUDIT_3_DECLARATION} is not the committed E1-E3 declaration")
     declared = e3.declaration()["configs"]
     if {n: tuple(c["source_ms"]) for n, c in declared.items()} != {n: c.source for n, c in e3.CONFIGS.items()}:

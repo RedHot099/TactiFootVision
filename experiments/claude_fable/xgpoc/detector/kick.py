@@ -6,10 +6,10 @@ The rule finds that frame in the ball's pitch track alone, with no player, label
 1. `prepare`: the track (one pitch position per frame, NaN without a ball) with gaps of at most `MAX_GAP` frames filled
    linearly, then a 3-frame running median per coordinate (one wrong detection between two right ones is removed, a
    monotone run is kept).
-2. Per frame t, the forward velocity `v(t) = (p(t + SPAN) - p(t)) / (SPAN * dt)` and the backward one
-   `u(t) = (p(t) - p(t - SPAN)) / (SPAN * dt)`.
+2. Per frame t, the forward velocity `v(t) = (p(t + SPAN) - p(t)) / (SPAN * frame time)` and the backward one
+   `u(t) = (p(t) - p(t - SPAN)) / (SPAN * frame time)`.
 3. The kick is the first frame of the window where the ball leaves fast and changes its motion: `|v(t)| >= V_SHOT` and
-   `|v(t) - u(t)| >= DV_KICK`, and it keeps going: `|p(t + 2 * SPAN) - p(t)| >= V_SHOT * 2 * SPAN * dt` (a single
+   `|v(t) - u(t)| >= DV_KICK`, and it keeps going: `|p(t + 2 * SPAN) - p(t)| >= V_SHOT * 2 * SPAN * frame time` (a single
    wrong position or one jittery homography does not make a kick). Without such a frame there is no kick (`None`).
 
 The shot location is the prepared track at the kick frame. Every frame needs both neighbours `SPAN` away (and the one
@@ -54,20 +54,21 @@ def running_median(xy: np.ndarray) -> np.ndarray:
 
 
 def prepare(xy: np.ndarray) -> np.ndarray:
+    """A raw track filled (`fill_gaps`) and smoothed (`running_median`), as `kick_index` reads it."""
     return running_median(fill_gaps(xy))
 
 
 def kick_index(xy: np.ndarray, frame_ms: float = FRAME_MS) -> int | None:
     """The kick frame of a prepared track (`prepare`), or None."""
     p = np.asarray(xy, dtype=float)
-    dt = SPAN * frame_ms / 1000.0
+    span_s = SPAN * frame_ms / 1000.0          # seconds between a frame and its neighbour SPAN frames away
     for t in range(SPAN, len(p) - 2 * SPAN):
         ahead, behind, far = p[t + SPAN], p[t - SPAN], p[t + 2 * SPAN]
         if not (np.isfinite(p[t]).all() and np.isfinite(ahead).all() and np.isfinite(behind).all() and np.isfinite(far).all()):
             continue
-        v, u = (ahead - p[t]) / dt, (p[t] - behind) / dt
+        v, u = (ahead - p[t]) / span_s, (p[t] - behind) / span_s
         if (np.hypot(*v) >= V_SHOT and np.hypot(*(v - u)) >= DV_KICK
-                and np.hypot(*(far - p[t])) >= V_SHOT * 2 * dt):
+                and np.hypot(*(far - p[t])) >= V_SHOT * 2 * span_s):
             return t
     return None
 

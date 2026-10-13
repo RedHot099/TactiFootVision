@@ -64,7 +64,7 @@ def checked_declaration(configs: list[str], path: Path | None) -> dict | None:
     _, default, expected = DECLARATIONS[sets[0]]
     path = path or default
     digest = sha256_file(path) if path.is_file() else None
-    if expected is None or digest != expected:
+    if digest != expected:
         raise SystemExit(f"{path} is not the committed {sets[0]} declaration (sha256 {expected})")
     return {"path": str(path), "sha256": digest}
 
