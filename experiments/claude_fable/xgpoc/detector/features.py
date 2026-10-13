@@ -116,7 +116,6 @@ class Situation:
     projected (not aligned; NaN without a projection); indices point into the frame's people detections."""
 
     xy: np.ndarray                  # (N, 2) every person
-    names: np.ndarray               # (N,) class names
     teams: np.ndarray               # (N,) team ids, NO_TEAM when unknown
     players: np.ndarray             # class "player" with a pitch position
     keepers: np.ndarray             # class "goalkeeper" with a pitch position
@@ -140,8 +139,11 @@ class Situation:
         return int(self.teams[self.shooter]) if self.shooter is not None else NO_TEAM
 
     def aligned(self, xy) -> np.ndarray:
-        """Pitch points in aligned coordinates (attacked goal at x = 105)."""
-        return align(xy, bool(self.attack_right))
+        """Pitch points in aligned coordinates (attacked goal at x = 105); only a situation with a shot location has
+        an attacked goal."""
+        if self.attack_right is None:
+            raise ValueError("no shot location, so no attacked goal to align to")
+        return align(xy, self.attack_right)
 
 
 def situation(frame: FrameResult) -> Situation:
@@ -178,7 +180,8 @@ def situation(frame: FrameResult) -> Situation:
             others = players[(players != shooter) & attacked_half[players]]
             if len(others):
                 goalkeeper, proxy = int(others[_nearest(aligned[others], GOAL)]), True
-    return Situation(xy, names, teams, players, keepers, ball, source, shooter, by_goal, shot, right, goalkeeper, proxy)
+    return Situation(xy=xy, teams=teams, players=players, keepers=keepers, ball=ball, ball_source=source, shooter=shooter,
+                     shooter_by_goal=by_goal, shot=shot, attack_right=right, goalkeeper=goalkeeper, proxy=proxy)
 
 
 def shot_features(frame: FrameResult, keypoint_confidence: float = 0.5) -> dict[str, float]:

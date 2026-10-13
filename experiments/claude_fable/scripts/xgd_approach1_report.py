@@ -106,7 +106,7 @@ def trigger(delta: float) -> dict:
 def variant_predictions(variant: str) -> tuple[pd.DataFrame, dict[int, float]]:
     """A finished variant's out-of-fold predictions and each fold model's temperature (its training.json); refused
     unless every fold has its record and the replay passed."""
-    root = ROOT / f"results/xgd_{variant.lower()}"
+    root = a1.results_dir(variant)
     replay = json.loads((root / "replay.json").read_text())
     if not replay["passed"] or sorted((r["fold"], r["seed"]) for r in replay["runs"]) != [(k, 0) for k in FOLDS]:
         raise ValueError(f"{root}: the replay did not pass on all five seed-0 folds")
@@ -115,7 +115,7 @@ def variant_predictions(variant: str) -> tuple[pd.DataFrame, dict[int, float]]:
         training = root / f"fold{k}" / "seed0" / "training.json"
         records.verified_file(training)
         temperatures[k] = json.loads(training.read_text())["temperature"]
-    return out_of_fold(root, f"g_combo_{variant.lower()}", 0), temperatures
+    return out_of_fold(root, a1.run_name(variant), 0), temperatures
 
 
 def main() -> None:
@@ -188,7 +188,7 @@ def main() -> None:
         baseline.to_csv(args.out / "baseline.csv", index=False, float_format="%.6f")
         (args.out / "summary.json").write_text(json.dumps(summary, indent=2, default=float) + "\n")
         inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "g_combo_ensemble": sha256_file(G_COMBO / "ensemble.json")}
-        inputs |= {v: sha256_file(ROOT / f"results/xgd_{v.lower()}/replay.json") for v in args.variants}
+        inputs |= {v: sha256_file(a1.results_dir(v) / "replay.json") for v in args.variants}
         record = {"inputs": inputs, "code": records.code_hashes(Path(__file__)), "git": records.git_state(),
                   "finished": datetime.now(UTC).isoformat(timespec="seconds"), "files": records.output_hashes(args.out)}
         (args.out / "complete.json").write_text(json.dumps(record, indent=2) + "\n")

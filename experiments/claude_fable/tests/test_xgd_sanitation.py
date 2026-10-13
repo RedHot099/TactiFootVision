@@ -178,3 +178,10 @@ def test_the_ball_fallback_is_the_extractions_and_an_unreadable_frame_is_a_missi
     row = sn.sanitised_table(unreadable, ex.CONFIGS["D3"]).iloc[0]
     assert (row.shot_ok, row.homography_ok, row.n_valid, row.aligned) == (0.0, 0.0, 0.0, False)
     assert all(np.isnan(row[name]) for name in GEOMETRY)
+
+
+def test_a_situation_without_a_shot_location_has_no_attacked_goal_to_align_to():
+    s = situation(frame_with([], None))
+    assert s.shot is None and s.attack_right is None
+    with pytest.raises(ValueError, match="no attacked goal"):
+        s.aligned([[50.0, 30.0]])

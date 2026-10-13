@@ -61,10 +61,6 @@ BUSY_MIB = 1024                 # another process holding this much GPU memory i
 REPLAY_TOLERANCE = 1e-4         # max |logit difference| of a replay in identical batch order
 
 
-def name_of(variant: str) -> str:
-    return f"g_combo_{variant.lower()}"
-
-
 def check_gpu_free() -> None:
     """Refuse to start while another process holds `BUSY_MIB` of GPU memory (one GPU job at a time)."""
     query = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
@@ -100,10 +96,10 @@ def run_trial(k: int, seed: int, variant: str, pool: pd.DataFrame, out: Path, *,
               points: dict | None, base_identity: dict, sources: dict, pixels: dict, smoke: bool) -> None:
     cfg, kw = recipe(AUX_WEIGHT, smoke)
     cfg.seed = seed
-    name = name_of(variant)
+    name = a1.run_name(variant)
     tr, va = pool[pool.fold != k].reset_index(drop=True), pool[pool.fold == k].reset_index(drop=True)
     standardiser = a1.Standardiser.fit(table.loc[tr.shot_id]) if variant == "A1" else None
-    spec = a1.spec(variant, kw["backbone"], kw["n_blocks"], kw["mask"], standardiser)
+    spec = a1.make_spec(variant, kw["backbone"], kw["n_blocks"], kw["mask"], standardiser)
     backbone = g_identity(spec)
     pen = pool[pool.is_penalty]
     constants = {"penalty_rate": penalty_rate(int(pen.goal.sum()), len(pen)), "pooled_goal_rate": float(pool.goal.mean())}
@@ -166,7 +162,7 @@ def replay(out: Path, variant: str, pool: pd.DataFrame, table: pd.DataFrame | No
             for filename, digest in record["files"].items():
                 if sha256_file(run / filename) != digest:
                     raise ValueError(f"corrupt file {run / filename}")
-            stored = pd.read_csv(run / f"{name_of(variant)}_valid_predictions.csv")
+            stored = pd.read_csv(run / f"{a1.run_name(variant)}_valid_predictions.csv")
             bundle = a1.load(run / "bundle.pt")
             geometry = a1.geometry_inputs(table, a1.standardiser_of(bundle.spec)) if variant == "A1" else None
             frames = pool.set_index("shot_id").loc[stored.shot_id].reset_index()
@@ -200,7 +196,7 @@ def main() -> None:
     ap.add_argument("--smoke", action="store_true", help="2 epochs on 64 shots per role (pipeline check only)")
     ap.add_argument("--replay", action="store_true", help="rescore the finished runs from their bundles")
     a = ap.parse_args()
-    out = a.out or ROOT / f"results/xgd_{a.variant.lower()}"
+    out = a.out or a1.results_dir(a.variant)
     check_gpu_free()
 
     with no_statsbomb_reads():

@@ -21,7 +21,8 @@ way at t0 and -400 ms, and was committed before any training run:
 
 `SANITISED` lists the columns of a sanitised row. The flags mean the extraction's flag and a valid position: `ball_ok`
 is a ball on the pitch, `shot_ok` a valid shot location, `teams_ok` a valid shooter with a known team, `gk_ok` a
-goalkeeper inside the zone.
+goalkeeper inside the zone. A frame whose shot location is missing or masked has no aligned situation: every flag but
+`homography_ok`, `ball_ok` and `ball_fallback` is 0 there, a valid shooter included.
 
 Raster points (`raster_points`, approach A2): every player and goalkeeper with a valid position and the valid ball, in
 aligned coordinates, each in one channel (`CHANNELS`):
@@ -32,6 +33,8 @@ aligned coordinates, each in one channel (`CHANNELS`):
     unknown     players whose team is unknown, and every player but the shooter when the shooter's team is unknown
 Referees are never drawn. Without a valid shot location the frame cannot be aligned and has no raster points.
 """
+
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -73,9 +76,25 @@ def _people(s: Situation) -> np.ndarray:
     return np.union1d(s.players, s.keepers)
 
 
-def _valid_goalkeeper(s: Situation, valid: np.ndarray) -> bool:
+class Validity(NamedTuple):
+    """What the rule leaves of a situation with a valid shot location."""
+
+    valid: np.ndarray           # (N,) people whose position is on the pitch (rule 2)
+    shooter_ok: bool            # the shooter's position is valid
+    team: int                   # the shooter's team, NO_TEAM when unknown or the shooter is masked (rule 4)
+    keeper: int | None          # the goalkeeper when it passes rule 3
+
+
+def validity(s: Situation) -> Validity:
+    valid = on_pitch(s.xy)
+    shooter_ok = s.shooter is not None and bool(valid[s.shooter])
     g = s.goalkeeper
-    return g is not None and bool(valid[g]) and bool(in_goalkeeper_zone(s.aligned(s.xy[g]))[0])
+    keeper_ok = g is not None and bool(valid[g]) and bool(in_goalkeeper_zone(s.aligned(s.xy[g]))[0])
+    return Validity(valid, shooter_ok, s.shooter_team if shooter_ok else NO_TEAM, g if keeper_ok else None)
+
+
+def _has_shot(s: Situation) -> bool:
+    return s.shot is not None and bool(on_pitch(s.shot)[0])
 
 
 def sanitised_features(s: Situation, homography_ok: bool) -> dict[str, float]:
@@ -87,59 +106,48 @@ def sanitised_features(s: Situation, homography_ok: bool) -> dict[str, float]:
     ball_ok = s.ball is not None and bool(on_pitch(s.ball)[0])
     out |= {"ball_ok": float(ball_ok), "ball_fallback": float(ball_ok and s.ball_source > 0),
             "ball_source": float(s.ball_source) if ball_ok else np.nan}
-    if s.shot is None:
+    if not _has_shot(s):
+        out["shot_masked"] = float(s.shot is not None)
         return out
-    if not on_pitch(s.shot)[0]:
-        out["shot_masked"] = 1.0
-        return out
-    shooter_ok = s.shooter is not None and bool(valid[s.shooter])
-    out |= {"shot_ok": 1.0, "shot_from_ball": float(s.ball is not None), "shooter_ok": float(shooter_ok),
-            "shooter_by_goal": float(shooter_ok and s.shooter_by_goal)}
+    v = validity(s)
+    out |= {"shot_ok": 1.0, "shot_from_ball": float(s.ball is not None), "shooter_ok": float(v.shooter_ok),
+            "shooter_by_goal": float(v.shooter_ok and s.shooter_by_goal)}
     aligned = s.aligned(s.xy)
-    goalkeeper_xy = None
-    if s.goalkeeper is not None:
-        if _valid_goalkeeper(s, valid):
-            goalkeeper_xy = aligned[s.goalkeeper]
-            out |= {"gk_ok": 1.0, "gk_detected": float(not s.proxy), "gk_proxy": float(s.proxy)}
-        else:
-            out["gk_masked"] = 1.0
-    team = s.shooter_team if shooter_ok else NO_TEAM
-    defenders_xy = opponents_xy = None
-    if homography_ok and team != NO_TEAM:
-        outfield = s.outfield[valid[s.outfield]]
-        defenders = outfield[(s.teams[outfield] != NO_TEAM) & (s.teams[outfield] != team)]
+    if v.keeper is not None:
+        out |= {"gk_ok": 1.0, "gk_detected": float(not s.proxy), "gk_proxy": float(s.proxy)}
+    elif s.goalkeeper is not None:
+        out["gk_masked"] = 1.0
+    defenders_xy = opponents_xy = None          # rule 5: None makes every count missing, never 0
+    if homography_ok and v.team != NO_TEAM:
+        outfield = s.outfield[v.valid[s.outfield]]
+        defenders = outfield[(s.teams[outfield] != NO_TEAM) & (s.teams[outfield] != v.team)]
         defenders_xy = aligned[defenders]
-        keeper_on_pitch = s.goalkeeper is not None and bool(valid[s.goalkeeper])
+        keeper_on_pitch = s.goalkeeper is not None and bool(v.valid[s.goalkeeper])
         opponents_xy = np.vstack([defenders_xy, aligned[[s.goalkeeper]]]) if keeper_on_pitch else defenders_xy
         out["teams_ok"] = 1.0
-    out |= geometry(s.aligned(s.shot), defenders_xy=defenders_xy, opponents_xy=opponents_xy, goalkeeper_xy=goalkeeper_xy)
-    if not out["teams_ok"]:
-        out |= dict.fromkeys(TEAM_COUNTS, np.nan)     # rule 5, stated once more: never a silent 0
-    return out
+    goalkeeper_xy = aligned[v.keeper] if v.keeper is not None else None
+    return out | geometry(s.aligned(s.shot), defenders_xy=defenders_xy, opponents_xy=opponents_xy, goalkeeper_xy=goalkeeper_xy)
 
 
 def raster_points(s: Situation) -> tuple[np.ndarray, np.ndarray]:
     """(aligned points (K, 2), channel per point (K,)) of a frame's situation (module docstring); empty without a valid
     shot location."""
-    valid = on_pitch(s.xy)
-    if s.shot is None or not on_pitch(s.shot)[0]:
+    if not _has_shot(s):
         return np.zeros((0, 2)), np.zeros(0, dtype=int)
+    v = validity(s)
     aligned = s.aligned(s.xy)
-    shooter_ok = s.shooter is not None and bool(valid[s.shooter])
-    team = s.shooter_team if shooter_ok else NO_TEAM
-    keeper = s.goalkeeper if _valid_goalkeeper(s, valid) else None
     points, channels = [], []
     for i in _people(s):
-        if not valid[i]:
+        if not v.valid[i]:
             continue
-        if i == keeper:
+        if i == v.keeper:
             channel = KEEPER
         elif i == s.shooter:
             channel = ATTACKER
-        elif team == NO_TEAM or s.teams[i] == NO_TEAM:
+        elif v.team == NO_TEAM or s.teams[i] == NO_TEAM:
             channel = UNKNOWN
         else:
-            channel = ATTACKER if s.teams[i] == team else DEFENDER
+            channel = ATTACKER if s.teams[i] == v.team else DEFENDER
         points.append(aligned[i])
         channels.append(channel)
     if s.ball is not None and on_pitch(s.ball)[0]:

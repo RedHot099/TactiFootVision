@@ -15,7 +15,8 @@ reads concat(z, LayerNorm(e)), z the 5120-wide pooled embedding. Everything else
 The raster is the pitch window x in [44, 108] m, y in [-2, 70] m (aligned, attacked goal at x = 105) at 1 m per cell.
 Per offset (t0, then -400 ms): the five `sanitation.CHANNELS` (a Gaussian of sigma 1 m and peak 1 per point, summed),
 a constant plane that is 1 when the offset has raster points, and a constant plane that is 1 when it has a homography;
-then two coordinate planes (x and y scaled to [-1, 1]). The image's random horizontal flip mirrors the pitch across
+then two coordinate planes (x and y scaled to [-1, 1]). Points with x < 44 are not drawn; a valid point in the 3 m band
+beyond y = -2 or y = 70 is drawn on the window's edge row (its y clamped). The image's random horizontal flip mirrors the pitch across
 its long axis in aligned coordinates (y -> 68 - y), so a flipped image gets a flipped raster (`DetectorDataset`); the
 A1 vector holds no signed lateral quantity and needs no flip.
 """
@@ -36,6 +37,7 @@ from torch.utils.data import DataLoader
 from xgpoc.bundle import LoadedBundle, load_bundle, sha256_file
 from xgpoc.data.datasets import ImageDataset, load_image, random_crop_box, to_tensor
 from xgpoc.detector.conventions import WIDTH
+from xgpoc.detector.extract import STUDY_OFFSETS
 from xgpoc.detector.features import FLAGS, GEOMETRY
 from xgpoc.detector.sanitation import CHANNELS, COUNTS, INDICATORS
 from xgpoc.models.common import (
@@ -49,9 +51,20 @@ from xgpoc.models.d_foundation import BACKBONES, FinetuneViTXG
 from xgpoc.models.g_bundle import pretrained_weight_file
 
 VARIANTS = ("A1", "A2")
-OFFSETS = (0, -400)
+OFFSETS = STUDY_OFFSETS                   # t0 and -400 ms, side by side
 BRANCH_DIM = 64
 KIND = "xgd_approach1"
+EXPERIMENT = Path(__file__).resolve().parents[2]
+
+
+def run_name(variant: str) -> str:
+    """The file-name stem of a variant's runs (`<name>_valid_predictions.csv`)."""
+    return f"g_combo_{variant.lower()}"
+
+
+def results_dir(variant: str) -> Path:
+    """Where a variant's development runs live: results/xgd_<variant>/fold<k>/seed<s>/."""
+    return EXPERIMENT / f"results/xgd_{variant.lower()}"
 
 # ------------------------------------------------------------------ A1 vector
 BALL_SOURCES = (0, 1, 2)          # own frame, first earlier frame, second earlier frame (fallback_offsets order)
@@ -78,8 +91,7 @@ def a1_raw(features: pd.DataFrame, offset: int) -> pd.DataFrame:
 
 def a1_table(features: pd.DataFrame) -> pd.DataFrame:
     """Both offsets side by side (columns `<column>@<offset>`), one row per shot."""
-    parts = [a1_raw(features, o).add_suffix(f"@{o}") for o in OFFSETS]
-    return parts[0].join(parts[1], how="outer")
+    return pd.concat([a1_raw(features, o).add_suffix(f"@{o}") for o in OFFSETS], axis=1, join="outer")
 
 
 def continuous_columns() -> list[str]:
@@ -260,7 +272,7 @@ class DetectorG(FinetuneViTXG):
 
 
 # ------------------------------------------------------------------ spec
-def spec(variant: str, backbone: str, n_blocks: int, mask: str, standardiser: Standardiser | None) -> dict:
+def make_spec(variant: str, backbone: str, n_blocks: int, mask: str, standardiser: Standardiser | None) -> dict:
     """Everything needed to rebuild the model and its inputs: the architecture and, for A1, the training-fold
     standardisation."""
     if (variant == "A1") != (standardiser is not None):
@@ -275,15 +287,15 @@ def spec(variant: str, backbone: str, n_blocks: int, mask: str, standardiser: St
                                                         "branch_dim": BRANCH_DIM}, "input": inputs}
 
 
-def build(spec_: dict) -> DetectorG:
-    if spec_["kind"] != KIND:
-        raise ValueError(f"not an approach-1 bundle: {spec_['kind']}")
-    m = spec_["model"]
-    return DetectorG(spec_["variant"], m["backbone"], n_blocks=m["n_blocks"], n_out=m["n_out"])
+def build(spec: dict) -> DetectorG:
+    if spec["kind"] != KIND:
+        raise ValueError(f"not an approach-1 bundle: {spec['kind']}")
+    m = spec["model"]
+    return DetectorG(spec["variant"], m["backbone"], n_blocks=m["n_blocks"], n_out=m["n_out"])
 
 
-def standardiser_of(spec_: dict) -> Standardiser:
-    s = spec_["input"]["standardiser"]
+def standardiser_of(spec: dict) -> Standardiser:
+    s = spec["input"]["standardiser"]
     return Standardiser(s["mean"], s["std"])
 
 
@@ -294,7 +306,6 @@ def geometry_inputs(table: pd.DataFrame, standardiser: Standardiser) -> dict[str
 
 
 # ------------------------------------------------------------------ development split
-EXPERIMENT = Path(__file__).resolve().parents[2]
 PLAN_DIR = EXPERIMENT / "results/xgv_split_plan"
 FOLDS = EXPERIMENT / "cache/folds_xgv_home5.csv"
 PLAN_SHA256 = "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"   # the xg-vendor plan (seed 0, 2026-10-11)
@@ -338,9 +349,9 @@ def training_pool(shots: pd.DataFrame, plan: pd.DataFrame) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------ fit and score
-def dataset_args(spec_: dict, geometry: dict | None, points: dict | None) -> dict:
-    i = spec_["input"]
-    return {"size_wh": tuple(i["size_wh"]), "mask": i["mask"], "variant": spec_["variant"], "geometry": geometry,
+def dataset_args(spec: dict, geometry: dict | None, points: dict | None) -> dict:
+    i = spec["input"]
+    return {"size_wh": tuple(i["size_wh"]), "mask": i["mask"], "variant": spec["variant"], "geometry": geometry,
             "points": points}
 
 
@@ -350,16 +361,16 @@ def score(model: nn.Module, df: pd.DataFrame, args: dict, batch_size: int, devic
     return _predict_logits(model.to(device), loader, device)
 
 
-def fit(train: pd.DataFrame, select: pd.DataFrame, cfg: TrainConfig, recipe_kw: dict, spec_: dict, *, geometry: dict | None,
+def fit(train: pd.DataFrame, select: pd.DataFrame, cfg: TrainConfig, recipe_kw: dict, spec: dict, *, geometry: dict | None,
         points: dict | None, aux_col: str) -> tuple[nn.Module, dict, dict]:
     """G-combo's fit (`xgpoc.models.g_fit.fit_g`) with the variant's model and dataset: seed, build, train on `train`,
     select the epoch and the temperature on `select`. Returns (model with the selected EMA weights, train_torch's
     result, compute). Raises ValueError if no epoch could be selected."""
     started = time.time()
     seed_all(cfg.seed)
-    model = build(spec_)
+    model = build(spec)
     try:
-        args = dataset_args(spec_, geometry, points)
+        args = dataset_args(spec, geometry, points)
         result = train_torch(model, DetectorDataset(train, train=True, rrc_scale=tuple(recipe_kw["rrc"]), aux_col=aux_col, **args),
                              DetectorDataset(select, **args), cfg, backbone_lr_mult=recipe_kw["backbone_lr_mult"])
         if result["best_epoch"] < 0:

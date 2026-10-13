@@ -164,13 +164,13 @@ def test_the_branch_enters_g_combos_head_and_is_stored_in_the_bundle(variant):
 def test_the_spec_carries_the_standardiser_and_rebuilds_the_variant():
     table = a1.a1_table(sanitised_rows(["a", "b"], dist=[10.0, 20.0]))
     s = a1.Standardiser.fit(table)
-    spec = a1.spec("A1", "dinov2_l", 4, "overlay", s)
+    spec = a1.make_spec("A1", "dinov2_l", 4, "overlay", s)
     assert a1.standardiser_of(json.loads(json.dumps(spec))) == s
     assert spec["input"]["a1_columns"] == a1.A1_COLUMNS
     with pytest.raises(ValueError):
-        a1.spec("A2", "dinov2_l", 4, "overlay", s)
+        a1.make_spec("A2", "dinov2_l", 4, "overlay", s)
     with pytest.raises(ValueError):
-        a1.spec("A1", "dinov2_l", 4, "overlay", None)
+        a1.make_spec("A1", "dinov2_l", 4, "overlay", None)
     with pytest.raises(ValueError, match="approach-1"):
         a1.build({"kind": "finetune_vit_xg"})
 
