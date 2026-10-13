@@ -79,7 +79,7 @@ def write_clip(folder: Path, labels: dict, render: bool = False) -> Path:
 
 # ------------------------------------------------------------------------------------------------- the reader
 def test_read_clip_converts_to_the_corner_origin_and_keeps_persons_only(tmp_path):
-    clip = ge.read_clip(write_clip(tmp_path / "SNGS-900", gsr_labels()), lambda f: (f - 1) % 5 == 0)
+    clip = ge.read_clip(write_clip(tmp_path / "SNGS-900", gsr_labels()))  # default: the scored frames 1, 6, ...
     assert list(clip.frames.frame) == [1, 6] and clip.name == "SNGS-900"
     assert clip.frames.path.iloc[0].endswith("SNGS-900/img1/000001.jpg")
     persons = clip.persons[clip.persons.frame == 1]
@@ -187,6 +187,20 @@ def test_methods_are_d1_to_d4_of_the_configs_file():
     assert {n: (m.min_confidence, m.refine_with_lines, m.keypoint_input, m.ransac_threshold)
             for n, m in methods.items()} == {"D1": (0.5, False, "stretch", 10.0), "D2": (0.3, False, "stretch", 10.0),
                                              "D3": (0.5, True, "stretch", 10.0), "D4": (0.3, True, "stretch", 10.0)}
+
+
+def test_the_refinement_runs_with_d3s_declared_settings():
+    """The package's refinement defaults are what the configs file declares for D1-D4 (Variant passes none)."""
+    import inspect
+
+    import pitchkp_gsr_eval as run
+
+    from tactifoot_vision.pitch.lines import refine_homography
+
+    declared = json.loads(run.CONFIGS.read_text())["common"]["homography"]["refinement_defaults"]
+    defaults = {k: p.default for k, p in inspect.signature(refine_homography).parameters.items()
+                if p.default is not inspect.Parameter.empty and k in declared}
+    assert defaults == declared
 
 
 def oracle_keypoints(frames) -> pd.DataFrame:

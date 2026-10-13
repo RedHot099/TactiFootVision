@@ -23,6 +23,7 @@ Writes `<out>/per_frame.parquet`, `summary.csv`, `convention.csv` and `complete.
 """
 
 import argparse
+import dataclasses
 import json
 import multiprocessing
 import os
@@ -65,6 +66,7 @@ def methods_from_configs(path: Path, names: list[str]) -> dict[str, dev.Variant]
 
 
 def eval_frame(path: str, size: tuple[int, int] = ge.EVAL_SIZE) -> np.ndarray:
+    """The frame at `path` (BGR) resized to `size` (w, h) with area interpolation."""
     image = cv2.imread(path)
     if image is None:
         raise FileNotFoundError(path)
@@ -74,10 +76,11 @@ def eval_frame(path: str, size: tuple[int, int] = ge.EVAL_SIZE) -> np.ndarray:
 def keypoint_cache(frames: pd.DataFrame, folder: Path, weights: Path, device: str | None) -> pd.DataFrame:
     """First keypoint instance per sampled frame (stretched input), computed once on the GPU and reused when complete."""
     complete = folder / "complete.json"
+    weights_sha = sha256_file(weights)
     sample = canonical_digest(sorted(f"{c}/{f}" for c, f in zip(frames["clip"], frames.frame, strict=True)))
     if complete.exists():
         record = json.loads(complete.read_text())
-        if record["sample_digest"] != sample or record["keypoint_weights"]["sha256"] != sha256_file(weights):
+        if record["sample_digest"] != sample or record["keypoint_weights"]["sha256"] != weights_sha:
             raise SystemExit(f"{folder} holds keypoints of another sample or model; use a new --cache")
         return pd.read_parquet(folder / "keypoints.parquet")
     import tactifoot_vision as tv
@@ -92,7 +95,7 @@ def keypoint_cache(frames: pd.DataFrame, folder: Path, weights: Path, device: st
     table.to_parquet(folder / "keypoints.parquet", index=False)
     record = {"purpose": "pitch-keypoints 02: the current pitch model's keypoints on GSR frames (stretched input, 720p)",
               "sample_digest": sample, "frames": len(frames), "instance_conf": dev.INSTANCE_CONF, "device": device,
-              "eval_size": list(ge.EVAL_SIZE), "keypoint_weights": {"path": str(weights), "sha256": sha256_file(weights)},
+              "eval_size": list(ge.EVAL_SIZE), "keypoint_weights": {"path": str(weights), "sha256": weights_sha},
               "git": records.git_state(), "libraries": records.library_versions(),
               "run": {"started": started.isoformat(timespec="seconds"),
                       "finished": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -109,8 +112,8 @@ def evaluate_clip(task: tuple) -> tuple[list[dict], pd.DataFrame]:
     split, folder, keypoints, methods = task
     clip = ge.read_clip(folder, ge.keeps_frame)
     estimators = {name: (m, m.estimator()) for name, m in methods.items()}
-    unrefined = {name: dev.Variant(f"{name}_start", m.keypoint_input, m.min_confidence, False, m.ransac_threshold)
-                 .estimator() for name, m in methods.items() if m.refine_with_lines}
+    unrefined = {name: dataclasses.replace(m, name=f"{name}_start", refine_with_lines=False).estimator()
+                 for name, m in methods.items() if m.refine_with_lines}
     width, height = ge.EVAL_SIZE
     rows = []
     for frame in clip.frames.itertuples(index=False):
@@ -198,6 +201,12 @@ def main() -> None:
         record = {"purpose": "pitch-keypoints 02: homography error in metres of D1-D4 (the current pitch model) on GSR",
                   "split": args.split,
                   "methods": {name: m.settings() for name, m in methods.items()},
+                  "truth": "GSR bbox_pitch bottom-middle (centre origin -> corner origin) of every person but the ball "
+                           "within 3 m of the pitch, against the projected bottom-middle of its bbox_image",
+                  "denominators": {"availability, under_*m, lines_good, refined": "scored frames (>= 1 person on the "
+                                   "pitch with a pitch position; frames without GSR's camera have none)",
+                                   "median_m, mean_m, p90_m": "scored frames with a homography; per-person errors "
+                                   "capped at cap_m (also feet beyond the horizon)"},
                   "parameters": {"frame_step": ge.FRAME_STEP, "eval_size": list(ge.EVAL_SIZE),
                                  "on_pitch_margin_m": ge.ON_PITCH_MARGIN_M, "cap_m": ge.CAP_M,
                                  "thresholds_m": list(ge.THRESHOLDS_M), "lines_good": ge.LINES_GOOD,

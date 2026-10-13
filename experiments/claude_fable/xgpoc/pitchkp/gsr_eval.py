@@ -74,22 +74,23 @@ def to_corner(x, y):
     return np.asarray(x, dtype=float) + HALF_LENGTH, np.asarray(y, dtype=float) + HALF_WIDTH
 
 
-def read_clip(folder: Path, keep_frame=lambda frame: True) -> Clip:
-    """Read `folder/Labels-GameState.json`: the frames `keep_frame(frame)` selects, their persons and pitch lines."""
+def read_clip(folder: Path, keep_frame=keeps_frame) -> Clip:
+    """Read `folder/Labels-GameState.json`: the frames `keep_frame(frame)` selects (default: the scored frames), their
+    persons and pitch lines."""
     folder = Path(folder)
     labels = json.loads((folder / "Labels-GameState.json").read_text())
     categories = {c["id"]: c["name"] for c in labels["categories"]}
     im_dir = labels["info"].get("im_dir", "img1")
-    frames, frame_of = [], {}
+    frames, frame_by_image_id = [], {}
     for image in labels["images"]:
         frame = int(Path(image["file_name"]).stem)
         if keep_frame(frame):
-            frame_of[image["image_id"]] = frame
+            frame_by_image_id[image["image_id"]] = frame
             frames.append({"frame": frame, "path": str(folder / im_dir / image["file_name"]),
                            "width": int(image["width"]), "height": int(image["height"])})
     persons, lines = [], {}
     for item in labels["annotations"]:
-        frame = frame_of.get(item["image_id"])
+        frame = frame_by_image_id.get(item["image_id"])
         if frame is None:
             continue
         if item["supercategory"] == "pitch":
@@ -177,9 +178,8 @@ def summarise(per_frame: pd.DataFrame, draws: int = BOOTSTRAP_DRAWS, seed: int =
             low, high = (np.nan, np.nan) if metric == "frames" else np.nanquantile(draws_table[metric], [0.025, 0.975])
             rows.append({"split": split, "method": method, "metric": metric, "value": value,
                          "ci_low": low, "ci_high": high})
-    rows += [{"split": split, "method": method, "metric": "clips", "value": float(frames["clip"].nunique()),
-              "ci_low": np.nan, "ci_high": np.nan}
-             for (split, method), frames in scored.groupby(["split", "method"], sort=False)]
+        rows.append({"split": split, "method": method, "metric": "clips", "value": float(frames["clip"].nunique()),
+                     "ci_low": np.nan, "ci_high": np.nan})
     return pd.DataFrame(rows)
 
 
