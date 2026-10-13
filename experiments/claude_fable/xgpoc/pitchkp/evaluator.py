@@ -25,42 +25,31 @@ import numpy as np
 import pandas as pd
 import supervision as sv
 
+from xgpoc.bundle import sha256_file
 from xgpoc.detector import homography_dev as dev
 from xgpoc.detector import lines
 from xgpoc.pitchkp import gsr_eval as ge
 
 INPUTS = ("stretch", "letterbox", "square")
 PAD_VALUE = 114                             # Ultralytics' letterbox grey
-BACKENDS = ("yolo_pose", "heatmap")
 MASKS = ("detector", "gt", "none")
 SOURCES = ("keypoints", "label")
 
 
 @dataclass(frozen=True)
 class KeypointModel:
-    """A pitch keypoint model as the evaluation runs it: weights, input mode, inference size, instance threshold, and
-    its backend: the package's `yolo_pose`, or ticket 03's research `heatmap` model (`xgpoc.pitchkp.heatmap`; its input
-    is fixed, so `input` and `imgsz` do not apply and must stay at "letterbox" / None)."""
+    """A YOLO-pose pitch model as the evaluation runs it: weights, input mode, inference size, instance threshold."""
 
     weights: Path
     input: str = "stretch"
     imgsz: int | None = None                # None: the training size
     instance_conf: float = dev.INSTANCE_CONF
-    backend: str = "yolo_pose"
 
     def __post_init__(self) -> None:
         if self.input not in INPUTS:
             raise ValueError(f"input must be one of {INPUTS}, got {self.input!r}")
-        if self.backend not in BACKENDS:
-            raise ValueError(f"backend must be one of {BACKENDS}, got {self.backend!r}")
-        if self.backend == "heatmap" and (self.input != "letterbox" or self.imgsz is not None):
-            raise ValueError("the heatmap model has a fixed 960 x 544 input: input='letterbox', imgsz=None")
 
     def load(self, device: str | None = None):
-        if self.backend == "heatmap":
-            from xgpoc.pitchkp.heatmap import HeatmapKeypointModel
-
-            return HeatmapKeypointModel(self.weights, device)
         import tactifoot_vision as tv
 
         model = tv.load_model("yolo_pose", self.weights, conf=self.instance_conf, imgsz=self.imgsz,
@@ -68,10 +57,12 @@ class KeypointModel:
         return SquareInput(model) if self.input == "square" else model
 
     def settings(self) -> dict:
-        settings = {"weights": str(self.weights), "input": self.input, "imgsz": self.imgsz,
-                    "instance_conf": self.instance_conf}
-        # the backend is named only when it is not yolo_pose, so ticket 02's caches keep their identity
-        return settings if self.backend == "yolo_pose" else settings | {"backend": self.backend}
+        return {"weights": str(self.weights), "input": self.input, "imgsz": self.imgsz,
+                "instance_conf": self.instance_conf}
+
+    def cache_key(self) -> str:
+        """Names the model's keypoint cache: weights digest, input, inference size, instance threshold."""
+        return f"{sha256_file(self.weights)[:12]}_{self.input}_{self.imgsz or 'train'}_i{self.instance_conf:g}"
 
 
 class SquareInput:

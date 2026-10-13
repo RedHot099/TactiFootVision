@@ -5,8 +5,7 @@
 - `dataset`: per-image record, the rejection rule, the YOLO-pose label line, overlays (ticket 01).
 - `exclusions`: split hygiene of the dataset: xG held-out games, GSR evaluation games, duplicates (council C3).
 - `gsr_eval`: homography evaluation in metres on GSR (ticket 02).
-- `evaluator`: what the GSR evaluation runs: keypoint models (package `yolo_pose` or the research heatmap model) and
-  homography methods (ticket 02, backends ticket 03).
+- `evaluator`: what the GSR evaluation runs: keypoint models (their input, incl. ticket 03's square canvas) and homography
+  methods (ticket 02).
 - `training`: run lists and the augmentation of the YOLO-pose candidates (ticket 03).
-- `heatmap`: the heatmap keypoint model, its targets, loss, decoding and training data (ticket 03, family 2).
 """

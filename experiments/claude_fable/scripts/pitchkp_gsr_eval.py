@@ -2,8 +2,7 @@
 (pitch-keypoints 02; ticket 03 runs its candidates through it).
 
     ./run.sh python scripts/pitchkp_gsr_eval.py --split valid|test|calib_valid|calib_test [--device cuda] [--workers 14]
-        [--weights W --input stretch|letterbox --imgsz N]        the keypoint model (default: the current model)
-        [--backend yolo_pose|heatmap]                            heatmap: ticket 03's research model (--input letterbox)
+        [--weights W --input stretch|letterbox|square --imgsz N] the keypoint model (default: the current model)
         [--methods-file M.json]                                  methods (default: the baseline, `baseline_methods`)
         [--reference-method D3 [--reference-run DIR]]            paired differences against this method
         [--allow-test "REASON"]                                  required for --split test (held-out: one look per
@@ -176,7 +175,6 @@ def main() -> None:
     parser.add_argument("--input", default="stretch", choices=ev.INPUTS)
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--instance-conf", type=float, default=dev.INSTANCE_CONF)
-    parser.add_argument("--backend", default="yolo_pose", choices=ev.BACKENDS)
     parser.add_argument("--methods-file", type=Path, default=None, help="default: baseline_methods(configs)")
     parser.add_argument("--reference-method", default="D3")
     parser.add_argument("--reference-run", type=Path, default=None, help="a complete run of the same split")
@@ -204,11 +202,9 @@ def main() -> None:
     configs = json.loads(args.configs.read_text())
     if args.weights is None and sha256_file(ex.KEYPOINT_WEIGHTS) != configs["common"]["keypoints"]["weights_sha256"]:
         raise SystemExit(f"{ex.KEYPOINT_WEIGHTS} is not the pitch model of {args.configs}")
-    model = ev.KeypointModel(args.weights or ex.KEYPOINT_WEIGHTS, args.input, args.imgsz, args.instance_conf,
-                              args.backend)
+    model = ev.KeypointModel(args.weights or ex.KEYPOINT_WEIGHTS, args.input, args.imgsz, args.instance_conf)
     methods = ev.load_methods(args.methods_file) if args.methods_file else ev.baseline_methods(args.configs)
-    model_key = (f"keypoints_{sha256_file(model.weights)[:12]}_{model.input}_{model.imgsz or 'train'}"
-                 f"_i{model.instance_conf:g}")
+    model_key = f"keypoints_{model.cache_key()}"
 
     with no_statsbomb_reads():
         started, clock = datetime.now(UTC), time.perf_counter()

@@ -1,6 +1,6 @@
 """Ticket 08's label-free loop on a new pitch keypoint model (pitch-keypoints 03).
 
-    ./run.sh python scripts/pk_label_free_loop.py --weights W --input letterbox|stretch [--imgsz N]
+    ./run.sh python scripts/pk_label_free_loop.py --weights W --input stretch|letterbox|square [--imgsz N]
         --methods-file M.json --out results/pk_label_free/<name> [--n 1500] [--seed 0] [--device cuda]
 
 The frames, scores and summary of `scripts/xgd_homography_dev.py` (xg-detector 08): the t0 frames of `--n` random shots
@@ -68,10 +68,9 @@ def reference_rows(reference: Path, shot_ids: set[str]) -> pd.DataFrame:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--weights", type=Path, required=True)
-    parser.add_argument("--input", default="letterbox", choices=ev.INPUTS)
+    parser.add_argument("--input", required=True, choices=ev.INPUTS)
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--instance-conf", type=float, default=dev.INSTANCE_CONF)
-    parser.add_argument("--backend", default="yolo_pose", choices=ev.BACKENDS)
     parser.add_argument("--methods-file", type=Path, required=True)
     parser.add_argument("--residual-method", default=None, help="default: the first refined method")
     parser.add_argument("--n", type=int, default=1500)
@@ -85,14 +84,13 @@ def main() -> None:
     args = parser.parse_args()
     if (args.out / "complete.json").exists():
         raise SystemExit(f"{args.out} is complete; use a new --out")
-    model = ev.KeypointModel(args.weights, args.input, args.imgsz, args.instance_conf, args.backend)
+    model = ev.KeypointModel(args.weights, args.input, args.imgsz, args.instance_conf)
     methods = ev.load_methods(args.methods_file)
     if any(m.source != "keypoints" or m.mask == "gt" for m in methods.values()):
         raise SystemExit("shot frames have no labels or ground-truth boxes: keypoint methods with mask detector/none")
     refined = [n for n, m in methods.items() if m.refine_with_lines]
     residual_method = args.residual_method or (refined[0] if refined else None)
-    folder = args.cache / (f"{sha256_file(model.weights)[:12]}_{model.input}_{model.imgsz or 'train'}"
-                           f"_i{model.instance_conf:g}_n{args.n}_s{args.seed}")
+    folder = args.cache / f"{model.cache_key()}_n{args.n}_s{args.seed}"
 
     with no_statsbomb_reads():
         started, clock = datetime.now(UTC), time.perf_counter()
