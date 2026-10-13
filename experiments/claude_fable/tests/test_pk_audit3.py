@@ -271,3 +271,34 @@ def test_the_gate_split_measures_coverage_and_median_inside_each_group():
     assert value["a", "shot_location", "coverage"] == 0.5 and value["a", "shot_location", "median"] == 2.0
     assert value["b", "gk_any", "coverage"] == 0.5 and value["b", "shot_location", "median"] == 4.0
     assert value["a", "population", "share"] == 0.5 and value["b", "population", "matches"] == 1
+
+
+# ------------------------------------------------------------------ full extraction: resumable chunks
+def _full_script():
+    import sys
+    sys.path.insert(0, str(e3.AUDIT_3_DECLARATION.parents[1] / "scripts"))
+    import pk_extract3_full
+    return pk_extract3_full
+
+
+def test_chunks_cover_every_shot_once_in_order():
+    full = _full_script()
+    assert full.chunks(list("abcdefg"), 3) == [["a", "b", "c"], ["d", "e", "f"], ["g"]]
+
+
+def test_a_part_counts_as_done_only_when_both_tables_are_in_place(tmp_path):
+    full = _full_script()
+    table = pd.DataFrame({"shot_id": ["a"]})
+    assert not full.done(tmp_path, 0)
+    full.write_part(tmp_path, 0, table, table)
+    assert full.done(tmp_path, 0) and not list(tmp_path.glob("*.tmp"))
+    (tmp_path / "000.features.parquet").unlink()
+    assert not full.done(tmp_path, 0)
+
+
+def test_parts_of_other_inputs_are_refused(tmp_path):
+    full = _full_script()
+    full.pinned_identity(tmp_path, {"config": "E3", "code_digest": "a"})
+    full.pinned_identity(tmp_path, {"config": "E3", "code_digest": "a"})            # a resumed run with the same inputs
+    with pytest.raises(SystemExit, match="other inputs"):
+        full.pinned_identity(tmp_path, {"config": "E3", "code_digest": "b"})
