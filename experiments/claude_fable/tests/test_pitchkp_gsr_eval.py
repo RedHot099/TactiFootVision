@@ -92,9 +92,11 @@ def test_read_clip_converts_to_the_corner_origin_and_keeps_persons_only(tmp_path
 
 
 def test_the_scored_frames_are_the_frames_ticket_01_keeps():
+    import pk_fetch_soccernet as fetch  # ticket 01 downloads exactly these frames
+
     assert [f for f in range(1, 751) if ge.keeps_frame(f)] == list(range(1, 751, 5))
-    sources = pytest.importorskip("xgpoc.pitchkp.sources")
-    assert all(ge.keeps_frame(f) == sources.gsr_keeps_frame(f) for f in range(1, 751))
+    assert all(ge.keeps_frame(f) == fetch.keep_member("gamestate-2024", f"SNGS-1/img1/{f:06d}.jpg")
+               for f in range(1, 751))
 
 
 def test_on_pitch_margin_is_three_metres():

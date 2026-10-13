@@ -1,8 +1,7 @@
 """SoccerNet sources of line-annotated frames: GSR 2024 clips and Camera Calibration 2023 images.
 
-GSR pitch positions (`bbox_pitch`) are metres with the origin at the centre spot, x along the length (left goal at
-x = -52.5) and y across with the far touchline ("Side line top") at y = -34; the package's corner origin is
-(x + 52.5, y + 34) with the same axis directions (checked in `scripts/pk_build_dataset.py`).
+GSR clips are read with ticket 02's reader (`xgpoc.pitchkp.gsr_eval.read_clip`), the single GSR reader: its frame rule
+(frames 1, 6, 11, ...), its persons (every object but the ball) and its centre -> corner conversion (x + 52.5, y + 34).
 """
 
 import json
@@ -12,22 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
+from xgpoc.pitchkp import gsr_eval as ge
 from xgpoc.pitchkp.fit import FRAME_W
-
-FRAME_STEP = 5  # GSR: frames 1, 6, 11, ... of each 750-frame clip are kept and used
-GSR_HALF = (52.5, 34.0)
-ON_PITCH_MARGIN = 3.0         # persons within 3 m of the pitch count (|x| <= 55.5, |y| <= 37 in GSR coordinates)
-PERSONS = (1, 2, 3)           # GSR categories player, goalkeeper, referee
-
-
-def gsr_keeps_frame(frame: int) -> bool:
-    """Whether 1-based GSR frame number `frame` is in the every-5th-frame subsample (1, 6, 11, ...)."""
-    return (frame - 1) % FRAME_STEP == 0
-
-
-def gsr_to_pitch(xy) -> np.ndarray:
-    """GSR centre-origin metres -> the package's corner-origin metres (axes kept)."""
-    return np.asarray(xy, dtype=float) + GSR_HALF
 
 
 @dataclass
@@ -38,13 +23,12 @@ class Frame:
     split: str                  # the source's own split: train / valid / test
     group: str                  # GSR clip (SNGS-xxx) or Calibration game: frames of a group stay in one split
     image: Path
-    lines: dict                 # SoccerNet {name: [{"x": fx, "y": fy}, ...]}
+    lines: dict                 # SoccerNet {name: [{"x": fx, "y": fy}, ...]} or {name: (N, 2) fractions of the image}
     frame: int = 0              # GSR 1-based frame number
     game: str = ""              # GSR info game_id (an index, not a named match); Calibration league/season/date teams
-    # GSR persons on the pitch: bottom-middle of bbox_image (720p px) and bbox_pitch / bbox_pitch_raw (corner metres)
+    # GSR persons on the pitch: bottom-middle of bbox_image (720p px) and of bbox_pitch (corner metres)
     feet_image: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
     feet_pitch: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
-    feet_pitch_raw: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
 
     @property
     def key(self) -> str:
@@ -53,40 +37,16 @@ class Frame:
         return f"calib/{self.split}/{self.image.stem}"
 
 
-def _bottom_middle(box: dict) -> tuple[float, float]:
-    return box["x_bottom_middle"], box["y_bottom_middle"]
-
-
-def gsr_clip(clip_dir: Path, split: str, every: int = FRAME_STEP) -> Iterator[Frame]:
-    """The labelled frames of one GSR clip kept by the subsample, in frame order (needs the clip's label file)."""
-    data = json.loads((clip_dir / "Labels-GameState.json").read_text())
-    info = data["info"]
-    pitch = {a["image_id"]: a["lines"] for a in data["annotations"] if a["supercategory"] == "pitch"}
-    persons: dict[str, list] = {}
-    for a in data["annotations"]:
-        if a["category_id"] in PERSONS and a.get("bbox_pitch"):
-            persons.setdefault(a["image_id"], []).append(a)
-    for image in data["images"]:
-        number = int(Path(image["file_name"]).stem)
-        if (number - 1) % every or not image.get("is_labeled") or image["image_id"] not in pitch:
-            continue
-        scale = FRAME_W / image["width"]
-        feet, positions, raw = [], [], []
-        for a in persons.get(image["image_id"], []):
-            x, y = _bottom_middle(a["bbox_pitch"])
-            if abs(x) > GSR_HALF[0] + ON_PITCH_MARGIN or abs(y) > GSR_HALF[1] + ON_PITCH_MARGIN:
-                continue
-            box = a["bbox_image"]
-            feet.append(((box["x"] + box["w"] / 2) * scale, (box["y"] + box["h"]) * scale))
-            positions.append((x, y))
-            raw.append(_bottom_middle(a["bbox_pitch_raw"]) if a.get("bbox_pitch_raw") else (np.nan, np.nan))
-        yield Frame(
-            source="gsr", split=split, group=clip_dir.name, image=clip_dir / info.get("im_dir", "img1") /
-            image["file_name"], lines=pitch[image["image_id"]], frame=number, game=str(info.get("game_id", "")),
-            feet_image=np.array(feet, dtype=float).reshape(-1, 2),
-            feet_pitch=gsr_to_pitch(np.array(positions, dtype=float).reshape(-1, 2)),
-            feet_pitch_raw=gsr_to_pitch(np.array(raw, dtype=float).reshape(-1, 2)),
-        )
+def gsr_clip(clip_dir: Path, split: str) -> Iterator[Frame]:
+    """The kept frames (1, 6, 11, ...) of one GSR clip, in frame order, with their lines and on-pitch persons."""
+    clip = ge.read_clip(clip_dir)
+    game = str(json.loads((clip_dir / "Labels-GameState.json").read_text())["info"].get("game_id", ""))
+    persons = clip.persons[ge.on_pitch(clip.persons)]
+    for row in clip.frames.itertuples(index=False):
+        mine = persons[persons.frame == row.frame]
+        yield Frame(source="gsr", split=split, group=clip.name, image=Path(row.path), lines=clip.lines.get(row.frame, {}),
+                    frame=int(row.frame), game=game, feet_image=ge.feet(mine, (FRAME_W / row.width,) * 2),
+                    feet_pitch=mine[["pitch_x", "pitch_y"]].to_numpy(dtype=float).reshape(-1, 2))
 
 
 def gsr_clips(root: Path, split: str) -> list[Path]:

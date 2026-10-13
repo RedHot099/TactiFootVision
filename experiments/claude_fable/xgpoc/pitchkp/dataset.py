@@ -12,28 +12,37 @@ Rejection rule (`rejection`), applied to the line fit only, so the GSR position 
    (on GSR, main camera only, `up_dy` <= -0.50). SoccerNet names the lines in pitch coordinates, so a reverse-angle
    view (camera beyond the far touchline, `up_dy` > 0.4) or a view along the pitch (behind a goal or above it) gets
    labels rotated by 180 or 90 degrees against a main-camera view of a look-alike picture, which the image cannot tell
-   apart. They are left out of the export (`fits.parquet` keeps them).
+   apart. They are left out of the export (`fits.parquet` keeps them);
+7. the fit is not mirror-consistent: the fit of the horizontally mirrored annotations (x -> 1 - x, left/right names
+   swapped) must give the same labels re-indexed by `flip_idx` (same visible set, vertices within FLIP_MAX_PX). A
+   unique fit always does; a disagreement means two fits explain the lines, so the label is not determined.
 """
 
 import cv2
 import numpy as np
 
 from xgpoc.pitchkp import fit as F
+from xgpoc.pitchkp.exclusions import dhash
 from xgpoc.pitchkp.sources import Frame
 
 RMS_MAX_PX = 4.0
 MAX_RESIDUAL_PX = 16.0
 SD_MAX_PX = 10.0
 MAIN_SIDE_UP_DY = -0.4                                    # cos(66 deg)
+FLIP_MAX_PX = 1.0
 FLIP_IDX = (24, 25, 26, 27, 28, 29, 22, 23, 21, 17, 18, 19, 20, 13, 14, 15, 16, 9, 10, 11, 12, 8, 6, 7,
             0, 1, 2, 3, 4, 5, 31, 30)                     # data/keypoints/data.yaml
 IMAGE_SIZE = (960, 540)                                   # stored images (width, height)
 
 
 def flipped_lines(lines: dict) -> dict:
-    """SoccerNet annotations of the horizontally flipped image: x -> 1 - x and left/right names swapped."""
-    return {F.FLIP_NAMES.get(name, name): [{"x": 1.0 - p["x"], "y": p["y"]} for p in points]
-            for name, points in lines.items()}
+    """Annotations of the horizontally flipped image ({name: (N, 2) fractions}): x -> 1 - x, left/right names swapped."""
+    out = {}
+    for name, points in lines.items():
+        xy = np.asarray(points, dtype=float) if isinstance(points, np.ndarray) else \
+            np.array([[p["x"], p["y"]] for p in points], dtype=float).reshape(-1, 2)
+        out[F.FLIP_NAMES.get(name, name)] = np.column_stack([1.0 - xy[:, 0], xy[:, 1]])
+    return out
 
 
 def flip_labels(xy: np.ndarray, visible: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -58,6 +67,8 @@ def rejection(record: dict) -> str:
         return "no pitch area"
     if record["view"] != "main side":
         return "view: " + record["view"]
+    if not record["flip_visible_equal"] or not record["flip_max_px"] <= FLIP_MAX_PX:
+        return "mirror-inconsistent"
     return ""
 
 
@@ -80,8 +91,8 @@ def feet_errors(H: np.ndarray, feet_image: np.ndarray, feet_pitch: np.ndarray) -
     return np.linalg.norm(q[:, :2] / q[:, 2:] - feet_pitch, axis=1)
 
 
-def process(frame: Frame, flip_check: bool = False) -> dict:
-    """Fit one image's lines and build its record (labels, residuals, uncertainty, GSR position check)."""
+def process(frame: Frame) -> dict:
+    """Fit one image's lines and build its record (labels, residuals, uncertainty, mirror check, GSR position check)."""
     pts = F.annotation_points(frame.lines)
     fit = F.fit_lines(pts)
     record = {
@@ -91,10 +102,13 @@ def process(frame: Frame, flip_check: bool = False) -> dict:
         "rms": fit.rms, "p50_residual": np.nan, "max_residual": fit.max, "sd_max": np.inf, "box": None,
         "H": None, "xy": None, "visible": None, "sd": None, "n_visible": 0, "up_dx": np.nan, "up_dy": np.nan,
         "view": "unresolved",
-        "n_feet": len(frame.feet_image), "feet_median_m": np.nan, "feet_p90_m": np.nan, "feet_raw_median_m": np.nan,
-        "flip_max_px": np.nan, "flip_visible_equal": None,
+        "n_feet": len(frame.feet_image), "feet_median_m": np.nan, "feet_p90_m": np.nan,
+        "flip_max_px": np.nan, "flip_visible_equal": None, "dhash": 0,
     }
     if fit.ok:
+        image = cv2.imread(str(frame.image))
+        if image is not None:
+            record["dhash"] = dhash(image)
         lab = F.labels(fit.H, fit.front)
         sd = F.vertex_sd(fit)
         up = F.image_up_direction(fit.H)
@@ -107,17 +121,15 @@ def process(frame: Frame, flip_check: bool = False) -> dict:
         )
         if len(frame.feet_image):
             err = feet_errors(fit.H, frame.feet_image, frame.feet_pitch)
-            raw = feet_errors(fit.H, frame.feet_image, frame.feet_pitch_raw)
-            record.update(feet_median_m=float(np.median(err)), feet_p90_m=float(np.quantile(err, 0.9)),
-                          feet_raw_median_m=float(np.nanmedian(raw)) if np.isfinite(raw).any() else np.nan)
-        if flip_check:
-            flipped = F.fit_lines(F.annotation_points(flipped_lines(frame.lines)))
-            if flipped.ok:
-                got = F.labels(flipped.H, flipped.front)
-                want_xy, want_vis = flip_labels(lab.xy, lab.visible)
-                both = got.visible & want_vis
-                record["flip_visible_equal"] = bool((got.visible == want_vis).all())
-                record["flip_max_px"] = float(np.abs(got.xy - want_xy)[both].max()) if both.any() else 0.0
+            record.update(feet_median_m=float(np.median(err)), feet_p90_m=float(np.quantile(err, 0.9)))
+        flipped = F.fit_lines(F.annotation_points(flipped_lines(frame.lines)))
+        record["flip_visible_equal"] = False
+        if flipped.ok:
+            got = F.labels(flipped.H, flipped.front)
+            want_xy, want_vis = flip_labels(lab.xy, lab.visible)
+            both = got.visible & want_vis
+            record["flip_visible_equal"] = bool((got.visible == want_vis).all())
+            record["flip_max_px"] = float(np.abs(got.xy - want_xy)[both].max()) if both.any() else 0.0
     record["reject"] = rejection(record)
     return record
 

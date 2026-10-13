@@ -13,7 +13,7 @@ action-spotting video, StatsBomb data or goal label.
    (`xgpoc.pitchkp.dataset.rejection`), and the checks:
    - (b) GSR: persons' `bbox_image` bottom-middle mapped through the line fit vs their `bbox_pitch` (and
      `bbox_pitch_raw`) bottom-middle, centre origin converted to the corner origin;
-   - (c) the horizontal-flip check on every 10th image: the fit of the mirrored annotations (x -> 1 - x, left/right
+   - (c) the horizontal-flip check on every image (rule 7): the fit of the mirrored annotations (x -> 1 - x, left/right
      names swapped) must give the original labels re-indexed by `flip_idx` with x -> W - x.
 2. **Axis check** (`axis_check.json`): on GSR valid, a homography fitted directly from persons' feet pixels to their
    GSR positions under each of the four axis sign conventions, against the line-fit vertices.
@@ -26,7 +26,6 @@ action-spotting video, StatsBomb data or goal label.
 
 import argparse
 import json
-import re
 import shutil
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -40,7 +39,9 @@ from threadpoolctl import threadpool_limits
 from xgpoc.bundle import canonical_digest, sha256_file
 from xgpoc.detector import records
 from xgpoc.pitchkp import dataset as D
+from xgpoc.pitchkp import exclusions as X
 from xgpoc.pitchkp import fit as F
+from xgpoc.pitchkp import gsr_eval as ge
 from xgpoc.pitchkp import sources as S
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,23 +50,18 @@ GSR_ROOT, CALIB_ROOT = DATA / "SoccerNetGS", DATA / "SoccerNetCalibration"
 SPLITS = ("train", "valid", "test")
 EXPORT_SPLIT = {("gsr", "train"): "train", ("calib", "train"): "train", ("gsr", "valid"): "val",
                 ("calib", "valid"): "val", ("gsr", "test"): "test_gsr", ("calib", "test"): "test_calib"}
-FLIP_EVERY = 10
 VENDOR_PLAN = ROOT / "results/xgv_split_plan/plan.csv"     # xg-vendor split plan: evaluation + gate = held out
-_PLAN_GAME = re.compile(r"^(?P<league>[^/]+)/(?P<season>[^/]+)/(?P<date>\d{4}-\d{2}-\d{2}) - \d{2}-\d{2} "
-                        r"(?P<home>.+?) \d+ - \d+ (?P<away>.+)$")
-_CALIB_GAME = re.compile(r"^(?P<league>[^/]+)/(?P<season>[^/]+)/(?P<date>\d{4}-\d{2}-\d{2}) (?P<home>.+?) - (?P<away>.+)$")
 
 
 # --------------------------------------------------------------------------- 1. fit
 def _gsr_job(args: tuple[str, str]) -> list[dict]:
     clip, split = args
-    return [D.process(f, flip_check=f.frame % (S.FRAME_STEP * FLIP_EVERY) == 1) for f in S.gsr_clip(Path(clip), split)]
+    return [D.process(f) for f in S.gsr_clip(Path(clip), split)]
 
 
 def _calib_job(args: tuple[str, str, list[str]]) -> list[dict]:
     split, game, stems = args
-    return [D.process(f, flip_check=int(f.image.stem) % FLIP_EVERY == 0)
-            for f in S.calibration_images(CALIB_ROOT, split, game, stems)]
+    return [D.process(f) for f in S.calibration_images(CALIB_ROOT, split, game, stems)]
 
 
 def fit_all(workers: int) -> pd.DataFrame:
@@ -103,10 +99,11 @@ def axis_check(frames_per_clip: int = 3) -> dict:
             lab = F.labels(fit.H, fit.front)
             if lab.visible.sum() < 2:
                 continue
-            centred = frame.feet_pitch - S.GSR_HALF
+            half = (ge.HALF_LENGTH, ge.HALF_WIDTH)
+            centred = frame.feet_pitch - half
             for sx in (1, -1):
                 for sy in (1, -1):
-                    target = centred * (sx, sy) + S.GSR_HALF
+                    target = centred * (sx, sy) + half
                     Hf, _ = cv2.findHomography(frame.feet_image, target, 0)
                     if Hf is None:
                         continue
@@ -120,40 +117,9 @@ def axis_check(frames_per_clip: int = 3) -> dict:
     return out
 
 
-# --------------------------------------------------------------------------- game identity
-def game_key(game: str, pattern: re.Pattern) -> tuple | None:
-    m = pattern.match(game)
-    return None if m is None else (m["league"], m["season"], m["date"], m["home"].strip(), m["away"].strip())
-
-
-def vendor_overlap(fits: pd.DataFrame, plan_path: Path = VENDOR_PLAN) -> dict:
-    """Calibration games matched to the xg-vendor split plan (league, season, date, home, away), per split and role.
-
-    GSR clips come from 12 games of the 2019 Swiss Super League (SoccerNet-Tracking paper, arXiv 2204.06918), a league
-    the plan (SoccerNet-v2 games, 2014-2017) does not hold; GSR `game_id` is an index without a match name.
-    """
-    plan = pd.read_csv(plan_path)
-    role = {game_key(g, _PLAN_GAME): r for g, r in zip(plan["game"], plan["role"], strict=True)}
-    calib = fits[fits["source"] == "calib"].drop_duplicates("group")
-    out: dict = {"plan": str(plan_path), "plan_sha256": sha256_file(plan_path), "unparsed_plan_games":
-                 int(sum(k is None for k in role)), "calibration": {}}
-    for split, g in calib.groupby("split"):
-        roles = pd.Series([role.get(game_key(x, _CALIB_GAME), "not in plan") for x in g["group"]])
-        kept = fits[(fits["source"] == "calib") & (fits["split"] == split) & (fits["reject"] == "")]
-        kept_roles = pd.Series([role.get(game_key(x, _CALIB_GAME), "not in plan") for x in kept["group"]])
-        out["calibration"][split] = {"games": int(len(g)), "by_role": roles.value_counts().to_dict(),
-                                     "kept_images_by_role": kept_roles.value_counts().to_dict()}
-    gsr = fits[fits["source"] == "gsr"]
-    out["gsr"] = {"games_per_split": {s: sorted(set(g["game"])) for s, g in gsr.groupby("split")},
-                  "note": "2019 Swiss Super League (SoccerNet-Tracking); not in the plan"}
-    return out
-
-
 # --------------------------------------------------------------------------- 3. export
-def export(fits: pd.DataFrame, dataset: Path, workers: int) -> pd.DataFrame:
-    kept = fits[fits["reject"] == ""].copy()
-    kept["export_split"] = [EXPORT_SPLIT[(s, p)] for s, p in zip(kept["source"], kept["split"], strict=True)]
-    kept["name"] = [k.replace("/", "_") for k in kept["key"]]
+def export(rows: pd.DataFrame, dataset: Path, workers: int) -> None:
+    """Write the images and labels of `rows` (with `export_split` and `name`) and `data.yaml` to `dataset`."""
     if dataset.exists():
         shutil.rmtree(dataset)
     for split in sorted(set(EXPORT_SPLIT.values())):
@@ -161,7 +127,7 @@ def export(fits: pd.DataFrame, dataset: Path, workers: int) -> pd.DataFrame:
         (dataset / "labels" / split).mkdir(parents=True)
     jobs = [(row.image, str(dataset / "images" / row.export_split / f"{row.name}.jpg"),
              str(dataset / "labels" / row.export_split / f"{row.name}.txt"), D.yolo_line(row._asdict()))
-            for row in kept.itertuples(index=False)]
+            for row in rows.itertuples(index=False)]
     with ProcessPoolExecutor(workers) as pool:
         list(pool.map(_write_one, jobs, chunksize=64))
     flip = list(D.FLIP_IDX)
@@ -170,7 +136,6 @@ def export(fits: pd.DataFrame, dataset: Path, workers: int) -> pd.DataFrame:
         "# Evaluation only (not used in training or model choice): images/test_gsr, images/test_calib.\n"
         f"path: {dataset}\ntrain: images/train\nval: images/val\n\n"
         f"kpt_shape: [32, 3]\nflip_idx: {flip}\n\nnc: 1\nnames: ['pitch']\n")
-    return kept
 
 
 def _write_one(job: tuple[str, str, str, str]) -> None:
@@ -192,14 +157,31 @@ def _quantiles(values, qs=(0.5, 0.9, 0.95, 0.99)) -> dict:
                                                                     for q in qs}, "max": float(values.max())}
 
 
-def summarise(fits: pd.DataFrame, kept: pd.DataFrame, axis: dict, overlap: dict) -> dict:
-    by = fits.groupby(["source", "split"])
-    counts = {f"{s}/{p}": {"images": int(len(g)), "groups": int(g["group"].nunique()),
-                           "kept": int((g["reject"] == "").sum()),
-                           "rejected": {k: int(v) for k, v in g.loc[g["reject"] != "", "reject"].value_counts().items()}}
-              for (s, p), g in by}
-    export_counts = {s: {"images": int(len(g)), "by_source": {k: int(v) for k, v in g["source"].value_counts().items()}}
+STEPS = ("xg held-out game", "game in GSR evaluation split", "duplicate of a higher-priority split")
+
+
+def summarise(fits: pd.DataFrame, labelled: pd.DataFrame, axis: dict, evidence: dict, plan: pd.DataFrame) -> dict:
+    """Counts, residuals, checks and split hygiene; `labelled` = images passing the label rule, with `exclusion`."""
+    kept = labelled[labelled["exclusion"] == ""]
+    counts = {}
+    for (s, p), g in fits.groupby(["source", "split"]):
+        lab = labelled[(labelled["source"] == s) & (labelled["split"] == p)]
+        left, after = len(lab), {}
+        for step in STEPS:
+            left -= int((lab["exclusion"] == step).sum())
+            after[step] = left
+        counts[f"{s}/{p}"] = {"images": int(len(g)), "groups": int(g["group"].nunique()), "labelled": int(len(lab)),
+                              "rejected": g.loc[g["reject"] != "", "reject"].value_counts().to_dict(),
+                              "after_exclusion": after, "exported": int(len(lab[lab["exclusion"] == ""]))}
+    export_counts = {s: {"images": int(len(g)), "by_source": g["source"].value_counts().to_dict()}
                      for s, g in kept.groupby("export_split")}
+    roles = X.plan_roles(plan)
+    plan_overlap = {}
+    for p, g in fits[fits["source"] == "calib"].groupby("split"):
+        games = pd.Series([roles.get(X.game_key(x, X.CALIB_GAME), "not in plan") for x in g["group"].unique()])
+        lab = labelled[(labelled["source"] == "calib") & (labelled["split"] == p)]
+        plan_overlap[p] = {"games_by_role": games.value_counts().to_dict(),
+                           "labelled_images_by_role": lab["plan_role"].value_counts().to_dict()}
     fitted = fits[fits["fitted"]]
     residuals = {f"{s}/{p}": {"rms_px": _quantiles(g["rms"]), "max_px": _quantiles(g["max_residual"]),
                               "sd_max_px": _quantiles(g["sd_max"])} for (s, p), g in fitted.groupby(["source", "split"])}
@@ -216,9 +198,8 @@ def summarise(fits: pd.DataFrame, kept: pd.DataFrame, axis: dict, overlap: dict)
             med = g["feet_median_m"]
             feet[f"{label}/{split}"] = {"frames": int(med.notna().sum()), "frame_median_m": _quantiles(med),
                                         "share_under_0.5m": float((med < 0.5).mean()), "share_under_1m":
-                                        float((med < 1.0).mean()), "share_under_2m": float((med < 2.0).mean()),
-                                        "raw_frame_median_m": _quantiles(g["feet_raw_median_m"])}
-    flipped = fits[fits["flip_visible_equal"].notna()]
+                                        float((med < 1.0).mean()), "share_under_2m": float((med < 2.0).mean())}
+    flipped = fits[fits["fitted"]]
     views = {f"{s}/{p}": g["view"].value_counts().to_dict() for (s, p), g in fitted.groupby(["source", "split"])}
     up_dy = {f"{s}/{p}": _quantiles(g["up_dy"], (0.01, 0.5, 0.99)) for (s, p), g in kept.groupby(["source", "split"])}
     return {
@@ -227,11 +208,13 @@ def summarise(fits: pd.DataFrame, kept: pd.DataFrame, axis: dict, overlap: dict)
         "counts": counts, "export": export_counts, "residuals_fitted": residuals, "residuals_kept": kept_residuals,
         "visible_vertices_hist_kept": visible_hist, "vertex_visible_share_kept": per_vertex,
         "gsr_feet_check": feet, "axis_check": axis, "views_fitted": views, "up_dy_kept": up_dy,
-        "flip_check": {"images": int(len(flipped)), "visibility_equal": int(flipped["flip_visible_equal"].sum()),
+        "split_hygiene": {**evidence, "plan": str(VENDOR_PLAN), "plan_sha256": sha256_file(VENDOR_PLAN),
+                          "calibration_plan_roles": plan_overlap},
+        "flip_check": {"images": int(len(flipped)), "visibility_equal": int(flipped["flip_visible_equal"].astype(bool).sum()),
                        "max_px": _quantiles(flipped["flip_max_px"]),
                        "max_px_kept": _quantiles(flipped.loc[flipped["reject"] == "", "flip_max_px"])},
         "mirror_fits": "none possible: the fit only keeps camera views (det(H) w > 0 at every annotated point)",
-        "image_size": list(D.IMAGE_SIZE), "vendor_overlap": overlap,
+        "image_size": list(D.IMAGE_SIZE),
     }
 
 
@@ -244,7 +227,7 @@ def data_card(summary: dict, record: dict) -> str:
     rule = summary["rule"]
     lines = [
         "# Data card: SoccerNet pitch keypoints (pitch-keypoints 01)", "",
-        f"Built {record['ts']} by `{record['script']}` at git {record['git'].get('commit', '?')[:7]}"
+        f"Built {record['ts']} by `{record['script']}` at git {record['git'].get('sha', '?')[:7]}"
         f"{' (dirty)' if record['git'].get('dirty') else ''}; dataset `{record['dataset']['path']}`; "
         f"labels digest `{record['dataset']['labels_digest'][:16]}`.", "",
         "## What it is", "",
@@ -274,12 +257,16 @@ def data_card(summary: dict, record: dict) -> str:
         "lines in pitch coordinates, so reverse-angle and along-the-pitch views would carry labels rotated by 180 or "
         "90 degrees against main-camera views of look-alike pictures.", "",
         "## Counts", "",
-        "| source/split | images | groups | kept | rejected (by first rule broken) |", "|---|---|---|---|---|",
+        "| source/split | images | groups | label rule kept | rejected (first rule broken) | - xG held-out games | "
+        "- GSR evaluation games | - duplicates | exported |", "|---|---|---|---|---|---|---|---|---|",
     ]
     for key, c in summary["counts"].items():
         rejected = ", ".join(f"{k} {v}" for k, v in sorted(c["rejected"].items(), key=lambda kv: -kv[1]))
-        lines.append(f"| {key} | {c['images']} | {c['groups']} | {c['kept']} | {rejected} |")
-    lines += ["", "Groups are GSR clips and Calibration games; a group never spans two splits.", "",
+        after = [c["after_exclusion"][step] for step in STEPS]
+        lines.append(f"| {key} | {c['images']} | {c['groups']} | {c['labelled']} | {rejected} | {after[0]} | "
+                     f"{after[1]} | {after[2]} | {c['exported']} |")
+    lines += ["", "Groups are GSR clips and Calibration games; a group never spans two splits. The exclusion columns "
+              "give the images left after each step (train and val only; test splits are not filtered).", "",
               "| export split | images | by source |", "|---|---|---|"]
     for split, c in summary["export"].items():
         lines.append(f"| {split} | {c['images']} | {', '.join(f'{k} {v}' for k, v in c['by_source'].items())} |")
@@ -303,9 +290,9 @@ def data_card(summary: dict, record: dict) -> str:
               + "; ".join(f"s = {k}: {v['median_m']:.2f} m" for k, v in axis.items() if isinstance(v, dict)
                           and v.get("median_m") is not None) + ".", ""]
     flip = summary["flip_check"]
-    lines += [f"Horizontal flip (`flip_idx`): {flip['images']} images refitted from mirrored annotations; "
-              f"visibility equal on {flip['visibility_equal']}; kept images' largest vertex difference "
-              f"{_q(flip['max_px_kept'], 'max', 6)} px.", "",
+    lines += [f"Horizontal flip (`flip_idx`, rule 7): all {flip['images']} fitted images refitted from mirrored "
+              f"annotations; same visible set on {flip['visibility_equal']}; kept images' largest vertex difference "
+              f"{_q(flip['max_px_kept'], 'max', 6)} px (median {_q(flip['max_px_kept'], 'p50', 8)} px).", "",
               "Mirror images: none can be kept (the fit only accepts det(H) w > 0 at every annotated point).", "",
               "## Visible vertices per kept image", "", "| source/split | " + " | ".join(str(i) for i in range(33))
               + " |", "|---|" + "---|" * 33]
@@ -315,19 +302,28 @@ def data_card(summary: dict, record: dict) -> str:
     lines += ["", "Share of kept images where each vertex is visible: "
               + ", ".join(f"{i}: {v:.2f}" for i, v in enumerate(shares)) + ".", "",
               "## Game identity and the xg-vendor split plan", ""]
-    ov = summary["vendor_overlap"]
-    for split, c in ov["calibration"].items():
-        lines.append(f"- Calibration {split}: {c['games']} games, plan roles {c['by_role']}; kept images by role "
-                     f"{c['kept_images_by_role']}.")
-    lines += [f"- GSR: {ov['gsr']['note']}; game ids per split {ov['gsr']['games_per_split']}.", "",
-              "The plan's held-out matches are its `evaluation` and `gate` roles. The keypoint model sees no goal "
-              "label and no StatsBomb data, so their frames may train it (spec, Data); they are recorded here.", ""]
+    hygiene = summary["split_hygiene"]
+    lines += ["Council C3 (Q2): train and val hold no frame of the 172 xG held-out matches (xg-vendor split plan, roles "
+              "`evaluation` and `gate`) where the game is known, no game of GSR valid or test, and no duplicate of a "
+              "frame in a higher-priority split (test > val > train).", ""]
+    for split, c in hygiene["calibration_plan_roles"].items():
+        lines.append(f"- Calibration {split}: games by plan role {c['games_by_role']}; images passing the label rule "
+                     f"by role {c['labelled_images_by_role']}.")
+    games = hygiene["gsr_games"]
+    lines += [f"- GSR game ids (an index without match names): train {games['train']}, val {games['val']}, "
+              f"test {games['test_gsr']}; GSR vs xG plan and vs Calibration: {hygiene['gsr_vs_calibration']}.",
+              f"- Duplicates: {hygiene['hash_pairs']} image pairs within {hygiene['duplicate_bits']} hash bits "
+              f"({hygiene['cross_source_hash_pairs']} across sources), {len(hygiene['cross_split_candidates'])} of "
+              f"them across splits; {len(hygiene['cross_split_duplicates'])} confirmed as the same picture "
+              f"(thumbnail correlation >= {hygiene['same_picture_corr']}).", "",
+              "The keypoint model sees no goal label and no StatsBomb data; the held-out matches stay in "
+              "`test_calib` (evaluation only).", ""]
     return "\n".join(lines)
 
 
-def overlays(fits: pd.DataFrame, folder: Path, n: int, seed: int = 0) -> list[str]:
+def overlays(kept: pd.DataFrame, folder: Path, n: int, seed: int = 0) -> list[str]:
+    """`n` random exported images with their fitted markings, annotated points and vertices (1280 x 720 JPEGs)."""
     folder.mkdir(parents=True, exist_ok=True)
-    kept = fits[fits["reject"] == ""]
     pick = kept.sample(n=min(n, len(kept)), random_state=seed)
     names = []
     for row in pick.itertuples(index=False):
@@ -375,11 +371,17 @@ def main() -> None:
     print(f"{datetime.now(UTC):%H:%M:%S} {len(fits)} images fitted; axis check", flush=True)
     axis = axis_check()
     (args.out / "axis_check.json").write_text(json.dumps(axis, indent=2) + "\n")
-    kept = export(fits, args.dataset, args.workers)
-    kept[["key", "source", "split", "export_split", "group", "frame", "game", "name", "rms", "sd_max",
-          "n_visible"]].to_csv(args.out / "exported.csv", index=False)
-    summary = summarise(fits, kept, axis, vendor_overlap(fits))
-    summary["overlays"] = overlays(fits, args.out / "overlays", args.overlays)
+    labelled = fits[fits["reject"] == ""].copy()
+    labelled["export_split"] = [EXPORT_SPLIT[k] for k in zip(labelled["source"], labelled["split"], strict=True)]
+    labelled["name"] = [k.replace("/", "_") for k in labelled["key"]]
+    plan = pd.read_csv(VENDOR_PLAN)
+    labelled, evidence = X.apply(labelled, plan)
+    kept = labelled[labelled["exclusion"] == ""]
+    export(kept, args.dataset, args.workers)
+    labelled[["key", "source", "split", "export_split", "group", "frame", "game", "plan_role", "exclusion", "name",
+              "rms", "sd_max", "n_visible"]].to_csv(args.out / "labelled.csv", index=False)
+    summary = summarise(fits, labelled, axis, evidence, plan)
+    summary["overlays"] = overlays(kept, args.out / "overlays", args.overlays)
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2, default=int) + "\n")
     shutil.copy(args.dataset / "data.yaml", args.out / "data.yaml")
     labels = sorted((args.dataset / "labels").rglob("*.txt"))

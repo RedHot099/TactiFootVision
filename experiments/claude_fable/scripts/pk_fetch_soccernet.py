@@ -3,8 +3,11 @@
     ./run.sh --no-sync python scripts/pk_fetch_soccernet.py gamestate-2024 test
     ./run.sh --no-sync python scripts/pk_fetch_soccernet.py calibration-2023 train valid test
 
-Uses the `SoccerNet` package downloader with its public-data password (the default argument); the personal SoccerNet
-password file is never read. One split at a time:
+Calibration-2023 uses the `SoccerNet` package downloader with its public-data password (the default argument). The
+package downloader fetched GSR test only to 6.26 of 8.85 GB before the server closed the connection
+(`ContentTooShortError`) and then deleted the part, so GSR downloads the same URL with the same public share credentials
+(`SoccerNet.Downloader`, task gamestate-2024) through `resumable_download`, which resumes with HTTP Range requests.
+The personal SoccerNet password file is never read. One split at a time:
 
 1. refuse unless /home keeps >= 15 GB free after the zip and its extraction (sizes below are upper bounds);
 2. download `<root>/<task>/<split>.zip`;
@@ -16,22 +19,29 @@ password file is never read. One split at a time:
 """
 
 import argparse
+import base64
 import hashlib
 import json
 import shutil
 import time
+import urllib.error
+import urllib.request
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from xgpoc.pitchkp.sources import FRAME_STEP, gsr_keeps_frame
+from xgpoc.pitchkp.gsr_eval import FRAME_STEP, keeps_frame
 
 DATA = Path("/home/kuba/projects/tactifoot_vision/data")
 ROOTS = {"gamestate-2024": DATA / "SoccerNetGS", "calibration-2023": DATA / "SoccerNetCalibration"}
 # Upper bounds in GB of one split's zip + kept extraction, for the free-space check.
-NEED_GB = {"gamestate-2024": 11.5 + 2.6, "calibration-2023": 3.0 + 3.0}
+NEED_GB = {"gamestate-2024": 12.0 + 2.6, "calibration-2023": 3.0 + 3.0}
 KEEP_FREE_GB = 15.0
-SOURCE = "SoccerNet OwnCloud via SoccerNet.Downloader.SoccerNetDownloader.downloadDataTask (public password)"
+OWNCLOUD = "https://exrcsdrive.kaust.edu.sa/public.php/webdav/"     # SoccerNetDownloader's default server
+GSR_SHARE = "iOJmJH6rYnx7mOS"           # the public share SoccerNet.Downloader uses for task gamestate-2024
+PUBLIC_PASSWORD = "SoccerNet"           # downloadDataTask's default password for public data
+SOURCES = {"calibration-2023": "SoccerNet.Downloader.SoccerNetDownloader.downloadDataTask (public password)",
+           "gamestate-2024": f"{OWNCLOUD}<split>.zip, share {GSR_SHARE} of SoccerNet.Downloader, resumable_download"}
 
 
 def free_gb(path: Path) -> float:
@@ -46,11 +56,45 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def resumable_download(url: str, user: str, password: str, dest: Path, attempts: int = 30, chunk: int = 1 << 22) -> int:
+    """Download `url` (HTTP basic auth) to `dest`, resuming a `.part` file with Range requests; returns the size."""
+    part = dest.with_name(dest.name + ".part")
+    auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+    for attempt in range(attempts):
+        have = part.stat().st_size if part.exists() else 0
+        request = urllib.request.Request(url, headers={"Authorization": auth, "Range": f"bytes={have}-"})
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                if have and response.status != 206:            # the server ignored the range: start over
+                    have = 0
+                total = have + int(response.headers["Content-Length"])
+                with part.open("ab" if have else "wb") as out:
+                    for block in iter(lambda: response.read(chunk), b""):
+                        out.write(block)
+        except urllib.error.HTTPError as error:
+            if error.code == 416 and have:                       # range past the end: the part is complete
+                part.rename(dest)
+                return dest.stat().st_size
+            print(f"attempt {attempt + 1}: {error}", flush=True)
+            time.sleep(15)
+            continue
+        except (urllib.error.URLError, OSError, TimeoutError) as error:
+            print(f"attempt {attempt + 1}: {error}", flush=True)
+            time.sleep(15)
+            continue
+        size = part.stat().st_size
+        print(f"attempt {attempt + 1}: {size} of {total} bytes", flush=True)
+        if size == total:
+            part.rename(dest)
+            return size
+    raise SystemExit(f"{url}: no complete download after {attempts} attempts")
+
+
 def keep_member(task: str, name: str) -> bool:
     """Whether a zip member is extracted: everything for Calibration; GSR labels, info files and every 5th frame."""
     if task != "gamestate-2024" or not name.endswith(".jpg"):
         return True
-    return gsr_keeps_frame(int(Path(name).stem))
+    return keeps_frame(int(Path(name).stem))
 
 
 def safe_extract(archive: Path, dest: Path, task: str) -> tuple[int, int]:
@@ -82,7 +126,10 @@ def fetch(task: str, split: str) -> dict:
     if not archive.exists() and free_before - NEED_GB[task] < KEEP_FREE_GB:
         raise SystemExit(f"{free_before:.1f} GB free; {task}/{split} needs {NEED_GB[task]} GB + {KEEP_FREE_GB} GB kept free")
     start = time.time()
-    if not archive.exists():
+    if not archive.exists() and task == "gamestate-2024":
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        resumable_download(f"{OWNCLOUD}{split}.zip", GSR_SHARE, PUBLIC_PASSWORD, archive)
+    elif not archive.exists():
         from SoccerNet.Downloader import SoccerNetDownloader
 
         SoccerNetDownloader(LocalDirectory=str(root)).downloadDataTask(task=task, split=[split])
@@ -98,7 +145,7 @@ def fetch(task: str, split: str) -> dict:
         "ts": datetime.now(UTC).isoformat(timespec="seconds"),
         "task": task,
         "split": split,
-        "source": SOURCE,
+        "source": SOURCES[task],
         "zip": str(archive),
         "zip_bytes": zip_bytes,
         "zip_sha256": digest,

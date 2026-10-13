@@ -75,7 +75,8 @@ def circle_conic(centre: tuple[float, float], radius: float = RADIUS) -> np.ndar
 
 
 def annotation_points(lines: dict, size: tuple[int, int] = (FRAME_W, FRAME_H)) -> dict[str, np.ndarray]:
-    """SoccerNet `{name: [{"x": fx, "y": fy}, ...]}` (fractions of the image) -> {name: (N, 2) 720p pixels}.
+    """SoccerNet `{name: [{"x": fx, "y": fy}, ...]}` or `{name: (N, 2) array}` (fractions of the image) -> {name: (N, 2)
+    720p pixels}.
 
     Only the ground-plane lines this module models, with at least two points; duplicates are dropped.
     """
@@ -83,7 +84,8 @@ def annotation_points(lines: dict, size: tuple[int, int] = (FRAME_W, FRAME_H)) -
     for name, points in lines.items():
         if name not in STRAIGHT and name not in CIRCLES:
             continue
-        xy = np.unique(np.array([[p["x"], p["y"]] for p in points], dtype=float), axis=0) * size
+        xy = points if isinstance(points, np.ndarray) else [[p["x"], p["y"]] for p in points]
+        xy = np.unique(np.asarray(xy, dtype=float).reshape(-1, 2), axis=0) * size
         if len(xy) >= 2:
             out[name] = xy
     return out
@@ -314,8 +316,8 @@ def fit_lines(pts: dict[str, np.ndarray], min_points: int = 9) -> LineFit:
 
             sol = least_squares(fun, np.zeros(8), method="lm", x_scale="jac", max_nfev=400)
             Hs = unnorm @ _compose(G0, sol.x) @ Ti
-            if not np.isfinite(Hs).all() or not views_pitch(Hs[None], all_xy)[0]:
-                continue
+            if not np.isfinite(Hs).all() or np.linalg.cond(Hs) > 1e12 or not views_pitch(Hs[None], all_xy)[0]:
+                continue                                              # singular (maps the frame onto a line)
             cost_s = float(np.mean(sol.fun**2))
             if best is None or cost_s < best[0]:
                 best = (cost_s, Hs / Hs[2, 2] if abs(Hs[2, 2]) > 1e-12 else Hs, sol, G0)
