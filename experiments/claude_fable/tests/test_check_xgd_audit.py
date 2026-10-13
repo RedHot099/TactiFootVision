@@ -1,5 +1,6 @@
 """The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07), audit 3
-(pitch-keypoints 04) and the pitch-keypoints report (pitch-keypoints 06): the real documents, and changed copies."""
+(pitch-keypoints 04), the pitch-keypoints report (pitch-keypoints 06) and the xg-compare report (xg-compare 03): the
+real documents, and changed copies."""
 
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from check_xgd_audit import (  # noqa: E402
     DOCUMENTS,
     PK_REPORT,
     REPORT,
+    XGC_REPORT,
     main,
 )
 from test_check_vendor_report import write_tree  # noqa: E402
@@ -76,7 +78,8 @@ def test_without_a_path_the_check_reads_every_document(monkeypatch):
     assert seen == [[str(AUDIT), "--claims", str(AUDIT.with_name("claims.toml")), "--root", "/x"],
                     [str(REPORT), "--claims", str(REPORT.with_name("report_claims.toml")), "--root", "/x"],
                     [str(AUDIT3), "--claims", str(AUDIT3.with_name("claims.toml")), "--root", "/x"],
-                    [str(PK_REPORT), "--claims", str(PK_REPORT.with_name("report_claims.toml")), "--root", "/x"]]
+                    [str(PK_REPORT), "--claims", str(PK_REPORT.with_name("report_claims.toml")), "--root", "/x"],
+                    [str(XGC_REPORT), "--claims", str(XGC_REPORT.with_name("claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -213,3 +216,30 @@ def test_an_untagged_number_in_the_pitch_keypoints_report_fails(tmp_path):
     errors = check(copy, PK_CLAIMS, EXP)
     assert any("'0.41' is not tied to a source" in e for e in errors)
     assert any("integer '7261'" in e for e in errors)
+
+
+XGC_CLAIMS = XGC_REPORT.with_name("claims.toml")
+XGC_RESULTS = ("results/xgc_compare/analysis", "results/xgc_compare/recovery")
+XGC_READY = XGC_REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in XGC_RESULTS)
+needs_xgc_report = pytest.mark.skipif(not XGC_READY, reason="needs the xg-compare report and the phase's results")
+
+
+@needs_xgc_report
+def test_the_real_xg_compare_report_passes():
+    assert DOCUMENTS[XGC_REPORT] == XGC_CLAIMS
+    assert check(XGC_REPORT, XGC_CLAIMS, EXP) == []
+
+
+@needs_xgc_report
+@pytest.mark.parametrize("claim", ["f.3.eff", "r.14.share", "w.6a.oe.F", "ag.VF", "sv.7.v", "pw.null.bh", "o1.F", "dt.a.rate"])
+def test_a_changed_number_in_the_xg_compare_report_fails(tmp_path, claim):
+    assert any(f"{claim} expects" in e for e in check(changed_copy(XGC_REPORT, tmp_path, claim), XGC_CLAIMS, EXP))
+
+
+@needs_xgc_report
+def test_an_untagged_number_in_the_xg_compare_report_fails(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(XGC_REPORT.read_text() + "\nDodatkowo efekt +0.31 na 512 strzałach bez źródła.\n")
+    errors = check(copy, XGC_CLAIMS, EXP)
+    assert any("'+0.31' is not tied to a source" in e for e in errors)
+    assert any("integer '512'" in e for e in errors)
