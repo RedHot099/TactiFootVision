@@ -98,6 +98,8 @@ def test_paper_coefficients_match_refuses_a_different_recalibration():
 def test_a_method_with_some_missing_logits_is_refused_and_one_missing_everywhere_is_left_out():
     table, labels, draws = synthetic(n_matches=10, per_match=10, n_boot=5)
     assert "A1" not in population(table, labels, draws).methods
+    table.loc[:49, "z_a1"] = 0.0                                                 # A1 on part of the rows: left out
+    assert "A1" not in population(table, labels, draws).methods
     table.loc[3, "z_events"] = np.nan
     with pytest.raises(ValueError, match="all or none"):
         population(table, labels, draws)
@@ -374,6 +376,8 @@ def test_disagreement_tails_are_five_percent_each_way(planted):
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_the_pipeline_runs_end_to_end_and_the_dry_run_reads_nothing_label_free(tmp_path, dry_run):
     table, labels, draws = synthetic(header=0.6, n_boot=50)
+    table["in_primary"] = np.arange(len(table)) % 5 != 0                         # combined adds non-primary shots
+    table["z_a1"] = np.where(table.in_primary, table.z_frame, np.nan)            # A1 on primary shots only
     summary = pl.run(table, labels, tb.coverage(table), draws, tmp_path, dry_run=dry_run, paper_coefficients=None,
                      context={"table_sha256": "t"}, log=lambda _: None)
     written = {p.name for p in tmp_path.iterdir()}
@@ -383,5 +387,6 @@ def test_the_pipeline_runs_end_to_end_and_the_dry_run_reads_nothing_label_free(t
     frozen = json.loads((tmp_path / pl.CANDIDATES).read_text())
     assert frozen["dry_run"] == dry_run and frozen["table_sha256"] == "t"
     assert summary["notice"] == "Data: StatsBomb." and ("agreement_overall" in summary) != dry_run
+    assert "A1" in summary["who_is_right_overall"]
     if not dry_run:
         assert summary["family"]["3"]["reading"].startswith("BH-significant")

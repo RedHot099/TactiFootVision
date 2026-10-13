@@ -30,6 +30,7 @@ from xgpoc.vendor.draws import TableDraws
 METHODS = {"V": "vendor", "P": "positions", "E": "events", "D": "dist_angle", "F": "frame", "F-400": "frame_m400", "A1": "a1"}
 PAPER_RUNGS = {"V": "vendor", "P": "freeze_frame", "E": "event", "D": "dist_angle", "F": "frame"}
 SCALES = ("main", "raw", "rank")
+PRIMARY_ONLY_METHODS = ("A1",)   # protocol: A1 where the shot is in the xg-detector test predictions (primary shots only)
 
 
 @dataclass
@@ -94,15 +95,15 @@ def post_shot_columns(labels: pd.DataFrame) -> pd.DataFrame:
 
 
 def raw_logits(rows: pd.DataFrame) -> dict[str, np.ndarray]:
-    """The raw logit of every method the rows have: a method missing on every row (A1 outside the primary shots) is
-    left out; one missing on only some rows raises."""
+    """The raw logit of every method the rows have. A method missing on some rows is left out of the population when
+    it is a primary-only method (`PRIMARY_ONLY_METHODS`: A1 in the combined population) and raises otherwise."""
     out = {}
     for method, column in METHODS.items():
         z = rows[f"z_{column}"].to_numpy(float)
         finite = np.isfinite(z)
         if finite.all():
             out[method] = z
-        elif finite.any():
+        elif finite.any() and method not in PRIMARY_ONLY_METHODS:
             raise ValueError(f"method {method} has a logit on {int(finite.sum())} of {len(z)} rows; a population needs all or none")
     return out
 
