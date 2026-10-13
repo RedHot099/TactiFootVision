@@ -22,6 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pandas as pd
+import supervision as sv
 
 from xgpoc.detector import homography_dev as dev
 from xgpoc.detector import lines
@@ -34,6 +35,8 @@ SOURCES = ("keypoints", "label")
 
 @dataclass(frozen=True)
 class KeypointModel:
+    """A YOLO-pose pitch model as the evaluation runs it: weights, input mode, inference size, instance threshold."""
+
     weights: Path
     input: str = "stretch"
     imgsz: int | None = None                # None: the training size
@@ -56,6 +59,8 @@ class KeypointModel:
 
 @dataclass(frozen=True)
 class Method:
+    """How one frame's keypoints become a homography (`source="keypoints"`), or the label oracle (`"label"`)."""
+
     name: str
     source: str = "keypoints"
     min_confidence: float = 0.5
@@ -103,6 +108,16 @@ def load_methods(path: Path) -> dict[str, Method]:
     return {name: Method(name, **fields) for name, fields in json.loads(Path(path).read_text()).items()}
 
 
+def keypoints_from_row(row, instance_conf: float) -> sv.KeyPoints | None:
+    """A cached first instance (`dev.keypoint_row`) as `sv.KeyPoints`, or None without an instance or below
+    `instance_conf`."""
+    xy = row["kp_xy"]
+    if xy is None or (isinstance(xy, float) and np.isnan(xy)) or not row["kp_instance_conf"] >= instance_conf:
+        return None
+    return sv.KeyPoints(xy=np.asarray(xy, np.float32).reshape(1, -1, 2),
+                        confidence=np.asarray(row["kp_conf"], np.float32).reshape(1, -1))
+
+
 def eval_frame(path: str, size: tuple[int, int] = ge.EVAL_SIZE) -> np.ndarray:
     """The frame at `path` (BGR) resized to `size` (w, h) with area interpolation."""
     image = cv2.imread(str(path))
@@ -121,6 +136,7 @@ class ClipTask:
     folder: Path
     keypoints: pd.DataFrame
     methods: dict[str, Method]
+    instance_conf: float = dev.INSTANCE_CONF
     detections: dict[int, np.ndarray] = dataclasses.field(default_factory=dict)
     labels: dict[int, np.ndarray] = dataclasses.field(default_factory=dict)
 
@@ -131,7 +147,7 @@ def evaluate_clip(task: ClipTask) -> tuple[list[dict], pd.DataFrame]:
     cv2.setNumThreads(1)
     clip = ge.read_clip(task.folder)
     estimators = {name: m.estimator() for name, m in task.methods.items() if m.source == "keypoints"}
-    starts = {name: dataclasses.replace(m, refine_with_lines=False).estimator()
+    unrefined = {name: dataclasses.replace(m, refine_with_lines=False).estimator()
               for name, m in task.methods.items() if m.refine_with_lines}
     width, height = ge.EVAL_SIZE
     rows = []
@@ -150,8 +166,11 @@ def evaluate_clip(task: ClipTask) -> tuple[list[dict], pd.DataFrame]:
         base |= {"gt_median_x": float(np.median(truth[:, 0])), "near_goal": bool(ge.near_goal(np.median(truth[:, 0])))}
         boxes = {"gt": persons[["x1", "y1", "x2", "y2"]].to_numpy(float) * np.tile(scale, 2), "none": None}
         if any(m.mask == "detector" for m in task.methods.values()):
+            if frame.frame not in task.detections:
+                raise ValueError(f"{clip.name} frame {frame.frame}: a method uses the detector mask but the task has no "
+                                 "detections for the frame; pass the detector's people boxes (ClipTask.detections)")
             boxes["detector"] = task.detections[frame.frame]
-        found = dev.keypoints_from_row(task.keypoints.loc[frame.frame])
+        found = keypoints_from_row(task.keypoints.loc[frame.frame], task.instance_conf)
         for name, method in task.methods.items():
             if method.source == "label":
                 matrix = task.labels.get(frame.frame)
@@ -166,8 +185,8 @@ def evaluate_clip(task: ClipTask) -> tuple[list[dict], pd.DataFrame]:
                           "capped": int((errors >= ge.CAP_M).sum()) if errors is not None else 0,
                           "agreement": lines.score(view, matrix)["agreement"],
                           "homography": None if matrix is None else [float(v) for v in np.ravel(matrix)]}
-            if name in starts:
-                start = starts[name].fit(found)
+            if name in unrefined:
+                start = unrefined[name].fit(found)
                 row["refined"] = float(matrix is not None and start is not None and not np.allclose(matrix, start))
             rows.append(row)
     return rows, ge.convention_check(clip)

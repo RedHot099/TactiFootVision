@@ -313,5 +313,62 @@ def test_the_detector_mask_needs_the_frames_detections(tmp_path):
 
     folder = write_clip(tmp_path / "SNGS-903", gsr_labels(frames=(1,)), render=True)
     methods = {"D3": ev.baseline_methods(run.CONFIGS)["D3"]}
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="detector mask"):
         ev.evaluate_clip(ev.ClipTask("valid", folder, oracle_keypoints([1]), methods))
+
+
+# ------------------------------------------------------------------------------------------------- the run script
+def test_cached_table_is_reused_and_refuses_another_identity(tmp_path):
+    import pitchkp_gsr_eval as run
+
+    calls = []
+
+    def compute():
+        calls.append(1)
+        return pd.DataFrame({"group": ["a"], "frame": [1]})
+
+    first = run.cached_table(tmp_path / "c", {"frames": "x"}, compute, "test")
+    again = run.cached_table(tmp_path / "c", {"frames": "x"}, compute, "test")
+    pd.testing.assert_frame_equal(first, again)
+    assert len(calls) == 1 and (tmp_path / "c/complete.json").exists()
+    with pytest.raises(SystemExit, match="another sample"):
+        run.cached_table(tmp_path / "c", {"frames": "y"}, compute, "test")
+
+
+def test_kept_labels_and_their_vertex_errors(tmp_path):
+    import pitchkp_gsr_eval as run
+
+    xy = np.zeros((32, 2))
+    xy[3], xy[7] = (100.0, 200.0), (400.0, 300.0)
+    visible = np.zeros(32, bool)
+    visible[[3, 7]] = True
+    rows = [{"key": f"gsr/valid/SNGS-021/{f:06d}", "source": "gsr", "split": "valid", "group": "SNGS-021", "frame": f,
+             "image": "x.jpg", "H": np.eye(3).ravel(), "xy": xy.ravel(), "visible": visible, "reject": reject}
+            for f, reject in ((1, ""), (6, "rms"), (11, ""))]
+    rows.append(rows[0] | {"source": "calib", "split": "test", "group": "game", "key": "calib/test/00000"})
+    pd.DataFrame(rows).to_parquet(tmp_path / "fits.parquet")
+    labels = run.label_table(tmp_path / "fits.parquet", "gsr", "valid")
+    assert list(labels.frame) == [1, 11]                             # the rejected fit is not a label
+    predicted = xy + [3.0, 4.0]
+    keypoints = pd.DataFrame([{"group": "SNGS-021", "frame": 1, "kp_xy": predicted.ravel().tolist(),
+                               "kp_conf": [0.9] * 32, "kp_instance_conf": 0.05},
+                              {"group": "SNGS-021", "frame": 11, "kp_xy": predicted.ravel().tolist(),
+                               "kp_conf": [0.9] * 32, "kp_instance_conf": 0.5}])
+    errors = run.vertex_rows("valid", keypoints, labels, instance_conf=0.1)
+    by_frame = errors.groupby("frame")
+    assert (by_frame.get_group(1).conf == 0).all()                   # instance below the threshold: nothing predicted
+    assert by_frame.get_group(11).px.dropna().tolist() == [5.0, 5.0]
+    assert len(run.vertex_rows("valid", keypoints, labels, instance_conf=0.01)
+               .query("frame == 1 and conf > 0")) == 32              # the threshold is the model's, not 0.1
+    with pytest.raises(ValueError, match="no valid frame"):
+        run.vertex_rows("valid", keypoints.iloc[:0], labels, instance_conf=0.1)
+    with pytest.raises(SystemExit, match="no kept"):
+        run.label_table(tmp_path / "fits.parquet", "calib", "valid")
+
+
+def test_gsr_test_needs_an_explicit_reason(tmp_path, monkeypatch):
+    import pitchkp_gsr_eval as run
+
+    monkeypatch.setattr(sys, "argv", ["pitchkp_gsr_eval.py", "--split", "test", "--out", str(tmp_path / "out")])
+    with pytest.raises(SystemExit, match="held out"):
+        run.main()

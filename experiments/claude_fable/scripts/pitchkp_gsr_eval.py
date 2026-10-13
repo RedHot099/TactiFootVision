@@ -5,6 +5,8 @@
         [--weights W --input stretch|letterbox --imgsz N]        the keypoint model (default: the current model)
         [--methods-file M.json]                                  methods (default: the baseline, `baseline_methods`)
         [--reference-method D3 [--reference-run DIR]]            paired differences against this method
+        [--allow-test "REASON"]                                  required for --split test (held-out: one look per
+                                                                 final candidate, after the choice on valid)
         [--out DIR] [--cache DIR] [--clips N] [--draws 2000]
 
 GSR splits (`valid`, `test`): every 5th frame of each clip (1, 6, 11, ...), resized to 1280 x 720
@@ -16,7 +18,11 @@ GSR splits (`valid`, `test`): every 5th frame of each clip (1, 6, 11, ...), resi
    metres, ticket 08's line agreement; the label oracle uses ticket 01's kept label homographies (`--labels`).
 3. Outputs: `per_frame.parquet`; `summary.csv` (all and near-goal, clip-bootstrap 95% intervals); `paired.csv`
    (method - reference); `per_game.csv`, `per_clip.csv`; `keypoint_errors.parquet` and `keypoints_summary.csv` (px at
-   720p against ticket 01's kept labels); `convention.csv`; `complete.json` (last).
+   720p against ticket 01's kept labels); `convention.csv`; `complete.json` (last). Paired differences leave out the
+   label oracle (its availability is the share of frames with a kept label, not of fits); against `--reference-run`
+   the reference method is named `<name>@reference`.
+Ticket 03 scores a candidate on valid with `--weights`, `--input`, `--imgsz` and `--methods-file`, and pairs it with
+the baseline through `--reference-run results/pitchkp_gsr_eval/valid`.
 
 `calib_test`: Camera Calibration 2023 test images with a kept label (no pitch positions): the keypoint error only,
 bootstrap over games.
@@ -77,6 +83,7 @@ def cached_table(folder: Path, identity: dict, compute: Callable[[], pd.DataFram
 
 
 def frame_digest(frames: pd.DataFrame) -> str:
+    """Digest of the frames' (group, frame) keys: what a cache was computed on."""
     return canonical_digest(sorted(f"{g}/{f}" for g, f in zip(frames["group"], frames["frame"], strict=True)))
 
 
@@ -86,7 +93,7 @@ def keypoint_table(frames: pd.DataFrame, model: ev.KeypointModel, folder: Path, 
         "sha256": sha256_file(model.weights)}, "eval_size": list(ge.EVAL_SIZE)}
 
     def compute() -> pd.DataFrame:
-        predict = model.load(device)
+        predict = model.load(device)                    # instance threshold applied by the model and when read
         return pd.DataFrame([{"group": g, "frame": f} | dev.keypoint_row(predict(ev.eval_frame(p)))
                              for g, f, p in tqdm(list(zip(frames["group"], frames["frame"], frames["path"], strict=True)),
                                                  desc="keypoints", mininterval=30)])
@@ -130,21 +137,24 @@ def label_table(path: Path, source: str, split: str) -> pd.DataFrame:
     return kept
 
 
-def vertex_rows(split: str, keypoints: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
+def vertex_rows(split: str, keypoints: pd.DataFrame, labels: pd.DataFrame, instance_conf: float) -> pd.DataFrame:
     """`gsr_eval.vertex_errors` of every labelled frame that has keypoints, with split, group and frame."""
     index = keypoints.set_index(["group", "frame"])
     parts = []
     for label in labels.itertuples(index=False):
         if (label.group, label.frame) not in index.index:
             continue
-        found = dev.keypoints_from_row(index.loc[(label.group, label.frame)])
+        found = ev.keypoints_from_row(index.loc[(label.group, label.frame)], instance_conf)
         xy, conf = (None, None) if found is None else (found.xy[0], found.confidence[0])
         parts.append(ge.vertex_errors(xy, conf, np.asarray(label.xy).reshape(-1, 2), np.asarray(label.visible))
                      .assign(split=split, group=label.group, frame=label.frame))
+    if not parts:
+        raise ValueError(f"no {split} frame has both keypoints and a kept label; check --labels and the frames run")
     return pd.concat(parts, ignore_index=True)
 
 
 def gsr_frames(folders: list[Path]) -> pd.DataFrame:
+    """The scored frames of the clips: group (clip), frame, path, width, height."""
     return pd.concat([ge.read_clip(f).frames.assign(group=f.name) for f in folders], ignore_index=True)
 
 
@@ -158,6 +168,8 @@ def main() -> None:
     parser.add_argument("--methods-file", type=Path, default=None, help="default: baseline_methods(configs)")
     parser.add_argument("--reference-method", default="D3")
     parser.add_argument("--reference-run", type=Path, default=None, help="a complete run of the same split")
+    parser.add_argument("--allow-test", default=None, metavar="REASON",
+                        help="required for --split test; recorded (e.g. the council decision naming the candidate)")
     parser.add_argument("--configs", type=Path, default=CONFIGS)
     parser.add_argument("--labels", type=Path, default=LABELS)
     parser.add_argument("--data", type=Path, default=DATA)
@@ -172,25 +184,32 @@ def main() -> None:
     out = args.out or ROOT / f"results/pitchkp_gsr_eval/{args.split}"
     if (out / "complete.json").exists():
         raise SystemExit(f"{out} is complete; use a new --out")
+    if args.split == "test" and not args.allow_test:
+        raise SystemExit("GSR test is held out: scored once per final candidate after the choice on valid "
+                         "(spec story 9, council C3); pass --allow-test REASON")
 
     configs = json.loads(args.configs.read_text())
     if args.weights is None and sha256_file(ex.KEYPOINT_WEIGHTS) != configs["common"]["keypoints"]["weights_sha256"]:
         raise SystemExit(f"{ex.KEYPOINT_WEIGHTS} is not the pitch model of {args.configs}")
     model = ev.KeypointModel(args.weights or ex.KEYPOINT_WEIGHTS, args.input, args.imgsz, args.instance_conf)
     methods = ev.load_methods(args.methods_file) if args.methods_file else ev.baseline_methods(args.configs)
-    model_key = f"keypoints_{sha256_file(model.weights)[:12]}_{model.input}_{model.imgsz or 'train'}"
+    model_key = (f"keypoints_{sha256_file(model.weights)[:12]}_{model.input}_{model.imgsz or 'train'}"
+                 f"_i{model.instance_conf:g}")
 
     with no_statsbomb_reads():
         started, clock = datetime.now(UTC), time.perf_counter()
         outputs: dict[str, pd.DataFrame] = {}
-        record: dict = {"split": args.split, "model": model.settings() | {"sha256": sha256_file(model.weights)},
+        caches = {"keypoints": args.cache / args.split / model_key}
+        record: dict = {"split": args.split, "allow_test": args.allow_test,
+                        "model": model.settings() | {"sha256": sha256_file(model.weights)},
                         "inputs": {"labels": {"path": str(args.labels), "sha256": sha256_file(args.labels)}}}
         if args.split == "calib_test":
             labels = label_table(args.labels, "calib", "test")
             frames = labels.rename(columns={"image": "path"})[["group", "frame", "path"]].assign(frame=labels.key)
-            keypoints = keypoint_table(frames, model, args.cache / args.split / model_key, args.device)
+            keypoints = keypoint_table(frames, model, caches["keypoints"], args.device)
             gpu_done = datetime.now(UTC)
-            outputs["keypoint_errors"] = vertex_rows(args.split, keypoints, labels.assign(frame=labels.key))
+            outputs["keypoint_errors"] = vertex_rows(args.split, keypoints, labels.assign(frame=labels.key),
+                                                     model.instance_conf)
         else:
             folders = sorted((args.data / args.split).glob("SNGS-*"))[:args.clips]
             if not folders:
@@ -198,10 +217,11 @@ def main() -> None:
             frames = gsr_frames(folders)
             labels = label_table(args.labels, "gsr", args.split)
             labels = labels[labels.group.isin([f.name for f in folders])]
-            keypoints = keypoint_table(frames, model, args.cache / args.split / model_key, args.device)
+            keypoints = keypoint_table(frames, model, caches["keypoints"], args.device)
             detections = None
             if any(m.mask == "detector" for m in methods.values()):
-                detections = detector_table(frames, configs, args.cache / args.split / "detector", args.device)
+                caches["detector"] = args.cache / args.split / "detector"
+                detections = detector_table(frames, configs, caches["detector"], args.device)
             gpu_done = datetime.now(UTC)
             label_h = {(r.group, r.frame): np.asarray(r.H, dtype=float).reshape(3, 3)
                        for r in labels.itertuples(index=False)}
@@ -210,6 +230,7 @@ def main() -> None:
                 mine = detections[detections.group == folder.name] if detections is not None else None
                 tasks.append(ev.ClipTask(
                     args.split, folder, keypoints[keypoints.group == folder.name].set_index("frame"), methods,
+                    instance_conf=model.instance_conf,
                     detections={} if mine is None else {f: np.asarray(b, dtype=float).reshape(-1, 4)
                                                         for f, b in zip(mine.frame, mine.det_xyxy, strict=True)},
                     labels={f: h for (g, f), h in label_h.items() if g == folder.name}))
@@ -225,18 +246,24 @@ def main() -> None:
             outputs |= {"per_frame": per_frame, "convention": convention,
                         "summary": ge.summarise(per_frame, draws=args.draws),
                         "per_game": ge.per_group(per_frame, "game"), "per_clip": ge.per_group(per_frame, "clip"),
-                        "keypoint_errors": vertex_rows(args.split, keypoints, labels)}
+                        "keypoint_errors": vertex_rows(args.split, keypoints, labels, model.instance_conf)}
             reference = per_frame[per_frame.method == args.reference_method]
             if args.reference_run is not None:
                 reference_file = args.reference_run / "per_frame.parquet"
                 records.verified_file(reference_file)
+                if json.loads((args.reference_run / "complete.json").read_text())["split"] != args.split:
+                    raise SystemExit(f"{args.reference_run} is not a run of the {args.split} split")
                 reference = pd.read_parquet(reference_file)
-                reference = reference[reference.method == args.reference_method]
+                reference = reference[reference.method == args.reference_method].assign(
+                    method=f"{args.reference_method}@reference")
+                if reference.empty:
+                    raise SystemExit(f"{args.reference_run} has no method {args.reference_method}")
                 record["inputs"]["reference_run"] = {"path": str(args.reference_run),
                                                      "complete_json_sha256": sha256_file(args.reference_run /
                                                                                          "complete.json")}
             if not reference.empty:
-                outputs["paired"] = ge.paired(per_frame, reference, draws=args.draws)
+                fits = [n for n, m in methods.items() if m.source == "keypoints"]
+                outputs["paired"] = ge.paired(per_frame[per_frame.method.isin(fits)], reference, draws=args.draws)
             line_columns = [c for c in ge.CONVENTION_LINES if c in convention]
             record |= {
                 "methods": {name: m.settings() for name, m in methods.items()},
@@ -244,7 +271,12 @@ def main() -> None:
                 "truth": "GSR bbox_pitch bottom-middle (centre origin -> corner origin) of every person but the ball "
                          "within 3 m of the pitch, against the projected bottom-middle of its bbox_image",
                 "denominators": {"availability, under_*m, lines_good, refined": "scored frames (>= 1 person on the "
-                                 "pitch with a pitch position; frames without GSR's camera have none)",
+                                 "pitch with a pitch position; frames without GSR's camera have none); for the label "
+                                 "oracle availability is the share with a kept label",
+                                 "px_*, under_*px": "seen label vertices predicted with confidence >= keypoint_conf; "
+                                 "px_all_*: every seen vertex of a frame with an instance",
+                                 "paired": "same scored frames, same clip draws; median_diff_m is 0 where both methods "
+                                 "give the same fit (e.g. refinement variants on frames neither refines)",
                                  "median_m, mean_m, p90_m": "scored frames with a homography; per-person errors "
                                  "capped at cap_m (also feet beyond the horizon)",
                                  "near_goal stratum": f"scored frames whose persons' median x is within "
@@ -256,9 +288,6 @@ def main() -> None:
                                "line_residual_median_m": {c: float(convention[c].median()) for c in line_columns}}}
             record["inputs"] |= {"configs": {"path": str(args.configs), "sha256": sha256_file(args.configs)},
                                  "gsr_labels": {f.name: sha256_file(f / "Labels-GameState.json") for f in folders}}
-            if detections is not None:
-                record["inputs"]["detector"] = json.loads((args.cache / args.split / "detector/complete.json")
-                                                          .read_text())["identity"]["detector"]
         outputs["keypoints_summary"] = ge.summarise_keypoints(outputs["keypoint_errors"], draws=args.draws)
 
         out.mkdir(parents=True, exist_ok=True)
@@ -276,7 +305,9 @@ def main() -> None:
                            "thresholds_px": list(ge.THRESHOLDS_PX), "keypoint_conf": ge.KEYPOINT_CONF,
                            "lines_good": ge.LINES_GOOD, "line_tol_px": lines.TOL, "draws": args.draws,
                            "seed": ge.BOOTSTRAP_SEED},
-            "caches": {p.parent.name: sha256_file(p) for p in sorted((args.cache / args.split).glob("*/complete.json"))},
+            "caches": {name: {"path": str(folder), "complete_json_sha256": sha256_file(folder / "complete.json"),
+                              "identity": json.loads((folder / "complete.json").read_text())["identity"]}
+                       for name, folder in caches.items()},
             "code": records.code_hashes(Path(__file__)) | {
                 "pitchkp": {str(p.relative_to(records.CHECKOUT)): sha256_file(p) for p in pitchkp}},
             "git": records.git_state(), "libraries": records.library_versions(),

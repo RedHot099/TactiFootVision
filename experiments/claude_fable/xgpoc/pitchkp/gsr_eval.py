@@ -28,8 +28,9 @@ each method from a reference method with the same clip draws for both.
 
 Keypoint error (`vertex_errors`, `keypoint_statistics`), against ticket 01's 32-vertex labels at 720p: for every vertex
 the label sees (in the frame, in front of the camera), the distance in pixels of the model's keypoint when its confidence
-is >= `KEYPOINT_CONF`; `recall` = share of seen vertices predicted that confidently, `px_*` over those, and `spurious` =
-share of confident predictions whose vertex the label does not see.
+is >= `KEYPOINT_CONF`; `recall` = share of seen vertices predicted that confidently, `px_*` over those, `px_all_*` over
+every seen vertex of a frame with an instance whatever its confidence (comparable across models whose confidences are
+calibrated differently), and `spurious` = share of confident predictions whose vertex the label does not see.
 """
 
 import json
@@ -289,6 +290,8 @@ def keypoint_statistics(rows: pd.DataFrame, min_confidence: float = KEYPOINT_CON
     `THRESHOLDS_PX` (of confidently predicted seen vertices) and spurious (share of confident predictions not seen)."""
     seen, confident = rows.seen.to_numpy(bool), rows.conf.to_numpy(float) >= min_confidence
     px = rows.px.to_numpy(float)[seen & confident]
+    every = rows.px.to_numpy(float)[seen]
+    every = every[np.isfinite(every)]
     stats = {"frames": float(rows[["group", "frame"]].drop_duplicates().shape[0]) if "group" in rows else np.nan,
              "seen": float(seen.sum()), "recall": float(confident[seen].mean()) if seen.any() else np.nan,
              "px_median": float(np.median(px)) if len(px) else np.nan,
@@ -296,6 +299,8 @@ def keypoint_statistics(rows: pd.DataFrame, min_confidence: float = KEYPOINT_CON
              "px_p90": float(np.quantile(px, 0.9)) if len(px) else np.nan}
     for t in THRESHOLDS_PX:
         stats[f"under_{t:g}px"] = float((px < t).mean()) if len(px) else np.nan
+    stats["px_all_median"] = float(np.median(every)) if len(every) else np.nan
+    stats["px_all_p90"] = float(np.quantile(every, 0.9)) if len(every) else np.nan
     stats["spurious"] = float((confident & ~seen).sum() / confident.sum()) if confident.any() else np.nan
     return stats
 
