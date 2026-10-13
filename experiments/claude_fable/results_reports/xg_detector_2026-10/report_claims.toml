@@ -1,0 +1,176 @@
+# Sources of every number in REPORT.md (xg-detector 07), the final report of the study.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# Folders with dev = true hold development results (out-of-fold on the 328 training matches, and the power computed
+# from them): their claims must stand under a heading with "wyniki rozwojowe". The folder with confirmatory = true holds
+# the single test: its claims must stand under a heading with "wynik testu" and under none with the development label.
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wynik testu"
+# Design constants, not results: the keypoint model's training input size, the study and fallback offsets, and the
+# frame resolution of the study and the name of the hash in the source table.
+untagged = ["640 × 640", "1280 na 720", "400 ms", "800 ms", "SHA-256"]
+
+[folders]
+pl = { path = "results/xgv_split_plan" }
+au = { path = "results/xgd_audit" }
+a2 = { path = "results/xgd_audit2" }
+dg = { path = "results/xgd_audit2_diag" }
+hd = { path = "results/xgd_homography_dev" }
+hl = { path = "results/xgd_homography_dev/labels" }
+rf = { path = "results/xgd_report_figures" }
+gt = { path = "results/xgd_gcombo_test" }
+ap = { path = "results/xgd_approach1", dev = true }
+en = { path = "results/xgd_a1_ensemble", dev = true }
+rp = { path = "results/xgd_a1", dev = true }
+pw = { path = "results/xgd_test_power", dev = true }
+ts = { path = "results/xgd_test", confirmatory = true }
+
+[claims]
+# --- protocol (split plan, frozen rule, gate) ---
+"pl.training" = { src = "pl:plan.json", keys = ["counts.matches.training"], fmt = "{:d}" }
+"pl.evaluation" = { src = "pl:plan.json", keys = ["counts.matches.evaluation"], fmt = "{:d}" }
+"pl.gate" = { src = "pl:plan.json", keys = ["counts.matches.gate"], fmt = "{:d}" }
+"pl.pool_shots" = { src = "pl:plan.json", keys = ["counts.shots.training"], fmt = "{:,d}" }
+"rule.matches" = { src = "research/xg_detector_test_rule.json", keys = ["population.matches"], fmt = "{:d}" }
+"rule.shots" = { src = "research/xg_detector_test_rule.json", keys = ["population.expected_shots"], fmt = "{:,d}" }
+"rule.eval_shots" = { src = "research/xg_detector_test_rule.json", keys = ["population.expected_shots_by_role.evaluation"], fmt = "{:,d}" }
+"rule.gate_shots" = { src = "research/xg_detector_test_rule.json", keys = ["population.expected_shots_by_role.gate"], fmt = "{:d}" }
+"rule.draws" = { src = "research/xg_detector_test_rule.json", keys = ["bootstrap.draws"], fmt = "{:,d}" }
+"rule.success_level" = { src = "research/xg_detector_test_rule.json", keys = ["success.interval"], scale = 100, fmt = "{:.0f}%" }
+"rule.eq_level" = { src = "research/xg_detector_test_rule.json", keys = ["equivalence.interval"], scale = 100, fmt = "{:.0f}%" }
+"rule.delta" = { src = "research/xg_detector_test_rule.json", keys = ["equivalence.margin"], fmt = "{:.3f}" }
+"rule.trigger" = { src = "research/xg_detector_test_rule.md", quote = "−0.002 (the A3 trigger)", values = [0.002], fmt = "{:.3f}" }
+"rule.delta_share" = { src = "research/xg_detector_test_rule.md", quote = "about 1.5% of G-combo's log-loss", values = [1.5], fmt = "{:.1f}%" }
+"au.cov_min" = { src = "au:complete.json", keys = ["parameters.coverage_min"], scale = 100, fmt = "{:.0f}%" }
+"au.med_max" = { src = "au:complete.json", keys = ["parameters.median_max_m"], fmt = "{:.0f} m" }
+"au.gk_min" = { src = "au:complete.json", keys = ["parameters.gk_coverage_min"], scale = 100, fmt = "{:.0f}%" }
+
+# --- audit 1 (ticket 02) ---
+"au.shots" = { src = "au:complete.json", keys = ["population.shots"], fmt = "{:,d}" }
+"au.matches" = { src = "au:complete.json", keys = ["population.matches"], fmt = "{:d}" }
+"au.gate" = { src = "au:choice.json", keys = ["gate.result"], fmt = "{}" }
+"au.chosen" = { src = "au:choice.json", keys = ["chosen"], fmt = "{}" }
+"au.c4.cov" = { src = "au:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"au.c4.median" = { src = "au:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"au.g.med" = { src = "au:choice.json", keys = ["gate.checks.shot_location_median_m.value"], fmt = "{:.1f} m" }
+"au.g.gk" = { src = "au:choice.json", keys = ["gate.checks.gk_information_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"au.c4.gk.med" = { src = "au:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+
+# --- homography diagnosis and fixes (ticket 08), training-match frames, no labels ---
+"hl.images" = { src = "hl:summary.json", keys = ["images"], fmt = "{:d}" }
+"hl.letterbox" = { src = "hl:summary.json", keys = ["keypoint_error_px_1280x720.letterbox.median_of_image_medians"], fmt = "{:.1f} px" }
+"hl.stretch" = { src = "hl:summary.json", keys = ["keypoint_error_px_1280x720.stretch.median_of_image_medians"], fmt = "{:.1f} px" }
+"hl.vertex" = { src = "hl:summary.json", keys = ["vertex_offset_m.package_median"], fmt = "{:.2f} m" }
+"rf.stretch.med" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.median_px"], fmt = "{:.0f} px" }
+"rf.stretch.frames" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.frames"], fmt = "{:d}" }
+"rf.stretch.lt10" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.share_lt10"], scale = 100, fmt = "{:.0f}%" }
+"rf.letterbox.med" = { src = "rf:figures.json", keys = ["keypoint_residuals.letterbox.median_px"], fmt = "{:.0f} px" }
+"hd.frames" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["frames"], fmt = "{:,d}" }
+"hd.c4.hom" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"hd.d1.hom" = { src = "hd:summary.csv", row = { variant = "stretch", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"hd.c4.good" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"hd.d1.good" = { src = "hd:summary.csv", row = { variant = "stretch", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"hd.d3.good" = { src = "hd:summary.csv", row = { variant = "stretch_refined", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"hd.c4.height" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["height_log_median"], fmt = "{:.2f}" }
+"hd.d3.height" = { src = "hd:summary.csv", row = { variant = "stretch_refined", subset = "all" }, cols = ["height_log_median"], fmt = "{:.2f}" }
+
+# --- audit 2 (ticket 09) ---
+"a2.gate" = { src = "a2:choice.json", keys = ["gate.result"], fmt = "{}" }
+"a2.chosen" = { src = "a2:choice.json", keys = ["chosen"], fmt = "{}" }
+"a2.d3.cov" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value", "lo", "hi"], fmt = "{:.1f}% [{:.1f}; {:.1f}]", scale = 100 }
+"a2.d3.median" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a2.g.med" = { src = "a2:choice.json", keys = ["gate.checks.shot_location_median_m.value"], fmt = "{:.1f} m" }
+"a2.g.gk" = { src = "a2:choice.json", keys = ["gate.checks.gk_information_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"a2.d3.const.med" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a2.d3.gk.med" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a2.d3.gkconst.med" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a2.d3.rank.x" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a2.d3.rank.y" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a2.d3.corr.x" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a2.d3.corr.y" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a2.d3.gk.rank.x" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "rank_corr_x" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"a2.d3.gk.rank.y" = { src = "a2:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "rank_corr_y" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"dg.ball_t0" = { src = "dg:diag.csv", row = { split = "source", group = "ball_t0", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg.ball_m400" = { src = "dg:diag.csv", row = { split = "source", group = "ball_m400", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"dg.refined.share" = { src = "dg:diag.csv", row = { split = "refinement_D3", group = "refined", config = "D3", quantity = "population", stat = "share" }, cols = ["value"], fmt = "{:.1f}%", scale = 100 }
+"dg.refined.d1" = { src = "dg:diag.csv", row = { split = "refinement_D3", group = "refined", config = "D1", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg.refined.d3" = { src = "dg:diag.csv", row = { split = "refinement_D3", group = "refined", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+
+# --- approach 1, development (ticket 03, ticket 06) ---
+"ap.shots" = { src = "ap:summary.json", keys = ["population.shots"], fmt = "{:,d}" }
+"ap.matches" = { src = "ap:summary.json", keys = ["population.matches"], fmt = "{:d}" }
+"ap.goals" = { src = "ap:summary.json", keys = ["population.goals"], fmt = "{:d}" }
+"ap.level" = { src = "ap:summary.json", quote = "95% percentile", values = [95], fmt = "{:d}%" }
+"ap.g0.ll" = { src = "ap:comparison.csv", row = { model = "G-combo seed 0" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"ap.g0.auc" = { src = "ap:comparison.csv", row = { model = "G-combo seed 0" }, cols = ["auc"], fmt = "{:.3f}" }
+"ap.g0.ece" = { src = "ap:comparison.csv", row = { model = "G-combo seed 0" }, cols = ["ece"], fmt = "{:.3f}" }
+"ap.g0.slope" = { src = "ap:comparison.csv", row = { model = "G-combo seed 0" }, cols = ["cal_slope"], fmt = "{:.2f}" }
+"ap.g1.ll" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"ap.g1.d" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["delta_ll", "lo", "hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ap.g1.auc" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["auc"], fmt = "{:.3f}" }
+"ap.g1.ece" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["ece"], fmt = "{:.3f}" }
+"ap.g1.slope" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["cal_slope"], fmt = "{:.2f}" }
+"ap.a1.ll" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"ap.a1.d" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["delta_ll", "lo", "hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ap.a1.auc" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["auc"], fmt = "{:.3f}" }
+"ap.a1.ece" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["ece"], fmt = "{:.3f}" }
+"ap.a1.slope" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["cal_slope"], fmt = "{:.2f}" }
+"ap.a2.ll" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["log_loss"], fmt = "{:.4f}" }
+"ap.a2.d" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["delta_ll", "lo", "hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ap.a2.auc" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["auc"], fmt = "{:.3f}" }
+"ap.a2.ece" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["ece"], fmt = "{:.3f}" }
+"ap.a2.slope" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["cal_slope"], fmt = "{:.2f}" }
+"ap.a1.d_point" = { src = "ap:comparison.csv", row = { model = "A1" }, cols = ["delta_ll"], fmt = "{:+.4f}" }
+"ap.a2.d_point" = { src = "ap:comparison.csv", row = { model = "A2" }, cols = ["delta_ll"], fmt = "{:+.4f}" }
+"ap.g1.d_point" = { src = "ap:comparison.csv", row = { model = "noise floor: G-combo seed 1" }, cols = ["delta_ll"], fmt = "{:+.4f}" }
+"ap.council" = { src = "ap:summary.json", keys = ["council_noise_figure.delta_ll", "council_noise_figure.lo", "council_noise_figure.hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ap.trigger" = { src = "ap:summary.json", keys = ["a3_trigger.threshold"], abs = true, fmt = "{:.3f}" }
+"ap.runs04" = { src = "ap:summary.json", keys = ["a3_trigger.runs_ticket_04"], labels = { "false" = "nie", "true" = "tak" }, fmt = "{}" }
+"ap.selected" = { src = "ap:summary.json", keys = ["development_selected.variant"], fmt = "{}" }
+"en.a1.ll" = { src = "en:comparison.json", keys = ["a1_10.log_loss"], fmt = "{:.4f}" }
+"en.g.ll" = { src = "en:comparison.json", keys = ["g_combo_10.log_loss"], fmt = "{:.4f}" }
+"en.a1.auc" = { src = "en:comparison.json", keys = ["a1_10.auc"], fmt = "{:.3f}" }
+"en.g.auc" = { src = "en:comparison.json", keys = ["g_combo_10.auc"], fmt = "{:.3f}" }
+"en.d" = { src = "en:comparison.json", keys = ["delta.delta_ll", "delta.lo95", "delta.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"rp.replay" = { src = "rp:replay_ensemble.json", keys = ["max_abs_logit"], scale = 1e7, fmt = "{:.1f} × 10⁻⁷" }
+
+# --- the test's population sources (ticket 06), not a result ---
+"gt.paired" = { src = "gt:checks.json", keys = ["population.by_source.paired"], fmt = "{:,d}" }
+"gt.gate" = { src = "gt:checks.json", keys = ["population.by_source.gate"], fmt = "{:d}" }
+"gt.unpaired" = { src = "gt:checks.json", keys = ["population.by_source.unpaired"], fmt = "{:d}" }
+
+# --- expected power, computed before the test from development data (ticket 06) ---
+"pw.se_dev" = { src = "pw:power.json", keys = ["development.se_bootstrap"], fmt = "{:.5f}" }
+"pw.se" = { src = "pw:power.json", keys = ["se_test"], fmt = "{:.5f}" }
+"pw.d0" = { src = "pw:power.json", keys = ["at.0.delta"], fmt = "{:+.4f}" }
+"pw.d1" = { src = "pw:power.json", keys = ["at.1.delta"], fmt = "{:+.3f}" }
+"pw.p0" = { src = "pw:power.json", keys = ["at.0.p_success"], scale = 100, fmt = "{:.1f}%" }
+"pw.p1" = { src = "pw:power.json", keys = ["at.1.p_success"], scale = 100, fmt = "{:.1f}%" }
+"pw.e0" = { src = "pw:power.json", keys = ["at.0.p_equivalent"], scale = 100, fmt = "{:.0f}%" }
+"pw.e1" = { src = "pw:power.json", keys = ["at.1.p_equivalent"], scale = 100, fmt = "{:.0f}%" }
+"pw.w0" = { src = "pw:power.json", keys = ["at.0.p_worse"], scale = 100, fmt = "{:.1f}%" }
+"pw.w1" = { src = "pw:power.json", keys = ["at.1.p_worse"], scale = 100, fmt = "{:.1f}%" }
+
+# --- the single test (ticket 07) ---
+"ts.shots" = { src = "ts:result.json", keys = ["population.shots"], fmt = "{:,d}" }
+"ts.matches" = { src = "ts:result.json", keys = ["population.matches"], fmt = "{:d}" }
+"ts.goals" = { src = "ts:result.json", keys = ["population.goals"], fmt = "{:d}" }
+"ts.d" = { src = "ts:result.json", keys = ["delta.delta_ll"], fmt = "{:+.4f}" }
+"ts.ci95" = { src = "ts:result.json", keys = ["delta.lo95", "delta.hi95"], fmt = "[{:+.4f}; {:+.4f}]" }
+"ts.ci90" = { src = "ts:result.json", keys = ["delta.lo90", "delta.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"ts.d95" = { src = "ts:result.json", keys = ["delta.delta_ll", "delta.lo95", "delta.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ts.label" = { src = "ts:result.json", keys = ["reading.label"], fmt = "{}" }
+"ts.success" = { src = "ts:result.json", keys = ["reading.success"], labels = { "false" = "nie", "true" = "tak" }, fmt = "{}" }
+"ts.worse" = { src = "ts:result.json", keys = ["reading.worse"], labels = { "false" = "nie", "true" = "tak" }, fmt = "{}" }
+"ts.equivalent" = { src = "ts:result.json", keys = ["reading.equivalent"], labels = { "false" = "nie", "true" = "tak" }, fmt = "{}" }
+"ts.margin" = { src = "ts:result.json", keys = ["reading.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"ts.a1.ll" = { src = "ts:result.json", keys = ["descriptive.a1.log_loss"], fmt = "{:.4f}" }
+"ts.g.ll" = { src = "ts:result.json", keys = ["descriptive.g_combo.log_loss"], fmt = "{:.4f}" }
+"ts.a1.auc" = { src = "ts:result.json", keys = ["descriptive.a1.auc"], fmt = "{:.3f}" }
+"ts.g.auc" = { src = "ts:result.json", keys = ["descriptive.g_combo.auc"], fmt = "{:.3f}" }
+"ts.path" = { src = "ts:result.json", keys = ["path_check.max_abs_logit"], scale = 1e8, fmt = "{:.1f} × 10⁻⁸" }
+"ts.hashlist" = { src = "ts:complete.json", keys = ["hashlist_sha256"], fmt = "{}" }
+"ts.git" = { src = "ts:complete.json", keys = ["git.sha"], fmt = "{:.7}" }
+"ts.dirty" = { src = "ts:complete.json", keys = ["git.dirty"], labels = { "false" = "nie", "true" = "tak" }, fmt = "{}" }
