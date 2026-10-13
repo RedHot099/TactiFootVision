@@ -120,7 +120,40 @@
         "half_width_90": 0.0028404418751946815,
         "expected_smallest_margin": 0.0048404418751946815
       }
-    ]
+    ],
+    "sensitivity_10_model": {
+      "source": "results/xgd_a1_ensemble/comparison.json (orientation only; the stated power is 'at')",
+      "development_delta": {
+        "delta_ll": -0.000792134285680881,
+        "lo95": -0.002633669618682459,
+        "hi95": 0.0010629433714273852,
+        "boot_sd": 0.0009344276544199665
+      },
+      "rule": "this Δ's bootstrap SE scaled to the test population as the rule's power",
+      "se_test": 0.0012706756580288451,
+      "at": [
+        {
+          "delta": -0.0007,
+          "se": 0.0012706756580288451,
+          "p_success": 0.07940635387032025,
+          "p_worse": 0.006022008871747309,
+          "p_equivalent": 0.9567488369696854,
+          "half_width_95": 0.00249047852576827,
+          "half_width_90": 0.002090075464787694,
+          "expected_smallest_margin": 0.002790075464787694
+        },
+        {
+          "delta": -0.002,
+          "se": 0.0012706756580288451,
+          "p_success": 0.3497489983277692,
+          "p_worse": 0.00020471493319540457,
+          "p_equivalent": 0.7629779001122848,
+          "half_width_95": 0.00249047852576827,
+          "half_width_90": 0.002090075464787694,
+          "expected_smallest_margin": 0.004090075464787694
+        }
+      ]
+    }
   },
   "scope": "The result applies to the D3 detector and homography as audited in ticket 09, not to detector-derived structure in general.",
   "limitations": [
