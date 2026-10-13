@@ -138,23 +138,25 @@ def test_heatmap_model_runs_on_a_frame_and_returns_keypoints(tmp_path):
     assert "backend" not in ev.KeypointModel(tmp_path / "m.pt").settings()     # ticket 02's cache identities hold
 
 
-def test_central_boxes_replace_the_box_and_keep_the_keypoints():
-    import tactifoot_vision as tv
-    from tactifoot_vision.data.annotations import Annotations, Task
-    from tactifoot_vision.data.dataset import Sample
+def test_square_input_pads_the_frame_to_a_centred_square_and_maps_keypoints_back():
+    seen = {}
 
-    keypoints = np.zeros((1, 32, 3), np.float32)
-    keypoints[0, 4] = (100, 200, 2)
-    ann = Annotations(boxes=np.float32([[0, 100, 960, 540]]), class_ids=np.zeros(1, int), keypoints=keypoints,
-                      flip_idx=D.FLIP_IDX)
-    sample = Sample(Path("a.jpg"), 960, 540, ann)
-    dataset = tv.Dataset(task=Task.POSE, class_names=["pitch"], splits={"train": [sample], "valid": [sample]},
-                         num_keypoints=32, flip_idx=D.FLIP_IDX)
-    out = T.central_boxes(dataset, 0.6)
-    for split in ("train", "valid"):
-        got = out[split][0].annotations
-        np.testing.assert_allclose(got.boxes, [[192, 108, 768, 432]])
-        np.testing.assert_array_equal(got.keypoints, keypoints)
-    np.testing.assert_allclose(dataset["train"][0].annotations.boxes, [[0, 100, 960, 540]])    # input untouched
-    with pytest.raises(ValueError, match="fraction"):
-        T.central_boxes(dataset, 0)
+    def model(canvas):
+        seen["canvas"] = canvas
+        ys, xs = np.nonzero(canvas[:, :, 0] == 255)                # the frame's marked pixel, in canvas pixels
+        return sv_keypoints(np.float32([[[xs[0], ys[0]]] * 32]))
+
+    image = np.zeros((720, 1280, 3), np.uint8)
+    image[100, 200] = 255
+    found = ev.SquareInput(model)(image)
+    canvas = seen["canvas"]
+    assert canvas.shape == (1280, 1280, 3) and (canvas[:280] == ev.PAD_VALUE).all() and (canvas[1000:] == 114).all()
+    np.testing.assert_allclose(found.xy[0, 0], [200, 100])
+    np.testing.assert_allclose(found.data["xyxy"][0], [0, -280, 1280, 1000])
+
+
+def sv_keypoints(xy):
+    import supervision as sv
+
+    return sv.KeyPoints(xy=xy, confidence=np.ones(xy.shape[:2], np.float32), class_id=np.zeros(1, int),
+                        data={"xyxy": np.float32([[0, 0, 1280, 1280]]), "box_confidence": np.float32([0.9])})
