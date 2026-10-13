@@ -251,3 +251,51 @@ def test_every_read_of_the_approach_1_scripts_is_inside_the_guard(script, reader
     calls = [n for n in ast.walk(main) if isinstance(n, ast.Call) and ast.unparse(n.func).split(".")[-1] in readers]
     assert {ast.unparse(c.func).split(".")[-1] for c in calls} == readers
     assert all(id(c) in inside for c in calls), [ast.unparse(c) for c in calls if id(c) not in inside]
+
+
+# ------------------------------------------------------------------ the runner's and the sanitation script's refusals
+def test_frame_points_rebuilds_both_offsets_in_order():
+    rows = sanitised_rows(["a"])
+    rows.loc[rows.offset_ms == 0, ["aligned", "homography_ok"]] = [True, 1.0]
+    rows.at[int(np.flatnonzero(rows.offset_ms == 0)[0]), "pts_x"] = [94.0, 100.0]
+    rows.at[int(np.flatnonzero(rows.offset_ms == 0)[0]), "pts_y"] = [30.0, 34.0]
+    rows.at[int(np.flatnonzero(rows.offset_ms == 0)[0]), "pts_channel"] = [sn.ATTACKER, sn.BALL]
+    t0, before = a1.frame_points(rows)["a"]
+    assert t0.xy.tolist() == [[94.0, 30.0], [100.0, 34.0]] and t0.channel.tolist() == [sn.ATTACKER, sn.BALL]
+    assert (t0.aligned, t0.homography, before.aligned, before.homography, len(before.xy)) == (True, True, False, False, 0)
+
+
+def test_the_runner_refuses_a_sanitised_table_without_both_offsets_of_every_pool_shot():
+    import xgd_approach1 as runner
+
+    pool = pd.DataFrame({"shot_id": ["a", "b"]})
+    table, points = runner.variant_inputs(sanitised_rows(["a", "b", "z"]), pool, "A1")
+    assert table.index.tolist() == ["a", "b"] and points is None
+    assert set(runner.variant_inputs(sanitised_rows(["a", "b"]), pool, "A2")[1]) == {"a", "b"}
+    for broken in (sanitised_rows(["a"]), sanitised_rows(["a", "b"], offsets=(0,)), sanitised_rows(["a", "b"], offsets=(0, -800))):
+        with pytest.raises(ValueError, match="sanitised table"):
+            runner.variant_inputs(broken, pool, "A1")
+
+
+def test_the_runner_refuses_to_start_while_another_job_holds_the_gpu(monkeypatch):
+    import subprocess
+
+    import xgd_approach1 as runner
+
+    def smi(listing):
+        return lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=listing)
+    monkeypatch.setattr(subprocess, "run", smi("2891, 139\n3388, 159\n"))       # desktop and test contexts only
+    runner.check_gpu_free()
+    monkeypatch.setattr(subprocess, "run", smi("2891, 139\n4242, 14000\n"))
+    with pytest.raises(SystemExit, match="another job"):
+        runner.check_gpu_free()
+
+
+def test_the_sanitation_script_reports_label_free_coverage_per_offset():
+    import xgd_sanitise
+
+    rows = sanitised_rows(["a", "b"], shot_ok=[1.0, 0.0], ff_def_cone=[0.0, np.nan], n_valid=[10.0, 0.0])
+    rows["aligned"] = rows.shot_ok.astype(bool)
+    out = xgd_sanitise.coverage(rows)
+    assert set(out) == {"0", "-400"}
+    assert (out["0"]["shot_ok"], out["0"]["def_cone"], out["0"]["n_valid"], out["0"]["aligned"]) == (0.5, 0.5, 5.0, 0.5)

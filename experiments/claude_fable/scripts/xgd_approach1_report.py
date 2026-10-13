@@ -103,13 +103,19 @@ def trigger(delta: float) -> dict:
     return {"crosses": crosses, "noise_compatible": bool(crosses and COUNCIL_BAND[0] <= delta <= COUNCIL_BAND[1])}
 
 
-def variant_predictions(variant: str) -> pd.DataFrame:
-    """A finished variant's out-of-fold predictions; refused unless every fold has its record and the replay passed."""
+def variant_predictions(variant: str) -> tuple[pd.DataFrame, dict[int, float]]:
+    """A finished variant's out-of-fold predictions and each fold model's temperature (its training.json); refused
+    unless every fold has its record and the replay passed."""
     root = ROOT / f"results/xgd_{variant.lower()}"
     replay = json.loads((root / "replay.json").read_text())
     if not replay["passed"] or sorted((r["fold"], r["seed"]) for r in replay["runs"]) != [(k, 0) for k in FOLDS]:
         raise ValueError(f"{root}: the replay did not pass on all five seed-0 folds")
-    return out_of_fold(root, f"g_combo_{variant.lower()}", 0)
+    temperatures = {}
+    for k in FOLDS:
+        training = root / f"fold{k}" / "seed0" / "training.json"
+        records.verified_file(training)
+        temperatures[k] = json.loads(training.read_text())["temperature"]
+    return out_of_fold(root, f"g_combo_{variant.lower()}", 0), temperatures
 
 
 def main() -> None:
@@ -140,8 +146,8 @@ def main() -> None:
         rows.append({"model": "noise floor: G-combo seed 1", **scores(y, aligned(g[1])),
                      **paired_delta(y, aligned(g[1]), base, weights)})
         for variant in args.variants:
-            oof = variant_predictions(variant)
-            check_out_of_fold(oof, pool)
+            oof, temperatures = variant_predictions(variant)
+            check_out_of_fold(oof, pool, temperatures)
             rows.append({"model": variant, **scores(y, aligned(oof)), **paired_delta(y, aligned(oof), base, weights)})
         comparison = pd.DataFrame(rows)
 
@@ -165,14 +171,17 @@ def main() -> None:
             "population": {"shots": len(population), "matches": int(population.game.nunique()), "goals": int(y.sum()),
                            "rule": "training-pool shots (plan role training) without penalties"},
             "bootstrap": {"draws": N_BOOT, "seed": SEED, "unit": "match", "interval": "95% percentile"},
-            "noise_floor": comparison.iloc[1][["delta_ll", "lo", "hi"]].to_dict(),
-            "council_noise_figure": {"rule": "G-combo seed 0 - seed 1, all pool shots incl. penalties",
+            "noise_floor": {"rule": "G-combo seed 1 - seed 0 on the population (the variant - baseline convention)",
+                            **comparison.iloc[1][["delta_ll", "lo", "hi"]].to_dict()},
+            "council_noise_figure": {"rule": "G-combo seed 0 - seed 1, all pool shots incl. penalties (the council's sign; "
+                                             "its band is applied to variant - seed 0 as the council wrote it)",
                                      "shots": len(everything), **council, "council_band": list(COUNCIL_BAND)},
             "a3_trigger": {"threshold": TRIGGER, "variants": triggers,
                            "runs_ticket_04": bool(any(t["crosses"] for t in triggers.values())) if triggers else None},
             "development_selected": None if selected is None else {
                 "variant": selected.model, "log_loss": float(selected.log_loss), "delta_ll": float(selected.delta_ll),
-                "beats_g_combo_seed0_point": bool(selected.delta_ll < 0)},
+                "beats_g_combo_seed0_point": bool(selected.delta_ll < 0),
+                "neither_beats_g_combo_seed0_point": bool((variants.delta_ll >= 0).all())},
         }
         args.out.mkdir(parents=True, exist_ok=True)
         comparison.to_csv(args.out / "comparison.csv", index=False, float_format="%.6f")
