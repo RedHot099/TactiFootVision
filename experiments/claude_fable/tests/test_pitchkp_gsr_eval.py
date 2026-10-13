@@ -372,3 +372,13 @@ def test_gsr_test_needs_an_explicit_reason(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["pitchkp_gsr_eval.py", "--split", "test", "--out", str(tmp_path / "out")])
     with pytest.raises(SystemExit, match="held out"):
         run.main()
+
+
+def test_calibration_labels_leave_out_the_images_ticket_01_excluded(tmp_path):
+    import pitchkp_gsr_eval as run
+
+    labels = pd.DataFrame({"key": ["calib/valid/00000", "calib/valid/00001", "calib/valid/00002"], "frame": [0, 1, 2]})
+    pd.DataFrame({"key": ["calib/valid/00000", "calib/valid/00001"],
+                  "exclusion": [None, "xg held-out game"]}).to_csv(tmp_path / "labelled.csv", index=False)
+    assert run.exported(labels, tmp_path / "labelled.csv").key.tolist() == ["calib/valid/00000", "calib/valid/00002"]
+    assert set(run.CALIB_SPLITS) <= set(run.SPLITS)

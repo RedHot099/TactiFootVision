@@ -1,8 +1,9 @@
 """Homography evaluation in metres on SoccerNet GSR, and keypoint error in pixels, for a pitch keypoint model
 (pitch-keypoints 02; ticket 03 runs its candidates through it).
 
-    ./run.sh python scripts/pitchkp_gsr_eval.py --split valid|test|calib_test [--device cuda] [--workers 14]
+    ./run.sh python scripts/pitchkp_gsr_eval.py --split valid|test|calib_valid|calib_test [--device cuda] [--workers 14]
         [--weights W --input stretch|letterbox --imgsz N]        the keypoint model (default: the current model)
+        [--backend yolo_pose|heatmap]                            heatmap: ticket 03's research model (--input letterbox)
         [--methods-file M.json]                                  methods (default: the baseline, `baseline_methods`)
         [--reference-method D3 [--reference-run DIR]]            paired differences against this method
         [--allow-test "REASON"]                                  required for --split test (held-out: one look per
@@ -24,8 +25,9 @@ GSR splits (`valid`, `test`): every 5th frame of each clip (1, 6, 11, ...), resi
 Ticket 03 scores a candidate on valid with `--weights`, `--input`, `--imgsz` and `--methods-file`, and pairs it with
 the baseline through `--reference-run results/pitchkp_gsr_eval/valid`.
 
-`calib_test`: Camera Calibration 2023 test images with a kept label (no pitch positions): the keypoint error only,
-bootstrap over games.
+`calib_valid`, `calib_test`: Camera Calibration 2023 valid / test images with a kept label (no pitch positions): the
+keypoint error only, bootstrap over games. Images ticket 01 excluded from its export (`labelled.csv`'s `exclusion`:
+games of the xG held-out matches, council C3 Q2) are left out; ticket 03 chooses on `calib_valid`.
 
 Reads no StatsBomb data (`no_statsbomb_reads()`).
 """
@@ -58,7 +60,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ROOT / "research/xg_detector_audit2_configs.json"
 DATA = records.CHECKOUT / "data/SoccerNetGS"
 LABELS = ROOT / "results/pk_dataset/fits.parquet"
-SPLITS = ("valid", "test", "calib_test")
+LABELLED = ROOT / "results/pk_dataset/labelled.csv"
+CALIB_SPLITS = {"calib_valid": "valid", "calib_test": "test"}
+SPLITS = ("valid", "test", *CALIB_SPLITS)
 
 
 def cached_table(folder: Path, identity: dict, compute: Callable[[], pd.DataFrame], purpose: str) -> pd.DataFrame:
@@ -137,6 +141,13 @@ def label_table(path: Path, source: str, split: str) -> pd.DataFrame:
     return kept
 
 
+def exported(labels: pd.DataFrame, labelled: Path) -> pd.DataFrame:
+    """The labels whose images ticket 01 exported: without an `exclusion` in its `labelled.csv` (council C3 Q2)."""
+    listed = pd.read_csv(labelled, usecols=["key", "exclusion"])
+    excluded = set(listed.key[listed.exclusion.notna()])
+    return labels[~labels.key.isin(excluded)].reset_index(drop=True)
+
+
 def vertex_rows(split: str, keypoints: pd.DataFrame, labels: pd.DataFrame, instance_conf: float) -> pd.DataFrame:
     """`gsr_eval.vertex_errors` of every labelled frame that has keypoints, with split, group and frame."""
     index = keypoints.set_index(["group", "frame"])
@@ -165,6 +176,7 @@ def main() -> None:
     parser.add_argument("--input", default="stretch", choices=ev.INPUTS)
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--instance-conf", type=float, default=dev.INSTANCE_CONF)
+    parser.add_argument("--backend", default="yolo_pose", choices=ev.BACKENDS)
     parser.add_argument("--methods-file", type=Path, default=None, help="default: baseline_methods(configs)")
     parser.add_argument("--reference-method", default="D3")
     parser.add_argument("--reference-run", type=Path, default=None, help="a complete run of the same split")
@@ -172,6 +184,7 @@ def main() -> None:
                         help="required for --split test; recorded (e.g. the council decision naming the candidate)")
     parser.add_argument("--configs", type=Path, default=CONFIGS)
     parser.add_argument("--labels", type=Path, default=LABELS)
+    parser.add_argument("--labelled", type=Path, default=LABELLED, help="ticket 01's export list (exclusions)")
     parser.add_argument("--data", type=Path, default=DATA)
     parser.add_argument("--calib-data", type=Path, default=records.CHECKOUT / "data/SoccerNetCalibration")
     parser.add_argument("--cache", type=Path, default=ROOT / "cache/pitchkp_gsr_eval")
@@ -191,7 +204,8 @@ def main() -> None:
     configs = json.loads(args.configs.read_text())
     if args.weights is None and sha256_file(ex.KEYPOINT_WEIGHTS) != configs["common"]["keypoints"]["weights_sha256"]:
         raise SystemExit(f"{ex.KEYPOINT_WEIGHTS} is not the pitch model of {args.configs}")
-    model = ev.KeypointModel(args.weights or ex.KEYPOINT_WEIGHTS, args.input, args.imgsz, args.instance_conf)
+    model = ev.KeypointModel(args.weights or ex.KEYPOINT_WEIGHTS, args.input, args.imgsz, args.instance_conf,
+                              args.backend)
     methods = ev.load_methods(args.methods_file) if args.methods_file else ev.baseline_methods(args.configs)
     model_key = (f"keypoints_{sha256_file(model.weights)[:12]}_{model.input}_{model.imgsz or 'train'}"
                  f"_i{model.instance_conf:g}")
@@ -203,8 +217,9 @@ def main() -> None:
         record: dict = {"split": args.split, "allow_test": args.allow_test,
                         "model": model.settings() | {"sha256": sha256_file(model.weights)},
                         "inputs": {"labels": {"path": str(args.labels), "sha256": sha256_file(args.labels)}}}
-        if args.split == "calib_test":
-            labels = label_table(args.labels, "calib", "test")
+        if args.split in CALIB_SPLITS:
+            labels = exported(label_table(args.labels, "calib", CALIB_SPLITS[args.split]), args.labelled)
+            record["inputs"]["labelled"] = {"path": str(args.labelled), "sha256": sha256_file(args.labelled)}
             frames = labels.rename(columns={"image": "path"})[["group", "frame", "path"]].assign(frame=labels.key)
             keypoints = keypoint_table(frames, model, caches["keypoints"], args.device)
             gpu_done = datetime.now(UTC)
