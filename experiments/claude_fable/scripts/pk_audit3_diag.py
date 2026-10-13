@@ -15,10 +15,12 @@ computed (`--audit`/per_shot.parquet, checked against its completion record), wi
                  `exclusions.game_key`). Groups: `calib_train` (the model trained on frames of the match), `calib_val`
                  (frames only in its validation export), `other` (the match name parses, no Calibration frame).
                  GSR games carry no names, so a match whose GSR frames were in training cannot be resolved and counts
-                 as `other`.
+                 as `other`. The same grouping of every split-plan match by its role (`calibration_plan.csv`) shows
+                 that the matcher finds the training matches' Calibration frames.
 
 Writes diag.csv (split, group, config, quantity, stat, value, lo, hi; quantity `population`, stat `share`: the group's
-share of the population), calibration_games.csv (each population match and its group) and complete.json, last. Like
+share of the population), calibration_games.csv (each population match and its group), calibration_plan.csv
+(split-plan matches per role and group) and complete.json, last. Like
 the audit it reads StatsBomb-derived data and is on no model or feature path.
 """
 
@@ -36,6 +38,7 @@ from xgpoc.pitchkp import exclusions as X
 
 ROOT = Path(__file__).resolve().parents[1]
 LABELLED = ROOT / "results/pk_dataset/labelled.csv"
+PLAN = ROOT / "results/xgv_split_plan/plan.csv"
 GROUPS = ("calib_train", "calib_val", "other")
 
 
@@ -81,6 +84,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--audit", type=Path, default=ROOT / "results/xgd_audit3")
     parser.add_argument("--labelled", type=Path, default=LABELLED)
+    parser.add_argument("--plan", type=Path, default=PLAN)
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_audit3_diag")
     args = parser.parse_args()
     if (args.out / "complete.json").exists():
@@ -89,7 +93,8 @@ def main() -> None:
 
     inputs = {"per_shot": {"path": str(args.audit / "per_shot.parquet"), "sha256": verified(args.audit / "per_shot.parquet")},
               "labelled": {"path": str(args.labelled), "sha256": sha256_file(args.labelled),
-                           "columns": ["source", "export_split", "game", "exclusion"]}}
+                           "columns": ["source", "export_split", "game", "exclusion"]},
+              "plan": {"path": str(args.plan), "sha256": sha256_file(args.plan), "columns": ["game", "role"]}}
     per_shot = pd.read_parquet(args.audit / "per_shot.parquet")
     params = json.loads((args.audit / "complete.json").read_text())["parameters"]
     population = per_shot[per_shot.config == per_shot.config.iloc[0]].reset_index(drop=True)
@@ -108,12 +113,18 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(args.out / "diag.csv", index=False, float_format="%.6g")
     by_game.reset_index().to_csv(args.out / "calibration_games.csv", index=False)
+    plan = pd.read_csv(args.plan, usecols=["game", "role"])
+    plan_groups = calibration_groups(plan.game, labelled)
+    roles = pd.crosstab(plan.set_index("game").role, plan_groups).reindex(columns=list(GROUPS), fill_value=0)
+    roles.reset_index().to_csv(args.out / "calibration_plan.csv", index=False)
+    population_roles = plan[plan.game.isin(set(population.game))].role.value_counts().to_dict()
     complete = {"inputs": inputs, "audit_complete_json_sha256": sha256_file(args.audit / "complete.json"),
                 "parameters": {"n_boot": params["n_boot"], "seed": params["seed"], "sources": audit.SOURCE_GROUPS,
                                "groups": list(GROUPS)},
                 "population_shots": len(population),
                 "calibration_matches": {g: int((by_game == g).sum()) for g in GROUPS},
                 "calibration_shots": {g: int(m.sum()) for g, m in masks.items()},
+                "population_roles": {str(k): int(v) for k, v in population_roles.items()},
                 "configs": configs, "declaration_sha256": e3.AUDIT_3_DECLARATION_SHA256,
                 "code": records.code_hashes(Path(__file__)), "git": records.git_state(),
                 "run": {"started": started.isoformat(timespec="seconds"), "finished": datetime.now(UTC).isoformat(timespec="seconds")},

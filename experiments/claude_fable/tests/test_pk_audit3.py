@@ -236,3 +236,38 @@ def test_real_analysers_load_the_declared_models(monkeypatch):
     h = analyser.homography
     assert (h.min_confidence, h.ransac_threshold, h.refine_with_lines) == (0.3, 2.0, True)
     assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.imgsz == 1920
+
+
+# ------------------------------------------------------------------ diagnostics after the choice
+def test_calibration_groups_match_plan_games_to_calibration_games_by_league_season_date_and_teams():
+    import sys
+    sys.path.insert(0, str(e3.AUDIT_3_DECLARATION.parents[1] / "scripts"))
+    import pk_audit3_diag as diag
+
+    labelled = pd.DataFrame({"source": ["calib", "calib", "calib", "gsr"], "export_split": ["train", "val", "train", "train"],
+                             "game": ["england_epl/2014-2015/2015-02-21 Chelsea - Burnley",
+                                      "spain_laliga/2016-2017/2016-09-10 Leganes - Barcelona",
+                                      "italy_serie-a/2016-2017/2016-08-20 Juventus - Fiorentina", "4"],
+                             "exclusion": [np.nan, np.nan, "xg held-out game", np.nan]})
+    games = pd.Series(["england_epl/2014-2015/2015-02-21 - 18-00 Chelsea 1 - 1 Burnley",
+                       "spain_laliga/2016-2017/2016-09-10 - 17-15 Leganes 1 - 5 Barcelona",
+                       "italy_serie-a/2016-2017/2016-08-20 - 21-45 Juventus 2 - 1 Fiorentina", "not a game name"])
+    groups = diag.calibration_groups(games, labelled)
+    assert groups.reindex(games).tolist() == ["calib_train", "calib_val", "other", "other"]   # an excluded frame never trained
+
+
+def test_the_gate_split_measures_coverage_and_median_inside_each_group():
+    import sys
+    sys.path.insert(0, str(e3.AUDIT_3_DECLARATION.parents[1] / "scripts"))
+    import pk_audit3_diag as diag
+    from xgpoc.detector import audit
+
+    per_shot = pd.DataFrame({"config": "E3", "game": ["g1", "g1", "g2", "g2"], "shot_ok": [1.0, 0.0, 1.0, 1.0],
+                             "gk_ok": [1.0, 1.0, 0.0, 1.0], "shot_err": [2.0, np.nan, 4.0, 8.0]})
+    d = audit.draws(per_shot.game.to_numpy(), 20, 0)
+    rows = pd.DataFrame(diag.gate_split(per_shot, {"a": np.array([True, True, False, False]),
+                                                    "b": np.array([False, False, True, True])}, "E3", d))
+    value = rows.set_index(["group", "quantity", "stat"]).value
+    assert value["a", "shot_location", "coverage"] == 0.5 and value["a", "shot_location", "median"] == 2.0
+    assert value["b", "gk_any", "coverage"] == 0.5 and value["b", "shot_location", "median"] == 4.0
+    assert value["a", "population", "share"] == 0.5 and value["b", "population", "matches"] == 1
