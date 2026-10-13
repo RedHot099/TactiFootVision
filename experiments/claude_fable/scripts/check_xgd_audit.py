@@ -23,9 +23,9 @@ from pathlib import Path
 import check_vendor_report as cvr
 
 FOLDER = cvr.EXP / "results_reports" / "xg_detector_2026-10"
-REPORT = FOLDER / "AUDIT.md"
-FINAL = FOLDER / "REPORT.md"
-DOCUMENTS = ((REPORT, FOLDER / "claims.toml"), (FINAL, FOLDER / "report_claims.toml"))
+AUDIT = FOLDER / "AUDIT.md"
+REPORT = FOLDER / "REPORT.md"
+DOCUMENTS = {AUDIT: FOLDER / "claims.toml", REPORT: FOLDER / "report_claims.toml"}     # document: its claims file
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.report is None:
         if args.claims:
             ap.error("--claims needs a report")
-        return max(cvr.main([str(report), "--claims", str(claims), "--root", str(args.root)]) for report, claims in DOCUMENTS)
+        return max(cvr.main([str(report), "--claims", str(claims), "--root", str(args.root)]) for report, claims in DOCUMENTS.items())
     claims = ["--claims", str(args.claims)] if args.claims else []
     return cvr.main([str(args.report), *claims, "--root", str(args.root)])
 

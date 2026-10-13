@@ -6,8 +6,9 @@ Only one figure is needed: how far the pitch keypoint model's keypoints lie from
 Ticket 08 wrote every residual to `results/xgd_homography_dev/keypoint_residuals.csv` (training-match t0 frames whose
 refined homography the painted lines confirm, agreement >= 0.9; one row per frame, input and detected landmark) and
 quoted the median in its Comments. The report's number check reads medians from a file, so this script states them:
-per keypoint input, the median residual in pixels at 1280x720, the share within 10 and 20 px, and the counts. The
-residual file is checked against its completion record first. Nothing else is read: no label, no StatsBomb data.
+the frames of the file, and per keypoint input the median residual in pixels at 1280x720, the share within 10 px and
+the counts (an input can miss a frame where it gave no comparable keypoint). The residual file is checked against its
+completion record first. Nothing else is read: no label, no StatsBomb data.
 """
 
 import argparse
@@ -24,25 +25,26 @@ OUT = ROOT / "results/xgd_report_figures"
 
 
 def keypoint_figures(residuals: pd.DataFrame) -> dict:
-    """Per keypoint input: residual count, frames, median px, share within 10 and 20 px."""
-    out = {}
+    """The frames with any residual, and per keypoint input: residual count, frames, median px, share within 10 px."""
+    out = {"frames_total": int(residuals["shot_id"].nunique())}
     for name, rows in residuals.groupby("input", sort=True):
-        out[str(name)] = {"residuals": int(len(rows)), "frames": int(rows.shot_id.nunique()),
-                          "median_px": float(rows.px.median()), "share_lt10": float((rows.px < 10).mean()),
-                          "share_lt20": float((rows.px < 20).mean())}
+        out[str(name)] = {"residuals": int(len(rows)), "frames": int(rows["shot_id"].nunique()),
+                          "median_px": float(rows["px"].median()), "share_lt10": float((rows["px"] < 10).mean())}
     return out
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--residuals", type=Path, default=RESIDUALS, help="ticket 08's keypoint_residuals.csv")
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args(argv)
     try:
-        digest = records.verified_file(RESIDUALS)
+        digest = records.verified_file(args.residuals)
     except ValueError as e:
         raise SystemExit(str(e)) from e
-    figures = {"keypoint_residuals": keypoint_figures(pd.read_csv(RESIDUALS, usecols=["shot_id", "input", "px"])),
-               "source": {"path": str(RESIDUALS.relative_to(ROOT)), "sha256": digest}}
+    name = str(args.residuals.relative_to(ROOT)) if args.residuals.is_relative_to(ROOT) else str(args.residuals)
+    figures = {"keypoint_residuals": keypoint_figures(pd.read_csv(args.residuals, usecols=["shot_id", "input", "px"])),
+               "source": {"path": name, "sha256": digest}}
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "figures.json").write_text(json.dumps(figures, indent=2) + "\n")
     record = {"purpose": "xg-detector 07: report figures not stated directly by a result file",
