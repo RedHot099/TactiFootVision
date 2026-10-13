@@ -3,6 +3,8 @@
     ./run.sh python scripts/xgd_approach1.py --variant A1             # -> results/xgd_a1/fold<k>/seed0/
     ./run.sh python scripts/xgd_approach1.py --variant A2             # -> results/xgd_a2/fold<k>/seed0/
     ./run.sh python scripts/xgd_approach1.py --variant A1 --replay    # afterwards: each bundle reloaded, held-out fold rescored
+    ./run.sh python scripts/xgd_approach1.py --variant A1 --seeds 1   # ticket 06: seed 1 of the 10-model A1 ensemble
+    ./run.sh python scripts/xgd_approach1.py --variant A1 --seeds 0 1 --replay --replay-file replay_ensemble.json
     ./run.sh python scripts/xgd_approach1.py --variant A2 --smoke --out /tmp/xgd_smoke --folds 0   # pipeline check
 
 The model, its inputs and the frozen hyperparameters are `xgpoc.detector.approach1` and ticket 03; the recipe is
@@ -11,14 +13,15 @@ flip, photometric jitter, EMA 0.998, 5 epochs, batch 8, epoch and temperature on
 xg-vendor plan (`approach1.verify_plan` refuses any other) with its home-team folds; only the training matches are
 read, and only their held-out folds are scored: the gate and evaluation matches belong to the single test (ticket 06).
 The inputs are the sanitised D3 table (`scripts/xgd_sanitise.py`), checked against its completion record. Everything
-after the GPU check runs inside `no_statsbomb_reads()`.
+after the GPU check runs inside `no_statsbomb_reads()` and the held-out label seal (`seal.development_labels_only`: no label
+of a gate or evaluation shot reaches this process).
 
 Each (fold, seed) writes <out>/fold<k>/seed<s>/: bundle.pt (trained tensors, EMA weights of the selected epoch; spec with
 the A1 standardiser), <name>_valid_predictions.csv (shot_id, goal, logit, p = temperature-scaled; the held-out fold),
 <name>_metrics.json (held-out-fold metrics), training.json and complete.json (identity, code, file hashes; written last).
 A finished run with the same identity is skipped; a different identity is an error. `--replay` writes <out>/replay.json:
 every bundle rebuilt from disk scores its held-out fold in the stored row order and batch size, and the logits must
-agree within `REPLAY_TOLERANCE`.
+agree within `REPLAY_TOLERANCE` (`--replay-file` names another record, e.g. ticket 06's replay of all ten A1 runs).
 """
 
 import argparse
@@ -46,7 +49,7 @@ from run_xgc_g import (
 from xgpoc.bundle import code_version, make_provenance, save_bundle, sha256_file
 from xgpoc.data.index import load_index
 from xgpoc.detector import approach1 as a1
-from xgpoc.detector import records
+from xgpoc.detector import records, seal
 from xgpoc.detector.guard import no_statsbomb_reads
 from xgpoc.eval.calibration import penalty_rate
 from xgpoc.eval.metrics import evaluate
@@ -195,11 +198,12 @@ def main() -> None:
     ap.add_argument("--seeds", nargs="*", type=int, default=[0])
     ap.add_argument("--smoke", action="store_true", help="2 epochs on 64 shots per role (pipeline check only)")
     ap.add_argument("--replay", action="store_true", help="rescore the finished runs from their bundles")
+    ap.add_argument("--replay-file", default="replay.json", help="file name of the replay record under --out")
     a = ap.parse_args()
     out = a.out or a1.results_dir(a.variant)
     check_gpu_free()
 
-    with no_statsbomb_reads():
+    with no_statsbomb_reads(), seal.development_labels_only(a1.PLAN_DIR / "plan.csv", a.index):
         pool = development_pool(a.index)
         try:
             sanitised_sha256 = records.verified_file(a.sanitised)
@@ -209,7 +213,7 @@ def main() -> None:
         print(f"pool {len(pool)} shots / {pool.game.nunique()} matches, variant {a.variant}", flush=True)
         if a.replay:
             result = replay(out, a.variant, pool, table, points, a.folds, a.seeds)
-            (out / "replay.json").write_text(json.dumps(result, indent=2) + "\n")
+            (out / a.replay_file).write_text(json.dumps(result, indent=2) + "\n")
             print(f"replay {'PASSED' if result['passed'] else 'FAILED'}: max |logit difference| {result['max_abs_logit']:.2e}")
             return
         sources = own_sources()
