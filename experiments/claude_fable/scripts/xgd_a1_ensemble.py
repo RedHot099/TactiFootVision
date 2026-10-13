@@ -31,13 +31,14 @@ from xgpoc.bundle import sha256_file
 from xgpoc.detector import approach1 as a1
 from xgpoc.detector import records, seal, testrule
 from xgpoc.detector.guard import no_statsbomb_reads
-from xgpoc.eval.calibration import PlattScaler, logit, penalty_rate, prior_shift
+from xgpoc.eval.calibration import logit, penalty_rate, sigmoid
 from xgpoc.models.g_bundle import ensemble_probability, fit_ensemble_calibration
 from xgpoc.paths import INDEX
 
 ROOT = Path(__file__).resolve().parents[1]
 MEMBERS = [(k, s) for k in range(5) for s in (0, 1)]
 REPLAY = "replay_ensemble.json"
+POWER = ROOT / "results/xgd_test_power"
 SHARED_IDENTITY = ("index", "folds", "plan", "overlay_sha256", "frames", "sanitised", "variant", "name", "backbone", "cfg",
                    "rrc", "backbone_lr_mult", "constants", "smoke")
 PLATT_TOLERANCE = 1e-6
@@ -77,7 +78,7 @@ def stored_out_of_fold(root: Path, name: str, temperatures: dict[tuple[int, int]
         path = root / f"fold{k}" / f"seed{s}" / f"{name}_valid_predictions.csv"
         records.verified_file(path)
         frame = pd.read_csv(path)
-        if (gap := float(np.max(np.abs(1 / (1 + np.exp(-frame.logit / t)) - frame.p)))) > 1e-6:
+        if (gap := float(np.max(np.abs(sigmoid(frame.logit / t) - frame.p)))) > 1e-6:
             raise ValueError(f"{path}: p is not sigmoid(logit / T) (max gap {gap:.2e})")
         runs[k, s] = frame.assign(z=logit(frame.p.to_numpy()), fold=k)
     return runs
@@ -99,12 +100,11 @@ def ensemble_out_of_fold(runs: dict, pool: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--index", type=Path, default=INDEX)
-    parser.add_argument("--rule", type=Path, default=testrule.RULE_JSON)
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_a1_ensemble")
     args = parser.parse_args()
 
     with no_statsbomb_reads(), seal.development_labels_only(a1.PLAN_DIR / "plan.csv", args.index):
-        rule = testrule.load_rule(args.rule)
+        rule = testrule.load_rule()
         plan = a1.verify_plan(args.index)
         shots = pd.read_parquet(args.index, columns=["shot_id", "game", "goal", "is_penalty"])   # training rows only (seal)
         pool = a1.training_pool(shots, plan).sort_values("shot_id").reset_index(drop=True)
@@ -124,8 +124,8 @@ def main() -> None:
         is_pen = pool.set_index("shot_id").is_penalty.astype(bool).loc[oof.index].to_numpy()
 
         def calibrated(z: np.ndarray, cal: dict, penalty: np.ndarray) -> np.ndarray:
-            p = prior_shift(PlattScaler(**cal["platt"])(z), cal["oof_rate"], cal["pooled_rate"])
-            return np.where(penalty, cal["penalty_rate"], p)
+            """The deployed path on an already averaged logit (one member, temperature 1)."""
+            return ensemble_probability([z], [1.0], cal, penalty)
 
         p_a1 = calibrated(oof.z.to_numpy(), calibration, is_pen)
         by_shot = {key: runs[key].set_index("shot_id") for key in MEMBERS}
@@ -160,7 +160,7 @@ def main() -> None:
         games = pool.set_index("shot_id").game.loc[oof.index].to_numpy()[non_pen]
         dev_rule = {**rule, "bootstrap": {**rule["bootstrap"], "seed": 0}}
         delta = testrule.paired_delta(y, p_a1[non_pen], p_g[non_pen], games, dev_rule)
-        power = json.loads((ROOT / "results/xgd_test_power/power.json").read_text())
+        power = json.loads((POWER / "power.json").read_text())
         se_test = delta["boot_sd"] * power["scaling"]["shots"]
         comparison = {
             "population": {"shots": int(non_pen.sum()), "matches": int(len(np.unique(games))), "goals": int(y.sum()),
@@ -178,9 +178,9 @@ def main() -> None:
                       "z_g_combo": g_oof.z.loc[oof.index].to_numpy(), "p_g_combo": p_g, "is_penalty": is_pen}).to_csv(
             args.out / "oof.csv", index=False, float_format="%.9g")
         (args.out / "comparison.json").write_text(json.dumps(comparison, indent=2, default=float) + "\n")
-        inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "rule_json": sha256_file(args.rule),
+        inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "rule_parameters": testrule.parameters_digest(rule),
                   "a1_replay": sha256_file(root / REPLAY), "g_combo_ensemble": sha256_file(dev.G_COMBO / "ensemble.json"),
-                  "power": sha256_file(ROOT / "results/xgd_test_power/power.json"),
+                  "power": sha256_file(POWER / "power.json"),
                   "a1_records": {f"f{k}s{s}": sha256_file(root / f"fold{k}" / f"seed{s}" / "complete.json") for k, s in MEMBERS}}
         record = {"inputs": inputs, "code": records.code_hashes(Path(__file__)), "git": records.git_state(),
                   "finished": datetime.now(UTC).isoformat(timespec="seconds"), "files": records.output_hashes(args.out)}

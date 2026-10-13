@@ -100,7 +100,7 @@ def test_the_cluster_standard_error_counts_matches_as_clusters():
 def test_the_test_population_size_reads_no_label(tmp_path):
     index = tmp_path / "index.parquet"
     pd.DataFrame({"shot_id": list("abcde"), "game": ["T", "E", "E", "G", "X"], "goal": [1, 1, 0, 0, 1],
-                  "is_penalty": [False, False, True, False, False]}).to_parquet(index)
+                  "is_penalty": [False, False, True, False, False], "frame_path": ["/f"] * 5}).to_parquet(index)
     plan = pd.DataFrame({"game": ["T", "E", "G", "X"], "role": ["training", "evaluation", "gate", "other"]})
     with held_out_labels_sealed(["T"], ["a"]):
         size = power.test_population_size(index, plan, ["evaluation", "gate"])
@@ -233,3 +233,41 @@ def test_the_test_reads_labels_once_after_writing_the_predictions_and_outside_th
     assert writes and all(w.lineno < readers[0].lineno for w in writes)
     scoring = [n for n in calls if ast.unparse(n.func) in ("a1_predictions", "g_combo_predictions")]
     assert scoring and all(id(n) in {id(m) for m in ast.walk(seal_blocks[0])} for n in scoring)
+
+
+def test_the_sanitised_table_must_cover_every_population_shot_at_both_offsets(tmp_path):
+    table = tmp_path / "sanitised.parquet"
+    pd.DataFrame({"shot_id": ["a", "a", "b"], "offset_ms": [0, -400, 0]}).to_parquet(table)
+    assert xgd_test.sanitised_problems(pd.DataFrame({"shot_id": ["a"]}), table) == []
+    assert xgd_test.sanitised_problems(pd.DataFrame({"shot_id": ["a", "b", "c"]}), table) == [
+        "the sanitised D3 table misses 3 (shot, offset) rows of the population"]
+
+
+def test_g_combos_test_predictions_must_cover_the_population(tmp_path, monkeypatch):
+    folder = tmp_path / "xgd_gcombo_test"
+    folder.mkdir()
+    pd.DataFrame({"shot_id": ["a"], "game": ["E"], "role": ["evaluation"], "is_penalty": [False], "p": [0.1],
+                  "source": ["paired"]}).to_csv(folder / "predictions.csv", index=False)
+    (folder / "complete.json").write_text(json.dumps({"files": {"predictions.csv": sha256_file(folder / "predictions.csv")}}))
+    monkeypatch.setattr(xgd_test, "G_TEST", folder)
+    assert xgd_test.g_combo_predictions(pd.DataFrame({"shot_id": ["a"], "game": ["E"]})).p.tolist() == [0.1]
+    with pytest.raises(ValueError, match="miss 1 population shots"):
+        xgd_test.g_combo_predictions(pd.DataFrame({"shot_id": ["a", "b"], "game": ["E", "E"]}))
+
+
+def test_the_rule_parameters_digest_ignores_only_the_power_block():
+    digest = testrule.parameters_digest(RULE)
+    assert testrule.parameters_digest({**RULE, "power": {"at": []}}) == digest
+    assert testrule.parameters_digest({**RULE, "metric": {**RULE["metric"], "clip": 1e-7}}) != digest
+
+
+def test_g_combo_preparation_reads_xg_vendor_outputs_before_the_guard_and_loads_models_inside_it():
+    tree = ast.parse((ROOT / "scripts/xgd_gcombo_test.py").read_text())
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    guards = [n for n in ast.walk(main) if isinstance(n, ast.With) and "no_statsbomb_reads" in ast.unparse(n.items[0].context_expr)]
+    assert len(guards) == 1
+    inside = {id(n) for n in ast.walk(guards[0])}
+    calls = {ast.unparse(n.func): id(n) in inside for n in ast.walk(main) if isinstance(n, ast.Call)}
+    assert calls["score_members"] and calls["stored_gate"]
+    assert not calls["paired_predictions"] and not calls["cross_scores"]
+    assert "EVAL" not in ast.unparse(guards[0]), "no evaluation-table file is touched inside the guard"

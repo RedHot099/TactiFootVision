@@ -2,17 +2,14 @@
 
 The parameters live in `research/xg_detector_test_rule.json` next to the rule's text (`xg_detector_test_rule.md`); this
 module reads them and implements every computation the single test (`scripts/xgd_test.py`, ticket 07) makes after the
-predictions exist. The power computation of the rule (`scripts/xgd_test_power.py`) uses the same functions on
+predictions exist; both arms' probabilities come from `g_bundle.ensemble_probability`. The power computation of the rule (`scripts/xgd_test_power.py`) uses the same functions on
 development data.
 
-    ensemble_probability   both arms: member logits temperature-scaled, averaged in logit space, Platt fitted on the
-                           pool's out-of-fold ensemble, prior correction, penalties routed (`g_bundle.ensemble_probability`)
     shot_log_loss          per-shot log-loss with the rule's fixed probability clip
     match_weights          the paired match bootstrap: (draws, shots) weights, each shot weighted by how often its match
                            was drawn (`match_draw_counts`, the rule's draws and seed)
     paired_delta           ΔLL = variant - baseline, shot-weighted, with the percentile intervals of the rule
-    reading                success / equivalent within δ / success and equivalent / inconclusive / worse, the smallest
-                           equivalence margin
+    reading                the label (`LABELS`, in precedence order) and the smallest equivalence margin
     expected_power         normal-approximation probabilities of each reading at an assumed Δ and standard error
 """
 
@@ -22,16 +19,13 @@ from statistics import NormalDist
 
 import numpy as np
 
-from xgpoc.models.g_bundle import ensemble_probability
+from xgpoc.bundle import canonical_digest
 from xgpoc.probe.readability import match_draw_counts
 
 EXPERIMENT = Path(__file__).resolve().parents[2]
 RULE_JSON = EXPERIMENT / "research/xg_detector_test_rule.json"
 RULE_MD = EXPERIMENT / "research/xg_detector_test_rule.md"
-LABELS = ("success and equivalent", "success", "equivalent within δ", "worse", "inconclusive")
-
-__all__ = ["ensemble_probability", "expected_power", "load_rule", "match_weights", "paired_delta", "reading",
-           "shot_log_loss"]
+LABELS = ("success and equivalent", "success", "worse", "equivalent within δ", "inconclusive")   # precedence order
 
 
 def load_rule(path: Path = RULE_JSON) -> dict:
@@ -48,6 +42,12 @@ def load_rule(path: Path = RULE_JSON) -> dict:
     if tuple(rule["labels"]) != LABELS:
         raise ValueError(f"rule labels {rule['labels']} differ from {LABELS}")
     return rule
+
+
+def parameters_digest(rule: dict) -> str:
+    """sha256 of the rule's parameters without its power block: the records of the power and of the A1 ensemble pin the
+    rule by this digest, since the power block is written into the rule after them."""
+    return canonical_digest({k: v for k, v in rule.items() if k != "power"})
 
 
 def shot_log_loss(y: np.ndarray, p: np.ndarray, clip: float) -> np.ndarray:
@@ -92,10 +92,11 @@ def reading(delta: dict, rule: dict) -> dict:
 
     success      the upper bound of the 95% interval is below 0 (the only confirmatory criterion);
     worse        the lower bound of the 95% interval is above 0;
-    equivalent   TOST at alpha 0.05: the 90% interval lies wholly inside [-δ, +δ] (descriptive, never a success).
-    The label takes the first that applies of: success and equivalent, success, worse, equivalent within δ,
-    inconclusive; `equivalent` is reported as its own field in every case. The smallest equivalence margin is the
-    smallest δ' whose [-δ', +δ'] contains the 90% interval."""
+    equivalent   TOST at alpha 0.05: the 90% interval lies wholly inside the open interval (-δ, +δ) (descriptive, never a
+                 success).
+    The label is the first of `LABELS` that applies; `equivalent` is reported as its own field in every case. The
+    smallest equivalence margin is max(|lower 90% bound|, |upper 90% bound|), the smallest δ' whose closed [-δ', +δ']
+    contains the 90% interval."""
     margin = rule["equivalence"]["margin"]
     success, worse = delta["hi95"] < 0, delta["lo95"] > 0
     equivalent = -margin < delta["lo90"] and delta["hi90"] < margin

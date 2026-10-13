@@ -55,8 +55,8 @@
   "labels": [
     "success and equivalent",
     "success",
-    "equivalent within δ",
     "worse",
+    "equivalent within δ",
     "inconclusive"
   ],
   "label_precedence": "the first that applies, in the order of labels; the equivalence flag is reported in its own field in every case",

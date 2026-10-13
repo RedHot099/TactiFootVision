@@ -12,7 +12,8 @@ script refuses unless:
   completion records and ensemble calibrations, the A1 replay, G-combo's test predictions, the sanitised D3 table, the
   split plan and folds, the index, the overlay mask and the pretrained backbone;
 * the code this process loaded from the checkout is exactly the pinned code closure, byte for byte;
-* the t0 frames of the test population have the pinned fingerprint;
+* the t0 frames of the test population have the pinned fingerprint, and the sanitised D3 table has both offsets of
+  every population shot;
 * every variant has complete records: the ten A1 runs (folds 0-4 x seeds 0, 1) with their files and a passed replay of
   all ten, A1's ensemble.json naming exactly those bundles and temperatures, G-combo's ensemble.json and bundles, and
   G-combo's test predictions covering the test population;
@@ -46,23 +47,22 @@ import pandas as pd
 import torch
 import xgd_approach1_report as dev
 from run_xgc_g import OVERLAY, frame_fingerprint
-from xgd_a1_ensemble import MEMBERS, member_records
+from xgd_a1_ensemble import MEMBERS, POWER, member_records
 from xgd_approach1 import SANITISED, check_gpu_free
-from xgd_gcombo_test import read_ensemble
+from xgd_gcombo_test import held_out_shots, read_ensemble
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import approach1 as a1
 from xgpoc.detector import records, seal, testrule
 from xgpoc.detector.guard import no_statsbomb_reads
-from xgpoc.models.g_bundle import pretrained_weight_file
+from xgpoc.models.g_bundle import ensemble_probability, pretrained_weight_file
 from xgpoc.paths import INDEX
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKOUT = ROOT.parents[1]
+CHECKOUT = records.CHECKOUT
 HASHLIST = ROOT / "research/xg_detector_test_hashes.json"
 OUT = ROOT / "results/xgd_test"
 A1_ENSEMBLE = ROOT / "results/xgd_a1_ensemble"
 G_TEST = ROOT / "results/xgd_gcombo_test"
-POWER = ROOT / "results/xgd_test_power"
 PATH_SHOTS, PATH_TOLERANCE = 16, 1e-4
 
 
@@ -107,10 +107,10 @@ def loaded_code() -> dict[str, str]:
 def test_population(index: Path, plan: pd.DataFrame, rule: dict) -> pd.DataFrame:
     """shot_id, game, role, is_penalty, frame_path of the rule's population, sorted by shot_id; label-free columns only.
     Refused unless its size is the rule's."""
-    shots = pd.read_parquet(index, columns=["shot_id", "game", "is_penalty", "frame_path"])
-    shots["role"] = shots.game.map(plan.set_index("game").role)
-    population = shots[shots.role.isin(rule["population"]["roles"]) & ~shots.is_penalty.astype(bool)]
-    population = population.sort_values("shot_id").reset_index(drop=True)
+    shots = held_out_shots(index, plan)
+    if sorted(shots.role.unique()) != sorted(rule["population"]["roles"]):
+        raise Refused(f"held-out roles {sorted(shots.role.unique())} differ from the rule's")
+    population = shots[~shots.is_penalty].reset_index(drop=True)
     if len(population) != rule["population"]["expected_shots"] or population.game.nunique() != rule["population"]["matches"]:
         raise Refused(f"test population {len(population)} shots / {population.game.nunique()} matches differs from the rule's")
     return population
@@ -137,9 +137,8 @@ def variant_problems(rule: dict, population: pd.DataFrame | None) -> list[str]:
         for m in g["members"]:
             if sha256_file(dev.G_COMBO / f"fold{m['fold']}" / f"seed{m['seed']}" / "bundle.pt") != m["sha256"]:
                 problems.append(f"G-combo bundle f{m['fold']}s{m['seed']} differs from ensemble.json")
-        g_test = g_combo_predictions(population) if population is not None else None
-        if g_test is not None and g_test.p.isna().any():
-            problems.append("G-combo's test predictions do not cover the population")
+        if population is not None:
+            g_combo_predictions(population)
     except (OSError, KeyError, ValueError) as e:
         problems.append(f"G-combo records incomplete: {e}")
     if rule.get("power") is None:
@@ -152,9 +151,20 @@ def g_combo_predictions(population: pd.DataFrame) -> pd.DataFrame:
     records.verified_file(G_TEST / "predictions.csv")
     stored = pd.read_csv(G_TEST / "predictions.csv", usecols=["shot_id", "game", "is_penalty", "p"])
     out = population[["shot_id", "game"]].merge(stored, on=["shot_id", "game"], how="left", validate="one_to_one")
+    if out.p.isna().any():
+        raise ValueError(f"G-combo's test predictions miss {int(out.p.isna().sum())} population shots")
     if out.is_penalty.astype(bool).any():
         raise ValueError("a population shot is a penalty in G-combo's test predictions")
     return out[["shot_id", "p"]]
+
+
+def sanitised_problems(population: pd.DataFrame, sanitised: Path = SANITISED) -> list[str]:
+    """Why the sanitised D3 table cannot give A1 its input for every population shot at both offsets."""
+    rows = pd.read_parquet(sanitised, columns=["shot_id", "offset_ms"])
+    rows = rows[rows.shot_id.isin(population.shot_id)]
+    have = set(zip(rows.shot_id, rows.offset_ms.astype(int), strict=True))
+    missing = len(population) * len(a1.OFFSETS) - len(have & {(s, o) for s in population.shot_id for o in a1.OFFSETS})
+    return [f"the sanitised D3 table misses {missing} (shot, offset) rows of the population"] if missing else []
 
 
 def git_clean(path: Path) -> bool:
@@ -180,8 +190,10 @@ def verify(hashlist: Path, expected: str, code: dict[str, str] | None, populatio
         changed = sorted(set(code.items()) ^ set(frozen["code"].items()))
         problems.append(f"the loaded code is not the pinned closure: {[n for n, _ in changed][:10]}")
     rule = testrule.load_rule()
-    if population is not None and frame_fingerprint(population) != frozen["frames"]:
-        problems.append("the test population's t0 frames differ from their fingerprint")
+    if population is not None:
+        if frame_fingerprint(population) != frozen["frames"]:
+            problems.append("the test population's t0 frames differ from their fingerprint")
+        problems += sanitised_problems(population)
     problems += variant_problems(rule, population)
     if problems:
         raise Refused("the frozen test refuses to run:\n  " + "\n  ".join(problems))
@@ -230,7 +242,7 @@ def a1_predictions(population: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
         del bundle
         gc.collect()
         torch.cuda.empty_cache()
-    p = testrule.ensemble_probability(list(logits.values()), [m["temperature"] for m in members], ensemble["calibration"],
+    p = ensemble_probability(list(logits.values()), [m["temperature"] for m in members], ensemble["calibration"],
                                       population.is_penalty.to_numpy(bool))
     return pd.DataFrame(logits, index=pd.Index(population.shot_id, name="shot_id")), p
 

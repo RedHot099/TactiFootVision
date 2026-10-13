@@ -18,8 +18,9 @@ matches, read from label-free index columns. Each shot gets its probability from
 Path check: in the same process each bundle also rescores the gate shots in their stored row order; the logits must
 reproduce the stored gate predictions within `PATH_TOLERANCE`. Nothing here reads a label: the index is read without
 label columns, the gate files without their goal column, and everything runs inside the held-out label seal. The
-evaluation table is a G-combo output, read outside `no_statsbomb_reads()` with only its key, frame-logit and status
-columns; no new model reads it.
+evaluation table and scores.parquet are G-combo outputs that xg-vendor stored next to StatsBomb columns: they are read
+first, outside `no_statsbomb_reads()`, with only their key, logit, role and status columns; the gate files, the bundles
+and the frames are read inside the guard. No new model reads them.
 """
 
 import argparse
@@ -33,16 +34,16 @@ import pandas as pd
 import torch
 from run_xgc_g import frame_fingerprint, own_sources
 from xgd_approach1 import check_gpu_free
+from xgd_approach1_report import G_COMBO, G_NAME
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import approach1 as a1
 from xgpoc.detector import records, seal
+from xgpoc.detector.guard import no_statsbomb_reads
 from xgpoc.eval.calibration import sigmoid
 from xgpoc.models.g_bundle import ensemble_probability, g_outputs, load_g
 from xgpoc.paths import INDEX
 
 ROOT = Path(__file__).resolve().parents[1]
-G_COMBO = ROOT / "results/xgv_g_combo"
-G_NAME = "g_finetune_dinov2_l_b4_overlay_combo"
 EVAL = ROOT / "results/xgv_eval_primary"
 TABLE = "eval_table_labels_absent.parquet"
 ROLES = ("evaluation", "gate")
@@ -170,62 +171,65 @@ def main() -> None:
         ensemble = read_ensemble()
         ensemble_sha = sha256_file(G_COMBO / "ensemble.json")
         paired, paired_check = paired_predictions(population, ensemble, ensemble_sha)
-        gate_logits, gate_check = stored_gate(population, ensemble)
-        unpaired = population[(population.role == "evaluation") & ~population.shot_id.isin(paired.index)]
-        frames = population.set_index("shot_id")
-        sources = own_sources()
-        scored = score_members(ensemble, {"gate": frames.loc[gate_logits.index].reset_index(),
-                                          "unpaired": unpaired.reset_index(drop=True)})
-        if own_sources() != sources:
-            raise SystemExit("source files changed while scoring")
-        path_gap = float(np.max(np.abs(scored["gate"].to_numpy() - gate_logits.loc[scored["gate"].index].to_numpy())))
-        if path_gap > PATH_TOLERANCE:
-            raise SystemExit(f"the gate rescoring differs from the stored gate logits by {path_gap:.2e}")
-        temperatures = [m["temperature"] for m in ensemble["members"]]
+        gate_reference = cross_scores(population, ensemble, "gate")      # xg-vendor's outputs: read before the guard
+        eval_hashes = {"eval_table": paired_check["table_sha256"], "eval_complete_json": sha256_file(EVAL / "complete.json"),
+                       "scores_parquet": sha256_file(EVAL / "scores.parquet")}
+        with no_statsbomb_reads():                                         # G-combo's files, models and frames
+            gate_logits, gate_check = stored_gate(population, ensemble)
+            unpaired = population[(population.role == "evaluation") & ~population.shot_id.isin(paired.index)]
+            frames = population.set_index("shot_id")
+            sources = own_sources()
+            scored = score_members(ensemble, {"gate": frames.loc[gate_logits.index].reset_index(),
+                                              "unpaired": unpaired.reset_index(drop=True)})
+            if own_sources() != sources:
+                raise SystemExit("source files changed while scoring")
+            path_gap = float(np.max(np.abs(scored["gate"].to_numpy() - gate_logits.loc[scored["gate"].index].to_numpy())))
+            if path_gap > PATH_TOLERANCE:
+                raise SystemExit(f"the gate rescoring differs from the stored gate logits by {path_gap:.2e}")
+            temperatures = [m["temperature"] for m in ensemble["members"]]
 
-        def probability(logits: pd.DataFrame) -> pd.Series:
-            penalty = frames.is_penalty.loc[logits.index].to_numpy(bool)
-            return pd.Series(ensemble_probability([logits[key(m)].to_numpy() for m in ensemble["members"]], temperatures,
-                                                  ensemble["calibration"], penalty), index=logits.index)
+            def probability(logits: pd.DataFrame) -> pd.Series:
+                penalty = frames.is_penalty.loc[logits.index].to_numpy(bool)
+                return pd.Series(ensemble_probability([logits[key(m)].to_numpy() for m in ensemble["members"]], temperatures,
+                                                      ensemble["calibration"], penalty), index=logits.index)
 
-        gate = probability(gate_logits)
-        gate_cross = float(np.max(np.abs(cross_scores(population, ensemble, "gate").loc[gate.index] - gate)))
-        if gate_cross > CROSS_TOLERANCE:
-            raise SystemExit(f"the stored gate predictions' ensemble differs from scores.parquet by {gate_cross:.2e}")
-        parts = [pd.DataFrame({"p": paired, "source": "paired"}), pd.DataFrame({"p": gate, "source": "gate"}),
-                 pd.DataFrame({"p": probability(scored["unpaired"]), "source": "unpaired"})]
-        predictions = pd.concat(parts).rename_axis("shot_id").reset_index()
-        predictions = population[["shot_id", "game", "role", "is_penalty"]].merge(predictions, on="shot_id", how="left",
-                                                                                   validate="one_to_one")
-        if predictions.p.isna().any() or len(predictions) != len(population) or not predictions.p.between(0, 1).all():
-            raise SystemExit("the G-combo test predictions do not cover the held-out shots exactly once")
-        non_penalty = predictions[~predictions.is_penalty]
-        checks = {
-            "population": {"shots": len(predictions), "matches": int(predictions.game.nunique()),
-                           "by_source": predictions.source.value_counts().to_dict(),
-                           "non_penalty": {"shots": len(non_penalty), "matches": int(non_penalty.game.nunique()),
-                                           "by_source": non_penalty.source.value_counts().to_dict(),
-                                           "by_role": non_penalty.role.value_counts().to_dict()}},
-            "paired": paired_check,
-            "gate": {**gate_check, "max_abs_dp_vs_scores_parquet": gate_cross},
-            "path_check": {"rule": "each bundle rescored the gate shots in their stored order in this process",
-                           "max_abs_logit_vs_stored": path_gap, "tolerance": PATH_TOLERANCE},
-            "unpaired": {"shots": len(unpaired), "batch_size": 8, "frame": "frame_path (t0)", "order": "shot_id"},
-        }
-        args.out.mkdir(parents=True, exist_ok=True)
-        predictions.to_csv(args.out / "predictions.csv", index=False, float_format="%.17g")
-        scored["unpaired"].reset_index().to_csv(args.out / "unpaired_members.csv", index=False, float_format="%.9g")
-        (args.out / "checks.json").write_text(json.dumps(checks, indent=2) + "\n")
-        inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "ensemble_json": ensemble_sha,
-                  "bundles": {key(m): m["sha256"] for m in ensemble["members"]},
-                  "eval_table": paired_check["table_sha256"], "eval_complete_json": sha256_file(EVAL / "complete.json"),
-                  "scores_parquet": sha256_file(EVAL / "scores.parquet"),
-                  "gate_predictions": {key(m): sha256_file(G_COMBO / f"fold{m['fold']}" / f"seed{m['seed']}" / f"{G_NAME}_gate_predictions.csv")
-                                       for m in ensemble["members"]},
-                  "unpaired_frames": frame_fingerprint(unpaired)}
-        record = {"inputs": inputs, "code": records.code_hashes(Path(__file__)), "sources": sources, "git": records.git_state(),
-                  "finished": datetime.now(UTC).isoformat(timespec="seconds"), "files": records.output_hashes(args.out)}
-        (args.out / "complete.json").write_text(json.dumps(record, indent=2) + "\n")
+            gate = probability(gate_logits)
+            gate_cross = float(np.max(np.abs(gate_reference.loc[gate.index] - gate)))
+            if gate_cross > CROSS_TOLERANCE:
+                raise SystemExit(f"the stored gate predictions' ensemble differs from scores.parquet by {gate_cross:.2e}")
+            parts = [pd.DataFrame({"p": paired, "source": "paired"}), pd.DataFrame({"p": gate, "source": "gate"}),
+                     pd.DataFrame({"p": probability(scored["unpaired"]), "source": "unpaired"})]
+            predictions = pd.concat(parts).rename_axis("shot_id").reset_index()
+            predictions = population[["shot_id", "game", "role", "is_penalty"]].merge(predictions, on="shot_id", how="left",
+                                                                                       validate="one_to_one")
+            if predictions.p.isna().any() or len(predictions) != len(population) or not predictions.p.between(0, 1).all():
+                raise SystemExit("the G-combo test predictions do not cover the held-out shots exactly once")
+            non_penalty = predictions[~predictions.is_penalty]
+            checks = {
+                "population": {"shots": len(predictions), "matches": int(predictions.game.nunique()),
+                               "by_source": predictions.source.value_counts().to_dict(),
+                               "non_penalty": {"shots": len(non_penalty), "matches": int(non_penalty.game.nunique()),
+                                               "by_source": non_penalty.source.value_counts().to_dict(),
+                                               "by_role": non_penalty.role.value_counts().to_dict()}},
+                "paired": paired_check,
+                "gate": {**gate_check, "max_abs_dp_vs_scores_parquet": gate_cross},
+                "path_check": {"rule": "each bundle rescored the gate shots in their stored order in this process",
+                               "max_abs_logit_vs_stored": path_gap, "tolerance": PATH_TOLERANCE},
+                "unpaired": {"shots": len(unpaired), "batch_size": 8, "frame": "frame_path (t0)", "order": "shot_id"},
+            }
+            args.out.mkdir(parents=True, exist_ok=True)
+            predictions.to_csv(args.out / "predictions.csv", index=False, float_format="%.17g")
+            scored["unpaired"].reset_index().to_csv(args.out / "unpaired_members.csv", index=False, float_format="%.9g")
+            (args.out / "checks.json").write_text(json.dumps(checks, indent=2) + "\n")
+            inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "ensemble_json": ensemble_sha,
+                      "bundles": {key(m): m["sha256"] for m in ensemble["members"]},
+                      **eval_hashes,
+                      "gate_predictions": {key(m): sha256_file(G_COMBO / f"fold{m['fold']}" / f"seed{m['seed']}" / f"{G_NAME}_gate_predictions.csv")
+                                           for m in ensemble["members"]},
+                      "unpaired_frames": frame_fingerprint(unpaired)}
+            record = {"inputs": inputs, "code": records.code_hashes(Path(__file__)), "sources": sources, "git": records.git_state(),
+                      "finished": datetime.now(UTC).isoformat(timespec="seconds"), "files": records.output_hashes(args.out)}
+            (args.out / "complete.json").write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps(checks, indent=2))
 
 

@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xgd_approach1_report as dev
+from xgd_gcombo_test import held_out_shots
 from xgpoc.bundle import sha256_file
 from xgpoc.detector import approach1 as a1
 from xgpoc.detector import records, seal, testrule
@@ -42,22 +43,20 @@ def cluster_se(d: np.ndarray, games: np.ndarray) -> float:
 
 def test_population_size(index: Path, plan: pd.DataFrame, roles: list[str]) -> dict:
     """Non-penalty shots and matches of the plan's test roles, from label-free index columns."""
-    shots = pd.read_parquet(index, columns=["shot_id", "game", "is_penalty"])
-    role = shots.game.map(plan.set_index("game").role)
-    test = shots[role.isin(roles) & ~shots.is_penalty.astype(bool)]
+    shots = held_out_shots(index, plan)
+    test = shots[shots.role.isin(roles) & ~shots.is_penalty]
     return {"shots": len(test), "matches": int(test.game.nunique()),
-            "shots_by_role": {r: int((role[test.index] == r).sum()) for r in roles}}
+            "shots_by_role": {r: int((test.role == r).sum()) for r in roles}}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--index", type=Path, default=INDEX)
-    parser.add_argument("--rule", type=Path, default=testrule.RULE_JSON)
     parser.add_argument("--out", type=Path, default=ROOT / "results/xgd_test_power")
     args = parser.parse_args()
 
     with no_statsbomb_reads(), seal.development_labels_only(a1.PLAN_DIR / "plan.csv", args.index):
-        rule = testrule.load_rule(args.rule)
+        rule = testrule.load_rule()
         plan = a1.verify_plan(args.index)
         size = test_population_size(args.index, plan, rule["population"]["roles"])
         if size["shots"] != rule["population"]["expected_shots"] or size["matches"] != rule["population"]["matches"]:
@@ -99,7 +98,7 @@ def main() -> None:
         }
         args.out.mkdir(parents=True, exist_ok=True)
         (args.out / "power.json").write_text(json.dumps(result, indent=2) + "\n")
-        inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "rule_json": sha256_file(args.rule),
+        inputs = {"index": sha256_file(args.index), "plan": a1.PLAN_SHA256, "rule_parameters": testrule.parameters_digest(rule),
                   "ticket03_comparison": sha256_file(ROOT / "results/xgd_approach1/comparison.csv"),
                   "a1_replay": sha256_file(a1.results_dir("A1") / "replay.json"),
                   "g_combo_ensemble": sha256_file(dev.G_COMBO / "ensemble.json")}
