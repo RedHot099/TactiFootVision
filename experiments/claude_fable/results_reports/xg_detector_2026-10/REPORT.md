@@ -64,7 +64,7 @@ Ticket 08 szukał przyczyn na metryce bez etykiet i bez StatsBomb: zgodności rz
 2. **Definicje wierzchołków boiska: sprawdzone, bez błędu.** Wierzchołki pakietu zgadzają się z etykietami treningowymi modelu, mediana przesunięcia 0.21 m<!--n:hl.vertex-->.
 3. **Kolejność punktów i lustrzane odbicia.** Kolejność jest dobra. Doprecyzowanie liniami dawało czasem obraz lustrzany, bo linie boiska są symetryczne. Pakiet odrzuca teraz takie wyniki, a pilnują tego testy regresyjne. Rzadkie lustrzane dopasowania z samych punktów są nadal przyjmowane (sekcja 8).
 4. **Progi i RANSAC.** Zmiana progów punktów i limitu RANSAC prawie nie zmienia zgodności z liniami. Znalazł się za to błąd dopasowań osobliwych: gdy prawie wszystkie punkty leżą na jednej linii boiska, OpenCV zwraca macierz, która rzutuje całą klatkę na tę linię. Poprawka: `8994cc6`.
-5. **Jakość modelu na klatkach SoccerNet: główna przyczyna, nie do poprawienia bez trenowania.** Nawet z rozciągniętym wejściem punkty kluczowe leżą w medianie 48 px<!--n:rf.stretch.med--> od punktów potwierdzonych liniami (312<!--n:rf.stretch.frames--> klatek; z letterboxem 86 px<!--n:rf.letterbox.med-->). W promieniu dziesięciu pikseli jest tylko 4%<!--n:rf.stretch.lt10--> z nich.
+5. **Jakość modelu na klatkach SoccerNet: główna przyczyna, nie do poprawienia bez trenowania.** Nawet z rozciągniętym wejściem punkty kluczowe leżą w medianie 48 px<!--n:rf.stretch.med--> od punktów, które wyznacza homografia potwierdzona liniami (zgodność co najmniej 0.9<!--n:hd.confirmed--> na 313<!--n:rf.frames--> klatkach treningowych; rozciągnięte wejście dało porównywalny punkt na 312<!--n:rf.stretch.frames--> z nich). Z letterboxem mediana wynosi 86 px<!--n:rf.letterbox.med-->. W promieniu dziesięciu pikseli leży tylko 4%<!--n:rf.stretch.lt10--> tych punktów.
 
 Ticket 08 dodał też opcjonalne doprecyzowanie homografii liniami boiska. Na klatkach treningowych homografia jest teraz w 71.3%<!--n:hd.d1.hom--> klatek zamiast 62.3%<!--n:hd.c4.hom-->. Dobrą zgodność z liniami miało 0.0%<!--n:hd.c4.good--> klatek C4, 0.9%<!--n:hd.d1.good--> po poprawce wejścia i 36.3%<!--n:hd.d3.good--> z doprecyzowaniem (konfiguracja D3). Błąd skali sprawdzany bez linii, mediana |log| stosunku wysokości zawodnika, spadł z 0.32<!--n:hd.c4.height--> do 0.12<!--n:hd.d3.height-->. Na tej metryce ticket 08 zadeklarował D1–D4 przed audytem 2.
 
@@ -174,7 +174,7 @@ Zakres, zdanie ustalone w regule: „The result applies to the D3 detector and h
 ## 7. Ograniczenia
 
 - **Szum czasu adnotacji.** Błędy audytów zawierają przesunięcie czasu adnotacji SoccerNet i StatsBomb, około 1 s, w którym zawodnicy przesuwają się o 3–6 m. To zawyża błędy, ale nie tłumaczy ich wielkości: bramkarz stoi zwykle blisko bramki, a stałe zgadywanie jest kilka razy lepsze od detektora.
-- **Dane treningowe detektora.** Większość obrazów treningowych detektora to klipy Lecha Poznań, głównie z Ekstraklasy (Roboflow, licencja Creative Commons). Źródło pozostałych jest nieznane. Klatek SoccerNet nie ma ani w danych detektora, ani w danych modelu punktów kluczowych. Badanie używa gotowych modeli, nie nagrań z Ekstraklasy.
+- **Dane treningowe detektora.** Większość obrazów treningowych detektora to klipy Lecha Poznań, głównie z Ekstraklasy (Roboflow, licencja Creative Commons). Źródło pozostałych jest nieznane. Klatek SoccerNet w danych detektora nie ma. Model punktów kluczowych uczono na obrazach Roboflow „football-field-detection” (ticket 08), które według przeglądu danych przed badaniem też nie pochodzą z SoccerNet. Badanie używa gotowych modeli, nie nagrań z Ekstraklasy.
 - **Etykiety meczów ewaluacyjnych były widziane w xg-vendor.** Żaden model tego badania nie był na nich wybierany, ale wyniki G-combo na tych meczach były znane. Mecze bramkowe G-combo ocenił w bramce ponownego treningu xg-vendor.
 - **Wybór konfiguracji na klatkach meczów testowych (Q22).** Oba audyty wybierały konfigurację na sparowanych strzałach z meczów ewaluacyjnych, tylko po błędzie pozycji, bez etykiet goli.
 - **Margines δ dobrany po rozwoju.** δ = 0.005<!--n:rule.delta--> przyjęto po wynikach rozwojowych i pożyczono z xg-vendor. Jest luźny: to około 1.5%<!--n:rule.delta_share--> log-loss G-combo i kilka razy więcej niż różnica rozwojowa.
@@ -189,7 +189,8 @@ Zakres, zdanie ustalone w regule: „The result applies to the D3 detector and h
 2. **Poprawki pakietu do mastera** (osobne commity w `src/tactifoot_vision`). Z ticketu 08: wejście `stretch=True` modelu punktów (`e927f40`), odrzucanie osobliwych homografii (`8994cc6`), `pitch_markings` w `tv.pitch` (`99bd7a0`), opcjonalne doprecyzowanie liniami z kontrolami (`4725862`, `30702ec`, `9a6289b`, `639b86f`, `ec487a6`, `0243771`), dokumentacja (`08c9606`) i poprawki po przeglądzie (`56e288f`). Z ticketu 01: bezstanowa homografia (`446d51a`), próg pewności na klasę (`66239e0`), tryb drużyn z jednej klatki (`316993b`), analiza pojedynczej klatki z dociąganiem piłki (`c59f976`) i poprawki po przeglądzie (`6936ca3`). Otwarte przy nich: odrzucanie lustrzanych dopasowań bez doprecyzowania (wymaga odwrócenia fixture'ów testowych) i `stretch` dla detektora.
 3. **Notatniki** `00_overview`, `04_inference` i `05_visualisation` mają nowy kod i stare wyjścia. Trzeba je wykonać ponownie (`notebooks/build/build.py --execute`) tam, gdzie jest `models/pitch_yolov8n_pose.pt`.
 4. **SciPy w `pyproject.toml`.** Doprecyzowanie liniami używa SciPy, który przychodzi ze scikit-learn. Jawna zależność wymaga `uv lock`, a ten nie działał bez sieci.
-5. **Przegląd termonuklearny** uruchamia właściciel.
+5. **Kontrola reguły testu w zastępstwie właściciela.** Ticket 07 miał czekać, aż właściciel zobaczy regułę. Na mocy mandatu sprawdził ją orkiestrator (sekcja 6.1). Właściciel może ją przejrzeć po fakcie: `research/xg_detector_test_rule.md`.
+6. **Przegląd termonuklearny** uruchamia właściciel.
 
 ## Źródła i sumy kontrolne
 
@@ -208,9 +209,10 @@ Zakres, zdanie ustalone w regule: „The result applies to the D3 detector and h
 | `results/xgd_audit2/metrics.csv` | `e422a0a2311a924a4b4e2f2ed895b264360437f8bd2ddf93fd37e156722420ab` | audyt 2: metryki, korelacje, stałe zgadywanie |
 | `results/xgd_audit2_diag/diag.csv` | `32f45780139e42676b25fd81417d5bd9c2ef5f22b88995af9e59b2a47bd1776e` | audyt 2: podziały błędów (opisowo) |
 | `results/xgd_gcombo_test/checks.json` | `e4f502e0b1ab07ca1d5391e090fd721f75e96bb0f0ddcc33318a3325f0b90a01` | ticket 06: źródła predykcji testowych G-combo |
+| `results/xgd_homography_dev/complete.json` | `e379a8456aacb0b2acf4a93de5d680478476b480074ccd79d412b38a56cab1da` | ticket 08: parametry metryki linii |
 | `results/xgd_homography_dev/labels/summary.json` | `a55a4fe165dc37ec13d819dfc2ddb6032463c2d6692b3b585307ab412337bb61` | ticket 08: błąd punktów na obrazach treningowych modelu, wierzchołki |
 | `results/xgd_homography_dev/summary.csv` | `0369a175a078e4c8f8c6d48d4576d85cf9c0c7de09ad476d411bbb582559e93f` | ticket 08: metryka linii na klatkach treningowych |
-| `results/xgd_report_figures/figures.json` | `8d70c0017a13249aed3223d42ecbf595218400d5d59b29be1c0955b6dc465409` | mediana błędu punktów kluczowych na klatkach SoccerNet (z ticketu 08) |
+| `results/xgd_report_figures/figures.json` | `cc9ad66d2437510b2fcc176eeff3d85f656933a49609955d66d61088feaf5646` | mediana błędu punktów kluczowych na klatkach SoccerNet (z ticketu 08) |
 | `results/xgd_test/complete.json` | `640946699319841cf0d895db78a1c2f5296f2380490956cdb6aaded28a88ed8c` | ticket 07: rekord ukończenia testu |
 | `results/xgd_test/result.json` | `ee3fc40671bb8a500b250e33012bc5ad15f0e11958ddb8da22f87db0111565c3` | ticket 07: wynik testu |
 | `results/xgd_test_power/power.json` | `1fc98b8c11182b8f2047c1c52c0deded2a8735a1d8e3a59774bd33b9ebbe2473` | ticket 06: moc oczekiwana |

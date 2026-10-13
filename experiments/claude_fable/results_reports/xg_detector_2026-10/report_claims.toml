@@ -64,9 +64,11 @@ ts = { path = "results/xgd_test", confirmatory = true }
 "hl.stretch" = { src = "hl:summary.json", keys = ["keypoint_error_px_1280x720.stretch.median_of_image_medians"], fmt = "{:.1f} px" }
 "hl.vertex" = { src = "hl:summary.json", keys = ["vertex_offset_m.package_median"], fmt = "{:.2f} m" }
 "rf.stretch.med" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.median_px"], fmt = "{:.0f} px" }
+"rf.frames" = { src = "rf:figures.json", keys = ["keypoint_residuals.frames_total"], fmt = "{:d}" }
 "rf.stretch.frames" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.frames"], fmt = "{:d}" }
 "rf.stretch.lt10" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.share_lt10"], scale = 100, fmt = "{:.0f}%" }
 "rf.letterbox.med" = { src = "rf:figures.json", keys = ["keypoint_residuals.letterbox.median_px"], fmt = "{:.0f} px" }
+"hd.confirmed" = { src = "hd:complete.json", keys = ["parameters.residual_confirmed_agreement"], fmt = "{:.1f}" }
 "hd.frames" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["frames"], fmt = "{:,d}" }
 "hd.c4.hom" = { src = "hd:summary.csv", row = { variant = "C4", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
 "hd.d1.hom" = { src = "hd:summary.csv", row = { variant = "stretch", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
