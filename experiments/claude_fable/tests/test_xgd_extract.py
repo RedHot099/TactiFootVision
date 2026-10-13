@@ -147,8 +147,8 @@ def test_real_analysers_share_one_detector_and_only_the_t0_one_has_teams(monkeyp
             return np.zeros((len(crops), 2), np.float32)
     analyser, ball_only = ex.build_analyzers(ex.CONFIGS["C4"], Embedder(), device="cpu")
     d4, _ = ex.build_analyzers(ex.CONFIGS["D4"], Embedder(), device="cpu")
-    assert d4.keypoint_model.stretch and d4.homography.refine_with_lines and d4.homography.min_confidence == 0.3
-    assert not analyser.keypoint_model.stretch and not analyser.homography.refine_with_lines
+    assert d4.keypoint_model.resize == "stretch" and d4.homography.refine_with_lines and d4.homography.min_confidence == 0.3
+    assert analyser.keypoint_model.resize == "letterbox" and not analyser.homography.refine_with_lines
     assert analyser.detector is ball_only.detector and analyser.detector.imgsz == 1920
     assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.conf == 0.3 and analyser.detector.iou == 0.5
     assert analyser.team_classifier.reducer is None and ball_only.team_classifier is None

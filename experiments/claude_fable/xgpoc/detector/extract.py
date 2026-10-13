@@ -9,7 +9,7 @@ Audit 1 (ticket 01/02), the pitch keypoints with the package's letterbox input a
     C4      1920            0.15            yes
 
 Audit 2 (ticket 09), declared by ticket 08 (`research/xg_detector_audit2_configs.json`): C4's detector and ball
-fallback, the pitch model on the stretched input it was trained on (`stretch=True`), and
+fallback, the pitch model on the stretched input it was trained on (`resize="stretch"`), and
 
     config  keypoint threshold  line refinement (HomographyEstimator(refine_with_lines=True))
     D1      0.5                 no
@@ -71,7 +71,7 @@ class ExtractorConfig:
     imgsz: int
     ball_conf: float
     ball_fallback: bool
-    keypoint_stretch: bool = False              # the pitch model's input: the package's stretch=True, else the letterbox
+    keypoint_stretch: bool = False              # the pitch model's input: the package's resize="stretch", else "letterbox"
     homography_min_confidence: float = 0.5      # keypoints the homography uses
     refine_with_lines: bool = False             # HomographyEstimator(refine_with_lines=True)
 
@@ -111,7 +111,7 @@ def build_analyzers(config: ExtractorConfig, embedder, device: str | None = None
 
     detector = tv.load_model("yolo", DETECTOR_WEIGHTS, conf=COMMON["detector_conf"], iou=COMMON["detector_iou"],
                              imgsz=config.imgsz, class_conf={"ball": config.ball_conf}, device=device)
-    keypoints = tv.load_model("yolo_pose", KEYPOINT_WEIGHTS, conf=COMMON["keypoint_conf"], stretch=config.keypoint_stretch,
+    keypoints = tv.load_model("yolo_pose", KEYPOINT_WEIGHTS, conf=COMMON["keypoint_conf"], resize="stretch" if config.keypoint_stretch else "letterbox",
                               device=device)
     homography = tv.pitch.HomographyEstimator(min_confidence=config.homography_min_confidence,
                                               ransac_threshold=COMMON["homography_ransac_threshold"],

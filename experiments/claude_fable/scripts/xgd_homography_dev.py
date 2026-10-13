@@ -7,7 +7,7 @@ Frames: `--n` random shots of the split plan's training matches (`xgpoc.detector
 and evaluation matches are never read. Folds 0-2 are `dev`, folds 3-4 `confirm`.
 
 1. Keypoints (GPU, cached in `<cache>/keypoints.parquet` with its completion record; reused when complete): the
-   package's pitch model on every frame with the letterbox input and with `stretch=True`, instance threshold 0.1.
+   package's pitch model on every frame with the letterbox input and with `resize="stretch"`, instance threshold 0.1.
 2. Variants (CPU): `VARIANTS` below through `HomographyEstimator.fit(keypoints, frame, boxes)`; `C4` is the homography
    of ticket 02's full C4 run (`cache/xgd_full/C4`, before this ticket). The people boxes come from that run's t0
    detections (the C4 detector), for the line mask and the checks without lines.
@@ -75,7 +75,7 @@ def keypoint_cache(frames: pd.DataFrame, folder: Path, device: str | None) -> pd
         return pd.read_parquet(folder / "keypoints.parquet")
     import tactifoot_vision as tv
 
-    models = {name: tv.load_model("yolo_pose", ex.KEYPOINT_WEIGHTS, conf=dev.INSTANCE_CONF, stretch=name == "stretch",
+    models = {name: tv.load_model("yolo_pose", ex.KEYPOINT_WEIGHTS, conf=dev.INSTANCE_CONF, resize=name,
                                   device=device) for name in ("letterbox", "stretch")}
     started, clock = datetime.now(UTC), time.perf_counter()
     rows = []

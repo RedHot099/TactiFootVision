@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 import yaml
 from xgpoc.pitchkp import dataset as D
@@ -56,28 +55,13 @@ def test_option_parses_values():
         run.option("scale")
 
 
-def test_square_input_pads_the_frame_to_a_centred_square_and_maps_keypoints_back():
-    seen = {}
+@pytest.mark.parametrize("name", ev.INPUTS)
+def test_the_evaluator_runs_each_input_through_the_package(monkeypatch, name):
+    from tactifoot_vision.models.ultralytics import YOLOPoseModel
 
-    def model(canvas):
-        seen["canvas"] = canvas
-        ys, xs = np.nonzero(canvas[:, :, 0] == 255)                # the frame's marked pixel, in canvas pixels
-        return sv_keypoints(np.float32([[[xs[0], ys[0]]] * 32]))
-
-    image = np.zeros((720, 1280, 3), np.uint8)
-    image[100, 200] = 255
-    found = ev.SquareInput(model)(image)
-    canvas = seen["canvas"]
-    assert canvas.shape == (1280, 1280, 3) and (canvas[:280] == ev.PAD_VALUE).all() and (canvas[1000:] == 114).all()
-    np.testing.assert_allclose(found.xy[0, 0], [200, 100])
-    np.testing.assert_allclose(found.data["xyxy"][0], [0, -280, 1280, 1000])
-
-
-def sv_keypoints(xy):
-    import supervision as sv
-
-    return sv.KeyPoints(xy=xy, confidence=np.ones(xy.shape[:2], np.float32), class_id=np.zeros(1, int),
-                        data={"xyxy": np.float32([[0, 0, 1280, 1280]]), "box_confidence": np.float32([0.9])})
+    monkeypatch.setattr(YOLOPoseModel, "_load", lambda self, weights: setattr(self, "_yolo", None))
+    model = ev.KeypointModel(Path("w.pt"), name, 960, 0.1).load("cpu")
+    assert (model.resize, model.imgsz, model.conf) == (name, 960, 0.1)
 
 
 def test_sessions_are_appended_one_line_per_event(tmp_path):

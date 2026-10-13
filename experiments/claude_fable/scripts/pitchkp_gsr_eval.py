@@ -117,7 +117,7 @@ def detector_table(frames: pd.DataFrame, configs: dict, folder: Path, device: st
         import tactifoot_vision as tv
 
         detector = tv.load_model("yolo", weights, conf=spec["conf"], iou=spec["iou"], imgsz=spec["imgsz"],
-                                 class_conf=spec["class_conf"], stretch=spec["stretch"], device=device)
+                                 class_conf=spec["class_conf"], resize="stretch" if spec["stretch"] else "letterbox", device=device)
         rows = []
         for g, f, p in tqdm(list(zip(frames["group"], frames["frame"], frames["path"], strict=True)), desc="detector",
                             mininterval=30):

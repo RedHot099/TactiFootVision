@@ -1,9 +1,9 @@
 """What the GSR evaluation runs: a keypoint model, homography methods on its keypoints, one clip at a time
 (pitch-keypoints 02; ticket 03 scores its candidates with it).
 
-A `KeypointModel` is a weights file, its input (`stretch`: the frame resized to the training size, ignoring the aspect
-ratio; `letterbox`: Ultralytics' default, padded to a multiple of the stride; `square`: padded to a square canvas as in
-Ultralytics training, `SquareInput`), an optional inference size and the instance threshold. A `Method` turns one
+A `KeypointModel` is a weights file, its input (the package's `resize`: `stretch`, the frame resized to the training size,
+ignoring the aspect ratio; `letterbox`, Ultralytics' default, padded to a multiple of the stride; `square`, padded to a
+centred square canvas as in Ultralytics training), an optional inference size and the instance threshold. A `Method` turns one
 frame's keypoints into a frame -> pitch homography with `HomographyEstimator.fit`: its keypoint threshold, RANSAC limit,
 line refinement on or off, and where the people boxes removed from the refinement's line mask come from (`detector`:
 the package detector at xg-detector's C4/D3 settings, the reference; `gt`: GSR's boxes, a diagnostic; `none`). The
@@ -30,8 +30,7 @@ from xgpoc.detector import homography_dev as dev
 from xgpoc.detector import lines
 from xgpoc.pitchkp import gsr_eval as ge
 
-INPUTS = ("stretch", "letterbox", "square")
-PAD_VALUE = 114                             # Ultralytics' letterbox grey
+INPUTS = ("stretch", "letterbox", "square")  # the package's `resize` values
 MASKS = ("detector", "gt", "none")
 SOURCES = ("keypoints", "label")
 
@@ -52,9 +51,8 @@ class KeypointModel:
     def load(self, device: str | None = None):
         import tactifoot_vision as tv
 
-        model = tv.load_model("yolo_pose", self.weights, conf=self.instance_conf, imgsz=self.imgsz,
-                              stretch=self.input == "stretch", device=device)
-        return SquareInput(model) if self.input == "square" else model
+        return tv.load_model("yolo_pose", self.weights, conf=self.instance_conf, imgsz=self.imgsz, resize=self.input,
+                             device=device)
 
     def settings(self) -> dict:
         return {"weights": str(self.weights), "input": self.input, "imgsz": self.imgsz,
@@ -63,28 +61,6 @@ class KeypointModel:
     def cache_key(self) -> str:
         """Names the model's keypoint cache: weights digest, input, inference size, instance threshold."""
         return f"{sha256_file(self.weights)[:12]}_{self.input}_{self.imgsz or 'train'}_i{self.instance_conf:g}"
-
-
-class SquareInput:
-    """A keypoint model fed the frame padded to a square (centred, grey `PAD_VALUE`), as Ultralytics' training
-    letterboxes every image; its outputs are moved back to frame pixels. The package's `stretch=False` input pads only
-    to a multiple of the stride (960 x 544 for a 16:9 frame), which a model trained on square canvases never saw:
-    ticket 03's y11m_960 found the instance on 20% of GSR valid images that way and on 100% with the square canvas."""
-
-    def __init__(self, model) -> None:
-        self.model = model
-
-    def __call__(self, image: np.ndarray) -> sv.KeyPoints:
-        height, width = image.shape[:2]
-        side = max(height, width)
-        top, left = (side - height) // 2, (side - width) // 2
-        canvas = np.full((side, side, 3), PAD_VALUE, image.dtype)
-        canvas[top:top + height, left:left + width] = image
-        found = self.model(canvas)
-        if len(found):
-            found.xy = found.xy - np.float32([left, top])
-            found.data["xyxy"] = found.data["xyxy"] - np.float32([left, top, left, top])
-        return found
 
 
 @dataclass(frozen=True)

@@ -15,7 +15,7 @@ frame, StatsBomb data or goal label is read.
    show here as metres-large offsets; the far touchline is checked to be y = 0 (vertex 0 above vertex 5 in the image).
 2. **Keypoint input** (`keypoint_error.csv`). The model on each labelled image, as trained (the 640 x 640 image) and as
    the letterbox sees a frame (the image resized back to 1280 x 720 and letterboxed by Ultralytics), through the
-   package (`tv.load_model("yolo_pose", ..., stretch=...)`). Per image: the median distance between predicted and
+   package (`tv.load_model("yolo_pose", ..., resize=...)`). Per image: the median distance between predicted and
    labelled visible keypoints, in 1280 x 720 pixels, and the share of visible keypoints predicted with confidence
    >= 0.5.
 
@@ -92,7 +92,7 @@ def keypoint_errors(labels: pd.DataFrame, weights: Path, device: str) -> pd.Data
     """Per image and input: median distance (1280 x 720 px) of predicted to labelled visible keypoints, and recall."""
     import tactifoot_vision as tv
 
-    models = {"stretch": tv.load_model("yolo_pose", weights, conf=0.1, stretch=True, device=device),
+    models = {"stretch": tv.load_model("yolo_pose", weights, conf=0.1, resize="stretch", device=device),
               "letterbox": tv.load_model("yolo_pose", weights, conf=0.1, device=device)}
     to_frame = np.array([FRAME[0] / 640, FRAME[1] / 640])
     rows = []

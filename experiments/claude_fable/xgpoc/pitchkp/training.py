@@ -11,8 +11,8 @@ broadcast frame shows the far touchline at the top); scale, translation and colo
 another pitch view.
 
 Ultralytics letterboxes every training image onto a square canvas (grey bands above and below a 16:9 frame), and the
-model relies on that canvas: run it on the square canvas at inference (`evaluator.SquareInput`, input `square`), not on
-the package's stride-padded letterbox, where y11m_960 found the pitch instance on only 20% of GSR valid images.
+model relies on that canvas: run it on the square canvas at inference (the package's `resize="square"`, evaluator input
+`square`), not on the stride-padded letterbox, where y11m_960 found the pitch instance on only 20% of GSR valid images.
 """
 
 import random
