@@ -1,18 +1,19 @@
-"""Read every number of the detector audit notes and the xg-detector final report back from its source (xg-detector 02,
-09, 07; pitch-keypoints 04).
+"""Read every number of the detector audit notes, the xg-detector final report and the pitch-keypoints report back from
+its source (xg-detector 02, 09, 07; pitch-keypoints 04, 06).
 
     ./run.sh python scripts/check_xgd_audit.py                     # every document of DOCUMENTS
     ./run.sh python scripts/check_xgd_audit.py REPORT.md [--claims C]   # one document
 
 The checks of `scripts/check_vendor_report.py` on each document and its claims file (`AUDIT.md` with `claims.toml`,
 `REPORT.md` with `report_claims.toml`, audit 3's `results_reports/pitch_keypoints_2026-10/AUDIT3.md` with the
-`claims.toml` next to it; a document given on the command line takes `claims.toml` next to it unless
-`--claims` says otherwise): each tagged number is rendered from its result file and must match the text, every
+`claims.toml` next to it, and that folder's phase report `REPORT.md` with its `report_claims.toml`; a document given on
+the command line takes `claims.toml` next to it unless `--claims` says otherwise): each tagged number is rendered from its result file and must match the text, every
 decimal number, percentage and integer of two or more digits must be tagged (dates, ticket numbers, code and the
 `[report].untagged` phrases excepted), and every source file is listed with its SHA-256 in the document's source
 table and agrees with its folder's completion record. In the report, development numbers (folders with
 `dev = true`) must stand under a heading with "wyniki rozwojowe" and the test's numbers (`confirmatory = true`) under
-a heading with "wynik testu" and none with the development label. See the docstrings of that script and of
+a heading with "wynik testu" and none with the development label; the pitch-keypoints report uses the same labels for
+the choice on the validation splits and the single scoring on the test splits. See the docstrings of that script and of
 `scripts/check_reviewer_report.py` for the tag and claim scheme.
 
 Exit code 0 when every check passes, 1 otherwise (each failure is printed).
@@ -28,8 +29,9 @@ FOLDER = cvr.EXP / "results_reports" / "xg_detector_2026-10"
 AUDIT = FOLDER / "AUDIT.md"
 REPORT = FOLDER / "REPORT.md"
 AUDIT3 = cvr.EXP / "results_reports" / "pitch_keypoints_2026-10" / "AUDIT3.md"
+PK_REPORT = AUDIT3.with_name("REPORT.md")
 DOCUMENTS = {AUDIT: FOLDER / "claims.toml", REPORT: FOLDER / "report_claims.toml",       # document: its claims file
-             AUDIT3: AUDIT3.with_name("claims.toml")}
+             AUDIT3: AUDIT3.with_name("claims.toml"), PK_REPORT: PK_REPORT.with_name("report_claims.toml")}
 
 
 def main(argv: list[str] | None = None) -> int:

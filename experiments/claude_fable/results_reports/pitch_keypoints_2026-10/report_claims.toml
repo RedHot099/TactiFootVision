@@ -1,0 +1,339 @@
+# Sources of every number in REPORT.md (pitch-keypoints 06), the report of the pitch-keypoints phase.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# Folders with dev = true hold the choice on the validation splits (GSR valid, Calibration valid): their claims must
+# stand under a heading with "wyniki rozwojowe". Folders with confirmatory = true hold the single scoring of the chosen
+# model on GSR test and Calibration-2023 test: their claims must stand under a heading with "wynik testu" and under
+# none with the development label. The baseline's own scoring on GSR test (ticket 02) is a reference, not the test.
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wynik testu"
+# Design constants and names, not results: the model's input size and the stride-padded input it was compared with,
+# the stored image size, the 32 pitch vertices, the study frame offsets, GSR game ids, Polish ticket references, the
+# hash name in the source table.
+untagged = ["960 × 544", "960 × 540", "960", "32 wierzchołki", "400 ms", "800 ms", "mecz 11", "tickecie 03",
+            "tickecie 04", "tickecie 08", "SHA-256", "Calibration-2023"]
+
+[folders]
+ds = { path = "results/pk_dataset" }
+bv = { path = "results/pitchkp_gsr_eval/valid" }
+bt = { path = "results/pitchkp_gsr_eval/test" }
+bcv = { path = "results/pitchkp_gsr_eval/calib_valid" }
+bct = { path = "results/pitchkp_gsr_eval/calib_test" }
+lb = { path = "results/pk_candidates/y11m_960_e18/valid", dev = true }
+cv = { path = "results/pk_candidates/y11m_960_e18_square/valid", dev = true }
+ccv = { path = "results/pk_candidates/y11m_960_e18_square/calib_valid", dev = true }
+rt = { path = "results/pk_candidates/y11m_960_e18_square/retune_valid", dev = true }
+ct = { path = "results/pk_candidates/y11m_960_e18_square/test", confirmatory = true }
+cct = { path = "results/pk_candidates/y11m_960_e18_square/calib_test", confirmatory = true }
+lf = { path = "results/pk_label_free/y11m_960_e18_square" }
+hl = { path = "results/xgd_homography_dev/labels" }
+rf = { path = "results/xgd_report_figures" }
+sq = { path = "results/pk_square_input" }
+ev = { path = "results/pk_ball_evidence" }
+a1 = { path = "results/xgd_audit" }
+a2 = { path = "results/xgd_audit2" }
+a3 = { path = "results/xgd_audit3" }
+dg2 = { path = "results/xgd_audit2_diag" }
+dg3 = { path = "results/xgd_audit3_diag" }
+fu3 = { path = "results/xgd_full3" }
+
+[claims]
+
+# --- protocol: council C3 (decision log row added by this ticket), the held-out matches ---
+"c3.avail" = { src = "research/quality_v13_decisions.tsv", quote = "availability >= 0.85, median <= 1.0 m, p90 <= 3 m, refinement mask from the package detector", values = [0.85], scale = 100, fmt = "{:.0f}%" }
+"c3.med" = { src = "research/quality_v13_decisions.tsv", quote = "availability >= 0.85, median <= 1.0 m, p90 <= 3 m, refinement mask from the package detector", values = [1.0], fmt = "{:.1f} m" }
+"c3.budget" = { src = "research/quality_v13_decisions.tsv", quote = "stop at the first of 3 model families, 30 GPU-hours", values = [30], fmt = "{:d}" }
+"pl.heldout" = { src = "research/xg_detector_test_rule.json", keys = ["population.matches"], fmt = "{:d}" }
+
+# --- ticket 01: the dataset ---
+"ds.maxres" = { src = "ds:summary.json", keys = ["rule.max_residual_px"], fmt = "{:.0f} px" }
+"ds.sd" = { src = "ds:summary.json", keys = ["rule.sd_max_px"], fmt = "{:.0f} px" }
+"ds.gtr.images" = { src = "ds:summary.json", keys = ["counts.gsr/train.images"], fmt = "{:,d}" }
+"ds.gtr.groups" = { src = "ds:summary.json", keys = ["counts.gsr/train.groups"], fmt = "{:d}" }
+"ds.gtr.kept" = { src = "ds:summary.json", keys = ["counts.gsr/train.labelled"], fmt = "{:,d}" }
+"ds.gtr.after" = { src = "ds:summary.json", keys = ["counts.gsr/train.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.gva.images" = { src = "ds:summary.json", keys = ["counts.gsr/valid.images"], fmt = "{:,d}" }
+"ds.gva.groups" = { src = "ds:summary.json", keys = ["counts.gsr/valid.groups"], fmt = "{:d}" }
+"ds.gva.kept" = { src = "ds:summary.json", keys = ["counts.gsr/valid.labelled"], fmt = "{:,d}" }
+"ds.gva.after" = { src = "ds:summary.json", keys = ["counts.gsr/valid.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.gte.images" = { src = "ds:summary.json", keys = ["counts.gsr/test.images"], fmt = "{:,d}" }
+"ds.gte.groups" = { src = "ds:summary.json", keys = ["counts.gsr/test.groups"], fmt = "{:d}" }
+"ds.gte.kept" = { src = "ds:summary.json", keys = ["counts.gsr/test.labelled"], fmt = "{:,d}" }
+"ds.gte.after" = { src = "ds:summary.json", keys = ["counts.gsr/test.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.ctr.images" = { src = "ds:summary.json", keys = ["counts.calib/train.images"], fmt = "{:,d}" }
+"ds.ctr.groups" = { src = "ds:summary.json", keys = ["counts.calib/train.groups"], fmt = "{:d}" }
+"ds.ctr.kept" = { src = "ds:summary.json", keys = ["counts.calib/train.labelled"], fmt = "{:,d}" }
+"ds.ctr.after" = { src = "ds:summary.json", keys = ["counts.calib/train.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.cva.images" = { src = "ds:summary.json", keys = ["counts.calib/valid.images"], fmt = "{:,d}" }
+"ds.cva.groups" = { src = "ds:summary.json", keys = ["counts.calib/valid.groups"], fmt = "{:d}" }
+"ds.cva.kept" = { src = "ds:summary.json", keys = ["counts.calib/valid.labelled"], fmt = "{:,d}" }
+"ds.cva.after" = { src = "ds:summary.json", keys = ["counts.calib/valid.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.cte.images" = { src = "ds:summary.json", keys = ["counts.calib/test.images"], fmt = "{:,d}" }
+"ds.cte.groups" = { src = "ds:summary.json", keys = ["counts.calib/test.groups"], fmt = "{:d}" }
+"ds.cte.kept" = { src = "ds:summary.json", keys = ["counts.calib/test.labelled"], fmt = "{:,d}" }
+"ds.cte.after" = { src = "ds:summary.json", keys = ["counts.calib/test.after_exclusion.duplicate of a higher-priority split"], fmt = "{:,d}" }
+"ds.kept" = { src = "ds:labelled.csv", row = {  }, cols = [], agg = "count", fmt = "{:,d}" }
+"ds.excluded" = { src = "ds:labelled.csv", row = { exclusion = "xg held-out game" }, cols = [], agg = "count", fmt = "{:,d}" }
+"ds.images" = { src = "ds:complete.json", keys = ["dataset.images"], fmt = "{:,d}" }
+"ds.train" = { src = "ds:summary.json", keys = ["export.train.images"], fmt = "{:,d}" }
+"ds.val" = { src = "ds:summary.json", keys = ["export.val.images"], fmt = "{:,d}" }
+"ds.test_gsr" = { src = "ds:summary.json", keys = ["export.test_gsr.images"], fmt = "{:,d}" }
+"ds.test_calib" = { src = "ds:summary.json", keys = ["export.test_calib.images"], fmt = "{:,d}" }
+"ds.excl.train" = { src = "ds:summary.json", keys = ["split_hygiene.calibration_plan_roles.train.labelled_images_by_role.evaluation"], fmt = "{:,d}" }
+"ds.excl.train.games" = { src = "ds:summary.json", keys = ["split_hygiene.calibration_plan_roles.train.games_by_role.evaluation"], fmt = "{:d}" }
+"ds.excl.val" = { src = "ds:summary.json", keys = ["split_hygiene.calibration_plan_roles.valid.labelled_images_by_role.evaluation"], fmt = "{:d}" }
+"ds.cte.eval" = { src = "ds:summary.json", keys = ["split_hygiene.calibration_plan_roles.test.games_by_role.evaluation"], fmt = "{:d}" }
+"ds.cte.gate" = { src = "ds:summary.json", keys = ["split_hygiene.calibration_plan_roles.test.games_by_role.gate"], fmt = "{:d}" }
+"ds.feet.train" = { src = "ds:summary.json", keys = ["gsr_feet_check.kept/train.frame_median_m.p50"], fmt = "{:.2f} m" }
+"ds.feet.valid" = { src = "ds:summary.json", keys = ["gsr_feet_check.kept/valid.frame_median_m.p50"], fmt = "{:.2f} m" }
+"ds.feet.test" = { src = "ds:summary.json", keys = ["gsr_feet_check.kept/test.frame_median_m.p50"], fmt = "{:.2f} m" }
+"ds.axis.y" = { src = "ds:summary.json", keys = ["axis_check.+1-1.median_m"], fmt = "{:.1f} m" }
+"ds.axis.x" = { src = "ds:summary.json", keys = ["axis_check.-1+1.median_m"], fmt = "{:.1f} m" }
+"ds.flip" = { src = "ds:summary.json", keys = ["flip_check.max_px_kept.max"], fmt = "{:.2f} px" }
+
+# --- ticket 02: the evaluation and the baseline on GSR valid (bv) and test (bt) ---
+"bv.level" = { src = "xgpoc/pitchkp/gsr_eval.py", quote = "Every statistic has a 95% interval from a bootstrap that resamples clips", values = [95], fmt = "{:d}%" }
+"bv.draws" = { src = "bv:complete.json", keys = ["parameters.draws"], fmt = "{:,d}" }
+"bv.loo" = { src = "bv:complete.json", keys = ["convention.feet_loo_median_m"], fmt = "{:.2f} m" }
+"bv.inst" = { src = "bv:complete.json", keys = ["model.instance_conf"], fmt = "{:.1f}" }
+"bv.d1.kp" = { src = "bv:complete.json", keys = ["methods.D1.min_confidence"], fmt = "{:.1f}" }
+"bv.d2.kp" = { src = "bv:complete.json", keys = ["methods.D2.min_confidence"], fmt = "{:.1f}" }
+"bv.d1.avail" = { src = "bv:summary.csv", row = { method = "D1", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.d1.med" = { src = "bv:summary.csv", row = { method = "D1", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bv.d1.p90" = { src = "bv:summary.csv", row = { method = "D1", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bv.d2.avail" = { src = "bv:summary.csv", row = { method = "D2", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.d2.med" = { src = "bv:summary.csv", row = { method = "D2", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bv.d2.p90" = { src = "bv:summary.csv", row = { method = "D2", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bv.d3.avail" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.d3.med" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bv.d3.p90" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bv.d4.avail" = { src = "bv:summary.csv", row = { method = "D4", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.d4.med" = { src = "bv:summary.csv", row = { method = "D4", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bv.d4.p90" = { src = "bv:summary.csv", row = { method = "D4", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bv.lab.avail" = { src = "bv:summary.csv", row = { method = "label", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.lab.med" = { src = "bv:summary.csv", row = { method = "label", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bv.lab.p90" = { src = "bv:summary.csv", row = { method = "label", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d1.avail" = { src = "bt:summary.csv", row = { method = "D1", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.d1.med" = { src = "bt:summary.csv", row = { method = "D1", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.d1.p90" = { src = "bt:summary.csv", row = { method = "D1", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d2.avail" = { src = "bt:summary.csv", row = { method = "D2", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.d2.med" = { src = "bt:summary.csv", row = { method = "D2", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.d2.p90" = { src = "bt:summary.csv", row = { method = "D2", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d3.avail1" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.d3.med" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.d3.p90" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d4.avail" = { src = "bt:summary.csv", row = { method = "D4", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.d4.med" = { src = "bt:summary.csv", row = { method = "D4", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.d4.p90" = { src = "bt:summary.csv", row = { method = "D4", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.lab.avail" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.lab.med" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.lab.p90" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d3.avail" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"bt.d3.med1" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.d3.p90ci" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "p90_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"bt.d3.lt1" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.d3.lt2" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "under_2m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.lab.med1" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.lab.lt1" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.lab.lt2" = { src = "bt:summary.csv", row = { method = "label", stratum = "all", metric = "under_2m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.d3.med1" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bv.d3.lt1" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.clips" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "clips" }, cols = ["value"], fmt = "{:.0f}" }
+"bv.frames" = { src = "bv:summary.csv", row = { method = "D3", stratum = "all", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"bt.clips" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "clips" }, cols = ["value"], fmt = "{:.0f}" }
+"bt.frames" = { src = "bt:summary.csv", row = { method = "D3", stratum = "all", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"bv.mask" = { src = "bv:paired.csv", row = { method = "D3_gtmask", reference = "D3", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:+.2f} m [{:+.2f}; {:+.2f}]" }
+"bt.mask" = { src = "bt:paired.csv", row = { method = "D3_gtmask", reference = "D3", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:+.2f} m [{:+.2f}; {:+.2f}]" }
+"bv.near_m" = { src = "bv:complete.json", keys = ["parameters.near_goal_m"], fmt = "{:.0f} m" }
+"bv.near.frames" = { src = "bv:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"bt.near.frames" = { src = "bt:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"bv.near.avail" = { src = "bv:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bv.near.med" = { src = "bv:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.near.avail" = { src = "bt:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.near.med" = { src = "bt:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.near.p90" = { src = "bt:summary.csv", row = { method = "D3", stratum = "near_goal", metric = "p90_m" }, cols = ["value"], fmt = "{:.1f} m" }
+"bt.g7.med" = { src = "bt:per_game.csv", row = { method = "D3", game = "7", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.g8.med" = { src = "bt:per_game.csv", row = { method = "D3", game = "8", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.g11.med" = { src = "bt:per_game.csv", row = { method = "D3", game = "11", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"bt.g8.avail" = { src = "bt:per_game.csv", row = { method = "D3", game = "8", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.g8.p90" = { src = "bt:per_game.csv", row = { method = "D3", game = "8", metric = "p90_m" }, cols = ["value"], fmt = "{:.1f} m" }
+"bv.kpconf" = { src = "bv:complete.json", keys = ["parameters.keypoint_conf"], fmt = "{:.1f}" }
+"bv.px" = { src = "bv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value"], fmt = "{:.1f} px" }
+"bv.recall" = { src = "bv:keypoints_summary.csv", row = { metric = "recall" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bt.px" = { src = "bt:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value"], fmt = "{:.1f} px" }
+"bt.recall" = { src = "bt:keypoints_summary.csv", row = { metric = "recall" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bct.px" = { src = "bct:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value"], fmt = "{:.1f} px" }
+"bct.recall" = { src = "bct:keypoints_summary.csv", row = { metric = "recall" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"bcv.px" = { src = "bcv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
+
+# --- ticket 03: training and the choice on the validation splits (development) ---
+"tr.scale" = { src = "research/quality_v13_decisions.tsv", quote = "fliplr 0.5 with flip_idx, scale 0.3, translate 0.1", values = [0.3], fmt = "{:.1f}" }
+"tr.translate" = { src = "research/quality_v13_decisions.tsv", quote = "fliplr 0.5 with flip_idx, scale 0.3, translate 0.1", values = [0.1], fmt = "{:.1f}" }
+"tr.recall" = { src = "research/quality_v13_decisions.tsv", quote = "box recall fell from 0.90 (epoch 7)", values = [0.9], fmt = "{:.2f}" }
+"tr.epoch" = { src = "research/quality_v13_decisions.tsv", quote = "SIGINT after epoch 18 of 40", values = [18], fmt = "{:d}" }
+"tr.epochs" = { src = "research/quality_v13_decisions.tsv", quote = "SIGINT after epoch 18 of 40", values = [40], fmt = "{:d}" }
+"tr.gpuh" = { src = "research/quality_v13_decisions.tsv", quote = "(7,414 s = 2.06 GPU h;", values = [2.06], fmt = "{:.2f}" }
+"tr.cbox" = { src = "research/quality_v13_decisions.tsv", quote = "13:35:47Z -> 13:51:34Z (946 s;", values = [946], fmt = "{:d} s" }
+"tr.rect" = { src = "research/quality_v13_decisions.tsv", quote = "finds the instance (conf >= 0.1) on 20% with Ultralytics' stride-padded letterbox", values = [20], fmt = "{:d}%" }
+"tr.square" = { src = "research/quality_v13_decisions.tsv", quote = "and on 100% (median conf 0.96) on the square 960 x 960 canvas", values = [100], fmt = "{:d}%" }
+"tr.stop" = { src = "research/quality_v13_decisions.tsv", quote = "family 1, 2.6 GPU h", values = [2.6], fmt = "{:.1f}" }
+"cv.kp05" = { src = "cv:complete.json", keys = ["methods.kp05_refined.min_confidence"], fmt = "{:.1f}" }
+"cv.ransac" = { src = "cv:complete.json", keys = ["methods.kp05_refined.ransac_threshold"], fmt = "{:.0f} m" }
+"lb.avail" = { src = "lb:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"lb.med" = { src = "lb:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"lb.p90" = { src = "lb:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"lb.lt1" = { src = "lb:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cv.r.avail" = { src = "cv:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cv.r.med" = { src = "cv:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"cv.r.p90" = { src = "cv:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"cv.r.lt1" = { src = "cv:summary.csv", row = { method = "kp05_refined", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cv.k.avail" = { src = "cv:summary.csv", row = { method = "kp05", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cv.k.med" = { src = "cv:summary.csv", row = { method = "kp05", stratum = "all", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"cv.k.p90" = { src = "cv:summary.csv", row = { method = "kp05", stratum = "all", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"cv.k.lt1" = { src = "cv:summary.csv", row = { method = "kp05", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cv.px" = { src = "cv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value"], fmt = "{:.1f} px" }
+"ccv.px" = { src = "ccv:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
+"rt.tie" = { src = "research/quality_v13_decisions.tsv", quote = "the lowest median; within 0.01 m the higher availability", values = [0.01], fmt = "{:.2f} m" }
+"rt.methods" = { src = "rt:summary.csv", row = { stratum = "all", metric = "availability" }, cols = [], agg = "count", fmt = "{:d}" }
+"rt.kp" = { src = "rt:complete.json", keys = ["methods.kp03_r2_refined.min_confidence"], fmt = "{:.1f}" }
+"rt.avail" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"rt.med" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"rt.p90" = { src = "rt:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "p90_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"rt.paired" = { src = "rt:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+
+# --- ticket 03: the single scoring on GSR test (ct) and Calibration-2023 test (cct), confirmatory ---
+"ct.clips" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "clips" }, cols = ["value"], fmt = "{:.0f}" }
+"ct.frames" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"ct.avail" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"ct.avail1" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.avail.lo" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "availability" }, cols = ["ci_low"], scale = 100, fmt = "{:.1f}%" }
+"ct.med" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ct.p90" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "p90_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ct.lt1" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "under_1m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.lt2" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "all", metric = "under_2m" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.pd.avail" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "availability" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:+.1f} pp [{:+.1f}; {:+.1f}]" }
+"ct.pd.med" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ct.pd.p90" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "p90_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ct.pd.lt1" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "under_1m" }, cols = ["value", "ci_low", "ci_high"], scale = 100, fmt = "{:+.1f} pp [{:+.1f}; {:+.1f}]" }
+"ct.pd.lt2" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "all", metric = "under_2m" }, cols = ["value"], scale = 100, fmt = "{:+.1f} pp" }
+"ct.near.frames" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "near_goal", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"ct.near.avail" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "near_goal", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.near.med" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "near_goal", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.near.p90" = { src = "ct:summary.csv", row = { method = "kp03_r2_refined", stratum = "near_goal", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.near.pd" = { src = "ct:paired.csv", row = { method = "kp03_r2_refined", reference = "D3@reference", stratum = "near_goal", metric = "median_m" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"ct.g7.avail" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "7", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.g7.med" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "7", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.g7.p90" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "7", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.g8.avail" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "8", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.g8.med" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "8", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.g8.p90" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "8", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.g11.avail" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "11", metric = "availability" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ct.g11.med" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "11", metric = "median_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.g11.p90" = { src = "ct:per_game.csv", row = { method = "kp03_r2_refined", game = "11", metric = "p90_m" }, cols = ["value"], fmt = "{:.2f} m" }
+"ct.px" = { src = "ct:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
+"ct.recall" = { src = "ct:keypoints_summary.csv", row = { metric = "recall" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cct.frames" = { src = "cct:keypoints_summary.csv", row = { metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"cct.games" = { src = "cct:keypoints_summary.csv", row = { metric = "groups" }, cols = ["value"], fmt = "{:.0f}" }
+"cct.px" = { src = "cct:keypoints_summary.csv", row = { metric = "px_median" }, cols = ["value", "ci_low", "ci_high"], fmt = "{:.1f} px [{:.1f}; {:.1f}]" }
+"cct.p90" = { src = "cct:keypoints_summary.csv", row = { metric = "px_p90" }, cols = ["value"], fmt = "{:.1f} px" }
+"cct.recall" = { src = "cct:keypoints_summary.csv", row = { metric = "recall" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"cct.spurious" = { src = "cct:keypoints_summary.csv", row = { metric = "spurious" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+
+# --- ticket 03: ticket 08's label-free loop on the 1,500 training-match frames ---
+"lf.frames" = { src = "lf:complete.json", keys = ["parameters.n"], fmt = "{:,d}" }
+"lf.good" = { src = "lf:complete.json", keys = ["parameters.good"], fmt = "{:.1f}" }
+"lf.kp" = { src = "lf:complete.json", keys = ["methods.kp03_r2.min_confidence"], fmt = "{:.1f}" }
+"lf.k.hom" = { src = "lf:summary.csv", row = { variant = "kp03_r2", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"lf.k.good" = { src = "lf:summary.csv", row = { variant = "kp03_r2", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.k.agr" = { src = "lf:summary.csv", row = { variant = "kp03_r2", subset = "all" }, cols = ["agreement_median"], fmt = "{:.2f}" }
+"lf.c.hom" = { src = "lf:summary.csv", row = { variant = "current_kp05", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"lf.c.good" = { src = "lf:summary.csv", row = { variant = "current_kp05", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.c.agr" = { src = "lf:summary.csv", row = { variant = "current_kp05", subset = "all" }, cols = ["agreement_median"], fmt = "{:.2f}" }
+"lf.r.hom" = { src = "lf:summary.csv", row = { variant = "kp03_r2_refined", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"lf.r.good" = { src = "lf:summary.csv", row = { variant = "kp03_r2_refined", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.r.agr" = { src = "lf:summary.csv", row = { variant = "kp03_r2_refined", subset = "all" }, cols = ["agreement_median"], fmt = "{:.2f}" }
+"lf.cr.hom" = { src = "lf:summary.csv", row = { variant = "current_kp05_refined", subset = "all" }, cols = ["homography"], scale = 100, fmt = "{:.1f}%" }
+"lf.cr.good" = { src = "lf:summary.csv", row = { variant = "current_kp05_refined", subset = "all" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.cr.agr" = { src = "lf:summary.csv", row = { variant = "current_kp05_refined", subset = "all" }, cols = ["agreement_median"], fmt = "{:.2f}" }
+"lf.k.conf" = { src = "lf:summary.csv", row = { variant = "kp03_r2", subset = "confirm" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.r.conf" = { src = "lf:summary.csv", row = { variant = "kp03_r2_refined", subset = "confirm" }, cols = ["good"], scale = 100, fmt = "{:.1f}%" }
+"lf.res.frames" = { src = "lf:complete.json", keys = ["residuals.frames"], fmt = "{:d}" }
+"lf.res.px" = { src = "lf:complete.json", keys = ["residuals.median_px"], fmt = "{:.1f} px" }
+
+# --- xg-detector context: the old model (ticket 08 of xg-detector) ---
+"hl.images" = { src = "hl:summary.json", keys = ["images"], fmt = "{:d}" }
+"rf.stretch.med" = { src = "rf:figures.json", keys = ["keypoint_residuals.stretch.median_px"], fmt = "{:.0f} px" }
+
+# --- ticket 04: the package's square input ---
+"sq.frames" = { src = "sq:complete.json", keys = ["summary.frames"], fmt = "{:,d}" }
+"sq.new" = { src = "sq:complete.json", keys = ["summary.instance_new"], fmt = "{:,d}" }
+"sq.max" = { src = "sq:complete.json", keys = ["summary.max_xy_px"], fmt = "{:.1f} px" }
+
+# --- ticket 04: audit 3 (and audits 1-2 for comparison) ---
+"dc.kp" = { src = "research/pitchkp_audit3_configs.json", quote = "min_confidence=0.3", values = [0.3], fmt = "{:.1f}" }
+"ev.kick" = { src = "ev:summary.json", keys = ["sources.kick.median_to_truth_kick_m"], fmt = "{:.1f} m" }
+"dg2.m400.med" = { src = "dg2:diag.csv", row = { split = "source", group = "ball_m400", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg2.t0.med" = { src = "dg2:diag.csv", row = { split = "source", group = "ball_t0", config = "D3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"ev.clips" = { src = "ev:summary.json", keys = ["timing.clips"], fmt = "{:d}" }
+"ev.kicks" = { src = "ev:summary.json", keys = ["timing.with_kick"], fmt = "{:d}" }
+"ev.kick_ms" = { src = "ev:summary.json", keys = ["timing.kick_ms_median"], abs = true, fmt = "{:.0f} ms" }
+"ev.to400" = { src = "ev:summary.json", keys = ["timing.to_kick_400_median_m"], fmt = "{:.1f} m" }
+"ev.to800" = { src = "ev:summary.json", keys = ["timing.to_kick_800_median_m"], fmt = "{:.1f} m" }
+"ev.to0" = { src = "ev:summary.json", keys = ["timing.to_kick_0_median_m"], fmt = "{:.1f} m" }
+"ev.frames" = { src = "ev:ball.csv", row = { stratum = "all", metric = "frames" }, cols = ["value"], fmt = "{:,.0f}" }
+"ev.placed" = { src = "ev:ball.csv", row = { stratum = "all", metric = "placed" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"ev.far" = { src = "ev:ball.csv", row = { stratum = "all", metric = "far" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.shots" = { src = "a3:complete.json", keys = ["population.shots"], fmt = "{:,d}" }
+"a3.matches" = { src = "a3:complete.json", keys = ["population.matches"], fmt = "{:d}" }
+"a3.n_boot" = { src = "a3:complete.json", keys = ["parameters.n_boot"], fmt = "{:,d}" }
+"a3.ref.rows" = { src = "a3:complete.json", keys = ["reference_check.rows"], fmt = "{:d}" }
+"a3.cov_min" = { src = "a3:complete.json", keys = ["parameters.coverage_min"], scale = 100, fmt = "{:.0f}%" }
+"a3.med_max" = { src = "a3:complete.json", keys = ["parameters.median_max_m"], fmt = "{:.0f} m" }
+"a3.gk_min" = { src = "a3:complete.json", keys = ["parameters.gk_coverage_min"], scale = 100, fmt = "{:.0f}%" }
+"a3.chosen" = { src = "a3:choice.json", keys = ["chosen"], fmt = "{}" }
+"a3.gate" = { src = "a3:choice.json", keys = ["gate.result"], fmt = "{}" }
+"a3.g.cov" = { src = "a3:choice.json", keys = ["gate.checks.shot_location_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"a3.g.med" = { src = "a3:choice.json", keys = ["gate.checks.shot_location_median_m.value"], fmt = "{:.1f} m" }
+"a3.g.gk" = { src = "a3:choice.json", keys = ["gate.checks.gk_information_coverage.value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e1.med2" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.2f} m" }
+"a3.e2.med2" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.2f} m" }
+"a3.e3.med2ci" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"a1.c4.cov" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a1.c4.med" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a1.c4.med1" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a1.c4.const" = { src = "a2:metrics.csv", row = { config = "C4", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a1.c4.gk.cov" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a1.c4.gk" = { src = "a1:metrics.csv", row = { config = "C4", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a1.c4.gkc" = { src = "a2:metrics.csv", row = { config = "C4", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.cov" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.d3.med" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.d3.const" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.gk.cov" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.d3.gk" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.gkc" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.cov" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e1.med" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e1.const" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.gk.cov" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e1.gk" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e1.gkc" = { src = "a3:metrics.csv", row = { config = "E1", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.cov" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e2.med" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e2.const" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.gk.cov" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e2.gk" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e2.gkc" = { src = "a3:metrics.csv", row = { config = "E2", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.cov" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e3.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value", "lo", "hi"], fmt = "{:.1f} m [{:.1f}; {:.1f}]" }
+"a3.e3.const" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "shot_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.gk.cov" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "coverage" }, cols = ["value"], scale = 100, fmt = "{:.1f}%" }
+"a3.e3.gk" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_any", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.gkc" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_constant", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.d3.med1" = { src = "a3:metrics.csv", row = { config = "D3", quantity = "shot_location", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"a3.e3.gkd.med" = { src = "a3:metrics.csv", row = { config = "E3", quantity = "gk_detected", subset = "all", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg3.e1.t0" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_t0", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg3.e1.m400" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E1", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"dg3.e3.m400" = { src = "dg3:diag.csv", row = { split = "source", group = "ball_m400", config = "E3", quantity = "shot_location", stat = "median" }, cols = ["value"], fmt = "{:.1f} m" }
+"fu3.shots" = { src = "fu3:coverage_by_role.csv", row = { role = "all", offset_ms = "0" }, cols = ["shots"], fmt = "{:,d}" }

@@ -1,5 +1,5 @@
-"""The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07): the real
-documents, and changed copies."""
+"""The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07), audit 3
+(pitch-keypoints 04) and the pitch-keypoints report (pitch-keypoints 06): the real documents, and changed copies."""
 
 import sys
 from pathlib import Path
@@ -9,7 +9,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from check_vendor_report import EXP, check  # noqa: E402
-from check_xgd_audit import AUDIT, AUDIT3, DOCUMENTS, REPORT, main  # noqa: E402
+from check_xgd_audit import (  # noqa: E402
+    AUDIT,
+    AUDIT3,
+    DOCUMENTS,
+    PK_REPORT,
+    REPORT,
+    main,
+)
 from test_check_vendor_report import write_tree  # noqa: E402
 
 RESULTS = ("results/xgd_audit", "results/xgd_full", "results/xgd_audit2", "results/xgd_audit2_diag", "results/xgd_full2")
@@ -55,7 +62,7 @@ def test_the_note_check_on_a_planted_tree(tmp_path, capsys):
     assert "FAILED" in capsys.readouterr().out
 
 
-def test_without_a_path_the_check_reads_both_documents(monkeypatch):
+def test_without_a_path_the_check_reads_every_document(monkeypatch):
     import check_xgd_audit
 
     seen = []
@@ -63,7 +70,8 @@ def test_without_a_path_the_check_reads_both_documents(monkeypatch):
     assert main(["--root", "/x"]) == 0
     assert seen == [[str(AUDIT), "--claims", str(AUDIT.with_name("claims.toml")), "--root", "/x"],
                     [str(REPORT), "--claims", str(REPORT.with_name("report_claims.toml")), "--root", "/x"],
-                    [str(AUDIT3), "--claims", str(AUDIT3.with_name("claims.toml")), "--root", "/x"]]
+                    [str(AUDIT3), "--claims", str(AUDIT3.with_name("claims.toml")), "--root", "/x"],
+                    [str(PK_REPORT), "--claims", str(PK_REPORT.with_name("report_claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -72,7 +80,7 @@ def test_without_a_path_one_failing_document_fails_the_check(monkeypatch):
 
     seen = []
     monkeypatch.setattr(check_xgd_audit.cvr, "main", lambda argv: seen.append(argv) or int(argv[0] == str(AUDIT)))
-    assert main([]) == 1 and len(seen) == 3        # the other documents are still checked
+    assert main([]) == 1 and len(seen) == 4        # the other documents are still checked
 
 
 def test_claims_without_a_report_is_refused():
@@ -163,3 +171,62 @@ def test_a_changed_number_in_the_audit_3_note_fails(tmp_path, claim):
     copy = tmp_path / "AUDIT3.md"
     copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
     assert any(f"{claim} expects" in e for e in check(copy, AUDIT3.with_name("claims.toml"), EXP))
+
+
+# --- the pitch-keypoints report (pitch-keypoints 06) ---
+
+PK_CLAIMS = PK_REPORT.with_name("report_claims.toml")
+PK_RESULTS = ("results/pk_dataset", "results/pitchkp_gsr_eval/valid", "results/pitchkp_gsr_eval/test",
+              "results/pk_candidates/y11m_960_e18_square/test", "results/pk_candidates/y11m_960_e18_square/retune_valid",
+              "results/pk_label_free/y11m_960_e18_square")
+PK_READY = AUDIT3_READY and PK_REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in PK_RESULTS)
+needs_pk_report = pytest.mark.skipif(not PK_READY, reason="needs the pitch-keypoints report and the phase's results")
+
+
+def changed_copy(tmp_path, claim: str) -> Path:
+    """A copy of the pitch-keypoints report with the last digit before `claim`'s tag changed."""
+    text = PK_REPORT.read_text()
+    tag = f"<!--n:{claim}-->"
+    assert tag in text
+    head, tail = text.split(tag, 1)
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(head[:-1] + ("0" if head[-1] != "0" else "1") + tag + tail)
+    return copy
+
+
+@needs_pk_report
+def test_the_real_pitch_keypoints_report_passes():
+    assert DOCUMENTS[PK_REPORT] == PK_CLAIMS
+    assert check(PK_REPORT, PK_CLAIMS, EXP) == []
+
+
+@needs_pk_report
+@pytest.mark.parametrize("claim", ["ct.med", "ct.avail.lo", "bt.d3.med", "rt.paired", "ds.excluded", "a3.e3.med2ci",
+                                   "c3.budget", "lf.res.px"])
+def test_a_changed_number_in_the_pitch_keypoints_report_fails(tmp_path, claim):
+    assert any(f"{claim} expects" in e for e in check(changed_copy(tmp_path, claim), PK_CLAIMS, EXP))
+
+
+@needs_pk_report
+def test_test_numbers_outside_a_test_heading_fail(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(PK_REPORT.read_text().replace("### 6.1 Wynik testu wobec celu C3", "### 6.1 Wobec celu C3", 1)
+                    .replace("## 6. Wynik testu na GSR i Calibration", "## 6. GSR i Calibration", 1))
+    assert any("ct.lt1 is a confirmatory result outside a 'wynik testu' heading" in e for e in check(copy, PK_CLAIMS, EXP))
+
+
+@needs_pk_report
+def test_validation_numbers_outside_a_development_heading_fail(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(PK_REPORT.read_text().replace("(wyniki rozwojowe, ticket 03)", "(ticket 03)", 1))
+    assert any("rt.med is a development result outside a 'wyniki rozwojowe' heading" in e
+               for e in check(copy, PK_CLAIMS, EXP))
+
+
+@needs_pk_report
+def test_an_untagged_number_in_the_pitch_keypoints_report_fails(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(PK_REPORT.read_text() + "\nDodatkowo mediana 0.41 m i 7261 klatek bez źródła.\n")
+    errors = check(copy, PK_CLAIMS, EXP)
+    assert any("'0.41' is not tied to a source" in e for e in errors)
+    assert any("integer '7261'" in e for e in errors)
