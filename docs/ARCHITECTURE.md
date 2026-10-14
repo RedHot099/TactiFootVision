@@ -70,7 +70,8 @@ src/tactifoot_vision/
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
-                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
+                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector),
+                      _yolo_class_mask.py (class-masked YOLO training: annotated_classes)
   evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py

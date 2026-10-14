@@ -25,6 +25,8 @@ class _UltralyticsModel(Model):
     # Ultralytics' names for TrainConfig fields that differ from them (the
     # others, such as imgsz or epochs, are the same name and so the field itself).
     _train_config_aliases = {"batch": "batch_size", "lr0": "lr"}
+    # Backend options handled here rather than by Ultralytics.
+    _own_options: ClassVar[tuple[str, ...]] = ()
 
     def __init__(
         self,
@@ -82,7 +84,9 @@ class _UltralyticsModel(Model):
         from ultralytics.cfg import DEFAULT_CFG_DICT
 
         super()._check_options(config)
-        unknown = sorted(set(config.backend_options) - set(DEFAULT_CFG_DICT))
+        unknown = sorted(
+            set(config.backend_options) - set(DEFAULT_CFG_DICT) - set(self._own_options)
+        )
         if unknown:
             raise ValueError(
                 f"Unknown Ultralytics training options: {', '.join(unknown)}"
@@ -91,10 +95,14 @@ class _UltralyticsModel(Model):
     def _train(
         self, dataset: Dataset, config: TrainConfig, run_dir: Path
     ) -> TrainResult:
+        options = config.backend_options
+        own = {k: options.pop(k) for k in self._own_options if k in options}
         # Ultralytics appends to an existing results.csv (exist_ok=True re-runs);
-        # the history must describe this run only.
-        (run_dir / "results.csv").unlink(missing_ok=True)
+        # the history must describe this run only, unless the run is resumed.
+        if not options.get("resume"):
+            (run_dir / "results.csv").unlink(missing_ok=True)
         data_yaml = dataset.to_yolo(run_dir / "dataset")
+        make_trainer = self._trainer(dataset, own)
         args: dict[str, Any] = {
             "data": str(data_yaml),
             "epochs": config.epochs,
@@ -111,8 +119,10 @@ class _UltralyticsModel(Model):
             args["lr0"] = config.lr
         if config.patience is not None:
             args["patience"] = config.patience
-        args |= config.backend_options
+        args |= options
         logger.info("Ultralytics training arguments: %s", args)
+        if make_trainer is not None:
+            args["trainer"] = make_trainer
 
         # Ultralytics' AMP check loads "yolo11n.pt" from the working directory and
         # downloads it there if missing. Run from the run folder, with a link to a
@@ -140,6 +150,10 @@ class _UltralyticsModel(Model):
             metrics=_standard_metrics(trainer.metrics or {}),
         )
 
+    def _trainer(self, dataset: Dataset, own: dict[str, Any]) -> Any | None:
+        """Ultralytics trainer for this run, given the ``_own_options`` set; None keeps Ultralytics' own."""
+        return None
+
 
 @MODELS.register("yolo")
 class YOLODetector(_UltralyticsModel):
@@ -147,6 +161,13 @@ class YOLODetector(_UltralyticsModel):
 
     ``predict`` returns ``sv.Detections`` with ``data["class_name"]``; ``class_id``
     indexes :attr:`class_names`.
+
+    Training takes one option of its own, ``annotated_classes``: a table (parquet
+    or CSV) with columns ``image`` and ``annotated_classes`` (comma-separated
+    class names) for partially labelled data. A class outside an image's list
+    gets no classification loss on that image, neither positive nor negative;
+    images not in the table count as fully annotated. Mosaic partners share
+    their image's list (see ``models/_yolo_class_mask.py``).
 
     Example::
 
@@ -157,6 +178,21 @@ class YOLODetector(_UltralyticsModel):
     name = "yolo"
     task = Task.DETECT
     default_weights = "yolo11n.pt"
+    _own_options = ("annotated_classes",)
+
+    def _check_options(self, config: TrainConfig) -> None:
+        super()._check_options(config)
+        table = config.backend_options.get("annotated_classes")
+        if table is not None and not Path(table).is_file():
+            raise FileNotFoundError(f"annotated_classes table not found: {table}")
+
+    def _trainer(self, dataset: Dataset, own: dict[str, Any]) -> Any | None:
+        table = own.get("annotated_classes")
+        if table is None:
+            return None
+        from tactifoot_vision.models._yolo_class_mask import masked_trainer
+
+        return masked_trainer(table, dataset.class_names)
 
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
