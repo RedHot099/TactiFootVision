@@ -180,5 +180,205 @@
     "The match bootstrap resamples matches for fixed fitted models; it does not capture the final fit's own variability."
   ],
   "scope": "The result applies to the C6 stacker over the frozen G-combo with E3 geometry as audited in pitch-keypoints, not to detector-derived structure in general.",
-  "rerun": "only after a purely technical failure, with the same inputs, written down in ticket 04"
+  "rerun": "only after a purely technical failure, with the same inputs, written down in ticket 04",
+  "before_scoring": {
+    "power": {
+      "development": {
+        "shots": 7062,
+        "matches": 328,
+        "delta_ll": -0.0006462623407509897,
+        "boot_sd": 0.00042901155854450376,
+        "draws": 2000
+      },
+      "test": {
+        "shots": 3819,
+        "matches": 172
+      },
+      "a1_test_se": 0.001082,
+      "standard_errors": {
+        "dev_sd_shot_scaled": 0.0005833887105940831,
+        "dev_sd_match_scaled": 0.0005924363418636227,
+        "a1_test_se": 0.001082
+      },
+      "effects": {
+        "development_point": -0.0006462623407509897,
+        "practical_recovered": -0.0015857388345410367,
+        "practical": -0.002
+      },
+      "recovery": 0.7928694172705183,
+      "scenarios": [
+        {
+          "se": "dev_sd_shot_scaled",
+          "se_value": 0.0005833887105940831,
+          "effect": "development_point",
+          "delta": -0.0006462623407509897,
+          "p_success_0.95": 0.19705408721446266,
+          "p_worse_0.95": 0.0010784313305832183,
+          "p_success_0.975": 0.12847497720397272,
+          "p_worse_0.975": 0.00040526165767640343,
+          "p_success_0.99": 0.07104448312693584,
+          "p_worse_0.99": 0.00011498040390606201,
+          "p_success_0.995": 0.044635043206217084,
+          "p_worse_0.995": 4.523829361519072e-05,
+          "p_equivalent_0.002": 0.7484397009232171,
+          "p_equivalent_0.005": 0.9999999970219939
+        },
+        {
+          "se": "dev_sd_shot_scaled",
+          "se_value": 0.0005833887105940831,
+          "effect": "practical_recovered",
+          "delta": -0.0015857388345410367,
+          "p_success_0.95": 0.7758306000217687,
+          "p_worse_0.95": 1.4476181771638785e-06,
+          "p_success_0.975": 0.683229446713593,
+          "p_worse_0.975": 3.532758165447625e-07,
+          "p_success_0.99": 0.5565871991342701,
+          "p_worse_0.99": 5.984103701450749e-08,
+          "p_success_0.995": 0.4645876940327939,
+          "p_worse_0.995": 1.645691549700956e-08,
+          "p_equivalent_0.002": 0.17495287330107334,
+          "p_equivalent_0.005": 0.9999870957066099
+        },
+        {
+          "se": "dev_sd_shot_scaled",
+          "se_value": 0.0005833887105940831,
+          "effect": "practical",
+          "delta": -0.002,
+          "p_success_0.95": 0.9289861798219463,
+          "p_worse_0.95": 3.5581444568499876e-08,
+          "p_success_0.975": 0.8823552720918679,
+          "p_worse_0.975": 7.154530468067577e-09,
+          "p_success_0.99": 0.8030085653378304,
+          "p_worse_0.99": 9.62127044701333e-10,
+          "p_success_0.995": 0.7327699960962009,
+          "p_worse_0.995": 2.2548574118985698e-10,
+          "p_equivalent_0.002": 0.04999990640990171,
+          "p_equivalent_0.005": 0.9997651931462923
+        },
+        {
+          "se": "dev_sd_match_scaled",
+          "se_value": 0.0005924363418636227,
+          "effect": "development_point",
+          "delta": -0.0006462623407509897,
+          "p_success_0.95": 0.1923938515029135,
+          "p_worse_0.95": 0.001141089337612311,
+          "p_success_0.975": 0.12495924193829766,
+          "p_worse_0.975": 0.0004307216848121742,
+          "p_success_0.99": 0.06877535921798494,
+          "p_worse_0.99": 0.00012285776165332774,
+          "p_success_0.995": 0.04306469408610536,
+          "p_worse_0.995": 4.851741688938205e-05,
+          "p_equivalent_0.002": 0.7365855263035498,
+          "p_equivalent_0.005": 0.999999994149157
+        },
+        {
+          "se": "dev_sd_match_scaled",
+          "se_value": 0.0005924363418636227,
+          "effect": "practical_recovered",
+          "delta": -0.0015857388345410367,
+          "p_success_0.95": 0.7632129985313613,
+          "p_worse_0.95": 1.7708999230925393e-06,
+          "p_success_0.975": 0.6683049095927868,
+          "p_worse_0.975": 4.37069082925845e-07,
+          "p_success_0.99": 0.5401496486036741,
+          "p_worse_0.99": 7.503672405650974e-08,
+          "p_success_0.995": 0.44812746464883596,
+          "p_worse_0.995": 2.082912936574033e-08,
+          "p_equivalent_0.002": 0.17217019554429558,
+          "p_equivalent_0.005": 0.9999809104601922
+        },
+        {
+          "se": "dev_sd_match_scaled",
+          "se_value": 0.0005924363418636227,
+          "effect": "practical",
+          "delta": -0.002,
+          "p_success_0.95": 0.9216014356909781,
+          "p_worse_0.95": 4.7547919379553605e-08,
+          "p_success_0.975": 0.8717049227667744,
+          "p_worse_0.975": 9.69862490318718e-09,
+          "p_success_0.99": 0.7881622223122093,
+          "p_worse_0.99": 1.3266998055705415e-09,
+          "p_success_0.995": 0.7152731895194249,
+          "p_worse_0.995": 3.1462527028125464e-10,
+          "p_equivalent_0.002": 0.049999836279598475,
+          "p_equivalent_0.005": 0.9996857200820131
+        },
+        {
+          "se": "a1_test_se",
+          "se_value": 0.001082,
+          "effect": "development_point",
+          "delta": -0.0006462623407509897,
+          "p_success_0.95": 0.08649184767634466,
+          "p_worse_0.95": 0.005275183986170218,
+          "p_success_0.975": 0.05007594060557291,
+          "p_worse_0.975": 0.0022649734091181317,
+          "p_success_0.99": 0.023933666367476625,
+          "p_worse_0.99": 0.0007540657529486738,
+          "p_success_0.995": 0.013561300602777271,
+          "p_worse_0.995": 0.00033164652638278946,
+          "p_equivalent_0.002": 0.135291368723355,
+          "p_equivalent_0.005": 0.9911424774466093
+        },
+        {
+          "se": "a1_test_se",
+          "se_value": 0.001082,
+          "effect": "practical_recovered",
+          "delta": -0.0015857388345410367,
+          "p_success_0.95": 0.31051140125885157,
+          "p_worse_0.95": 0.00030680433490171133,
+          "p_success_0.975": 0.21892172141646787,
+          "p_worse_0.975": 0.00010487878482118296,
+          "p_success_0.99": 0.13344207846599437,
+          "p_worse_0.99": 2.6567425920664967e-05,
+          "p_success_0.995": 0.08988377746138854,
+          "p_worse_0.995": 9.660496340935243e-06,
+          "p_equivalent_0.002": 0.055931618199621336,
+          "p_equivalent_0.005": 0.934557450462822
+        },
+        {
+          "se": "a1_test_se",
+          "se_value": 0.001082,
+          "effect": "practical",
+          "delta": -0.002,
+          "p_success_0.95": 0.4555959972802263,
+          "p_worse_0.95": 6.993647460912245e-05,
+          "p_success_0.975": 0.3471693822198064,
+          "p_worse_0.975": 2.158432826337986e-05,
+          "p_success_0.99": 0.23349033392987073,
+          "p_worse_0.99": 4.838712585664151e-06,
+          "p_success_0.995": 0.16887890329217403,
+          "p_worse_0.995": 1.6162703900257647e-06,
+          "p_equivalent_0.002": 0.029915365300189456,
+          "p_equivalent_0.005": 0.8702949110062589
+        }
+      ],
+      "headline": {
+        "se": "dev_sd_shot_scaled",
+        "effect": "development_point"
+      }
+    },
+    "gate": {
+      "replicates": 5000,
+      "seed": 301,
+      "random_intercept_sd": 0.25,
+      "max_false_success": 0.05,
+      "false_success_rate": {
+        "0.95": 0.0006,
+        "0.975": 0.0,
+        "0.99": 0.0,
+        "0.995": 0.0
+      },
+      "mc_se": {
+        "0.95": 0.00034630622287218577,
+        "0.975": 0.0,
+        "0.99": 0.0,
+        "0.995": 0.0
+      },
+      "false_worse_rate_95": 0.21,
+      "mean_null_delta": 0.0006287378126143222,
+      "level_in_force": 0.95,
+      "passed": true
+    },
+    "level_in_force": 0.95
+  }
 }

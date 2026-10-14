@@ -92,16 +92,50 @@ On the written test predictions: 5,000 outcome vectors y* ~ Bernoulli(sigmoid(lo
 
 **Ladder.** If the false-success rate at 95% is above 0.05, the success level moves to the first of 97.5%, 99% and 99.5% whose rate is ≤ 0.05. If none is, the test does not run and the question returns to the council. The level in force is written into the JSON's `before_scoring` block before any test label is read.
 
-## 10. Result of the gate (before scoring)
+## 10. Result of the checks and the gate (before scoring)
 
-Filled in from `results/xgs_test_prep/gate.json` before the freeze.
+From `results/xgs_test_prep/{checks.json, gate.json, final_fit.json}`, written with no test label (training labels inside the seal only).
+
+**Final fit.** G: C = 0.003 (not at a grid edge). GS: C = 0.001, the grid's lower edge, accepted as the rule says. R: no C (z alone, unpenalised).
+
+**Checks** (all passed):
+
+| Check | Result | Stop condition |
+|---|---|---|
+| z inversion | round trip max \|Δp\| 1.1e−16; member gap max \|Δz\| 2.7e−9 (mean 1.5e−10) on 1,098 shots (814 gate, 284 unpaired); no p at the clip | 1e−12; 1e−6; any |
+| z distribution | test z mean −2.127, SD 0.875; training mean −2.167, SD 0.906; ratios 0.982 (mean) and 0.966 (SD) | outside [0.8, 1.25] |
+| coverage | 3,819 shots, 172 matches (135 + 37), 3,005 and 814 shots, every join one to one | any item |
+| provenance | disjoint from training, columns of R, G and GS equal the C6 protocol's, flags invariant to "Goal" and shot types | any item |
+| E3 replay | identical on every row | any difference |
+| ball source at t0 | test none 351, own 112, m400 2,992, m800 364; no level unseen in training | reported |
+| angle wrap | 9 test shots at t0, 8 at −400 ms | reported |
+
+Also reported: 132 test shots have no E3 shot location at t0; no test `dist@0` lies outside the training knots; the flags count `sn_direct_fk` 274, `sn_indirect_fk_3s` 25, `sn_corner_20s` 484, `sn_prev_shot_5s` 130. One test shot has `sn_team_unknown` = 1 (its flags are all 0); that column is constant in training, so it is in the training zero-variance list and enters no model.
+
+**Gate.** On 5,000 synthetic outcome vectors (seed 301), the false-success rate of G's rule is **0.0006** at 95% (Monte Carlo SE 0.0003), and 0 at 97.5%, 99% and 99.5%. It is below 0.05, so **the success level in force is 95%**. The mean ΔLL under the null is +0.00063: with p_R as the truth, G's written predictions cost log-loss, which is why false successes are rare. The false-worse rate at 95% is 0.21 (descriptive).
 
 ## 11. Expected power (before scoring, no test label)
 
-Filled in from `results/xgs_test_prep/power.json` before the freeze. The method (normal approximation, `xgpoc.detector.testrule.expected_power`):
+From `results/xgs_test_prep/power.json`. The method (normal approximation, `xgpoc.detector.testrule.expected_power`):
 
 - **Standard errors:** the development bootstrap SD of G's ΔLL (`results/xgs_stack/real/summary.json`, 2,000 draws) × √(7,062 / 3,819) (the headline); the same SD × √(328 / 172) (match-count scaling); A1's test bootstrap SD 0.001082 (`results/xgd_test`, xg-detector ticket 07).
 - **Effects:** G's development point (the headline); the practical bar −0.002 shrunk by C6's recovery (control 4: G recovered a share of a planted −0.002); the bar itself.
+
+**Headline: at G's development point (ΔLL −0.00065) and the shot-scaled SE 0.00058, P(success) at 95% is 0.197.** A non-success is the expected outcome even if the development point is the truth.
+
+| SE scenario | SE | True ΔLL | P(success), 95% | P(worse), 95% | P(equivalent, δ 0.002) | P(equivalent, δ 0.005) |
+|---|---|---|---|---|---|---|
+| development SD × √(7,062/3,819) | 0.00058 | −0.00065 (development point) | **0.197** | 0.001 | 0.748 | 1.000 |
+| | | −0.00159 (−0.002 × recovery 0.793) | 0.776 | 0.000 | 0.175 | 1.000 |
+| | | −0.002 | 0.929 | 0.000 | 0.050 | 1.000 |
+| development SD × √(328/172) | 0.00059 | −0.00065 | 0.192 | 0.001 | 0.737 | 1.000 |
+| | | −0.00159 | 0.763 | 0.000 | 0.172 | 1.000 |
+| | | −0.002 | 0.922 | 0.000 | 0.050 | 1.000 |
+| A1's test SE | 0.00108 | −0.00065 | 0.086 | 0.005 | 0.135 | 0.991 |
+| | | −0.00159 | 0.311 | 0.000 | 0.056 | 0.935 |
+| | | −0.002 | 0.456 | 0.000 | 0.030 | 0.870 |
+
+The development SD comes from out-of-fold fits on about 5,650 shots each, while the final fit uses 7,062, and the stacker recovers about 79% of a planted effect; the A1 SE is a different comparison (A1 against G-combo) and is a pessimistic sensitivity. All of these are planning figures. P(success) at 97.5%, 99% and 99.5% is in `power.json`; the gate left the level at 95%.
 
 ## 12. Descriptive readings (C7 Q4)
 
