@@ -65,7 +65,8 @@ src/tactifoot_vision/
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
-                      yolo.py, coco.py (format IO), video.py, statsbomb.py
+                      yolo.py, coco.py (format IO), video.py, statsbomb.py,
+                      soccernet_v3.py (Labels-v3.json -> 4 detection classes)
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
