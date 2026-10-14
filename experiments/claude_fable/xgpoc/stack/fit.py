@@ -10,8 +10,10 @@ Candidate designs of G (council C6, `CANDIDATES`, listed before any simulation)
         G    R + the candidate's G                            confirmatory
         GS   G + the SoccerNet flags                          confirmatory
         S    R + the SoccerNet flags                          descriptive
-        Q    G + the quality covariates (`QUALITY`: the C5 G linear columns (b) leaves out)    descriptive, bound only
-        ALL  GS + the quality covariates + the remaining E3 columns at t0 and -400 ms, linear    descriptive
+        Q    G + the quality covariates (`QUALITY`: shot_x, shot_from_ball, shooter_by_net, the keypoint instance
+             confidence, n_keypoints, n_players, with their missing indicators)    descriptive, bound only
+        ALL  GS + the quality covariates + every C5 G column + the remaining E3 columns at t0 and -400 ms, linear
+             descriptive
     and drops every linear input whose population variance is 0 (`constant_columns`, the frozen zero-variance rule;
     `check_no_constant` asserts it afterwards). GS is therefore G plus the S flags with non-zero variance.
 Models (`Model`)
@@ -41,7 +43,8 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 
-from xgpoc.eval.calibration import sigmoid
+from xgpoc.detector.testrule import shot_log_loss
+from xgpoc.eval.calibration import EPS, sigmoid
 from xgpoc.stack import inputs as si
 
 Z = "z_g_combo"
@@ -49,14 +52,16 @@ C_GRID = (0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0)
 GBM = {"max_depth": 2, "learning_rate": 0.05, "max_iter": 300, "min_samples_leaf": 40, "l2_regularization": 1.0,
        "early_stopping": False, "random_state": 0}
 NEWTON_ITERATIONS = 100
-NEWTON_TOLERANCE = 1e-10           # largest change of a linear predictor at convergence
+NEWTON_TOLERANCE = 1e-8            # largest change of a linear predictor by the final full Newton step (its error is ~ its square)
+ROUNDOFF = 1e-12                   # relative slack of the line search: the summed objective's floating-point floor
 ZERO_VARIANCE = 0.0                # a column whose population variance is <= this is dropped
 
 C5_SPLINE = (si.col("dist", 0), si.col("angle", 0))
 C5_LINEAR = tuple(c for c in si.base_columns(0) if c not in C5_SPLINE)
 B_SPLINE = (si.col("dist", 0),)
 B_LINEAR = (si.col("angle", 0), si.col("shot_missing", 0), si.col("ball_none", 0))
-QUALITY = tuple(c for c in C5_LINEAR if c not in B_LINEAR)
+QUALITY = tuple(si.col(n, 0) for n in ("shot_x", "shot_from_ball", "shooter_by_net", "kp_instance_conf", "kp_conf_missing",
+                                         "n_keypoints", "n_players", "frame_missing"))
 ALL_EXTRA = (*si.extra_columns(0), *si.base_columns(-400), *si.extra_columns(-400))
 INDICATORS = frozenset(k for o in si.OFFSETS for k in si.missing_groups(o))
 ARM_NAMES = ("R", "G", "GS", "S", "Q", "ALL")
@@ -167,12 +172,12 @@ def check_no_constant(table: pd.DataFrame, arm: Arm) -> None:
         raise ValueError(f"arm {arm.name}: constant input columns {constant}")
 
 
-def spec(candidate: str | Candidate, table: pd.DataFrame) -> Spec:
+def spec(candidate: str, table: pd.DataFrame) -> Spec:
     """Every arm of `candidate` (module docstring) with the constant linear inputs dropped."""
-    cand = CANDIDATES[candidate] if isinstance(candidate, str) else candidate
+    cand = CANDIDATES[candidate]
     g = (Z, *cand.linear)
     linear = {"R": (Z,), "G": g, "GS": (*g, *si.S_FLAGS), "S": (Z, *si.S_FLAGS), "Q": (*g, *QUALITY),
-              "ALL": (*g, *si.S_FLAGS, *QUALITY, *ALL_EXTRA)}
+              "ALL": (*g, *si.S_FLAGS, *QUALITY, *C5_LINEAR, *ALL_EXTRA)}
     status = {"R": "reference"} | dict.fromkeys(CONFIRMATORY, "confirmatory") | dict.fromkeys(DESCRIPTIVE, "descriptive")
     arms, dropped = {}, {}
     for name in ARM_NAMES:
@@ -267,8 +272,9 @@ def fold_designs(table: pd.DataFrame, folds: np.ndarray, arm: Arm, inner: bool =
     return out
 
 
-def all_designs(table: pd.DataFrame, folds: np.ndarray, spec_: Spec, names=ARM_NAMES) -> dict[str, list[FoldDesign]]:
-    return {name: fold_designs(table, folds, spec_.arms[name], spec_.model.inner_cv and len(spec_.arms[name].columns) > 1)
+def all_designs(table: pd.DataFrame, folds: np.ndarray, stack: Spec, names=ARM_NAMES) -> dict[str, list[FoldDesign]]:
+    """The fold designs of the arms `names` of `stack`, with inner designs where the model chooses C."""
+    return {name: fold_designs(table, folds, stack.arms[name], stack.model.inner_cv and len(stack.arms[name].columns) > 1)
             for name in names}
 
 
@@ -278,25 +284,27 @@ def _objective(x1: np.ndarray, y: np.ndarray, beta: np.ndarray, lam: np.ndarray)
     return float(np.sum(np.logaddexp(0.0, eta) - y * eta) + 0.5 * np.sum(lam * beta**2))
 
 
-def logistic_fit(x: np.ndarray, y: np.ndarray, penalties: np.ndarray, start: np.ndarray | None = None) -> np.ndarray:
+def logistic_fit(x: np.ndarray, y: np.ndarray, penalties: np.ndarray) -> np.ndarray:
     """(1 + p,) intercept and coefficients minimising the summed log-loss + 0.5 Σ λ_j w_j² (intercept unpenalised), by
-    Newton's method with step halving; raises when it does not converge."""
+    Newton's method with step halving; `y` may be fractional (the expected log-likelihood). Converged when a full
+    Newton step changes no linear predictor by more than `NEWTON_TOLERANCE` (that step is applied); raises when the
+    step halving cannot lower the objective beyond its floating-point floor or the iterations run out."""
     x1 = np.column_stack([np.ones(len(x)), x])
     y = np.asarray(y, float)
     lam = np.r_[0.0, np.asarray(penalties, float)]
-    beta = np.zeros(x1.shape[1]) if start is None else np.array(start, float)
+    beta = np.zeros(x1.shape[1])
     current = _objective(x1, y, beta, lam)
     for _ in range(NEWTON_ITERATIONS):
         q = sigmoid(x1 @ beta)
-        gradient = x1.T @ (q - y) + lam * beta
-        hessian = (x1.T * (q * (1 - q))) @ x1 + np.diag(lam)
-        step = np.linalg.solve(hessian, gradient)
+        step = np.linalg.solve((x1.T * (q * (1 - q))) @ x1 + np.diag(lam), x1.T @ (q - y) + lam * beta)
+        if np.abs(x1 @ step).max() < NEWTON_TOLERANCE:
+            return beta - step
         t = 1.0
-        while (trial := _objective(x1, y, beta - t * step, lam)) > current + 1e-12 and t > 1e-8:
+        while (trial := _objective(x1, y, beta - t * step, lam)) > current + ROUNDOFF * abs(current):
             t /= 2
+            if t < 1e-10:
+                raise RuntimeError("the logistic Newton fit cannot lower its objective")
         beta, current = beta - t * step, trial
-        if np.abs(x1 @ (t * step)).max() < NEWTON_TOLERANCE:
-            return beta
     raise RuntimeError("the logistic Newton fit did not converge")
 
 
@@ -305,15 +313,16 @@ def predict(beta: np.ndarray, x: np.ndarray) -> np.ndarray:
 
 
 def mean_log_loss(y: np.ndarray, p: np.ndarray) -> float:
-    p = np.clip(p, 1e-6, 1 - 1e-6)
-    return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+    return float(shot_log_loss(y, p, EPS).mean())
 
 
-def chosen_c(design: FoldDesign, y: np.ndarray, model: Model) -> float:
+def chosen_c(design: FoldDesign, y: np.ndarray, model: Model) -> float | None:
     """The C of `model` for one outer fold: the grid value with the smallest summed inner held-out log-loss (ties: the
-    smaller C); the single C of a fixed model, or of an arm with z alone."""
-    if not model.inner_cv or not design.inner:
-        return model.grid[-1]
+    smaller C); the single C of a fixed model; None for an inner-CV arm with z alone, which has no penalised column."""
+    if not model.inner_cv:
+        return model.grid[0]
+    if not design.inner:
+        return None
     losses = []
     for c in model.grid:
         total = 0.0
@@ -331,7 +340,7 @@ def out_of_fold(designs: list[FoldDesign], y: np.ndarray, model: Model, chosen: 
     p = np.full(len(y), np.nan)
     for d in designs:
         c = chosen_c(d, y, model)
-        beta = logistic_fit(d.x_train, y[d.train], model.penalties(d.x_train.shape[1], c))
+        beta = logistic_fit(d.x_train, y[d.train], model.penalties(d.x_train.shape[1], model.grid[-1] if c is None else c))
         p[d.test] = predict(beta, d.x_test)
         if chosen is not None:
             chosen.append(c)
@@ -361,15 +370,9 @@ def out_of_fold_gbm(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, colum
 
 def reference_fit(table: pd.DataFrame, y: np.ndarray, model: Model) -> tuple[float, float]:
     """(a, b) of R under `model` fitted on every shot, on the raw z_g_combo scale: p_R = sigmoid(a + b z) (the
-    controls' truth). For `INNER_CV` R is the unpenalised fit."""
+    controls' truth). For `INNER_CV` R is the unpenalised fit (also the selection's common truth)."""
     arm = Arm("R", "reference", (Z,))
     pre = Preprocessor.fit(arm, table)
     beta = logistic_fit(pre(table), y, model.penalties(1, model.grid[-1]))
     b = beta[1] / float(pre.scale[0])
     return float(beta[0] - b * float(pre.centre[0])), float(b)
-
-
-def unpenalised_reference(table: pd.DataFrame, y: np.ndarray) -> tuple[float, float]:
-    """(a, b) of the unpenalised logistic regression of y on [1, z] over every shot (the selection's common truth)."""
-    beta = logistic_fit(table[[Z]].to_numpy(float), y, np.zeros(1))
-    return float(beta[0]), float(beta[1])

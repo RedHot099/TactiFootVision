@@ -138,7 +138,7 @@ def permutation(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, weights: 
     result = sa.analyse(table, folds, permuted, weights, spec, designs)
     rejected = [a for a, r in result["readings"].items() if r["holm_rejected"]]
     summary = {"seed": seed, "holm_rejected": rejected, "deltas": {a: d["delta_ll"] for a, d in result["deltas"].items()},
-               "p_one_sided": {a: d["p_one_sided"] for a, d in result["deltas"].items()},
+               "p_one_sided": {a: d["p_one_sided"] for a, d in result["deltas"].items() if "p_one_sided" in d},
                "criterion": "no Holm rejection", "passed": not rejected}
     return result, summary
 
@@ -168,17 +168,10 @@ def expected_log_loss(p: np.ndarray, q: np.ndarray) -> float:
 
 
 def projection(z: np.ndarray, p: np.ndarray) -> np.ndarray:
-    """The unpenalised logistic regression of the probabilities `p` on [1, z] (a goal row of weight p and a non-goal
-    row of weight 1 - p per shot, i.e. the expected log-likelihood), by Newton's method; its probabilities."""
-    x = np.column_stack([np.ones(len(z)), z])
-    beta = np.zeros(2)
-    for _ in range(sf.NEWTON_ITERATIONS):
-        q = sigmoid(x @ beta)
-        step = np.linalg.solve((x.T * (q * (1 - q))) @ x, x.T @ (p - q))
-        beta += step
-        if np.abs(x @ step).max() < sf.NEWTON_TOLERANCE:
-            return sigmoid(x @ beta)
-    raise RuntimeError("the projection did not converge")
+    """The unpenalised logistic regression of the probabilities `p` on [1, z] (the expected log-likelihood of y ~ p,
+    `fit.logistic_fit` with fractional y); its probabilities."""
+    beta = sf.logistic_fit(np.asarray(z, float).reshape(-1, 1), p, np.zeros(1))
+    return sf.predict(beta, np.asarray(z, float).reshape(-1, 1))
 
 
 def true_delta(beta: float, a: float, b: float, z: np.ndarray, s: np.ndarray) -> float:

@@ -22,6 +22,7 @@ def analyse(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, weights: np.n
     chosen = {name: [] for name in sf.ARM_NAMES}
     p = {name: sf.out_of_fold(designs[name], y, spec.model, chosen[name]) for name in sf.ARM_NAMES}
     deltas = {name: ss.paired_delta(y, p[name], p["R"], weights) for name in sf.ARM_NAMES if name != "R"}
+    deltas["Q"] = {k: v for k, v in deltas["Q"].items() if k != "p_one_sided"}           # Q: a bound only (C6)
     gbm_p = {name: sf.out_of_fold_gbm(table, folds, y, spec.gbm_columns[name]) for name in sf.GBM_ARMS} if with_gbm else {}
     gbm = {name: {"scores": ss.scores(y, q), "delta_vs_R": ss.paired_delta(y, q, p["R"], weights),
                   "delta_vs_logistic": ss.paired_delta(y, q, p[name], weights)} for name, q in gbm_p.items()}

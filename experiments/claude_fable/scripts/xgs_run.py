@@ -65,12 +65,19 @@ def opened(path: Path, expected: str | None) -> dict:
     return record
 
 
-def same(a, b) -> bool:
+def json_equal(a, b) -> bool:
+    """Equality after a JSON round trip (tuples become lists, keys strings), as a frozen file reads back."""
     return json.loads(json.dumps(a)) == json.loads(json.dumps(b))
 
 
+def check_selection(selection: Path, protocol: dict) -> None:
+    """Refuse unless the selection's completion record is the one the protocol pins."""
+    if not selection.exists() or sha256_file(selection) != protocol["selection"]["complete_sha256"]:
+        raise SystemExit("the selection's completion record is not the one the protocol pins")
+
+
 def check_population(population: si.Population, record: dict) -> None:
-    if not same(population.inputs, record["inputs"]) or not same(population.counts, record["counts"]):
+    if not json_equal(population.inputs, record["inputs"]) or not json_equal(population.counts, record["counts"]):
         raise SystemExit("the population's inputs or counts differ from the frozen file's")
 
 
@@ -106,7 +113,7 @@ def read_out_files(out: Path, population: si.Population, result: dict) -> None:
 
 def run_selection(out: Path, population: si.Population, y) -> dict:
     table, folds = population.table, population.folds
-    a, b = sf.unpenalised_reference(table, y)
+    a, b = sf.reference_fit(table, y, sf.INNER_CV)
     frames, summary = sl.run(table, folds, ss.bootstrap_weights(population.games), a, b, log=print)
     pd.concat([f.assign(candidate=c, plant=k) for (c, k), f in frames.items()]).to_csv(
         out / "replicates.csv", index=False, float_format="%.9g")
@@ -178,9 +185,7 @@ def main() -> None:
         frozen_sha, frozen = PLAN_SHA256, opened(ROOT / pr.PLAN, PLAN_SHA256)
     else:
         frozen_sha, frozen = PROTOCOL_SHA256, opened(ROOT / pr.PROTOCOL, PROTOCOL_SHA256)
-        selection = OUT / "selection/complete.json"
-        if not selection.exists() or sha256_file(selection) != frozen["selection"]["complete_sha256"]:
-            raise SystemExit("the selection's completion record is not the one the protocol pins")
+        check_selection(OUT / "selection/complete.json", frozen)
     package_digest = frozen["code"]["digest"]
     controls_record = check_controls(OUT / "controls", PROTOCOL_SHA256, package_digest) if args.real else None
 
@@ -188,9 +193,9 @@ def main() -> None:
         population = si.build_population()
         check_population(population, frozen)
         if args.select:
-            if not same(frozen["plan"], pr.plan({c: sf.spec(c, population.table) for c in sf.SIMPLICITY})):
+            if not json_equal(frozen["plan"], pr.plan({c: sf.spec(c, population.table) for c in sf.SIMPLICITY})):
                 raise SystemExit("the plan differs from xgpoc.stack.protocol.plan()")
-        elif not same(frozen["design"], pr.design(sf.spec(frozen["design"]["chosen"], population.table))):
+        elif not json_equal(frozen["design"], pr.design(sf.spec(frozen["design"]["chosen"], population.table))):
             raise SystemExit("the protocol's design differs from xgpoc.stack.protocol.design()")
         y = si.load_outcomes(population).aligned(population)
         out.mkdir(parents=True)

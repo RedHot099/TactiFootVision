@@ -128,3 +128,53 @@ def test_the_code_hashes_cover_the_stack_package_and_the_modules_it_uses():
                                                   "selection")} <= set(files)
     assert "xgpoc/detector/sanitation.py" in files and "scripts/xgs_run.py" not in files
     assert "scripts/xgs_run.py" in records.code_hashes(Path(xgs_run.__file__))["files"]
+
+
+def test_the_final_refreeze_freezes_the_chosen_arms(tmp_path):
+    spec = sf.spec("b", synthetic_table())
+    record = {"design": json.loads(json.dumps(pr.design(spec))), "history": [], "written": "t", "git": {}}
+    path = tmp_path / "protocol.json"
+    path.write_text(json.dumps(record))
+    assert xgs_protocol.refreeze_history(path, "code fix", record, "final")[-1]["replaced_because"] == "code fix"
+    changed = json.loads(json.dumps(record))
+    changed["design"]["arms"]["G"]["columns"].pop()
+    with pytest.raises(SystemExit, match="arms"):
+        xgs_protocol.refreeze_history(path, "fewer columns", changed, "final")
+
+
+def selection_folder(tmp_path, plan="p" * 64, digest=None) -> Path:
+    folder = tmp_path / "selection"
+    folder.mkdir(parents=True)
+    (folder / "selection.json").write_text('{"chosen": "b"}')
+    record = {"plan_sha256": plan, "code": {"package_digest": digest or records.code_hashes()["digest"]},
+              "files": {"selection.json": sha256_file(folder / "selection.json")}}
+    (folder / "complete.json").write_text(json.dumps(record))
+    return folder
+
+
+def test_the_final_freeze_needs_the_selection_under_the_plan_and_the_code(tmp_path):
+    folder = selection_folder(tmp_path)
+    assert xgs_protocol.selection_record("p" * 64, folder)["plan_sha256"] == "p" * 64
+    with pytest.raises(SystemExit, match="another plan"):
+        xgs_protocol.selection_record("q" * 64, folder)
+    (folder / "selection.json").write_text('{"chosen": "c"}')
+    with pytest.raises(SystemExit, match="does not match"):
+        xgs_protocol.selection_record("p" * 64, folder)
+    other = selection_folder(tmp_path / "x", digest="0" * 64)
+    with pytest.raises(SystemExit, match="other code"):
+        xgs_protocol.selection_record("p" * 64, other)
+    with pytest.raises(SystemExit, match="--select first"):
+        xgs_protocol.selection_record("p" * 64, tmp_path / "missing")
+
+
+def test_the_controls_need_the_pinned_selection_and_the_frozen_population(tmp_path):
+    folder = selection_folder(tmp_path)
+    protocol = {"selection": {"complete_sha256": sha256_file(folder / "complete.json")}, "inputs": {"index": {"sha256": "a"}},
+                "counts": {"shots": 3, "angles_wrapped": {"0": 1}}}
+    xgs_run.check_selection(folder / "complete.json", protocol)
+    with pytest.raises(SystemExit, match="selection"):
+        xgs_run.check_selection(folder / "complete.json", {"selection": {"complete_sha256": "0" * 64}})
+    population = xgs_run.si.Population(None, {"index": {"sha256": "a"}}, {"shots": 3, "angles_wrapped": {"0": 1}})
+    xgs_run.check_population(population, protocol)
+    with pytest.raises(SystemExit, match="differ"):
+        xgs_run.check_population(xgs_run.si.Population(None, {"index": {"sha256": "b"}}, population.counts), protocol)

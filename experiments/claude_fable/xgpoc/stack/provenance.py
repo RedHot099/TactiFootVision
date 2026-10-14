@@ -77,6 +77,18 @@ def check_flag_code(shots: pd.DataFrame, annotations: dict[str, list[dict]]) -> 
         raise ProvenanceError("the SoccerNet flags depend on a Goal annotation or on a shot's label type")
 
 
+def check_spec(spec: sf.Spec, table: pd.DataFrame, frozen_columns: dict[str, list[str]]) -> None:
+    """Raise unless every arm of `spec` has the frozen columns, a design matrix of that width and no constant input,
+    and the GBM inputs carry no banned name."""
+    if set(frozen_columns) != set(spec.arms):
+        raise ProvenanceError(f"frozen arms {sorted(frozen_columns)} are not the spec's {sorted(spec.arms)}")
+    for name, arm in spec.arms.items():
+        check_columns(arm, frozen_columns[name], sf.Preprocessor.fit(arm, table)(table.iloc[:5]))
+        check_constant(table, arm)
+    for columns in spec.gbm_columns.values():
+        check_names(columns)
+
+
 def check_constant(table: pd.DataFrame, arm: sf.Arm) -> None:
     try:
         sf.check_no_constant(table, arm)

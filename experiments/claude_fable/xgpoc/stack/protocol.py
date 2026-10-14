@@ -61,13 +61,13 @@ READINGS = [
     "grouped), each inner design is preprocessed on its own inner training rows, the summed inner held-out log-loss "
     "picks C (ties: the smaller C), and the arm is refitted on the whole outer training fold. R under INNER_CV is the "
     "unpenalised fit on z.",
-    "Q = G + the quality covariates (the C5 G linear columns that (b) leaves out: shot_x, the ball levels other than none, "
-    "shot_from_ball, shooter_by_net, the keypoint instance confidence with its indicator, n_keypoints, n_players with "
-    "frame_missing). Under (c) every quality covariate is already in G, so Q equals G. Q is reported with its interval and "
-    "one-sided bound only.",
-    "ALL = GS + the quality covariates + the remaining E3 columns at t0 (sanitised geometry not in G with a <column>_missing "
-    "indicator each, the sanitised flags not encoded elsewhere, the sanitation indicators and counts) + every G input and "
-    "extra at -400 ms (dist and angle linear), after the zero-variance rule.",
+    "Q = G + the quality covariates of the C6 brief: shot_x, shot_from_ball, shooter_by_net, the keypoint instance "
+    "confidence (with kp_conf_missing), n_keypoints and n_players (with frame_missing). Under (c) they are already in G, so "
+    "Q equals G. Q is reported with its interval and one-sided bound only (no p-value).",
+    "ALL = GS + the quality covariates + every C5 G column (the other ball levels included) + the remaining E3 columns at "
+    "t0 (sanitised geometry not in G with a <column>_missing indicator each, the sanitised flags not encoded elsewhere, "
+    "the sanitation indicators and counts) + every G input and extra at -400 ms (dist and angle linear), after the "
+    "zero-variance rule.",
     "GBM inputs are the arm's raw inputs without the missing indicators (native NaN), z_g_combo first and monotone "
     "increasing; no spline, imputation or standardisation.",
     "z_g_combo in results/xgd_a1_ensemble/oof.csv is the mean of logit(stored p) of the two G-combo models that held each "
@@ -100,7 +100,14 @@ READINGS = [
     "outcomes; 0.25 logit is fixed here, before any fit, as a generous match-level variation in finishing beyond the shot. "
     "The coverage of the one-sided bound is the share of replicates whose bound is <= the replicates' mean ΔLL of the arm "
     "(the procedure's expected ΔLL); the wording 'no improvement larger than |bound|' needs coverage >= 0.95 - 2 Monte "
-    "Carlo SE. The coverage of 0 is reported beside it. Control 2's replicates give the same coverage without clustering.",
+    "Carlo SE. The coverage of 0 is reported beside it. Control 2's replicates give the same coverage without clustering. "
+    "The estimand is the fitted arm's expected out-of-fold ΔLL, which is what the match bootstrap of one run can cover: "
+    "under a null it is positive (the arm's estimation cost), so 'no improvement larger than |bound|' reads as a "
+    "statement about the arm as fitted, not about the information in its inputs; the coverage of 0 says how often the "
+    "same statement holds for the inputs' true value.",
+    "Thresholds this file adds where C6 names a report but no number, fixed before any simulation: the smallest "
+    "detectable effect at power 0.8, the coverage floor 0.95 - 2 Monte Carlo SE, the match random-intercept SD 0.25 "
+    "logit, 200 replicates per simulation.",
 ]
 
 DISCLOSURES = [

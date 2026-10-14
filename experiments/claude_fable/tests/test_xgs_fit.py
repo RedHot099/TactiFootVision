@@ -41,7 +41,8 @@ def test_the_candidates_hold_the_columns_c6_lists():
     assert set(b["Q"].linear) == set(b["G"].linear) | set(sf.QUALITY) - constant
     assert set(c["Q"].columns) == set(c["G"].columns)                                  # under (c), Q is G
     assert set(b["GS"].columns) == set(b["G"].columns) | set(si.S_FLAGS) and b["S"].columns == [sf.Z, *si.S_FLAGS]
-    assert set(b["ALL"].columns) > set(b["Q"].columns) | set(b["GS"].columns)
+    assert set(b["ALL"].columns) > set(b["Q"].columns) | set(b["GS"].columns) and "ball_m400@0" in b["ALL"].columns
+    assert "ball_m400@0" not in b["Q"].columns and "shot_x@0" in b["Q"].columns
     assert sf.spec("b", table).gbm_columns["G"] == [sf.Z, "angle@0", "ball_none@0", "dist@0"]
 
 
@@ -91,7 +92,8 @@ def test_the_inner_cv_uses_the_outer_training_rows_only_and_picks_by_inner_log_l
     assert sf.chosen_c(d, y, sf.INNER_CV) == min(sf.C_GRID, key=lambda c: (losses[c], c))
     assert sf.chosen_c(d, y, sf.INNER_CV) == pytest.approx(0.001)          # pure noise: the strongest penalty
     r = sf.fold_designs(table, folds, sf.spec("c", table).arms["R"])[0]
-    assert sf.chosen_c(r, y, sf.INNER_CV) == 1.0 and not r.inner
+    assert sf.chosen_c(r, y, sf.INNER_CV) is None and not r.inner              # z alone: no penalised column, no C
+    assert sf.chosen_c(r, y, sf.FIXED) == 1.0
 
 
 def test_the_preprocessor_is_fitted_on_the_training_folds_only():
@@ -152,9 +154,10 @@ def test_reference_fits_return_the_raw_scale_coefficients():
     table = synthetic_table(n_matches=200, per_match=50, seed=8)
     rng = np.random.default_rng(9)
     y = (rng.random(len(table)) < sigmoid(0.4 + 1.3 * table[sf.Z].to_numpy())).astype(int)
-    for a, b in (sf.reference_fit(table, y, sf.FIXED), sf.reference_fit(table, y, sf.INNER_CV), sf.unpenalised_reference(table, y)):
+    for a, b in (sf.reference_fit(table, y, sf.FIXED), sf.reference_fit(table, y, sf.INNER_CV)):
         assert a == pytest.approx(0.4, abs=0.15) and b == pytest.approx(1.3, abs=0.1)
-    assert sf.reference_fit(table, y, sf.INNER_CV) == pytest.approx(sf.unpenalised_reference(table, y), abs=1e-6)
+    beta = LogisticRegression(penalty=None, tol=1e-10, max_iter=5000).fit(table[[sf.Z]].to_numpy(), y)
+    assert sf.reference_fit(table, y, sf.INNER_CV) == pytest.approx((beta.intercept_[0], beta.coef_[0, 0]), abs=1e-5)
 
 
 def test_out_of_fold_scores_each_fold_with_the_other_folds_model():
@@ -169,3 +172,13 @@ def test_out_of_fold_scores_each_fold_with_the_other_folds_model():
     np.testing.assert_allclose(p[d.test], sf.predict(beta, d.x_test))
     assert len(chosen) == 5 and set(chosen) <= set(sf.C_GRID)
     assert set(d.train).isdisjoint(d.test) and np.all(folds[d.test] == 2) and np.all(folds[d.train] != 2)
+
+
+def test_the_newton_fit_takes_fractional_outcomes_and_refuses_a_fit_that_cannot_converge(monkeypatch):
+    rng = np.random.default_rng(4)
+    z = rng.normal(-2, 1, (500, 1))
+    p = sigmoid(0.2 + 0.9 * z[:, 0])
+    np.testing.assert_allclose(sf.logistic_fit(z, p, np.zeros(1)), [0.2, 0.9], atol=1e-8)
+    monkeypatch.setattr(sf, "NEWTON_ITERATIONS", 1)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        sf.logistic_fit(z, (rng.random(500) < p).astype(float), np.zeros(1))

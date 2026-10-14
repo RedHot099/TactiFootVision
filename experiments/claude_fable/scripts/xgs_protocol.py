@@ -41,10 +41,12 @@ SELECTION = ROOT / "results/xgs_stack/selection"
 def frozen_parts(record: dict, mode: str) -> dict:
     """The parts of a record a re-freeze may not change."""
     if mode == "plan":
-        return {"selection": record["plan"]["selection"], "final_controls": record["plan"]["common"]["final_controls"],
-                "read_out": record["plan"]["common"]["read_out"], "stop_rule": record["plan"]["common"]["stop_rule"]}
+        plan = record["plan"]
+        return {"candidates": plan["candidates"], "selection": plan["selection"]} | {
+            k: plan["common"][k] for k in ("final_controls", "read_out", "stop_rule", "preprocessing")}
     design = record["design"]
-    return {k: design[k] for k in ("chosen", "model", "final_controls", "read_out", "stop_rule")}
+    return {k: design[k] for k in ("chosen", "model", "arms", "gbm_columns", "final_controls", "read_out", "stop_rule",
+                                   "preprocessing")}
 
 
 def refreeze_history(path: Path, reason: str | None, new: dict, mode: str) -> list[dict]:
@@ -61,23 +63,21 @@ def refreeze_history(path: Path, reason: str | None, new: dict, mode: str) -> li
 
 
 def checked_spec(name: str, population: si.Population) -> sf.Spec:
+    """The candidate's spec, each arm's design matrix checked against its column list and the banned names."""
     spec = sf.spec(name, population.table)
-    for arm in spec.arms.values():
-        sp.check_columns(arm, arm.columns, sf.Preprocessor.fit(arm, population.table)(population.table.iloc[:5]))
-    for columns in spec.gbm_columns.values():
-        sp.check_names(columns)
+    sp.check_spec(spec, population.table, {n: arm.columns for n, arm in spec.arms.items()})
     return spec
 
 
-def selection_record(plan_sha256: str) -> dict:
+def selection_record(plan_sha256: str, folder: Path = SELECTION) -> dict:
     """The selection's completion record, refused unless it matches its files, the plan and the current code."""
-    path = SELECTION / "complete.json"
+    path = folder / "complete.json"
     if not path.exists():
         raise SystemExit(f"{path} does not exist: run scripts/xgs_run.py --select first")
     record = json.loads(path.read_text())
     for name, digest in record["files"].items():
-        if sha256_file(SELECTION / name) != digest:
-            raise SystemExit(f"{SELECTION / name} does not match the selection's completion record")
+        if not (folder / name).exists() or sha256_file(folder / name) != digest:
+            raise SystemExit(f"{folder / name} does not match the selection's completion record")
     if record["plan_sha256"] != plan_sha256 or record["code"]["package_digest"] != records.code_hashes()["digest"]:
         raise SystemExit("the selection ran under another plan or other code")
     return record

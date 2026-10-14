@@ -3,7 +3,7 @@
 For each plant of `controls.PLANTS` (dist; dist + angle) at a true ΔLL of -0.002, the outcomes y* ~ Bernoulli(
 sigmoid(a + b z + β s)) are drawn once per replicate from the plant's own seed, and every candidate of
 `fit.CANDIDATES` is fitted on the same y* (common random numbers). (a, b) is the unpenalised logistic regression of
-the real labels on [1, z] over every shot (`fit.unpenalised_reference`), one truth for every candidate. The criterion
+the real labels on [1, z] over every shot (`fit.reference_fit` under `fit.INNER_CV`), one truth for every candidate. The criterion
 is G's Holm power averaged over the two plants; the highest wins, and equal averages go to the simpler design in the
 order (b), (c), (b)+(c) (`choose`). The selection seeds are distinct from the final controls' seeds.
 """

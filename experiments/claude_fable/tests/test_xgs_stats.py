@@ -64,7 +64,8 @@ def test_the_read_out_reports_every_arm_and_the_categories():
     result = sa.analyse(table, table.fold.to_numpy(), y, weights, spec)
     assert set(result["deltas"]) == {"G", "GS", "S", "Q", "ALL"} and set(result["readings"]) == {"G", "GS"}
     assert set(result["gbm"]) == {"G", "GS"} and set(result["scores"]["R"]) >= {"log_loss", "auc", "brier", "cal_slope", "cal_intercept"}
-    assert result["chosen_c"]["R"] == [1.0] * 5 and set(result["chosen_c"]["G"]) <= set(sf.C_GRID)
+    assert result["chosen_c"]["R"] == [None] * 5 and set(result["chosen_c"]["G"]) <= set(sf.C_GRID)
+    assert "p_one_sided" not in result["deltas"]["Q"] and "bound_one_sided_95" in result["deltas"]["Q"]
     categories = result["categories"]
     assert set(categories.category) == set(ss.CATEGORIES) and set(categories.arm) == set(sf.ARM_NAMES)
     assert categories.loc[categories.arm == "R", "delta_ll"].isna().all()
