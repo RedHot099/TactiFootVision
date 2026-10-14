@@ -729,7 +729,14 @@ def test_gsr_reader_maps_categories_and_keeps_the_clip_and_game(tmp_path):
     assert dataset.task is Task.DETECT
     valid = dataset["valid"]
     assert [s.meta["frame"] for s in valid] == ["1", "2", "3", "4", "5", "6"]
-    assert valid[0].meta == {"sequence": "SNGS-021", "game": "2", "frame": "1"}
+    assert valid[0].meta == {
+        "sequence": "SNGS-021",
+        "game": "2",
+        "frame": "1",
+        "image_source": "gsr",
+        "other_dropped": "1",
+    }
+    assert valid[5].meta["other_dropped"] == "0"
     first = valid[0].annotations
     assert first.class_ids.tolist() == [2, 1, 3, 0]
     np.testing.assert_array_equal(first.boxes[0], [10, 10, 15, 20])
@@ -762,3 +769,17 @@ def test_gsr_reader_refuses_an_unknown_object_category(tmp_path):
     path.write_text(json.dumps(labels))
     with pytest.raises(ValueError, match="coach"):
         Dataset.from_gsr(tmp_path, splits=("valid",))
+
+
+def test_gsr_reader_reads_missing_frames_from_soccernet_tracking(tmp_path):
+    gsr, tracking = tmp_path / "gsr", tmp_path / "tracking"
+    _write_gsr_clip(gsr, "test", "SNGS-116", "7", frames=(1, 6))
+    for frame in (2, 3, 4, 5):
+        _image(tracking / "test" / "SNMOT-116" / "img1" / f"{frame:06d}.jpg")
+    dataset = Dataset.from_gsr(gsr, splits=("test",), tracking_root=tracking)
+    samples = dataset["test"]
+    assert [s.meta["image_source"] for s in samples] == ["gsr"] + ["tracking"] * 4 + [
+        "gsr"
+    ]
+    assert samples[1].image_path == tracking / "test/SNMOT-116/img1/000002.jpg"
+    assert samples[1].meta["sequence"] == "SNGS-116"

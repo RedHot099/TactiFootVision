@@ -136,16 +136,26 @@ class Dataset:
 
     @classmethod
     def from_gsr(
-        cls, root: str | Path, splits: tuple[str, ...] = SPLITS, stride: int = 1
+        cls,
+        root: str | Path,
+        splits: tuple[str, ...] = SPLITS,
+        stride: int = 1,
+        tracking_root: str | Path | None = None,
     ) -> "Dataset":
         """Read SoccerNet GSR clips as 4-class detection data.
 
         See :func:`tactifoot_vision.data.soccernet.read_dataset` for the class
-        mapping, ``stride`` and the ``meta`` of each sample.
+        mapping, ``stride``, ``tracking_root`` (missing images read from
+        SoccerNet-Tracking) and the ``meta`` of each sample.
         """
         from tactifoot_vision.data import soccernet
 
-        return soccernet.read_dataset(Path(root), splits=tuple(splits), stride=stride)
+        return soccernet.read_dataset(
+            Path(root),
+            splits=tuple(splits),
+            stride=stride,
+            tracking_root=None if tracking_root is None else Path(tracking_root),
+        )
 
     # ------------------------------------------------------------------- access
     def __getitem__(self, split: str) -> list[Sample]:

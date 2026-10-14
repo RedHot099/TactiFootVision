@@ -130,9 +130,11 @@ configs/              example run files
   Reconstruction clips as 4-class detection data (`ball`, `goalkeeper`,
   `player`, `referee` by GSR category; category `other` dropped, any other
   object category refused). `stride` keeps frames `1, 1 + stride, ...`; a kept
-  frame without its image is an error (partial downloads need their stride).
-  Each `Sample.meta` holds `sequence`, `game` (GSR `info.game_id`) and
-  `frame`; augmented copies keep their source's `meta`, exports drop it.
+  frame without its image is an error (partial downloads need their stride),
+  unless `tracking_root` names SoccerNet-Tracking 2023, whose clips are the
+  GSR train/test clips with identical images. Each `Sample.meta` holds
+  `sequence`, `game` (GSR `info.game_id`), `frame`, `image_source` and
+  `other_dropped`; augmented copies keep their source's `meta`, exports drop it.
 * YOLO IO follows Ultralytics path rules (`path:` root, `../` prefixes of
   Roboflow exports, `images/` ↔ `labels/`); detection labels given as polygons
   become their bounding boxes. Writing clips boxes to the image and writes

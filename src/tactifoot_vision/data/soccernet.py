@@ -43,6 +43,7 @@ def read_dataset(
     root: Path,
     splits: tuple[str, ...] = SPLITS,
     stride: int = 1,
+    tracking_root: Path | None = None,
 ) -> Dataset:
     """Read GSR clips into a detection :class:`Dataset`.
 
@@ -51,11 +52,18 @@ def read_dataset(
         splits: splits to read; a split folder that does not exist is an error.
         stride: keep 1-based frames ``1, 1 + stride, 1 + 2 * stride, ...`` of
             every clip (consecutive 25 fps frames are near duplicates).
+        tracking_root: a SoccerNet-Tracking 2023 folder
+            (``<split>/SNMOT-xxx/img1``). GSR train and test are built on the
+            same clips (``SNGS-060`` is ``SNMOT-060``, same images byte for
+            byte, same boxes); a frame whose GSR image is missing is read from
+            there, so a download that kept every 5th GSR image still gives
+            every labelled frame.
 
     Every :class:`Sample` carries ``meta``: ``sequence`` (clip name, e.g.
     ``SNGS-021``), ``game`` (GSR's ``info.game_id``, an index shared by the
-    clips of one match; ``""`` when absent) and ``frame`` (1-based frame
-    number, as a string).
+    clips of one match; ``""`` when absent), ``frame`` (1-based frame
+    number), ``image_source`` (``gsr`` or ``tracking``) and ``other_dropped``
+    (the frame's ``other`` objects left out), all as strings.
 
     Raises:
         FileNotFoundError: a split folder or a kept frame's image is missing
@@ -70,7 +78,8 @@ def read_dataset(
             raise FileNotFoundError(f"GSR split folder {folder} does not exist")
         samples = []
         for labels in sorted(folder.glob(f"*/{LABELS_FILE}")):
-            samples += _read_clip(labels, stride)
+            tracking = None if tracking_root is None else tracking_root / split
+            samples += _read_clip(labels, stride, tracking)
         dataset_splits[canonical_split(split)] = samples
         logger.info(
             "GSR %s: %d frames (stride %d) from %s", split, len(samples), stride, folder
@@ -83,7 +92,9 @@ def read_dataset(
     )
 
 
-def _read_clip(labels_path: Path, stride: int) -> list[Sample]:
+def _read_clip(
+    labels_path: Path, stride: int, tracking: Path | None = None
+) -> list[Sample]:
     labels = json.loads(labels_path.read_text())
     info = labels.get("info", {})
     categories = {c["id"]: c["name"] for c in labels["categories"]}
@@ -103,6 +114,7 @@ def _read_clip(labels_path: Path, stride: int) -> list[Sample]:
             images[image["image_id"]] = (frame, image)
     boxes: dict[str, list[list[float]]] = {key: [] for key in images}
     class_ids: dict[str, list[int]] = {key: [] for key in images}
+    dropped = dict.fromkeys(images, 0)
     for item in labels["annotations"]:
         if item.get("supercategory") != "object" or item["image_id"] not in images:
             continue
@@ -110,6 +122,7 @@ def _read_clip(labels_path: Path, stride: int) -> list[Sample]:
         if category not in class_of:
             name = categories.get(category, category)
             if name in GSR_DROPPED:
+                dropped[item["image_id"]] += 1
                 continue
             raise ValueError(
                 f"{labels_path}: object category {name!r} is not one of "
@@ -123,11 +136,15 @@ def _read_clip(labels_path: Path, stride: int) -> list[Sample]:
 
     samples = []
     for key, (frame, image) in sorted(images.items(), key=lambda kv: kv[1][0]):
-        path = image_dir / image["file_name"]
+        path, source = image_dir / image["file_name"], "gsr"
+        if not path.is_file() and tracking is not None:
+            clip = tracking / sequence.replace("SNGS-", "SNMOT-")
+            path, source = clip / "img1" / image["file_name"], "tracking"
         if not path.is_file():
             raise FileNotFoundError(
                 f"GSR image {path} is missing; if the download keeps only some "
-                "frames, read with a stride that selects them (e.g. stride=5)"
+                "frames, read with a stride that selects them (e.g. stride=5) "
+                "or give the SoccerNet-Tracking folder (tracking_root)"
             )
         width, height = int(image["width"]), int(image["height"])
         xyxy = np.asarray(boxes[key], dtype=np.float32).reshape(-1, 4)
@@ -142,7 +159,13 @@ def _read_clip(labels_path: Path, stride: int) -> list[Sample]:
                 annotations=Annotations(
                     boxes=xyxy[keep], class_ids=np.asarray(class_ids[key])[keep]
                 ),
-                meta={"sequence": sequence, "game": game, "frame": str(frame)},
+                meta={
+                    "sequence": sequence,
+                    "game": game,
+                    "frame": str(frame),
+                    "image_source": source,
+                    "other_dropped": str(dropped[key]),
+                },
             )
         )
     return samples
