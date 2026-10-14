@@ -39,7 +39,7 @@ from xgpoc.stack import records
 from xgpoc.stack import stats as ss
 
 ROOT = Path(__file__).resolve().parents[1]
-PROTOCOL_SHA256 = None          # ticket 01 records it after the freeze
+PROTOCOL_SHA256 = "4a00c90b3841b757076c8bea7847901078cd0effe084fa040701c069fa81d03d"   # ticket 01
 OUT = ROOT / "results/xgs_stack"
 CONTROLS = ("1_provenance", "2_synthetic_nulls", "3_permutation", "4_positive")
 
