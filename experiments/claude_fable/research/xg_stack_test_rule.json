@@ -1,0 +1,184 @@
+{
+  "study": "xg-stack",
+  "document": "research/xg_stack_test_rule.md",
+  "ticket": "04",
+  "council_decision": "C7 (2026-10-14)",
+  "owner_order": "\"Zrób test na całym zbiorze meczy\" (2026-10-14): one more frozen test on the 172 held-out matches",
+  "confirmatory": "G",
+  "reference": "R",
+  "descriptive_variants": [
+    "GS"
+  ],
+  "design": {
+    "protocol": "research/xgs_stack_protocol_c6.json",
+    "protocol_sha256": "eaaa6b3bae695e24d98624c24086e8f8d3efeb248d4ea6fa8f2b17b0bccf20ae",
+    "candidate": "bc",
+    "arms": {
+      "R": "z_g_combo alone, unpenalised",
+      "G": "z_g_combo + dist@0 (natural cubic spline, 3 df) + angle@0 (wrapped to [0, pi], linear) + shot_missing@0 + ball_none@0; C by inner CV, z unpenalised",
+      "GS": "G + the SoccerNet flags with non-zero training variance (sn_direct_fk, sn_indirect_fk_3s, sn_corner_20s, sn_prev_shot_5s); descriptive, no success label"
+    },
+    "columns": "the C6 protocol's design.arms.<arm>.columns; the test refuses any other column list"
+  },
+  "final_fit": {
+    "rows": "all 7,062 non-penalty training shots of the 328 training matches (results/xgd_a1_ensemble/oof.csv), z_g_combo their out-of-fold G-combo logit",
+    "c_choice": "match-grouped CV over the 5 host folds of cache/folds_xgv_home5.csv on the frozen grid {0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1}: each fold's design preprocessed on the other four folds' rows only, every C fitted there and scored on the fold, the summed held-out log-loss picks C (ties: the smaller C); an edge value of the grid is accepted and recorded",
+    "refit": "imputation means, natural-spline knots (quantiles 0, 1/3, 2/3, 1) and standardisation fitted on all 7,062 training rows; the L2 logistic regression (Newton, xgpoc.stack.fit.logistic_fit) at the chosen C with z unpenalised",
+    "zero_variance": "the training rows' zero-variance list (xgpoc.stack.fit.spec on the training table)",
+    "outcome": "the index goal of the training shots, read inside the held-out label seal",
+    "written": "results/xgs_test_prep/final_fit.json: coefficients, chosen C, inner losses and every transform, before any test label is read"
+  },
+  "population": {
+    "plan_sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a",
+    "roles": [
+      "evaluation",
+      "gate"
+    ],
+    "matches": 172,
+    "matches_by_role": {
+      "evaluation": 135,
+      "gate": 37
+    },
+    "index": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+    "index_sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee",
+    "inclusion": "every index v1.2 shot whose game has plan role evaluation or gate and whose is_penalty is false; no other exclusion; a shot that cannot be scored stops the test",
+    "expected_shots": 3819,
+    "expected_shots_by_role": {
+      "evaluation": 3005,
+      "gate": 814
+    },
+    "label": "index v1.2 goal",
+    "same_as": "the A1 test population (research/xg_detector_test_rule.md section 3)"
+  },
+  "test_inputs": {
+    "z": "z = (logit(p) - b) / a, p the deployed G-combo probability of results/xgd_gcombo_test/predictions.csv and (a, b) the full-precision Platt of results/xgv_g_combo/ensemble.json; the prior correction is the identity (oof_rate = pooled_rate) and is refused otherwise",
+    "e3": "cache/xgd_full3/E3 replayed with E3's ball-source rule (the replay must equal features.parquet exactly), the frozen sanitation, the angle wrap min(theta, 2 pi - theta) after the replay check with its count (xgpoc.stack.inputs.e3_table)",
+    "flags": "SoccerNet Labels-v2.json of the 172 matches, 'Goal' dropped and both shot types made one kind at parse (xgpoc.stack.inputs.flags_table)",
+    "ball_source": "a level never seen in training enters no model (the zero-variance list is the training rows'); it is counted and reported; a code outside E3's levels stops the build",
+    "predictions": "results/xgs_test_prep/predictions.csv: z_g_combo, the deployed G-combo p, p_R, p_G, p_GS per test shot, written before any test label is read"
+  },
+  "metric": {
+    "name": "shot-weighted log-loss",
+    "delta": "LL(G) - LL(R), each the mean over the population's shots of -(y log p + (1 - y) log(1 - p))",
+    "clip": 1e-06
+  },
+  "bootstrap": {
+    "unit": "match (paired: one draw of matches weights both arms' shots)",
+    "draws": 5000,
+    "seed": 0,
+    "implementation": "xgpoc.detector.testrule.match_weights (A1's draws: readability.match_draw_counts over the sorted unique matches); replicate = sum(w d) / sum(w)",
+    "interval": "percentile"
+  },
+  "success": {
+    "default_interval": 0.95,
+    "ladder": [
+      0.975,
+      0.99,
+      0.995
+    ],
+    "rule": "the upper bound of the two-sided percentile interval of dLL at the success level in force is below 0; the level in force is 0.95 unless the synthetic-null gate moved it (before_scoring.level_in_force)",
+    "multiplicity": "one confirmatory variant (G), no correction"
+  },
+  "worse": {
+    "rule": "the lower bound of the same interval is above 0"
+  },
+  "equivalence": {
+    "test": "TOST at alpha 0.05",
+    "margin": 0.002,
+    "also_margin": 0.005,
+    "interval": 0.9,
+    "rule": "the 90% percentile interval of dLL from the same draws lies wholly inside the open (-delta, +delta); delta = 0.002 sets the label, delta = 0.005 is reported beside it for comparability with A1",
+    "status": "descriptive; never a success; cannot rescue a failed success rule"
+  },
+  "practical_bar": -0.002,
+  "labels": [
+    "success and equivalent",
+    "success",
+    "worse",
+    "equivalent within δ",
+    "inconclusive"
+  ],
+  "label_precedence": "the first that applies, in the order of labels; both equivalence flags are reported in every case",
+  "smallest_equivalence_margin": "max(|lower 90% bound|, |upper 90% bound|)",
+  "sentences": {
+    "success and equivalent": "Test na 172 meczach odłożonych wykazał poprawę: ΔLL(G − R) = {delta} [{lo}; {hi}] ({level}% przedział, górna granica poniżej 0). Zarazem 90% przedział [{lo90}; {hi90}] mieści się w ±{margin}, więc poprawa jest mniejsza niż margines równoważności.",
+    "success": "Test na 172 meczach odłożonych wykazał poprawę: ΔLL(G − R) = {delta} [{lo}; {hi}] ({level}% przedział, górna granica poniżej 0).",
+    "worse": "Test na 172 meczach odłożonych wykazał pogorszenie: ΔLL(G − R) = {delta} [{lo}; {hi}] ({level}% przedział, dolna granica powyżej 0). Geometria E3 w stackerze szkodzi na meczach odłożonych.",
+    "equivalent within δ": "Test na 172 meczach odłożonych nie wykazał poprawy ani pogorszenia: ΔLL(G − R) = {delta} [{lo}; {hi}] ({level}% przedział). 90% przedział [{lo90}; {hi90}] mieści się w ±{margin}, więc G i R są równoważne w granicy δ = {margin} (TOST, odczyt opisowy).",
+    "inconclusive": "Test na 172 meczach odłożonych nie wykazał poprawy ani pogorszenia: ΔLL(G − R) = {delta} [{lo}; {hi}] ({level}% przedział). 90% przedział [{lo90}; {hi90}] nie mieści się w ±{margin}: wynik nierozstrzygnięty (najmniejszy margines równoważności {smallest})."
+  },
+  "practical_clauses": {
+    "below_bar": "Punkt {delta} jest powyżej progu praktycznego −0.002: poprawa jest wykrywalna, ale poniżej progu praktycznego.",
+    "at_bar": "Punkt {delta} osiąga próg praktyczny −0.002."
+  },
+  "descriptive": {
+    "status": "never a success, never rescues the primary reading, nothing feeds the headline; every item labelled 'hypothesis formed on these matches'",
+    "GS_vs_R": "dLL(GS - R) with the same draws and intervals; no success label",
+    "G_vs_g_combo": "dLL(G - deployed G-combo) with the same draws; also R - deployed G-combo",
+    "scores": "log-loss, AUC, Brier, mean p, calibration slope and intercept (logit(p) regressed with C = 1e6) of R, G, GS and the deployed G-combo",
+    "by_role": "dLL(G - R) restricted to the evaluation shots (3,005) and to the gate shots (814): the same 5,000 draws, each replicate the weighted mean over the role's shots",
+    "categories": "O, E, O/E per arm (R, G, GS) and dLL against R with its 95% interval from the same draws restricted to the category's shots, in the development's categories (xgpoc.stack.stats.CATEGORIES): E3 shot_x@0 < 88.5 (outside the box), E3 angle@0 < 15 degrees, E3 dist@0 < 6 m, sn_corner_20s = 1, sn_direct_fk = 1; a shot whose defining input is missing is outside the category's population",
+    "statsbomb": {
+      "when": "once, after results/xgs_test/complete.json exists (scripts/xgs_test_statsbomb.py refuses otherwise)",
+      "population": "the primary shots of xg-compare's table results/xgc_compare/table (in_primary: 2,721 paired non-penalty shots of the 135 evaluation matches), joined one to one with the test predictions",
+      "spearman": "Spearman's rho of p_R, p_G and the deployed G-combo p with the vendor's xG (p_vendor)",
+      "categories": {
+        "sb_outside_box": "sb_x < 102 or |sb_y - 40| > 22 (StatsBomb yards; xgpoc.compare.categories.outside_box)",
+        "sb_angle_lt_15deg": "degrees(sb_angle) < 15, sb_angle the goal-mouth angle",
+        "sb_dist_lt_6yd": "sb_dist < 6 yd to the goal centre; kept apart from the E3 dist < 6 m category"
+      },
+      "per_category": "per model (R, G, G-combo), over the shots where the category is defined: n in and out, mean p of the model and the vendor in, the gap in xG points 100 (mean p_model - mean p_vendor) in and out, and the unadjusted contrast of the logit gap mean(logit p_model - logit p_vendor | in) - mean(... | out); the models' own probabilities, not xg-compare's cross-fitted main scale",
+      "label": "hypothesis formed on these matches; Data: StatsBomb.",
+      "never": "an input, target, selection or check of any model; read before the test result"
+    }
+  },
+  "checks": {
+    "z_inversion": "max |Platt(z) - p| <= 1e-12 over the 3,819 shots; max |z - member z| <= 1e-6 where member logits are stored (gate shots' stored predictions, unpaired evaluation shots' unpaired_members.csv), member z the mean over the ten members of logit(sigmoid(logit / T)); no p at the clip 1e-6; the paired shots' p were checked against their members in ticket 06 (results/xgd_gcombo_test/checks.json). Stop on any failure",
+    "z_distribution": "the test z's mean and SD (ddof 1) over the 7,062 training out-of-fold z's: stop when either ratio is outside [0.8, 1.25]",
+    "coverage": "3,819 shots, 172 matches (135 evaluation, 37 gate; 3,005 and 814 shots), unique shot ids, every shot with its G-combo probability (one to one), E3 row and flags, finite z, predictions inside (0, 1). Stop on any failure",
+    "provenance": "no test shot or match is a training shot or match; every test shot is of an evaluation or gate match; the arms' columns equal the C6 protocol's and carry no banned name; the flags do not change when 'Goal' annotations are added and shot types swapped; every read runs inside the label seal and with no StatsBomb or xg-compare path. Stop on any failure",
+    "ball_source": "t0 level counts in test and training, the levels unseen in training (reported, not a stop)",
+    "angle_wrap": "the count of test shots per offset whose angle the wrap changed (reported)",
+    "e3_replay": "the replayed E3 features equal the cache exactly (stop otherwise)"
+  },
+  "gate": {
+    "name": "synthetic-null false-success check on the written test predictions (council C7 Q5, member S), labels unread",
+    "truth": "y* ~ Bernoulli(sigmoid(logit(p_R) + u_m)), u_m ~ N(0, 0.25^2) a match random intercept drawn per replicate before the outcomes (C6's clustered nulls' SD)",
+    "replicates": 5000,
+    "seed": 301,
+    "random_intercept_sd": 0.25,
+    "statistic": "dLL(G - R) on y* with the test's own 5,000 draws (seed 0); a false success at level L is an upper bound of the L interval below 0",
+    "max_false_success": 0.05,
+    "ladder": "if the rate at 0.95 exceeds 0.05, the success level moves to the first of 0.975, 0.99, 0.995 whose rate is <= 0.05; if none is, the test does not run and the question returns to the council",
+    "written": "results/xgs_test_prep/gate.json, and the level in force in before_scoring, before any test label is read"
+  },
+  "power": {
+    "status": "planning figures, normal approximation (xgpoc.detector.testrule.expected_power), computed before scoring with no test label",
+    "standard_errors": {
+      "dev_sd_shot_scaled": "the development bootstrap SD of G's dLL (results/xgs_stack/real/summary.json, 2,000 draws) x sqrt(7,062 / 3,819) (headline)",
+      "dev_sd_match_scaled": "the same SD x sqrt(328 / 172)",
+      "a1_test_se": "A1's test bootstrap SD 0.001082 (results/xgd_test, ticket 07)"
+    },
+    "effects": {
+      "development_point": "G's development dLL (headline)",
+      "practical_recovered": "-0.002 x C6's recovery (control 4: G's mean recovered dLL over the planted -0.002)",
+      "practical": "-0.002"
+    },
+    "readings": "P(success) and P(worse) at every success level, P(equivalent) at delta 0.002 and 0.005; the headline is P(success) at the development point with the shot-scaled SE at the level in force"
+  },
+  "disclosures": [
+    "The 172 held-out matches are now spent for detector-input variants: this is their second labelled look for a detector variant (the first was A1, ticket 07 of xg-detector); no further detector-input variant may be tested on them.",
+    "The owner lifted the one-test rule for this test only (2026-10-14).",
+    "E3's configuration was chosen on 135 of the 172 matches by StatsBomb position error, with no outcomes.",
+    "The xg-compare phase looked at these matches' outcomes (exploratory); it motivated the inputs and partly the flag windows.",
+    "The 135 evaluation matches' labels were seen in xg-vendor; the 37 gate matches were scored by G-combo in xg-vendor's retraining gate.",
+    "The test z averages the ten G-combo members (each test shot is held out by all ten), the training z the two members that held each training shot out; the scale shift is what the z-distribution check bounds.",
+    "z_g_combo is the averaged pre-Platt logit; each member's epoch and temperature were chosen on its own scored fold, an outcome-dependent step (C6's corrected disclosure 3).",
+    "Stacking provenance: the training z values come from models fitted on the other training folds; the final fit uses all 7,062 training shots, so its estimation cost is below the development's.",
+    "The flags are research-only (a product needs an action spotter); GS is descriptive.",
+    "A success near the development point (about -0.0006) is below the practical bar -0.002 and must be reported as such.",
+    "The match bootstrap resamples matches for fixed fitted models; it does not capture the final fit's own variability."
+  ],
+  "scope": "The result applies to the C6 stacker over the frozen G-combo with E3 geometry as audited in pitch-keypoints, not to detector-derived structure in general.",
+  "rerun": "only after a purely technical failure, with the same inputs, written down in ticket 04"
+}
