@@ -1,0 +1,534 @@
+# Sources of every number in REPORT.md (xg-compare 03), the report of the xg-compare phase.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# The whole study is exploratory (the labels were joined before by the xg-vendor confirmatory run), so no folder is
+# marked dev or confirmatory: the report states the status in its text and tags every claim with its tier there.
+# The recovery folder (rc) holds descriptive numbers added after the run (scripts/xgc_recovery.py, ticket 03).
+
+[report]
+# Design constants and names, not results: the -400 ms frame offset and its method name, StatsBomb distance and
+# goal-mouth-angle bin labels (the category dictionary of the protocol), the protocol's item numbers 13 written out,
+# the hash name in the source table.
+untagged = ["F−400", "400 ms", "25+", "18–25", "12–18", "0–15°", "15°", "Pozycja 13", "SHA-256"]
+
+[folders]
+an = { path = "results/xgc_compare/analysis" }
+rc = { path = "results/xgc_compare/recovery" }
+
+[claims]
+
+# --- protocol constants (research/xgc_compare_protocol.json, sha256 0bc8a44b...) ---
+"pr.ci" = { src = "research/xgc_compare_protocol.json", quote = "95% percentile intervals", values = [95], fmt = "{:d}%" }
+"pr.draws" = { src = "research/xgc_compare_protocol.json", keys = ["design.bootstrap.draws"], fmt = "{:,d}" }
+"pr.q" = { src = "research/xgc_compare_protocol.json", quote = "Benjamini-Hochberg at q = 0.05", values = [0.05], fmt = "{:.2f}" }
+"pr.q5" = { src = "research/xgc_compare_protocol.json", quote = "Benjamini-Hochberg at q = 0.05", values = [0.05], scale = 100, fmt = "{:.0f}%" }
+"pr.alpha" = { src = "research/xgc_compare_protocol.json", quote = "two-sided p < 0.05", values = [0.05], fmt = "{:.2f}" }
+"pr.thr.fam" = { src = "research/xgc_compare_protocol.json", keys = ["design.thresholds.family_logit"], fmt = "{:.2f}" }
+"pr.thr.scan" = { src = "research/xgc_compare_protocol.json", keys = ["design.thresholds.scan_logit"], fmt = "{:.2f}" }
+"pr.thr.cor" = { src = "research/xgc_compare_protocol.json", keys = ["design.thresholds.correlation"], fmt = "{:.2f}" }
+"pr.thr.ll" = { src = "research/xgc_compare_protocol.json", keys = ["design.thresholds.log_loss"], fmt = "{:.3f}" }
+"pr.fl.in" = { src = "research/xgc_compare_protocol.json", keys = ["design.floors.category_in"], fmt = "{:d}" }
+"pr.fl.out" = { src = "research/xgc_compare_protocol.json", keys = ["design.floors.category_out"], fmt = "{:d}" }
+"pr.fl.m" = { src = "research/xgc_compare_protocol.json", keys = ["design.floors.category_matches_in"], fmt = "{:d}" }
+"pr.fl.g" = { src = "research/xgc_compare_protocol.json", keys = ["design.floors.label_goals"], fmt = "{:d}" }
+"pr.fl.ng" = { src = "research/xgc_compare_protocol.json", keys = ["design.floors.label_non_goals"], fmt = "{:d}" }
+"pr.cut.t" = { src = "research/xgc_compare_protocol.json", keys = ["dictionary.cuts.timing_top_min_ms"], fmt = "{:.0f} ms" }
+"pr.tail" = { src = "research/xgc_compare_protocol.json", quote = "the 5% largest F - V disagreements", values = [5], fmt = "{:d}%" }
+"t.matches" = { src = "research/xgc_compare_protocol.json", keys = ["shot_table.primary.matches"], fmt = "{:d}" }
+"t.prim" = { src = "research/xgc_compare_protocol.json", keys = ["shot_table.primary.shots"], fmt = "{:,d}" }
+"t.comb" = { src = "research/xgc_compare_protocol.json", keys = ["shot_table.combined.shots"], fmt = "{:,d}" }
+"t.a1" = { src = "research/xgc_compare_protocol.json", keys = ["shot_table.a1_coverage.primary_shots"], fmt = "{:,d}" }
+
+# --- expected power (protocol, power section; ticket 01) ---
+"pw.null.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.family_null_any_bh_rejection"], scale = 100, fmt = "{:.1f}%" }
+"pw.null.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.family_null_any_by_rejection"], scale = 100, fmt = "{:.1f}%" }
+"pw.scan.null" = { src = "research/xgc_compare_protocol.json", keys = ["power.scan.null.mean_replicated"], fmt = "{:.3f}" }
+"pw.scan.all" = { src = "research/xgc_compare_protocol.json", keys = ["power.scan.all.mean_replicated"], fmt = "{:.2f}" }
+"pw.2.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.2.power_bh_alone"], fmt = "{:.2f}" }
+"pw.2.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.2.power_by_alone"], fmt = "{:.2f}" }
+"pw.2.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.2.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.3.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.3.power_bh_alone"], fmt = "{:.2f}" }
+"pw.3.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.3.power_by_alone"], fmt = "{:.2f}" }
+"pw.3.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.3.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.4.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.4.power_bh_alone"], fmt = "{:.2f}" }
+"pw.4.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.4.power_by_alone"], fmt = "{:.2f}" }
+"pw.4.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.4.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.5.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.5.power_bh_alone"], fmt = "{:.2f}" }
+"pw.5.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.5.power_by_alone"], fmt = "{:.2f}" }
+"pw.5.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.5.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.6a.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.6a.power_bh_alone"], fmt = "{:.2f}" }
+"pw.6a.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.6a.power_by_alone"], fmt = "{:.2f}" }
+"pw.6a.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.6a.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.7.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.7.power_bh_alone"], fmt = "{:.2f}" }
+"pw.7.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.7.power_by_alone"], fmt = "{:.2f}" }
+"pw.7.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.7.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.8.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.8.power_bh_alone"], fmt = "{:.2f}" }
+"pw.8.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.8.power_by_alone"], fmt = "{:.2f}" }
+"pw.8.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.8.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.9.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.9.power_bh_alone"], fmt = "{:.2f}" }
+"pw.9.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.9.power_by_alone"], fmt = "{:.2f}" }
+"pw.9.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.9.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.10.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.10.power_bh_alone"], fmt = "{:.2f}" }
+"pw.10.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.10.power_by_alone"], fmt = "{:.2f}" }
+"pw.10.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.10.mde80_unadjusted"], fmt = "{:.3f}" }
+"pw.11.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.11.power_bh_alone"], fmt = "{:.2f}" }
+"pw.11.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.11.power_by_alone"], fmt = "{:.2f}" }
+"pw.11.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.11.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.12.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.12.power_bh_alone"], fmt = "{:.2f}" }
+"pw.12.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.12.power_by_alone"], fmt = "{:.2f}" }
+"pw.12.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.12.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.14.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.14.power_bh_alone"], fmt = "{:.2f}" }
+"pw.14.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.14.power_by_alone"], fmt = "{:.2f}" }
+"pw.14.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.14.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.15.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.15.power_bh_alone"], fmt = "{:.2f}" }
+"pw.15.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.15.power_by_alone"], fmt = "{:.2f}" }
+"pw.15.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.15.mde80_unadjusted"], fmt = "{:.2f}" }
+"pw.16.bh" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.16.power_bh_alone"], fmt = "{:.2f}" }
+"pw.16.by" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.16.power_by_alone"], fmt = "{:.2f}" }
+"pw.16.mde" = { src = "research/xgc_compare_protocol.json", keys = ["power.items.16.mde80_unadjusted"], fmt = "{:.3f}" }
+
+# --- ticket 02: the family, primary population (family.csv) ---
+"f.2.eff" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.2.qbh" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.2.qby" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.3.eff" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.3.qbh" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["q_bh"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.3.qby" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["q_by"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.4.eff" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.4.qbh" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.4.qby" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.5.eff" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.5.qbh" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.5.qby" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.6a.eff" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.6a.qbh" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["q_bh"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.6a.qby" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["q_by"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.7.eff" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.7.qbh" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.7.qby" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.11.eff" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.11.qbh" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["q_bh"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.11.qby" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["q_by"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.12.eff" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.12.qbh" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.12.qby" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.14.eff" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.14.qbh" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["q_bh"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.14.qby" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["q_by"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.15.eff" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.15.qbh" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.15.qby" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.8.eff" = { src = "an:family.csv", row = { "item" = "8" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.8.qbh" = { src = "an:family.csv", row = { "item" = "8" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.8.qby" = { src = "an:family.csv", row = { "item" = "8" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.9.eff" = { src = "an:family.csv", row = { "item" = "9" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.9.qbh" = { src = "an:family.csv", row = { "item" = "9" }, cols = ["q_bh"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.9.qby" = { src = "an:family.csv", row = { "item" = "9" }, cols = ["q_by"], labels = { "0.0" = "< 0.001" }, fmt = "{}" }
+"f.10.eff" = { src = "an:family.csv", row = { "item" = "10" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.10.qbh" = { src = "an:family.csv", row = { "item" = "10" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.10.qby" = { src = "an:family.csv", row = { "item" = "10" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.16.eff" = { src = "an:family.csv", row = { "item" = "16" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.16.qbh" = { src = "an:family.csv", row = { "item" = "16" }, cols = ["q_bh"], fmt = "{:.3f}" }
+"f.16.qby" = { src = "an:family.csv", row = { "item" = "16" }, cols = ["q_by"], fmt = "{:.3f}" }
+"f.2.n" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.2.xg" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.2.dv" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.2.pv" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.2.un" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.3.n" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.3.xg" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.3.dv" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.3.pv" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.3.un" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.4.n" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.4.xg" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.4.dv" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.4.pv" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.4.un" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.5.n" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.5.xg" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.5.dv" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.5.pv" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.5.un" = { src = "an:family.csv", row = { "item" = "5" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.6a.n" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.6a.xg" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.6a.dv" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.6a.pv" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.6a.un" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.7.n" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.7.xg" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.7.dv" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.7.pv" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.7.un" = { src = "an:family.csv", row = { "item" = "7" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.11.n" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.11.xg" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.11.dv" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.11.pv" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.11.un" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.12.n" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.12.xg" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.12.dv" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.12.pv" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.12.un" = { src = "an:family.csv", row = { "item" = "12" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.14.n" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.14.xg" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.14.dv" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.14.pv" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.14.un" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.15.n" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["n_in"], fmt = "{:,d}" }
+"f.15.xg" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["effect_xg_points_point"], fmt = "{:+.1f}" }
+"f.15.dv" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["ref_DV_point"], fmt = "{:+.3f}" }
+"f.15.pv" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["ref_PV_point"], fmt = "{:+.3f}" }
+"f.15.un" = { src = "an:family.csv", row = { "item" = "15" }, cols = ["unadjusted_point"], fmt = "{:+.3f}" }
+"f.3.eff1" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"f.3.raw" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["raw_point", "raw_lo", "raw_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.3.rank" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["rank_point", "rank_lo", "rank_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"f.4.eff1" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"f.4.raw" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["raw_point", "raw_lo", "raw_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.4.rank" = { src = "an:family.csv", row = { "item" = "4" }, cols = ["rank_point", "rank_lo", "rank_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"f.6a.eff1" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"f.6a.raw" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["raw_point", "raw_lo", "raw_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.6a.rank" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["rank_point", "rank_lo", "rank_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"f.11.eff1" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"f.11.raw" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["raw_point", "raw_lo", "raw_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.11.rank" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["rank_point", "rank_lo", "rank_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"f.14.eff1" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"f.14.raw" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["raw_point", "raw_lo", "raw_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.14.rank" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["rank_point", "rank_lo", "rank_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"f.3.eff2" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"f.6a.eff2" = { src = "an:family.csv", row = { "item" = "6a" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"f.11.eff2" = { src = "an:family.csv", row = { "item" = "11" }, cols = ["effect_point", "effect_lo", "effect_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"f.14.eff2" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["effect_point"], fmt = "{:+.2f}" }
+"f.3.dv2" = { src = "an:family.csv", row = { "item" = "3" }, cols = ["ref_DV_point"], fmt = "{:+.2f}" }
+"f.14.dv2" = { src = "an:family.csv", row = { "item" = "14" }, cols = ["ref_DV_point"], fmt = "{:+.2f}" }
+"f.2.n3" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["n_in_sensitivity"], fmt = "{:d}" }
+"f.2.s3" = { src = "an:family.csv", row = { "item" = "2" }, cols = ["sensitivity_point", "sensitivity_lo", "sensitivity_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"f.8.pear" = { src = "an:family.csv", row = { "item" = "8" }, cols = ["pearson_main_point", "pearson_main_lo", "pearson_main_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"s.bh" = { src = "an:summary.json", keys = ["family_bh_rejections"], fmt = "{:d}" }
+"s.by" = { src = "an:summary.json", keys = ["family_by_rejections"], fmt = "{:d}" }
+
+# --- ticket 02: the family, combined population (family_combined.csv) ---
+"fc.3" = { src = "an:family_combined.csv", row = { "item" = "3" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.4" = { src = "an:family_combined.csv", row = { "item" = "4" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.6a" = { src = "an:family_combined.csv", row = { "item" = "6a" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.9" = { src = "an:family_combined.csv", row = { "item" = "9" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.11" = { src = "an:family_combined.csv", row = { "item" = "11" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.14" = { src = "an:family_combined.csv", row = { "item" = "14" }, cols = ["effect_point"], fmt = "{:+.3f}" }
+"fc.4.q" = { src = "an:family_combined.csv", row = { "item" = "4" }, cols = ["q_bh"], fmt = "{:.3f}" }
+
+# --- ticket 03: recovery share and mean xG, descriptive, added after the run (recovery.csv) ---
+"r.2.share" = { src = "rc:recovery.csv", row = { "item" = "2" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.2.mF" = { src = "rc:recovery.csv", row = { "item" = "2" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.2.mV" = { src = "rc:recovery.csv", row = { "item" = "2" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.2.diff" = { src = "rc:recovery.csv", row = { "item" = "2" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.3.share" = { src = "rc:recovery.csv", row = { "item" = "3" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.3.mF" = { src = "rc:recovery.csv", row = { "item" = "3" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.3.mV" = { src = "rc:recovery.csv", row = { "item" = "3" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.3.diff" = { src = "rc:recovery.csv", row = { "item" = "3" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.4.share" = { src = "rc:recovery.csv", row = { "item" = "4" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.4.mF" = { src = "rc:recovery.csv", row = { "item" = "4" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.4.mV" = { src = "rc:recovery.csv", row = { "item" = "4" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.4.diff" = { src = "rc:recovery.csv", row = { "item" = "4" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.5.mF" = { src = "rc:recovery.csv", row = { "item" = "5" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.5.mV" = { src = "rc:recovery.csv", row = { "item" = "5" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.5.diff" = { src = "rc:recovery.csv", row = { "item" = "5" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.6a.share" = { src = "rc:recovery.csv", row = { "item" = "6a" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.6a.mF" = { src = "rc:recovery.csv", row = { "item" = "6a" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.6a.mV" = { src = "rc:recovery.csv", row = { "item" = "6a" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.6a.diff" = { src = "rc:recovery.csv", row = { "item" = "6a" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.7.share" = { src = "rc:recovery.csv", row = { "item" = "7" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.7.mF" = { src = "rc:recovery.csv", row = { "item" = "7" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.7.mV" = { src = "rc:recovery.csv", row = { "item" = "7" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.7.diff" = { src = "rc:recovery.csv", row = { "item" = "7" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.11.share" = { src = "rc:recovery.csv", row = { "item" = "11" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.11.mF" = { src = "rc:recovery.csv", row = { "item" = "11" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.11.mV" = { src = "rc:recovery.csv", row = { "item" = "11" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.11.diff" = { src = "rc:recovery.csv", row = { "item" = "11" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.12.share" = { src = "rc:recovery.csv", row = { "item" = "12" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.12.mF" = { src = "rc:recovery.csv", row = { "item" = "12" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.12.mV" = { src = "rc:recovery.csv", row = { "item" = "12" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.12.diff" = { src = "rc:recovery.csv", row = { "item" = "12" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.14.share" = { src = "rc:recovery.csv", row = { "item" = "14" }, cols = ["share_point", "share_lo", "share_hi"], scale = 100, fmt = "{:.0f}% [{:.0f}; {:.0f}]" }
+"r.14.mF" = { src = "rc:recovery.csv", row = { "item" = "14" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.14.mV" = { src = "rc:recovery.csv", row = { "item" = "14" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.14.diff" = { src = "rc:recovery.csv", row = { "item" = "14" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+"r.15.mF" = { src = "rc:recovery.csv", row = { "item" = "15" }, cols = ["mean_xg_F_point"], fmt = "{:.1f}" }
+"r.15.mV" = { src = "rc:recovery.csv", row = { "item" = "15" }, cols = ["mean_xg_V_point"], fmt = "{:.1f}" }
+"r.15.diff" = { src = "rc:recovery.csv", row = { "item" = "15" }, cols = ["mean_xg_F_minus_V_point", "mean_xg_F_minus_V_lo", "mean_xg_F_minus_V_hi"], fmt = "{:+.1f} [{:+.1f}; {:+.1f}]" }
+
+# --- ticket 02: who is right, primary population (who_is_right.csv) ---
+"w.2.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.2.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.2.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.2.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.2.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.2.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "rebound_5s", "level" = "yes", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.3.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.3.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.3.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.3.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.3.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.3.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.4.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.4.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.4.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.4.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.4.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.4.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "key_pass_cross", "level" = "yes", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.5.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.5.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.5.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.5.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.5.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.5.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "defenders_in_cone", "level" = "2_plus", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.6a.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.6a.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.6a.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.6a.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.6a.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.6a.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.7.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.7.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.7.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.7.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.7.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.7.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "shot_type", "level" = "Free Kick", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.11.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.11.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.11.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.11.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.11.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.11.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "under_pressure", "level" = "yes", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.12.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.12.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.12.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.12.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.12.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.12.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "one_on_one", "level" = "yes", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.14.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.14.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.14.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.14.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.14.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.14.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.15.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.15.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.15.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.15.oe.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "P" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.15.oe.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "D" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.15.dll" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "gk_visible", "level" = "no", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.3.auc.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "V" }, cols = ["auc_point"], fmt = "{:.2f}" }
+"w.3.auc.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "method" = "F" }, cols = ["auc_point"], fmt = "{:.2f}" }
+"w.14.e.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "F" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"w.14.e.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "V" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"w.ang.n" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "V" }, cols = ["n"], fmt = "{:d}" }
+"w.ang.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.ang.e.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "F" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"w.ang.e.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "V" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"w.ang.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"w.ang.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"t.prim.goals" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"w.all.ll.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "V" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "V" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "P" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "P" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.E" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "E" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.E" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "E" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "D" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "D" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.F4" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F-400" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.F4" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F-400" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.ll.A1" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "A1" }, cols = ["log_loss_point"], fmt = "{:.4f}" }
+"w.all.auc.A1" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "A1" }, cols = ["auc_point"], fmt = "{:.3f}" }
+"w.all.dll.P" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "P" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"w.all.dll.E" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "E" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"w.all.dll.D" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "D" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"w.all.dll.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"w.all.dll.F4" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F-400" }, cols = ["delta_ll_vs_V_point"], fmt = "{:+.4f}" }
+"w.all.dll.A1" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "A1" }, cols = ["delta_ll_vs_V_point"], fmt = "{:+.4f}" }
+"w.all.dll.F2" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F" }, cols = ["delta_ll_vs_V_point", "delta_ll_vs_V_lo", "delta_ll_vs_V_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"w.all.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.3f}" }
+"w.all.oe.F4" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "method" = "F-400" }, cols = ["o_over_e_point"], fmt = "{:.3f}" }
+"o6b.oe.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "open_goal", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"o6b.oe.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "open_goal", "level" = "yes", "method" = "V" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"t.comb.goals" = { src = "an:raw_levels.csv", row = { "population" = "combined", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+
+# --- ticket 02: agreement, primary population (agreement.csv, agreement_differences.csv) ---
+"ag.FA1" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "F", "b" = "A1" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.FA1.pt" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "F", "b" = "A1" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.PE" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "P", "b" = "E" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.VP" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.VP2" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.VE" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "E" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.FF4" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "F", "b" = "F-400" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.VD" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "D" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.VD.pt" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "D" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.PF" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "P", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.DF" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "D", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.DF.pt" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "D", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.EF" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "E", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.VF" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"ag.VF2" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"ag.VF4" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "spearman", "a" = "V", "b" = "F-400" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d25" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "25_plus", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d25.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "25_plus", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.d25.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "25_plus", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d25.n" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "25_plus", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["n"], fmt = "{:d}" }
+"al.d18" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "18_25", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d18.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "18_25", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.d18.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "18_25", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d18.n" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "18_25", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["n"], fmt = "{:d}" }
+"al.d12" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "12_18", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d12.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "12_18", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.d12.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "12_18", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.d12.n" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "distance", "level" = "12_18", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["n"], fmt = "{:d}" }
+"al.aer.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "aerial_won", "level" = "yes", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.aer.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "aerial_won", "level" = "yes", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.aer.n" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "aerial_won", "level" = "yes", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["n"], fmt = "{:d}" }
+"al.ang.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.ang.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.head.ci" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point", "lo", "hi"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"al.head.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "body", "level" = "Head", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"al.gk4" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "kind" = "spearman", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"al.gk4.pv" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "gk_depth", "level" = "04_plus", "kind" = "spearman", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"ad.fvpv" = { src = "an:agreement_differences.csv", row = { "population" = "primary", "category" = "overall", "difference" = "rho(F,V) - rho(P,V)" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+
+# --- ticket 02: multivariable fit, descriptive (multivariable.csv) ---
+"mv.zd" = { src = "an:multivariable.csv", row = { "term" = "z_D" }, cols = ["point", "lo", "hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"mv.3" = { src = "an:multivariable.csv", row = { "term" = "item 3: body=Head" }, cols = ["point"], fmt = "{:+.3f}" }
+"mv.6a" = { src = "an:multivariable.csv", row = { "term" = "item 6a: gk_depth=04_plus" }, cols = ["point"], fmt = "{:+.3f}" }
+"mv.11" = { src = "an:multivariable.csv", row = { "term" = "item 11: under_pressure=yes" }, cols = ["point"], fmt = "{:+.3f}" }
+"mv.14" = { src = "an:multivariable.csv", row = { "term" = "item 14: outside_box=yes" }, cols = ["point"], fmt = "{:+.3f}" }
+
+# --- ticket 02: scan (scan_discovery.csv, scan_validation.csv, summary.json) ---
+"sd.all" = { src = "an:scan_discovery.csv", row = {  }, cols = [], agg = "count", fmt = "{:d}" }
+"sd.floor" = { src = "an:scan_discovery.csv", row = { "meets_floors" = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+"s.cand" = { src = "an:summary.json", keys = ["scan_candidates"], fmt = "{:d}" }
+"s.rep" = { src = "an:summary.json", keys = ["scan_replicated"], fmt = "{:d}" }
+"sv.0.d" = { src = "an:scan_validation.csv", row = { "category" = "body", "level" = "Head" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.0.v" = { src = "an:scan_validation.csv", row = { "category" = "body", "level" = "Head" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.0.n" = { src = "an:scan_validation.csv", row = { "category" = "body", "level" = "Head" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.0.xg" = { src = "an:scan_validation.csv", row = { "category" = "body", "level" = "Head" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.1.d" = { src = "an:scan_validation.csv", row = { "category" = "play_pattern", "level" = "From Corner" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.1.v" = { src = "an:scan_validation.csv", row = { "category" = "play_pattern", "level" = "From Corner" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.1.n" = { src = "an:scan_validation.csv", row = { "category" = "play_pattern", "level" = "From Corner" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.1.xg" = { src = "an:scan_validation.csv", row = { "category" = "play_pattern", "level" = "From Corner" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.2.d" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "Ground Pass" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.2.v" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "Ground Pass" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.2.n" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "Ground Pass" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.2.xg" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "Ground Pass" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.3.d" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "High Pass" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.3.v" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "High Pass" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.3.n" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "High Pass" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.3.xg" = { src = "an:scan_validation.csv", row = { "category" = "key_pass_height", "level" = "High Pass" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.4.d" = { src = "an:scan_validation.csv", row = { "category" = "aerial_won", "level" = "yes" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.4.v" = { src = "an:scan_validation.csv", row = { "category" = "aerial_won", "level" = "yes" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.4.n" = { src = "an:scan_validation.csv", row = { "category" = "aerial_won", "level" = "yes" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.4.xg" = { src = "an:scan_validation.csv", row = { "category" = "aerial_won", "level" = "yes" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.5.d" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "12_18" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.5.v" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "12_18" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.5.n" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "12_18" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.5.xg" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "12_18" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.6.d" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "25_plus" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.6.v" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "25_plus" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.6.n" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "25_plus" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.6.xg" = { src = "an:scan_validation.csv", row = { "category" = "distance", "level" = "25_plus" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.7.d" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "00_15" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.7.v" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "00_15" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.7.n" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "00_15" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.7.xg" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "00_15" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.8.d" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "15_20" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.8.v" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "15_20" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.8.n" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "15_20" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.8.xg" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "15_20" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.9.d" = { src = "an:scan_validation.csv", row = { "category" = "outside_box", "level" = "yes" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.9.v" = { src = "an:scan_validation.csv", row = { "category" = "outside_box", "level" = "yes" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.9.n" = { src = "an:scan_validation.csv", row = { "category" = "outside_box", "level" = "yes" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.9.xg" = { src = "an:scan_validation.csv", row = { "category" = "outside_box", "level" = "yes" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.10.d" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "00_02" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.10.v" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "00_02" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.10.n" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "00_02" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.10.xg" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "00_02" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.11.d" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "04_plus" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.11.v" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "04_plus" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.11.n" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "04_plus" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.11.xg" = { src = "an:scan_validation.csv", row = { "category" = "gk_depth", "level" = "04_plus" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.12.d" = { src = "an:scan_validation.csv", row = { "category" = "nearest_opponent", "level" = "00_1.5" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.12.v" = { src = "an:scan_validation.csv", row = { "category" = "nearest_opponent", "level" = "00_1.5" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.12.n" = { src = "an:scan_validation.csv", row = { "category" = "nearest_opponent", "level" = "00_1.5" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.12.xg" = { src = "an:scan_validation.csv", row = { "category" = "nearest_opponent", "level" = "00_1.5" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.13.d" = { src = "an:scan_validation.csv", row = { "category" = "rebound_5s", "level" = "yes" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.13.v" = { src = "an:scan_validation.csv", row = { "category" = "rebound_5s", "level" = "yes" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.14.d" = { src = "an:scan_validation.csv", row = { "category" = "players_visible", "level" = "high" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.14.v" = { src = "an:scan_validation.csv", row = { "category" = "players_visible", "level" = "high" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.14.n" = { src = "an:scan_validation.csv", row = { "category" = "players_visible", "level" = "high" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.14.xg" = { src = "an:scan_validation.csv", row = { "category" = "players_visible", "level" = "high" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.15.d" = { src = "an:scan_validation.csv", row = { "category" = "keypoints_visible", "level" = "le_8" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.15.v" = { src = "an:scan_validation.csv", row = { "category" = "keypoints_visible", "level" = "le_8" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.15.n" = { src = "an:scan_validation.csv", row = { "category" = "keypoints_visible", "level" = "le_8" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.15.xg" = { src = "an:scan_validation.csv", row = { "category" = "keypoints_visible", "level" = "le_8" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.16.d" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "england_epl/2015-2016" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.16.v" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "england_epl/2015-2016" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.16.n" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "england_epl/2015-2016" }, cols = ["n_in"], fmt = "{:d}" }
+"sv.16.xg" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "england_epl/2015-2016" }, cols = ["adjusted_xg_points_point"], fmt = "{:+.1f}" }
+"sv.17.d" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "spain_laliga/2015-2016" }, cols = ["discovery_point"], fmt = "{:+.2f}" }
+"sv.17.v" = { src = "an:scan_validation.csv", row = { "category" = "league_season", "level" = "spain_laliga/2015-2016" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"sv.ang.eff" = { src = "an:scan_validation.csv", row = { "category" = "angle", "level" = "00_15" }, cols = ["point", "lo", "hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+
+# --- ticket 02: largest disagreements (disagreement_tails.csv, disagreement_profile.csv) ---
+"dt.n" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_above_V" }, cols = ["n"], fmt = "{:d}" }
+"dt.a.goals" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_above_V" }, cols = ["goals"], fmt = "{:d}" }
+"dt.a.rate" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_above_V" }, cols = ["goal_rate_point", "goal_rate_lo", "goal_rate_hi"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"dt.a.V" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_above_V" }, cols = ["mean_p_V"], scale = 100, fmt = "{:.1f}%" }
+"dt.a.F" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_above_V" }, cols = ["mean_p_F"], scale = 100, fmt = "{:.1f}%" }
+"dt.b.goals" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_below_V" }, cols = ["goals"], fmt = "{:d}" }
+"dt.b.rate" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_below_V" }, cols = ["goal_rate_point", "goal_rate_lo", "goal_rate_hi"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"dt.b.V" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_below_V" }, cols = ["mean_p_V"], scale = 100, fmt = "{:.1f}%" }
+"dt.b.F" = { src = "an:disagreement_tails.csv", row = { "direction" = "F_below_V" }, cols = ["mean_p_F"], scale = 100, fmt = "{:.1f}%" }
+"dp.ang" = { src = "an:disagreement_profile.csv", row = { "direction" = "F_above_V", "category" = "angle", "level" = "00_15" }, cols = ["share"], scale = 100, fmt = "{:.0f}%" }
+"dp.fk" = { src = "an:disagreement_profile.csv", row = { "direction" = "F_above_V", "category" = "shot_type", "level" = "Free Kick" }, cols = ["lift"], fmt = "{:.1f}" }
+"dp.og" = { src = "an:disagreement_profile.csv", row = { "direction" = "F_below_V", "category" = "open_goal", "level" = "yes" }, cols = ["lift"], fmt = "{:.1f}" }
+"dp.d06" = { src = "an:disagreement_profile.csv", row = { "direction" = "F_below_V", "category" = "distance", "level" = "00_06" }, cols = ["lift"], fmt = "{:.1f}" }
+
+# --- ticket 02: items outside the family (outside_family.json) ---
+"o1.F" = { src = "an:outside_family.json", keys = ["item_1.0.regressions.F|main.adjusted_point", "item_1.0.regressions.F|main.adjusted_lo", "item_1.0.regressions.F|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o1.F.p" = { src = "an:outside_family.json", keys = ["item_1.0.regressions.F|main.adjusted_p"], fmt = "{:.4f}" }
+"o1.F400" = { src = "an:outside_family.json", keys = ["item_1.0.regressions.F-400|main.adjusted_point", "item_1.0.regressions.F-400|main.adjusted_lo", "item_1.0.regressions.F-400|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o1c.F" = { src = "an:outside_family.json", keys = ["item_1.1.regressions.F|main.adjusted_point", "item_1.1.regressions.F|main.adjusted_lo", "item_1.1.regressions.F|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o1c.F.p" = { src = "an:outside_family.json", keys = ["item_1.1.regressions.F|main.adjusted_p"], fmt = "{:.3f}" }
+"o1c.F400" = { src = "an:outside_family.json", keys = ["item_1.1.regressions.F-400|main.adjusted_point", "item_1.1.regressions.F-400|main.adjusted_lo", "item_1.1.regressions.F-400|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o1.F.xg" = { src = "an:outside_family.json", keys = ["item_1.0.regressions.F|main.adjusted_xg_points_point"], fmt = "{:+.2f}" }
+"o1.F400.pt" = { src = "an:outside_family.json", keys = ["item_1.0.regressions.F-400|main.adjusted_point"], fmt = "{:+.3f}" }
+"o1.on" = { src = "an:outside_family.json", keys = ["item_1.0.n_on_target"], fmt = "{:d}" }
+"o1.off" = { src = "an:outside_family.json", keys = ["item_1.0.n_off_target"], fmt = "{:d}" }
+"o1.blk" = { src = "an:outside_family.json", keys = ["item_1.0.n_apart.Blocked"], fmt = "{:d}" }
+"o13.n" = { src = "an:outside_family.json", keys = ["item_13.n_non_goals"], fmt = "{:,d}" }
+"o13.F" = { src = "an:outside_family.json", keys = ["item_13.regressions.F|main.adjusted_point", "item_13.regressions.F|main.adjusted_lo", "item_13.regressions.F|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o13.F.p" = { src = "an:outside_family.json", keys = ["item_13.regressions.F|main.adjusted_p"], fmt = "{:.4f}" }
+"o13.F400" = { src = "an:outside_family.json", keys = ["item_13.regressions.F-400|main.adjusted_point", "item_13.regressions.F-400|main.adjusted_lo", "item_13.regressions.F-400|main.adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"o13.raw" = { src = "an:outside_family.json", keys = ["item_13.regressions.F|raw.adjusted_point", "item_13.regressions.F|raw.adjusted_lo", "item_13.regressions.F|raw.adjusted_hi"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"o6b.n" = { src = "an:outside_family.json", keys = ["item_6b.0.n_in"], fmt = "{:d}" }
+"o6b.goals" = { src = "an:outside_family.json", keys = ["item_6b.0.goals_in"], fmt = "{:d}" }
+"o6b.eff" = { src = "an:outside_family.json", keys = ["item_6b.0.main_point", "item_6b.0.main_lo", "item_6b.0.main_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"o6b.dv" = { src = "an:outside_family.json", keys = ["item_6b.0.ref_DV_point"], fmt = "{:+.2f}" }
+"nc.prim" = { src = "an:outside_family.json", keys = ["negative_control.0.main_point", "negative_control.0.main_lo", "negative_control.0.main_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"nc.comb" = { src = "an:outside_family.json", keys = ["negative_control.1.main_point", "negative_control.1.main_lo", "negative_control.1.main_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+
+# --- ticket 02: Pearson, raw levels, rebound subtypes (agreement.csv, raw_levels.csv, levels.csv) ---
+"agp.VF" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "pearson", "a" = "V", "b" = "F" }, cols = ["point"], fmt = "{:.2f}" }
+"agp.VP" = { src = "an:agreement.csv", row = { "population" = "primary", "category" = "overall", "level" = "all", "kind" = "pearson", "a" = "V", "b" = "P" }, cols = ["point"], fmt = "{:.2f}" }
+"rl.V" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "V" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.P" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "P" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.E" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "E" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.D" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "D" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.F" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "F" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.F4" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "F-400" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"rl.A1" = { src = "an:raw_levels.csv", row = { "population" = "primary", "method" = "A1" }, cols = ["mean_p_raw"], scale = 100, fmt = "{:.1f}%" }
+"lv.save" = { src = "an:levels.csv", row = { "population" = "primary", "category" = "rebound_subtype", "level" = "after_save", "pair" = "F-V" }, cols = ["main_adjusted_point", "main_adjusted_lo", "main_adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"lv.save.n" = { src = "an:levels.csv", row = { "population" = "primary", "category" = "rebound_subtype", "level" = "after_save", "pair" = "F-V" }, cols = ["n_in"], fmt = "{:d}" }
+"lv.block" = { src = "an:levels.csv", row = { "population" = "primary", "category" = "rebound_subtype", "level" = "after_block", "pair" = "F-V" }, cols = ["main_adjusted_point", "main_adjusted_lo", "main_adjusted_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"lv.block.n" = { src = "an:levels.csv", row = { "population" = "primary", "category" = "rebound_subtype", "level" = "after_block", "pair" = "F-V" }, cols = ["n_in"], fmt = "{:d}" }
+"o6b.e.F" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "open_goal", "level" = "yes", "method" = "F" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"o6b.e.V" = { src = "an:who_is_right.csv", row = { "population" = "primary", "category" = "open_goal", "level" = "yes", "method" = "V" }, cols = ["expected_point"], fmt = "{:.1f}" }

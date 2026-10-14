@@ -1,0 +1,41 @@
+{
+  "code": {
+    "digest": "e61123868176618c1b6fc4fa409282a60b3ba0acf142c4592388ee77e6fb380d",
+    "files": {
+      "scripts/xgc_report_figures.py": "35c88327eb34603d60315d2337ef57c89dc4f2a3178a043f3e1e0b996822ebd5",
+      "xgpoc/compare/__init__.py": "901c6e1fdbacc65489e5a16792ee86adc1b61e3ed4beb534b78e330860f98d14",
+      "xgpoc/compare/analysis.py": "5b0cca0e945913eb05e43f157608b1cd7a69a0735d072a3fac201ac6cba10c58",
+      "xgpoc/compare/categories.py": "8d6824de4af819269ff65b33661890bf45d8437b0f51e5b51224715c0b4e4046",
+      "xgpoc/compare/describe.py": "c3fd822c5e9f59680f067295a5335f89487c5959b96a6c8c7268e77af3fa4949",
+      "xgpoc/compare/pipeline.py": "a93f225670496f0a234349c22c8e3cfddc13b80d92dc5f00f13955eb83712634",
+      "xgpoc/compare/population.py": "05561b31c0427d48fc406be8f1033fe04a2b8a4d0a7296def6e6ae69a74a8894",
+      "xgpoc/compare/power.py": "f0cbd01efbe994da3f3700e1eef361250cd7d2abe3cccdec4b0297aeff7f69d6",
+      "xgpoc/compare/protocol.py": "47afa10632b3a580593a9871b3fa9e156ad58ab6a9c7f3cb9e91c90f3dd8fa6e",
+      "xgpoc/compare/records.py": "1262c1d2a1efe03e1d219d34e8dd95222261012ba765f8e12d5c8f1412bbc23f",
+      "xgpoc/compare/sequence.py": "534c41229f4479dcb855c23c558a7f9b0dec79dd7397dcb39fc3893d6cf61e92",
+      "xgpoc/compare/stats.py": "bc083cc77fe3bed0c72325c964886377803ebf4270abc9c23d02a8587d7c1982",
+      "xgpoc/compare/table.py": "5956ccf5778a4e7d8ab01ea718fed7997f85ac5282f3d96b7578c7e5c05812fb",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+      "xgpoc/vendor/draws.py": "fc88a16636cd4e558b5264081a7a6d245d6a4b981f0c1cad7b33ba9649bfe62c",
+      "xgpoc/vendor/evaltable.py": "e6220255f3dc4723a40f4f37ba1044aa33cc016ca30d8746aca3c29d5cbc31f7",
+      "xgpoc/vendor/ladder.py": "a2de6fff3ade4b7741896aaf6f78df1071d3e67e1e5db983ea434d0bbd5428b1",
+      "xgpoc/vendor/refit.py": "1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02",
+      "xgpoc/vendor/statsbomb_fetch.py": "028c4a78567be24741f347ed860c046443daa0c903d7024d3aafd0178e59664f",
+      "xgpoc/vendor/statsbomb_tables.py": "974db09ddd853049debcb373c959889e61f3605d96009db2f31001814edae177"
+    }
+  },
+  "files": {
+    "agreement_heatmap.png": "da956bfb5b1ad7ed9cf09cf2260955724ca66dd79f9ea3be1ea6d0cfb4fbe8b6",
+    "family_forest.png": "3e111acc91783350c4a17d5fbdd51e31a8826c0aaa6dcec7df82166eff9593b0"
+  },
+  "git": {
+    "dirty": false,
+    "sha": "3aa4ce775dc52a60aadd8d507bf1ba9e95065a7a"
+  },
+  "inputs": {
+    "results/xgc_compare/analysis/agreement.csv": "cd4d1a94de1b9b4607543a7e7b0cae85b05418fc91e5dfe8d0c79cc574782707",
+    "results/xgc_compare/analysis/family.csv": "224b3830fa8c3eb36a4cd7c2af0ddd6c3ff8fb32685749579185a85fb63b4b84"
+  },
+  "notice": "Data: StatsBomb."
+}
