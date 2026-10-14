@@ -1,0 +1,250 @@
+{
+  "title": "detector-data benchmark (ticket 02), frozen before any training",
+  "manifest": {
+    "created": "2026-10-14T08:24:01+00:00",
+    "ticket": "detector-data 02",
+    "gsr_root": "/home/kuba/projects/tactifoot_vision/data/SoccerNetGS",
+    "stride": 5,
+    "frame_rule": "1-based GSR frames with (frame - 1) % 5 == 0",
+    "classes": [
+      "ball",
+      "goalkeeper",
+      "player",
+      "referee"
+    ],
+    "dropped_categories": [
+      "other"
+    ],
+    "splits": {
+      "valid": {
+        "frames": 8700,
+        "frames_with_ball": 8086,
+        "boxes": {
+          "ball": 8179,
+          "goalkeeper": 5203,
+          "player": 123928,
+          "referee": 12381
+        },
+        "sequences": 58,
+        "games": [
+          "2",
+          "3",
+          "5"
+        ],
+        "frames_per_game": {
+          "2": 2700,
+          "3": 3150,
+          "5": 2850
+        },
+        "data_yaml": "/mnt/storage/tactifoot_research/detector_data/bench/yolo/valid/data.yaml",
+        "yolo_labels_sha256": "f1b13d87d8a58d8aec384347fbe862088d4a0c21571fc85218e23fb67fbb7638",
+        "yolo_label_files": 8700,
+        "gsr_labels_sha256": {
+          "SNGS-021": "b0cc0802499a6e5e7b80ef8b76b27c4f9757c49feccb2d3f72971e5b3c0d4e7f",
+          "SNGS-022": "c27e821481567bcfcd0dca5474b3ddfe1f7694c16bc8addd52a52255aa8b3e55",
+          "SNGS-023": "310d5b089a0c57938d278ca2e2187eb99170eec1267af36069a1d84ae2759332",
+          "SNGS-024": "d23f62f18a871fe184f487c09e355bdc80d12d5b308604e73b71b25b8f9c1585",
+          "SNGS-025": "bed079fd4c41e5f0d6ae8590d570e3815dc3cfcac87fddb01ebcf5b114667f9d",
+          "SNGS-026": "0cb759d13cba7b9c7c5e929be438caedc44bc169ec1bebd695f4d66449d8061e",
+          "SNGS-027": "33ba3d1b24a31aec4427b57cdcc5f9b7d3a967ff6524e0d406f645a3db0beceb",
+          "SNGS-028": "1068eb88724a53c19fb0feb9ce5d96930e056704a3c573c1e9a3e25314244ea0",
+          "SNGS-029": "71cb4444765e4cbddcf90acc55b80a7125afbe9a87abe78ff7bd3882c4758710",
+          "SNGS-030": "4c19f9094eeceedc06737b9994f83f7f12f1b8ce8b5e1739b315aaf8063cbd9a",
+          "SNGS-031": "6c30bc0b7f1f46ab180807819ded43e94fb468c85b1ddef407eb67a1f2022b18",
+          "SNGS-032": "bb556b85e4bf74b0f052fe095722fd8c3567da14081a7ef316ba23184a53de89",
+          "SNGS-033": "caa65b1f251e23e24a892f3b2773a9a74e068669843a5649b16ea3e319d740de",
+          "SNGS-034": "b6f45c0fdad6645aed7d610260fc816e1b1621f746736fadd75ce9a617177e54",
+          "SNGS-035": "ae03976cf8cc81da5006babfcc1d613d66612d5fe918ef3d5edf3d221e81612f",
+          "SNGS-036": "48711d3d2674c285ba4b12f0b3216b6be9fb5e1a377c011a15be2fde6e95e787",
+          "SNGS-037": "ab47bdcb38bc9289a2b9e9f7e376412c23953a2d1b38e56e3a86431fb0732973",
+          "SNGS-038": "8c9f97e9c331b538ae2ffdb12a06ec8c3753dc87b618bf33bdd1e48df0473ef7",
+          "SNGS-039": "d1dd6ac7b69f809645296a0c9840985d308678ee6e1fc7978ba7edb110ab7b24",
+          "SNGS-040": "493278b4fa0fa59def71e06830c1bd3b929a82cfae14c3ac48d3167d61ec1f41",
+          "SNGS-041": "bcbb23bc226d1fcbb42ecd731e44bf0f11291221840b4ed0a64b35b2892515ce",
+          "SNGS-042": "0d29b3e9f33aa5138c3079c73568c953a02fc6e9d2063aa7458be8c709c76f89",
+          "SNGS-043": "60c8ec0bd847663f898fb8d34eeaa8a6619ebd1eecbe5656146e82d7e7136cda",
+          "SNGS-044": "2fadabd50d53189efd6e541295e045d6597c0da7a496c0a0ece47b4594ede278",
+          "SNGS-045": "d76cd00dceedcb34215b4cf1574c18bdc53245c46dfc99bc787a7c3655b3e722",
+          "SNGS-046": "486e8f09e6f62985dc614b4f00e8124dae01bba84095127f5b582e3407f86655",
+          "SNGS-047": "34a97b0338deb739a67641d3c6d23b2433b893e4c7aa7c3b17a8e45ab162782e",
+          "SNGS-048": "e641367bc8e54be8dfbee131584d9f01085f897fbf62142bdc70859a26efff38",
+          "SNGS-049": "e7a32b1faa36b2d51641d45b628a2f7c4be4a0692592be61c817575875b9f11b",
+          "SNGS-050": "d5d6af5c1e21af3d111294f1a5b82c1600e9703121dd63511115755b343a32f0",
+          "SNGS-051": "65407018ee1e3499bb04714ad78ac9a116821b140902c520bcda20b7c6a06a59",
+          "SNGS-052": "e1d5ceed930f6c8c89dd143aeb8158f53e8b7cb2f34ec4fc4a25e4f23a4a9e5d",
+          "SNGS-053": "c37e6e0760ffb52b79ec9c1d81d5a82122a25fd356296c5a3023ef62e0da09de",
+          "SNGS-054": "c47df216877833c235516129118ff9cc7149be5f0c4c8de4c3b866ea5af33f10",
+          "SNGS-055": "a91def3a88605ced4dde6b99ac78adfce71f0a34b4d45fe6b6803e4cb5a679a5",
+          "SNGS-056": "0128d29f745fa9c1b79838e38401c5e271a8ae6c19eadd91e3329753bf558abe",
+          "SNGS-057": "d2fbd808244b81303c2a3ca12f3ef15fb8141bc66fd583f9483a314a045f6eac",
+          "SNGS-058": "017ca49ba9ba0c401cad2b2919bc9bace75891b3933ea70d9d864cf56768a9d1",
+          "SNGS-059": "5e23f6f9ffcd0f6bdcf18dbc8032a76b72886b1265a1a0a6414851cfafec6863",
+          "SNGS-078": "be6fc21dcce6cb6175f4f3a2d387ba1766721f026b412970ae809ff5a72c9560",
+          "SNGS-079": "9a388ca0cec5fc7251dd335465f7d84058cb02afdbe5b4585758f79c612cacb9",
+          "SNGS-080": "e0fe97fbc7c58568e65ba795ce6c41ed9a875f61809bbbd30410f718ad39c50a",
+          "SNGS-081": "fa79b93c8812e5b44796dd848ca35c77cb6028cae84286fa0d02e35a65b9b1e3",
+          "SNGS-082": "5c804d51a4cdce86b9bd38e4c3a73d3db024f207a451de204ec6523a03286bef",
+          "SNGS-083": "e3505b97126b4c380974d267f0c35b8ef740a7ba3188fa02dfcbd01585f0e340",
+          "SNGS-084": "5171e045c5eab6b20de4506dd0821127ecac15334844c54bc11b6f0edcbe52c4",
+          "SNGS-085": "a01485ee709a561e0198067151bdb9c0925ef0289c0e979c3d9722c9d5fadfd1",
+          "SNGS-086": "27c8c3e8db0668a3081a3c8e6fbc6c9f008650fe89f914df902deb3d281276c6",
+          "SNGS-087": "ac9b1b4577f8da99659461f16f7e5edd533d963af6545aa593d2636cf0749982",
+          "SNGS-088": "af2644b0e566a4ef4f20fec8d6124ff86d9db9f0b8d8208473e9983a732710c4",
+          "SNGS-089": "6bf622c8a38df9be916e3ac4b859af4dcd155d6686772cd8bb012967d95cdd61",
+          "SNGS-090": "a141987e27794bfa7945ce1710629d43776aeaac25399d3f1e57de7d6959b4e5",
+          "SNGS-091": "2133425cf337dd928e5a44ccda8f59e4a8cf075bc59e449609326f03b850abe8",
+          "SNGS-092": "4471cef0cb737e678dc28ec2eedbb5ccb768e36f5f111a4ca3a626bef5dc9784",
+          "SNGS-093": "a189e2f0e2987f3824852e0a4bc95429042646e9661ab6adc2d3dad124188d12",
+          "SNGS-094": "a63db10119314bc19f766463372518348ac166e4c7ef9761bdb62eee915c5752",
+          "SNGS-095": "03b04742cbc02a7f77390dbe0bfcb640ee736ee668036e4c42999646e1fb931f",
+          "SNGS-096": "de02024a3dc4ee8119e5ae31fff4c5948c6d2078f0358bd5d957e21d8c9c8a46"
+        }
+      },
+      "test": {
+        "frames": 7350,
+        "frames_with_ball": 6758,
+        "boxes": {
+          "ball": 6822,
+          "goalkeeper": 3892,
+          "player": 92950,
+          "referee": 8985
+        },
+        "sequences": 49,
+        "games": [
+          "7",
+          "8",
+          "11"
+        ],
+        "frames_per_game": {
+          "11": 2100,
+          "7": 2400,
+          "8": 2850
+        },
+        "data_yaml": "/mnt/storage/tactifoot_research/detector_data/bench/yolo/test/data.yaml",
+        "yolo_labels_sha256": "474a3e9844c92c6c54945e0712cd71e0b4e62b83b5cf8a252a2e649cb8dc08b7",
+        "yolo_label_files": 7350,
+        "gsr_labels_sha256": {
+          "SNGS-116": "d0b1eb05ec23247a8512556f0de239488507b4228d412ba6dc244d3acaafdfe0",
+          "SNGS-117": "dc3a84c7be578193be8abb20dd5d5166c8d75d062fcd3b515c6096ab766d1d0d",
+          "SNGS-118": "01f5291ba6687e9c3dacfbdca0e5387ffc4502bdabc69a286bff8c5c9655ad4c",
+          "SNGS-119": "b5e046d436d66d69d9b05c57e89527cb2a3376cbd41b0b8d62d1b34b143f03b5",
+          "SNGS-120": "b2bfa7a0df5f08c578400ac080797c650353596ec6a5acec4607c5c4687a5b30",
+          "SNGS-121": "fd0747701e53b8a4fd9b47ff8801cb1515d86bc8e07bab1ad2a74253ec7de3e3",
+          "SNGS-122": "184a1d662fb275fd96e3461c2997f1179dd60bb07c88105add184cbbe25ae620",
+          "SNGS-123": "1b2c3e690ffbc40af84ada64cebb188b450f7efefb56486db4a431329d21c857",
+          "SNGS-124": "36f1e96d1c70e2d9cdec99b8e270afcc0ff21785fce4c3fb2b63120a3934d5c5",
+          "SNGS-125": "7cf570e91f409685330d20164429095f5c035ee1077b7f754cff6650f65f868d",
+          "SNGS-126": "fdb1d34b61decc98e2a2d05ce72f5d224140b399a1c6d7bae3f55d6043e69053",
+          "SNGS-127": "e0bcc5c1d28f816337addcdc5b20df5649f12610e19116e0034e9437838cab6d",
+          "SNGS-128": "ffcc51618ca30195b6288c13a07991f4ecc95f96023c88d79f6cfe0b152bd93e",
+          "SNGS-129": "c2c02d8ab16220df281be032cb0f0784e40880b9054353ec77002ef037906962",
+          "SNGS-130": "36d47c82fddb3e49973a64a7b737523a21848f48adf3aab77e662c20ff3bc814",
+          "SNGS-131": "c6e15ab1d925f216eab53c0ebd559b8f9f2835762bcf35d053979e7853942be0",
+          "SNGS-132": "dfbb7d62e2f26aa1183d8c12d299e2a2256fac2dc408d7580a9293109952edad",
+          "SNGS-133": "9b7228826f71b4a435ed4a0c8d0fa14f87eb03f2f3da0b8ef0e3d9c3a4efb07c",
+          "SNGS-134": "e86aa374626913fc609aefb059e20e094551780a47adde81c7f342ab59f182ce",
+          "SNGS-135": "d0e0e2e5185dcc8113e249caa4f92401ea7ca1b36df7ad97a9c6f74349c5ad60",
+          "SNGS-136": "9376573387113d43132e4b8e32b34aecc46f1fc8160ee3857fbc3fcd971af959",
+          "SNGS-137": "25bc5f5bdeccb4b8966a257e7d5b7b42c30060618193b95271f104d0fc49716e",
+          "SNGS-138": "ba48627de2863cafbf73e54a032dc12fe8882ac84c1c1867addf1c9ef54f12cb",
+          "SNGS-139": "fda27d0050db9641974b491aff315a0b419291463c2bdb4eeb23f3d6bb4d416d",
+          "SNGS-140": "3b054fc196475b7314f749fdfdb95af581cb9b7021219b5e60e21bd13fe16f5e",
+          "SNGS-141": "729c482e68e9b3d614913cc0d1eac08c27d6b860bee8bbdcdcd46b970ea97a50",
+          "SNGS-142": "a9a74c97ae91d6739aa5b23754031490c8786c2362f93d73d12a28a12bc4329e",
+          "SNGS-143": "00bc808f5207a83640c02f19f87e32fba6563e7e64b88e7375a874bf7d02237c",
+          "SNGS-144": "d40f61059ad1483ec87719ac42ab641cdb28b69d645e9c7931212f04d2c53c1c",
+          "SNGS-145": "0a974d2e2061442c995ca1d877dc94a16b4e59f489a6d6a44e0c3e611c6d32c3",
+          "SNGS-146": "07f354fe4493f9d5bd26abc8ce260f850db1ba2696859a00fc16459b4a15f8d4",
+          "SNGS-147": "ff37d62a33ff18a428b6558694ffe1d239d9f3b51289f53f719b1277423d59f7",
+          "SNGS-148": "5186cff1963ba540ce1fd6a4d0dcbc6b21be88833c7a079fc2f44047f098a0c0",
+          "SNGS-149": "4d2a9413dce528f6034b9f8f460f84acf186905bc709844d7f42baa71a0ffccc",
+          "SNGS-150": "1854ae3197ff02163bf560ade35164893fa8f81e22aa7f6284108181869a92c5",
+          "SNGS-187": "35381c56274524da4686a1255eccd044512c01b25ec939f11f62daa431551e4e",
+          "SNGS-188": "b575a1e507fe9ee9be844b1c231ac5138ed2e39bf132593df8a0f3cc750a38fc",
+          "SNGS-189": "712c181012033b2490843ecd967600155962553c606bdc2a20c29b18e790d4b9",
+          "SNGS-190": "f44ae58c605efba68dbb9c4186ec150080ba47b7520660f692cb84eca379030d",
+          "SNGS-191": "14629eaefaeac9c8250cc40cddb7c0809657a36792eb639d1bfd3dbfb6f6b12b",
+          "SNGS-192": "d5eea724772ae712decff85b34315dba566f8876b6e7b0685ecc715b88e3ed73",
+          "SNGS-193": "b3ab2d2f43ee6a5cdc064be3fa64eb63b0a0ce278c2fbef89dc0aedb5235746e",
+          "SNGS-194": "9f1a58a53073704092cf40c6454a357ede6d6444f47fb0ed95c24b53618e9536",
+          "SNGS-195": "5ee41339a7ec5e83e8f4a2ea54444968610175588f2718209dc7263303b48948",
+          "SNGS-196": "9afb76560911f36bf9bfec945c5206cfc7d617e3cf3fec91b47b873a3f660086",
+          "SNGS-197": "86e1c9f020fe18446b8da24f49e525588b56cd3e59f793fadee1f4ec191bb553",
+          "SNGS-198": "bebd79801e661eaf902c244487e87e65b9c4c2fc08ac41d6695823c38ea3538c",
+          "SNGS-199": "3ec8f516e4346b946e9e06e76e6c28239f0ec319f8a9b81e9ccf06e89fd45a24",
+          "SNGS-200": "046d3fb5629d72c234c2c642951248af34091efe821e067c95dbf5768c9d2db2"
+        }
+      }
+    },
+    "roboflow_valid": {
+      "frames": 193,
+      "frames_with_ball": 164,
+      "boxes": {
+        "ball": 197,
+        "goalkeeper": 63,
+        "player": 3414,
+        "referee": 194
+      },
+      "root": "/home/kuba/projects/tactifoot_vision/data/datasets/football_yolo",
+      "labels_sha256": "9077a6e3d6291bd7da5287e3fef0ab0b328f10254963674c5b3ed2fbc998eb02"
+    },
+    "placement_homographies": {
+      "file": "/mnt/storage/tactifoot_research/detector_data/bench/gsr_valid_homographies.parquet",
+      "sha256": "a7d23187836344c6b7f23a7bb0abe1b8480ab7058af9391456cb95b439021430",
+      "frames": 7942,
+      "source": "/home/kuba/projects/tactifoot_vision/.claude/worktrees/research-xg-detector/experiments/claude_fable/results/pk_candidates/y11m_960_e18_square/retune_valid/per_frame.parquet",
+      "source_sha256": "4139b256a6e0bb27c28ba6a88932900e4ea6772809e050e3c67d32295c3f42c8",
+      "method": "kp03_r2_refined",
+      "convention": "720p frame pixels -> corner-origin metres (105 x 68)"
+    },
+    "manifest_sha256": "7bd0d6fc9e77ef060ae75fcc1f3f7c3192f42fd43ad1b5718d03c417e2173807"
+  },
+  "metrics": {
+    "ap": "supervision.metrics.MeanAveragePrecision via tv.evaluation.evaluate_detector (COCO-style AP over IoU 0.50:0.95; images without objects do not count)",
+    "eval_conf": 0.001,
+    "operating_point": {
+      "conf": 0.3,
+      "class_conf": {
+        "ball": 0.15
+      }
+    },
+    "match_iou": 0.5,
+    "rows": {
+      "640": {
+        "imgsz": 640,
+        "iou": 0.7,
+        "input_size": null
+      },
+      "1280": {
+        "imgsz": 1280,
+        "iou": 0.7,
+        "input_size": null
+      },
+      "e3": {
+        "imgsz": 1920,
+        "iou": 0.5,
+        "input_size": [
+          1280,
+          720
+        ]
+      }
+    },
+    "placement": {
+      "input_size": [
+        1280,
+        720
+      ],
+      "imgsz": 1920,
+      "iou": 0.5,
+      "ball_conf": 0.15,
+      "far_m": 5.0,
+      "near_goal_m": 30.0,
+      "bootstrap_draws": 2000,
+      "bootstrap_seed": 0,
+      "frames": "scored GSR valid frames whose single truth ball (bbox_pitch) lies on the pitch",
+      "detector": "most confident ball, box centre through the frame's homography",
+      "check": "baseline reproduces pk_ball_evidence (pitch-keypoints report): placed 0.5019, far 0.2508 on 6,404 frames"
+    }
+  },
+  "rules": "GSR valid is the dev set; GSR test is read once per final candidate (ticket 05) plus the baseline row."
+}

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import cv2
 import numpy as np
 import pytest
@@ -330,6 +332,21 @@ def test_augment_dataset_writes_images_and_keeps_valid(tmp_path):
         assert sample.image_path.is_file()
         assert sample.read_image().shape == (H, W, 3)
     assert len(dataset["train"]) == 2  # source dataset untouched
+
+
+def test_augmented_images_keep_their_source_meta(tmp_path):
+    dataset = make_dataset(tmp_path)
+    tagged = [replace(s, meta={"game": str(i)}) for i, s in enumerate(dataset["train"])]
+    out = augment_dataset(
+        dataset.with_split("train", tagged),
+        full_pipeline(),
+        tmp_path / "aug",
+        copies=2,
+        image_format="png",
+    )
+    assert [s.meta for s in out["train"]] == [{"game": "0"}, {"game": "1"}] + [
+        {"game": "0"}
+    ] * 2 + [{"game": "1"}] * 2
 
 
 def test_augment_dataset_is_deterministic(tmp_path):

@@ -48,12 +48,18 @@ def check_flip_idx(
 
 @dataclass(frozen=True)
 class Sample:
-    """One image on disk with its labels (pixel coordinates)."""
+    """One image on disk with its labels (pixel coordinates).
+
+    ``meta`` holds where the image comes from when a reader knows it, e.g.
+    the GSR reader's ``sequence``, ``game`` and ``frame`` (leak checks group
+    images by them). Exports do not write it.
+    """
 
     image_path: Path
     width: int
     height: int
     annotations: Annotations
+    meta: Mapping[str, str] = field(default_factory=dict)
 
     def read_image(self) -> np.ndarray:
         """Load the image as a BGR ``uint8`` array (OpenCV convention)."""
@@ -71,7 +77,8 @@ class Dataset:
     memory. All operations return new datasets, and ``to_yolo`` / ``to_coco``
     write whatever format a training backend needs.
 
-    Load one with :func:`load_dataset` (YOLO ``data.yaml`` or COCO folder).
+    Load one with :func:`load_dataset` (YOLO ``data.yaml``, COCO folder or
+    SoccerNet GSR folder).
     """
 
     task: Task
@@ -91,7 +98,9 @@ class Dataset:
     # ------------------------------------------------------------------ loading
     @classmethod
     def load(cls, path: str | Path) -> "Dataset":
-        """Load a YOLO (``data.yaml`` or its folder) or COCO (split folders) dataset."""
+        """Load a YOLO (``data.yaml`` or its folder), COCO (split folders) or GSR dataset."""
+        from tactifoot_vision.data import soccernet
+
         path = Path(path)
         if path.is_file() and path.suffix in {".yaml", ".yml"}:
             return cls.from_yolo(path)
@@ -103,8 +112,12 @@ class Dataset:
                 for s in ("train", "valid", "val", "test")
             ):
                 return cls.from_coco(path)
+            if soccernet.is_gsr_root(path):
+                splits = tuple(s for s in SPLITS if (path / s).is_dir())
+                return cls.from_gsr(path, splits=splits)
         raise FileNotFoundError(
-            f"{path} is neither a YOLO data.yaml (or its folder) nor a COCO dataset folder"
+            f"{path} is neither a YOLO data.yaml (or its folder), a COCO dataset "
+            "folder nor a SoccerNet GSR folder"
         )
 
     @classmethod
@@ -120,6 +133,19 @@ class Dataset:
         from tactifoot_vision.data import coco
 
         return coco.read_dataset(Path(root), flip_idx=flip_idx)
+
+    @classmethod
+    def from_gsr(
+        cls, root: str | Path, splits: tuple[str, ...] = SPLITS, stride: int = 1
+    ) -> "Dataset":
+        """Read SoccerNet GSR clips as 4-class detection data.
+
+        See :func:`tactifoot_vision.data.soccernet.read_dataset` for the class
+        mapping, ``stride`` and the ``meta`` of each sample.
+        """
+        from tactifoot_vision.data import soccernet
+
+        return soccernet.read_dataset(Path(root), splits=tuple(splits), stride=stride)
 
     # ------------------------------------------------------------------- access
     def __getitem__(self, split: str) -> list[Sample]:
@@ -282,5 +308,9 @@ def _subset_count(want: object, available: int) -> int:
 
 
 def load_dataset(path: str | Path) -> Dataset:
-    """Load a YOLO (``data.yaml`` or its folder) or COCO dataset. See :class:`Dataset`."""
+    """Load a YOLO (``data.yaml`` or its folder), COCO or SoccerNet GSR dataset.
+
+    A GSR folder is read whole, every frame; use :meth:`Dataset.from_gsr` for
+    some splits or a frame stride. See :class:`Dataset`.
+    """
     return Dataset.load(path)

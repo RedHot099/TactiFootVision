@@ -667,3 +667,98 @@ def test_coco_reader_keeps_a_real_class_whose_supercategory_is_none(tmp_path):
     ds = load_dataset(tmp_path)
     assert ds.class_names == ["ball", "player", "referee"]
     assert ds["train"][0].annotations.class_ids.tolist() == [2]
+
+
+# ------------------------------------------------------------ SoccerNet GSR
+def _write_gsr_clip(root, split, name, game_id, frames=(1, 2, 3, 4, 5, 6)):
+    """One GSR clip with an object of every category in frame 1 and a ball in frame 6."""
+    folder = root / split / name
+    for frame in frames:
+        _image(folder / "img1" / f"{frame:06d}.jpg", width=100, height=50)
+    categories = [
+        {"supercategory": "object", "id": 1, "name": "player"},
+        {"supercategory": "object", "id": 2, "name": "goalkeeper"},
+        {"supercategory": "object", "id": 3, "name": "referee"},
+        {"supercategory": "object", "id": 4, "name": "ball"},
+        {"supercategory": "pitch", "id": 5, "name": "pitch"},
+        {"supercategory": "object", "id": 7, "name": "other"},
+    ]
+    images = [
+        {
+            "image_id": f"{name}-{f}",
+            "file_name": f"{f:06d}.jpg",
+            "width": 100,
+            "height": 50,
+        }
+        for f in range(1, 7)
+    ]
+
+    def obj(frame, category, x, y, w, h):
+        return {
+            "image_id": f"{name}-{frame}",
+            "supercategory": "object",
+            "category_id": category,
+            "attributes": {"role": None},
+            "bbox_image": {"x": x, "y": y, "w": w, "h": h},
+        }
+
+    annotations = [
+        obj(1, 1, 10, 10, 5, 10),
+        obj(1, 2, 20, 10, 5, 10),
+        obj(1, 3, 30, 10, 5, 10),
+        obj(1, 4, 95, 45, 10, 10),  # crosses the image corner: clipped
+        obj(1, 7, 40, 10, 5, 10),  # "other": dropped
+        {"image_id": f"{name}-1", "supercategory": "pitch", "category_id": 5},
+        obj(6, 4, 50, 20, 2, 2),
+    ]
+    labels = {
+        "info": {"name": name, "game_id": game_id, "im_dir": "img1"},
+        "images": images,
+        "annotations": annotations,
+        "categories": categories,
+    }
+    (folder / "Labels-GameState.json").write_text(json.dumps(labels))
+    return folder
+
+
+def test_gsr_reader_maps_categories_and_keeps_the_clip_and_game(tmp_path):
+    _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    _write_gsr_clip(tmp_path, "test", "SNGS-116", "7")
+    dataset = load_dataset(tmp_path)  # every frame of the splits present
+    assert dataset.class_names == ["ball", "goalkeeper", "player", "referee"]
+    assert dataset.task is Task.DETECT
+    valid = dataset["valid"]
+    assert [s.meta["frame"] for s in valid] == ["1", "2", "3", "4", "5", "6"]
+    assert valid[0].meta == {"sequence": "SNGS-021", "game": "2", "frame": "1"}
+    first = valid[0].annotations
+    assert first.class_ids.tolist() == [2, 1, 3, 0]
+    np.testing.assert_array_equal(first.boxes[0], [10, 10, 15, 20])
+    np.testing.assert_array_equal(first.boxes[3], [95, 45, 100, 50])
+    assert len(valid[1].annotations) == 0
+    assert dataset["test"][0].meta["game"] == "7"
+
+
+def test_gsr_reader_stride_and_missing_frames(tmp_path):
+    _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    _write_gsr_clip(tmp_path, "test", "SNGS-116", "7", frames=(1, 6))
+    dataset = Dataset.from_gsr(tmp_path, splits=("valid", "test"), stride=5)
+    assert [s.meta["frame"] for s in dataset["valid"]] == ["1", "6"]
+    assert [s.meta["frame"] for s in dataset["test"]] == ["1", "6"]
+    assert dataset["valid"][1].annotations.class_ids.tolist() == [0]
+    with pytest.raises(FileNotFoundError, match="stride"):
+        Dataset.from_gsr(tmp_path, splits=("test",))
+    with pytest.raises(FileNotFoundError, match="train"):
+        Dataset.from_gsr(tmp_path, splits=("train",))
+    with pytest.raises(ValueError, match="stride"):
+        Dataset.from_gsr(tmp_path, stride=0)
+
+
+def test_gsr_reader_refuses_an_unknown_object_category(tmp_path):
+    folder = _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    path = folder / "Labels-GameState.json"
+    labels = json.loads(path.read_text())
+    labels["categories"].append({"supercategory": "object", "id": 8, "name": "coach"})
+    labels["annotations"][0]["category_id"] = 8
+    path.write_text(json.dumps(labels))
+    with pytest.raises(ValueError, match="coach"):
+        Dataset.from_gsr(tmp_path, splits=("valid",))

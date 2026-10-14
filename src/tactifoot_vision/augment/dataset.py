@@ -131,6 +131,7 @@ def augment_dataset(
                         width=new_image.shape[1],
                         height=new_image.shape[0],
                         annotations=new_annotations,
+                        meta=sample.meta,
                     )
                 )
         logger.info(

@@ -106,9 +106,81 @@ def test_perfect_detections_score_one(tmp_path):
         "map50",
         "map75",
         "instances",
+        "conf",
+        "precision",
+        "recall",
     ]
     assert list(metrics.per_class["instances"]) == [1, 2, 1]
+    assert list(metrics.per_class["precision"]) == [1.0, 1.0, 1.0]
+    assert list(metrics.per_class["recall"]) == [1.0, 1.0, 1.0]
     assert model.seen_conf == [0.01, 0.01] and model.conf == 0.25
+
+
+def test_precision_and_recall_at_the_operating_point(tmp_path):
+    dataset = _detection_dataset(tmp_path, LABELS)
+    outputs = {
+        # image 0: the player at 0.5, a duplicate of it at 0.4 and a far-off
+        # referee at 0.9 (the true referee is missed)
+        0: _detections(
+            [[10, 10, 30, 40], [11, 10, 30, 40], [150, 50, 190, 95]],
+            ["player", "player", "referee"],
+            [0.5, 0.4, 0.9],
+        ),
+        # image 1: the ball at 0.2 (under the default threshold, above the ball's),
+        # the player shifted to IoU 0.67 at 0.8
+        1: _detections(
+            [[100, 10, 110, 20], [120, 42, 150, 102]],
+            ["ball", "player"],
+            [0.2, 0.8],
+        ),
+    }
+    model = FakeModel(Task.DETECT, outputs, CLASSES)
+    model.conf = 0.3
+    metrics = evaluate_detector(model, dataset, class_conf={"ball": 0.15})
+    table = metrics.per_class
+    assert list(table["conf"]) == [0.15, 0.3, 0.3]
+    # player: 0.5 and 0.8 match, the 0.4 duplicate is a false positive
+    assert table.loc["player", "precision"] == pytest.approx(2 / 3)
+    assert table.loc["player", "recall"] == 1.0
+    assert table.loc["ball", ["precision", "recall"]].tolist() == [1.0, 1.0]
+    assert table.loc["referee", ["precision", "recall"]].tolist() == [0.0, 0.0]
+
+    stricter = evaluate_detector(model, dataset, operating_conf=0.45, match_iou=0.7)
+    # ball 0.2 < 0.45 is dropped; the shifted player (IoU 0.67) no longer matches
+    assert np.isnan(stricter.per_class.loc["ball", "precision"])
+    assert stricter.per_class.loc["ball", "recall"] == 0.0
+    assert stricter.per_class.loc["player", "precision"] == 0.5
+    assert stricter.per_class.loc["player", "recall"] == 0.5
+    assert model.conf == 0.3
+
+
+def test_operating_thresholds_are_checked(tmp_path):
+    dataset = _detection_dataset(tmp_path, LABELS)
+    model = FakeModel(Task.DETECT, PERFECT, CLASSES)
+    with pytest.raises(ValueError, match="unknown class"):
+        evaluate_detector(model, dataset, class_conf={"goalkeeper": 0.2})
+    with pytest.raises(ValueError, match="must be >= conf"):
+        evaluate_detector(model, dataset, conf=0.2, class_conf={"ball": 0.1})
+
+
+def test_input_size_resizes_the_image_and_scales_boxes_back(tmp_path):
+    dataset = _detection_dataset(tmp_path, LABELS)
+    seen = []
+
+    class HalfSize(FakeModel):
+        def predict(self, image):
+            seen.append(image.shape[:2])
+            boxes = dataset["valid"][int(image[0, 0, 0])].annotations.boxes / 2
+            names = [
+                CLASSES[c]
+                for c in dataset["valid"][int(image[0, 0, 0])].annotations.class_ids
+            ]
+            return _detections(boxes, names)
+
+    model = HalfSize(Task.DETECT, {}, CLASSES)
+    metrics = evaluate_detector(model, dataset, input_size=(100, 50))
+    assert seen == [(50, 100), (50, 100)]
+    assert metrics.map50_95 == pytest.approx(1.0)
 
 
 def test_missing_detections_score_zero(tmp_path):
