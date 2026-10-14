@@ -1,6 +1,6 @@
 """Read every number of the detector audit notes, the xg-detector final report, the pitch-keypoints report, the
-xg-compare report and the xg-stack report back from its source (xg-detector 02, 09, 07; pitch-keypoints 04, 06;
-xg-compare 03; xg-stack 03).
+xg-compare report, the xg-stack report and the xg-stack test report back from its source (xg-detector 02, 09, 07;
+pitch-keypoints 04, 06; xg-compare 03; xg-stack 03, 04).
 
     ./run.sh python scripts/check_xgd_audit.py                     # every document of DOCUMENTS
     ./run.sh python scripts/check_xgd_audit.py REPORT.md [--claims C]   # one document
@@ -9,7 +9,7 @@ The checks of `scripts/check_vendor_report.py` on each document and its claims f
 `REPORT.md` with `report_claims.toml`, audit 3's `results_reports/pitch_keypoints_2026-10/AUDIT3.md` with the
 `claims.toml` next to it, that folder's phase report `REPORT.md` with its `report_claims.toml`, the xg-compare report
 `results_reports/xg_compare_2026-10/REPORT.md` and the xg-stack report `results_reports/xg_stack_2026-10/REPORT.md`,
-each with the `claims.toml` next to it; a document given on the command line takes `claims.toml` next to it unless
+each with the `claims.toml` next to it, and the xg-stack test report `TEST.md` beside it with its `test_claims.toml`; a document given on the command line takes `claims.toml` next to it unless
 `--claims` says otherwise): each tagged number is rendered from
 its result file and must match the text, every decimal number, percentage and integer of two or more digits must be tagged (dates, ticket numbers, code and the
 `[report].untagged` phrases excepted), and every source file is listed with its SHA-256 in the document's source
@@ -35,9 +35,11 @@ AUDIT3 = cvr.EXP / "results_reports" / "pitch_keypoints_2026-10" / "AUDIT3.md"
 PK_REPORT = AUDIT3.with_name("REPORT.md")
 XGC_REPORT = cvr.EXP / "results_reports" / "xg_compare_2026-10" / "REPORT.md"
 XGS_REPORT = cvr.EXP / "results_reports" / "xg_stack_2026-10" / "REPORT.md"
+XGS_TEST = XGS_REPORT.with_name("TEST.md")
 DOCUMENTS = {AUDIT: FOLDER / "claims.toml", REPORT: FOLDER / "report_claims.toml",       # document: its claims file
              AUDIT3: AUDIT3.with_name("claims.toml"), PK_REPORT: PK_REPORT.with_name("report_claims.toml"),
-             XGC_REPORT: XGC_REPORT.with_name("claims.toml"), XGS_REPORT: XGS_REPORT.with_name("claims.toml")}
+             XGC_REPORT: XGC_REPORT.with_name("claims.toml"), XGS_REPORT: XGS_REPORT.with_name("claims.toml"),
+             XGS_TEST: XGS_TEST.with_name("test_claims.toml")}
 
 
 def main(argv: list[str] | None = None) -> int:
