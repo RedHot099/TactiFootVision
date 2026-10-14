@@ -1,0 +1,249 @@
+# Sources of every number in REPORT.md (xg-stack 03), the report of the xg-stack phase.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# Every xg-stack result is a development result on the 328 training matches (dev = true): the report's title carries
+# "wyniki rozwojowe", so every heading below it does. No folder is confirmatory: no test was run.
+# The xg-compare folder (xc) holds the StatsBomb-based numbers the report compares with; they stand beside
+# "Data: StatsBomb." in the text.
+# The report folder (rp) holds the power on the 172 matches, descriptive, added after the run (scripts/xgs_report.py).
+
+[report]
+# Design constants and names, not results: the -400 ms frame offset, the 20 s corner window name, the 15° angle
+# category name, the hash name.
+untagged = ["400 ms", "20 s", "15°", "SHA-256"]
+
+[folders]
+rl = { path = "results/xgs_stack/real", dev = true }
+ct = { path = "results/xgs_stack/controls", dev = true }
+c5 = { path = "results/xgs_stack/c5_controls", dev = true }
+se = { path = "results/xgs_stack/selection", dev = true }
+rp = { path = "results/xgs_stack/report", dev = true }
+xc = { path = "results/xgc_compare/analysis" }
+
+[claims]
+
+# --- frozen protocols and plan (research/, committed) ---
+"p.shots" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.population.shots"], fmt = "{:,d}" }
+"p.matches" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.population.matches"], fmt = "{:d}" }
+"p.draws" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.read_out.bootstrap.draws"], fmt = "{:,d}" }
+"p.ci" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.read_out.bootstrap.interval"], scale = 100, fmt = "{:.0f}%" }
+"p.ci.n" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.read_out.bootstrap.interval"], scale = 100, fmt = "{:.0f}" }
+"p.c2" = { src = "research/xgs_stack_protocol_c6.json", quote = "Holm detectable rate <= 0.09", values = [0.09], fmt = "{:.2f}" }
+"p.alpha" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.read_out.holm.alpha"], fmt = "{:.2f}" }
+"p.prac" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.final_controls.4_positive.target_true_delta"], fmt = "{:+.3f}" }
+"p.c4.band" = { src = "research/xgs_stack_protocol_c6.json", quote = "LL of G in [-0.003, -0.001]", values = [0.003, 0.001], fmt = "[−{:.3f}; −{:.3f}]" }
+"p.held" = { src = "research/xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [172], fmt = "{:d}" }
+"p.eval" = { src = "research/xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [135], fmt = "{:d}" }
+"p.gate" = { src = "research/xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [37], fmt = "{:d}" }
+"p.grid.lo" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.model.c_grid.0"], fmt = "{:.3f}" }
+"p.reps" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.final_controls.replicates"], fmt = "{:d}" }
+"p.sd" = { src = "research/xgs_stack_protocol_c6.json", keys = ["design.final_controls.clustered_nulls.random_intercept_sd"], fmt = "{:.2f}" }
+"p.p80" = { src = "research/xgs_stack_protocol_c6.json", quote = "G's Holm power >= 0.8", values = [0.8], fmt = "{:.1f}" }
+"p.floor" = { src = "research/xgs_stack_protocol_c6.json", quote = "wording allowed at >= 0.95 - 2 Monte Carlo SE", values = [0.95], fmt = "{:.2f}" }
+"p.flag.dfk" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.flags.sn_direct_fk"], fmt = "{:d}" }
+"p.flag.ifk" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.flags.sn_indirect_fk_3s"], fmt = "{:d}" }
+"p.flag.cor" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.flags.sn_corner_20s"], fmt = "{:d}" }
+"p.flag.prev" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.flags.sn_prev_shot_5s"], fmt = "{:d}" }
+"p.miss" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.e3_t0.shot_missing"], fmt = "{:d}" }
+"p.wrap0" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.angles_wrapped.0"], fmt = "{:d}" }
+"p.wrap4" = { src = "research/xgs_stack_protocol_c6.json", keys = ["counts.angles_wrapped.-400"], fmt = "{:d}" }
+"p.c6.sha" = { src = "research/xgs_stack_protocol_c6.json", git = "76ba649", fmt = "{:.8}" }
+"p.c5.sha" = { src = "research/xgs_stack_protocol.json", git = "07d7a9d", fmt = "{:.8}" }
+"p.plan.sha" = { src = "research/xgs_stack_c6_plan.json", git = "a06b276", fmt = "{:.8}" }
+"p.pred.b" = { src = "research/xgs_stack_c6_plan.json", keys = ["plan.selection.predicted_recovery_b.mean_recovered_delta_G.0", "plan.selection.predicted_recovery_b.mean_recovered_delta_G.1"], fmt = "{:+.4f} do {:+.4f}" }
+"p.c5.gbm.depth" = { src = "research/xgs_stack_protocol.json", keys = ["design.models.gbm.max_depth"], fmt = "{:d}" }
+
+# --- the real run (ticket 02, results/xgs_stack/real) ---
+"rl.goals" = { src = "rl:summary.json", keys = ["scores.R.goals"], fmt = "{:d}" }
+"rl.R.ll" = { src = "rl:summary.json", keys = ["scores.R.log_loss"], fmt = "{:.5f}" }
+"rl.G.ll" = { src = "rl:summary.json", keys = ["scores.G.log_loss"], fmt = "{:.5f}" }
+"rl.GS.ll" = { src = "rl:summary.json", keys = ["scores.GS.log_loss"], fmt = "{:.5f}" }
+"rl.S.ll" = { src = "rl:summary.json", keys = ["scores.S.log_loss"], fmt = "{:.5f}" }
+"rl.Q.ll" = { src = "rl:summary.json", keys = ["scores.Q.log_loss"], fmt = "{:.5f}" }
+"rl.ALL.ll" = { src = "rl:summary.json", keys = ["scores.ALL.log_loss"], fmt = "{:.5f}" }
+"rl.G.d" = { src = "rl:summary.json", keys = ["deltas.G.delta_ll"], fmt = "{:+.5f}" }
+"rl.GS.d" = { src = "rl:summary.json", keys = ["deltas.GS.delta_ll"], fmt = "{:+.5f}" }
+"rl.S.d" = { src = "rl:summary.json", keys = ["deltas.S.delta_ll"], fmt = "{:+.5f}" }
+"rl.Q.d" = { src = "rl:summary.json", keys = ["deltas.Q.delta_ll"], fmt = "{:+.5f}" }
+"rl.ALL.d" = { src = "rl:summary.json", keys = ["deltas.ALL.delta_ll"], fmt = "{:+.5f}" }
+"rl.G.ci" = { src = "rl:summary.json", keys = ["deltas.G.lo95", "deltas.G.hi95"], fmt = "[{:+.5f}; {:+.5f}]" }
+"rl.GS.ci" = { src = "rl:summary.json", keys = ["deltas.GS.lo95", "deltas.GS.hi95"], fmt = "[{:+.5f}; {:+.5f}]" }
+"rl.S.ci" = { src = "rl:summary.json", keys = ["deltas.S.lo95", "deltas.S.hi95"], fmt = "[{:+.5f}; {:+.5f}]" }
+"rl.Q.ci" = { src = "rl:summary.json", keys = ["deltas.Q.lo95", "deltas.Q.hi95"], fmt = "[{:+.5f}; {:+.5f}]" }
+"rl.ALL.ci" = { src = "rl:summary.json", keys = ["deltas.ALL.lo95", "deltas.ALL.hi95"], fmt = "[{:+.5f}; {:+.5f}]" }
+"rl.G.b" = { src = "rl:summary.json", keys = ["deltas.G.bound_one_sided_95"], fmt = "{:+.5f}" }
+"rl.GS.b" = { src = "rl:summary.json", keys = ["deltas.GS.bound_one_sided_95"], fmt = "{:+.5f}" }
+"rl.S.b" = { src = "rl:summary.json", keys = ["deltas.S.bound_one_sided_95"], fmt = "{:+.5f}" }
+"rl.Q.b" = { src = "rl:summary.json", keys = ["deltas.Q.bound_one_sided_95"], fmt = "{:+.5f}" }
+"rl.ALL.b" = { src = "rl:summary.json", keys = ["deltas.ALL.bound_one_sided_95"], fmt = "{:+.5f}" }
+"rl.G.p" = { src = "rl:summary.json", keys = ["deltas.G.p_one_sided"], fmt = "{:.3f}" }
+"rl.GS.p" = { src = "rl:summary.json", keys = ["deltas.GS.p_one_sided"], fmt = "{:.3f}" }
+"rl.S.p" = { src = "rl:summary.json", keys = ["deltas.S.p_one_sided"], fmt = "{:.2f}" }
+"rl.ALL.p" = { src = "rl:summary.json", keys = ["deltas.ALL.p_one_sided"], fmt = "{:.2f}" }
+"rl.G.rej" = { src = "rl:summary.json", keys = ["readings.G.holm_rejected"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{}" }
+"rl.GS.rej" = { src = "rl:summary.json", keys = ["readings.GS.holm_rejected"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{}" }
+"rl.G.pc" = { src = "rl:summary.json", keys = ["readings.G.practical_candidate"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{}" }
+"rl.GS.pc" = { src = "rl:summary.json", keys = ["readings.GS.practical_candidate"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{}" }
+"rl.R.auc" = { src = "rl:summary.json", keys = ["scores.R.auc"], fmt = "{:.4f}" }
+"rl.G.auc" = { src = "rl:summary.json", keys = ["scores.G.auc"], fmt = "{:.4f}" }
+"rl.GS.auc" = { src = "rl:summary.json", keys = ["scores.GS.auc"], fmt = "{:.4f}" }
+"rl.S.auc" = { src = "rl:summary.json", keys = ["scores.S.auc"], fmt = "{:.4f}" }
+"rl.Q.auc" = { src = "rl:summary.json", keys = ["scores.Q.auc"], fmt = "{:.4f}" }
+"rl.ALL.auc" = { src = "rl:summary.json", keys = ["scores.ALL.auc"], fmt = "{:.4f}" }
+"rl.R.br" = { src = "rl:summary.json", keys = ["scores.R.brier"], fmt = "{:.5f}" }
+"rl.G.br" = { src = "rl:summary.json", keys = ["scores.G.brier"], fmt = "{:.5f}" }
+"rl.GS.br" = { src = "rl:summary.json", keys = ["scores.GS.brier"], fmt = "{:.5f}" }
+"rl.S.br" = { src = "rl:summary.json", keys = ["scores.S.brier"], fmt = "{:.5f}" }
+"rl.Q.br" = { src = "rl:summary.json", keys = ["scores.Q.brier"], fmt = "{:.5f}" }
+"rl.ALL.br" = { src = "rl:summary.json", keys = ["scores.ALL.brier"], fmt = "{:.5f}" }
+"rl.R.cs" = { src = "rl:summary.json", keys = ["scores.R.cal_slope", "scores.R.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.G.cs" = { src = "rl:summary.json", keys = ["scores.G.cal_slope", "scores.G.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.GS.cs" = { src = "rl:summary.json", keys = ["scores.GS.cal_slope", "scores.GS.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.S.cs" = { src = "rl:summary.json", keys = ["scores.S.cal_slope", "scores.S.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.Q.cs" = { src = "rl:summary.json", keys = ["scores.Q.cal_slope", "scores.Q.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.ALL.cs" = { src = "rl:summary.json", keys = ["scores.ALL.cal_slope", "scores.ALL.cal_intercept"], fmt = "{:.3f} / {:+.3f}" }
+"rl.c.G" = { src = "rl:summary.json", keys = ["chosen_c.G.0", "chosen_c.G.1", "chosen_c.G.2", "chosen_c.G.3", "chosen_c.G.4"], fmt = "{:g}, {:g}, {:g}, {:g}, {:g}" }
+"rl.c.GS" = { src = "rl:summary.json", keys = ["chosen_c.GS.0", "chosen_c.GS.1", "chosen_c.GS.2", "chosen_c.GS.3", "chosen_c.GS.4"], fmt = "{:g}, {:g}, {:g}, {:g}, {:g}" }
+"rl.c.S" = { src = "rl:summary.json", keys = ["chosen_c.S.0", "chosen_c.S.1", "chosen_c.S.2", "chosen_c.S.3", "chosen_c.S.4"], fmt = "{:g}, {:g}, {:g}, {:g}, {:g}" }
+"rl.c.Q" = { src = "rl:summary.json", keys = ["chosen_c.Q.0", "chosen_c.Q.1", "chosen_c.Q.2", "chosen_c.Q.3", "chosen_c.Q.4"], fmt = "{:g}, {:g}, {:g}, {:g}, {:g}" }
+"rl.c.ALL" = { src = "rl:summary.json", keys = ["chosen_c.ALL.0", "chosen_c.ALL.1", "chosen_c.ALL.2", "chosen_c.ALL.3", "chosen_c.ALL.4"], fmt = "{:g}, {:g}, {:g}, {:g}, {:g}" }
+"gb.G.d" = { src = "rl:summary.json", keys = ["gbm.G.delta_vs_R.delta_ll"], fmt = "{:+.4f}" }
+"gb.GS.d" = { src = "rl:summary.json", keys = ["gbm.GS.delta_vs_R.delta_ll"], fmt = "{:+.4f}" }
+"gb.G.ci" = { src = "rl:summary.json", keys = ["gbm.G.delta_vs_R.delta_ll", "gbm.G.delta_vs_R.lo95", "gbm.G.delta_vs_R.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"gb.GS.ci" = { src = "rl:summary.json", keys = ["gbm.GS.delta_vs_R.delta_ll", "gbm.GS.delta_vs_R.lo95", "gbm.GS.delta_vs_R.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"gb.G.dl" = { src = "rl:summary.json", keys = ["gbm.G.delta_vs_logistic.delta_ll"], fmt = "{:+.4f}" }
+"gb.GS.dl" = { src = "rl:summary.json", keys = ["gbm.GS.delta_vs_logistic.delta_ll"], fmt = "{:+.4f}" }
+"gb.G.cs" = { src = "rl:summary.json", keys = ["gbm.G.scores.cal_slope"], fmt = "{:.2f}" }
+"gb.G.auc" = { src = "rl:summary.json", keys = ["gbm.G.scores.auc"], fmt = "{:.4f}" }
+
+# --- categories of the real run (descriptive) ---
+"cat.e3.n" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "R" }, cols = ["n_defined"], fmt = "{:,.0f}" }
+"cat.box.n" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "R" }, cols = ["n"], fmt = "{:,.0f}" }
+"cat.box.o" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "R" }, cols = ["observed"], fmt = "{:.0f}" }
+"cat.box.e.R" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "R" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.box.e.G" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "G" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.box.oe.R" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.box.oe.G" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.box.oe.GS" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "GS" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.box.d.G" = { src = "rl:categories.csv", row = { "category" = "e3_outside_box", "arm" = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.ang.n" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "R" }, cols = ["n"], fmt = "{:,.0f}" }
+"cat.ang.o" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "R" }, cols = ["observed"], fmt = "{:.0f}" }
+"cat.ang.e.R" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "R" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.ang.e.G" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "G" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.ang.oe.R" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.ang.oe.G" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.ang.oe.GS" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "GS" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.ang.d.G" = { src = "rl:categories.csv", row = { "category" = "e3_angle_lt_15deg", "arm" = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.d6.n" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "R" }, cols = ["n"], fmt = "{:,.0f}" }
+"cat.d6.o" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "R" }, cols = ["observed"], fmt = "{:.0f}" }
+"cat.d6.e.R" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "R" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.d6.e.G" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "G" }, cols = ["expected"], fmt = "{:.1f}" }
+"cat.d6.oe.R" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.d6.oe.G" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.d6.oe.GS" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "GS" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.d6.d.G" = { src = "rl:categories.csv", row = { "category" = "e3_dist_lt_6m", "arm" = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.cor.n" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "R" }, cols = ["n"], fmt = "{:,.0f}" }
+"cat.cor.o" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "R" }, cols = ["observed"], fmt = "{:.0f}" }
+"cat.cor.oe.R" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.cor.oe.G" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.cor.oe.GS" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "GS" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.cor.oe.S" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "S" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.cor.d.G" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.cor.d.S" = { src = "rl:categories.csv", row = { "category" = "sn_corner_20s", "arm" = "S" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.fk.n" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "R" }, cols = ["n"], fmt = "{:,.0f}" }
+"cat.fk.o" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "R" }, cols = ["observed"], fmt = "{:.0f}" }
+"cat.fk.oe.R" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.fk.oe.G" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.fk.oe.GS" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "GS" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"cat.fk.d.G" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"cat.fk.d.S" = { src = "rl:categories.csv", row = { "category" = "sn_direct_fk", "arm" = "S" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+
+# --- final controls under C6 (results/xgs_stack/controls) ---
+"ct.a" = { src = "ct:controls.json", keys = ["4_positive.a", "4_positive.b"], fmt = "({:+.3f}, {:.3f})" }
+"ct.c2.rate" = { src = "ct:controls.json", keys = ["2_synthetic_nulls.detectable_rate"], fmt = "{:.3f}" }
+"ct.c2.G" = { src = "ct:controls.json", keys = ["2_synthetic_nulls.mean_delta.G"], fmt = "{:+.5f}" }
+"ct.c2.GS" = { src = "ct:controls.json", keys = ["2_synthetic_nulls.mean_delta.GS"], fmt = "{:+.5f}" }
+"ct.c3.G" = { src = "ct:controls.json", keys = ["3_permutation.deltas.G"], fmt = "{:+.5f}" }
+"ct.c3.GS" = { src = "ct:controls.json", keys = ["3_permutation.deltas.GS"], fmt = "{:+.5f}" }
+"ct.c4.rec" = { src = "ct:controls.json", keys = ["4_positive.mean_recovered_delta_G"], fmt = "{:+.5f}" }
+"ct.c4.sd" = { src = "ct:controls.json", keys = ["4_positive.sd_recovered_delta_G"], fmt = "{:.5f}" }
+"c6.c4.power" = { src = "ct:controls.json", keys = ["4_positive.power_G", "4_positive.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.c4.powGS" = { src = "ct:controls.json", keys = ["4_positive.power_GS", "4_positive.power_GS_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.c4.or" = { src = "ct:controls.json", keys = ["4_positive.mean_oracle_delta"], fmt = "{:+.5f}" }
+"ct.c4.orp" = { src = "ct:controls.json", keys = ["4_positive.oracle_power"], fmt = "{:.3f}" }
+"ct.da.power" = { src = "ct:controls.json", keys = ["reports.dist_angle_plant.power_G", "reports.dist_angle_plant.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.da.rec" = { src = "ct:controls.json", keys = ["reports.dist_angle_plant.mean_recovered_delta_G"], fmt = "{:+.5f}" }
+"ct.cv2.t" = { src = "ct:controls.json", keys = ["reports.power_curve.points.0.target"], fmt = "{:+.3f}" }
+"ct.cv3.t" = { src = "ct:controls.json", keys = ["reports.power_curve.points.1.target"], fmt = "{:+.3f}" }
+"ct.cv4.t" = { src = "ct:controls.json", keys = ["reports.power_curve.points.2.target"], fmt = "{:+.3f}" }
+"ct.cv3.p" = { src = "ct:controls.json", keys = ["reports.power_curve.points.1.power_G", "reports.power_curve.points.1.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.cv4.p" = { src = "ct:controls.json", keys = ["reports.power_curve.points.2.power_G", "reports.power_curve.points.2.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.cv3.r" = { src = "ct:controls.json", keys = ["reports.power_curve.points.1.mean_recovered_delta_G"], fmt = "{:+.5f}" }
+"ct.cv4.r" = { src = "ct:controls.json", keys = ["reports.power_curve.points.2.mean_recovered_delta_G"], fmt = "{:+.5f}" }
+"ct.cv3.o" = { src = "ct:controls.json", keys = ["reports.power_curve.points.1.mean_oracle_delta", "reports.power_curve.points.1.oracle_power"], fmt = "{:+.5f} / {:.3f}" }
+"ct.cv4.o" = { src = "ct:controls.json", keys = ["reports.power_curve.points.2.mean_oracle_delta", "reports.power_curve.points.2.oracle_power"], fmt = "{:+.5f} / {:.3f}" }
+"ct.cv2.o" = { src = "ct:controls.json", keys = ["reports.power_curve.points.0.mean_oracle_delta", "reports.power_curve.points.0.oracle_power"], fmt = "{:+.5f} / {:.3f}" }
+"c6.mde" = { src = "ct:controls.json", keys = ["reports.power_curve.smallest_detectable"], fmt = "{:+.4f}" }
+"c6.mde.abs" = { src = "ct:controls.json", keys = ["reports.power_curve.smallest_detectable"], abs = true, fmt = "{:.4f}" }
+"c6.mde.pow" = { src = "ct:controls.json", keys = ["reports.power_curve.power"], scale = 100, fmt = "{:.0f}%" }
+"ct.cov.G" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.G.coverage_of_expected", "reports.clustered_nulls.coverage.G.coverage_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.cov.GS" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.GS.coverage_of_expected", "reports.clustered_nulls.coverage.GS.coverage_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"ct.cov.G.pt" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.G.coverage_of_expected"], fmt = "{:.3f}" }
+"ct.cov.GS.pt" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.GS.coverage_of_expected"], fmt = "{:.3f}" }
+"ct.cov.floor" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.G.floor"], fmt = "{:.3f}" }
+"ct.cov.z" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.G.coverage_of_zero", "reports.clustered_nulls.coverage.GS.coverage_of_zero"], fmt = "{:.3f} / {:.3f}" }
+"ct.cov.ok" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.coverage.G.wording_allowed"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{}" }
+"ct.ucov" = { src = "ct:controls.json", keys = ["2_synthetic_nulls.coverage.G.coverage_of_expected", "2_synthetic_nulls.coverage.GS.coverage_of_expected"], fmt = "{:.3f} / {:.3f}" }
+"ct.ucov.z" = { src = "ct:controls.json", keys = ["2_synthetic_nulls.coverage.G.coverage_of_zero", "2_synthetic_nulls.coverage.GS.coverage_of_zero"], fmt = "{:.2f} / {:.2f}" }
+"ct.cl.rate" = { src = "ct:controls.json", keys = ["reports.clustered_nulls.detectable_rate"], fmt = "{:.3f}" }
+
+# --- C5's controls (results/xgs_stack/c5_controls) ---
+"c5.c2.rate" = { src = "c5:controls.json", keys = ["2_synthetic_nulls.detectable_rate"], fmt = "{:.3f}" }
+"c5.c2.G" = { src = "c5:controls.json", keys = ["2_synthetic_nulls.mean_delta.G"], fmt = "{:+.5f}" }
+"c5.c2.GS" = { src = "c5:controls.json", keys = ["2_synthetic_nulls.mean_delta.GS"], fmt = "{:+.5f}" }
+"c5.c3.G" = { src = "c5:controls.json", keys = ["3_permutation.deltas.G"], fmt = "{:+.5f}" }
+"c5.c3.GS" = { src = "c5:controls.json", keys = ["3_permutation.deltas.GS"], fmt = "{:+.5f}" }
+"c5.c4.rec" = { src = "c5:controls.json", keys = ["4_positive.mean_recovered_delta_G"], fmt = "{:+.5f}" }
+"c5.c4.sd" = { src = "c5:controls.json", keys = ["4_positive.sd_recovered_delta_G"], fmt = "{:.5f}" }
+"c5.c4.power" = { src = "c5:controls.json", keys = ["4_positive.power_G"], fmt = "{:.3f}" }
+"c5.c4.powGS" = { src = "c5:controls.json", keys = ["4_positive.power_GS"], fmt = "{:.2f}" }
+"c5.c4.or" = { src = "c5:controls.json", keys = ["4_positive.diagnostic_mean_oracle_delta"], fmt = "{:+.5f}" }
+
+# --- selection on simulated outcomes (results/xgs_stack/selection) ---
+"se.b.d" = { src = "se:selection.json", keys = ["candidates.b.dist.power_G", "candidates.b.dist.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.b.da" = { src = "se:selection.json", keys = ["candidates.b.dist_angle.power_G", "candidates.b.dist_angle.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.c.d" = { src = "se:selection.json", keys = ["candidates.c.dist.power_G", "candidates.c.dist.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.c.da" = { src = "se:selection.json", keys = ["candidates.c.dist_angle.power_G", "candidates.c.dist_angle.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.bc.d" = { src = "se:selection.json", keys = ["candidates.bc.dist.power_G", "candidates.bc.dist.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.bc.da" = { src = "se:selection.json", keys = ["candidates.bc.dist_angle.power_G", "candidates.bc.dist_angle.power_G_mc_se"], fmt = "{:.3f} ± {:.3f}" }
+"se.b.r" = { src = "se:selection.json", keys = ["candidates.b.dist.mean_recovered_delta_G", "candidates.b.dist_angle.mean_recovered_delta_G"], fmt = "{:+.5f} / {:+.5f}" }
+"se.c.r" = { src = "se:selection.json", keys = ["candidates.c.dist.mean_recovered_delta_G", "candidates.c.dist_angle.mean_recovered_delta_G"], fmt = "{:+.5f} / {:+.5f}" }
+"se.bc.r" = { src = "se:selection.json", keys = ["candidates.bc.dist.mean_recovered_delta_G", "candidates.bc.dist_angle.mean_recovered_delta_G"], fmt = "{:+.5f} / {:+.5f}" }
+"se.b.avg" = { src = "se:selection.json", keys = ["averaged_power_G.b"], fmt = "{:.4f}" }
+"se.c.avg" = { src = "se:selection.json", keys = ["averaged_power_G.c"], fmt = "{:.4f}" }
+"se.bc.avg" = { src = "se:selection.json", keys = ["averaged_power_G.bc"], fmt = "{:.4f}" }
+"se.obs.b" = { src = "se:selection.json", keys = ["observed_recovery_b"], fmt = "{:+.5f}" }
+"se.held" = { src = "se:selection.json", keys = ["prediction_held"], labels = { "true" = "trafiło", "false" = "nie trafiło" }, fmt = "{}" }
+"se.reps" = { src = "se:selection.json", keys = ["replicates"], fmt = "{:d}" }
+"se.orp" = { src = "se:selection.json", keys = ["candidates.bc.dist.oracle_power"], fmt = "{:.3f}" }
+
+# --- power on the 172 matches (scripts/xgs_report.py, descriptive, added after the run) ---
+"pt.shots" = { src = "rp:power.json", keys = ["test_population.shots"], fmt = "{:,d}" }
+"pt.matches" = { src = "rp:power.json", keys = ["test_population.matches"], fmt = "{:d}" }
+"pt.G.se" = { src = "rp:power.json", keys = ["arms.G.se_test"], fmt = "{:.5f}" }
+"pt.GS.se" = { src = "rp:power.json", keys = ["arms.GS.se_test"], fmt = "{:.5f}" }
+"pt.G.obs1" = { src = "rp:power.json", keys = ["arms.G.at.observed.one_variant"], fmt = "{:.2f}" }
+"pt.G.obs2" = { src = "rp:power.json", keys = ["arms.G.at.observed.two_variants_bonferroni"], fmt = "{:.2f}" }
+"pt.G.prac1" = { src = "rp:power.json", keys = ["arms.G.at.practical.one_variant"], fmt = "{:.2f}" }
+"pt.G.prac2" = { src = "rp:power.json", keys = ["arms.G.at.practical.two_variants_bonferroni"], fmt = "{:.2f}" }
+"pt.GS.obs1" = { src = "rp:power.json", keys = ["arms.GS.at.observed.one_variant"], fmt = "{:.2f}" }
+"pt.GS.obs2" = { src = "rp:power.json", keys = ["arms.GS.at.observed.two_variants_bonferroni"], fmt = "{:.2f}" }
+"pt.GS.prac1" = { src = "rp:power.json", keys = ["arms.GS.at.practical.one_variant"], fmt = "{:.2f}" }
+"pt.GS.prac2" = { src = "rp:power.json", keys = ["arms.GS.at.practical.two_variants_bonferroni"], fmt = "{:.2f}" }
+
+# --- xg-compare (StatsBomb categories on the 135 evaluation matches; results/xgc_compare/analysis) ---
+"xc.box.oe" = { src = "xc:who_is_right.csv", row = { "population" = "primary", "category" = "outside_box", "level" = "yes", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"xc.ang.oe" = { src = "xc:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "F" }, cols = ["o_over_e_point"], fmt = "{:.2f}" }
+"xc.ang.e" = { src = "xc:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "F" }, cols = ["expected_point"], fmt = "{:.1f}" }
+"xc.ang.goals" = { src = "xc:who_is_right.csv", row = { "population" = "primary", "category" = "angle", "level" = "00_15", "method" = "V" }, cols = ["goals"], fmt = "{:d}" }
+"xc.d06" = { src = "xc:disagreement_profile.csv", row = { "direction" = "F_below_V", "category" = "distance", "level" = "00_06" }, cols = ["lift"], fmt = "{:.1f}" }
