@@ -1,0 +1,170 @@
+# Sources of every number in TEST.md (xg-stack 04), the report of the owner-ordered test on the 172 held-out matches.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# Test results (ts, tc: confirmatory = true) stand under headings with "wynik testu", never under "wyniki rozwojowe".
+# The preparation (ck) and the before-scoring readings (pb) were written before any test label was read; pb and ts
+# are the same folder (results/xgs_test_report), split by file: before_scoring.json and readings.json.
+# The development run (dv) stands under a "wyniki rozwojowe" heading, as do the development inputs of the power.
+# The StatsBomb look (sb, and ts's statsbomb block) stands beside "Data: StatsBomb.".
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wynik testu"
+# Design constants and names, not results: the -400 ms frame offset, the 20 s corner window, the 15° angle category,
+# the factor 100 of the xG-point gap.
+untagged = ["400 ms", "20 s", "15°", "SHA-256", "100 ×"]
+
+[folders]
+ts = { path = "results/xgs_test_report", confirmatory = true }
+pb = { path = "results/xgs_test_report" }
+tc = { path = "results/xgs_test", confirmatory = true }
+ck = { path = "results/xgs_test_prep" }
+sb = { path = "results/xgs_test_statsbomb", confirmatory = true }
+dv = { path = "results/xgs_stack/real", dev = true }
+
+[claims]
+
+# --- the frozen rule (research/, committed) ---
+"r.matches" = { src = "research/xg_stack_test_rule.json", keys = ["population.matches"], fmt = "{:d}" }
+"r.eval" = { src = "research/xg_stack_test_rule.json", keys = ["population.matches_by_role.evaluation"], fmt = "{:d}" }
+"r.gate" = { src = "research/xg_stack_test_rule.json", keys = ["population.matches_by_role.gate"], fmt = "{:d}" }
+"r.shots" = { src = "research/xg_stack_test_rule.json", keys = ["population.expected_shots"], fmt = "{:,d}" }
+"r.shots.eval" = { src = "research/xg_stack_test_rule.json", keys = ["population.expected_shots_by_role.evaluation"], fmt = "{:,d}" }
+"r.shots.gate" = { src = "research/xg_stack_test_rule.json", keys = ["population.expected_shots_by_role.gate"], fmt = "{:d}" }
+"r.draws" = { src = "research/xg_stack_test_rule.json", keys = ["bootstrap.draws"], fmt = "{:,d}" }
+"r.clip" = { src = "research/xg_stack_test_rule.json", keys = ["metric.clip"], fmt = "{:.0e}" }
+"r.lvl" = { src = "research/xg_stack_test_rule.json", keys = ["success.default_interval"], scale = 100, fmt = "{:.0f}%" }
+"r.ladder.0" = { src = "research/xg_stack_test_rule.json", keys = ["success.ladder.0"], scale = 100, fmt = "{:.1f}%" }
+"r.ladder.1" = { src = "research/xg_stack_test_rule.json", keys = ["success.ladder.1"], scale = 100, fmt = "{:.0f}%" }
+"r.ladder.2" = { src = "research/xg_stack_test_rule.json", keys = ["success.ladder.2"], scale = 100, fmt = "{:.1f}%" }
+"r.tost" = { src = "research/xg_stack_test_rule.json", keys = ["equivalence.interval"], scale = 100, fmt = "{:.0f}%" }
+"r.margin" = { src = "research/xg_stack_test_rule.json", keys = ["equivalence.margin"], fmt = "{:.3f}" }
+"r.also" = { src = "research/xg_stack_test_rule.json", keys = ["equivalence.also_margin"], fmt = "{:.3f}" }
+"r.prac" = { src = "research/xg_stack_test_rule.json", keys = ["practical_bar"], fmt = "{:+.3f}" }
+"r.gate.sd" = { src = "research/xg_stack_test_rule.json", keys = ["gate.random_intercept_sd"], fmt = "{:.2f}" }
+"r.gate.max" = { src = "research/xg_stack_test_rule.json", keys = ["gate.max_false_success"], fmt = "{:.2f}" }
+
+# --- before scoring (results/xgs_test_report/before_scoring.json, from results/xgs_test_prep) ---
+"b.gate.reps" = { src = "pb:before_scoring.json", keys = ["gate.replicates"], fmt = "{:,d}" }
+"b.gate.seed" = { src = "pb:before_scoring.json", keys = ["gate.seed"], fmt = "{:d}" }
+"b.gate.fs" = { src = "pb:before_scoring.json", keys = ["gate.false_success.95"], fmt = "{:.4f}" }
+"b.gate.level" = { src = "pb:before_scoring.json", keys = ["gate.level_in_force"], scale = 100, fmt = "{:.0f}%" }
+"b.dev.shots" = { src = "pb:before_scoring.json", keys = ["power.development.shots"], fmt = "{:,d}" }
+"b.dev.matches" = { src = "pb:before_scoring.json", keys = ["power.development.matches"], fmt = "{:d}" }
+"b.dev.sd" = { src = "pb:before_scoring.json", keys = ["power.development.boot_sd"], fmt = "{:.5f}", dev = true }
+"b.dev.point" = { src = "pb:before_scoring.json", keys = ["power.development.delta_ll"], fmt = "{:+.5f}", dev = true }
+"b.recovery" = { src = "pb:before_scoring.json", keys = ["power.recovery"], fmt = "{:.3f}" }
+"b.se.shot" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_shot_scaled.se"], fmt = "{:.5f}" }
+"b.se.match" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_match_scaled.se"], fmt = "{:.5f}" }
+"b.se.a1" = { src = "pb:before_scoring.json", keys = ["power.a1_test_se.se"], fmt = "{:.5f}" }
+"b.pw.head" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_shot_scaled.development_point.p_success_95"], fmt = "{:.3f}" }
+"b.pw.shot.rec" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_shot_scaled.practical_recovered.p_success_95"], fmt = "{:.3f}" }
+"b.pw.shot.prac" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_shot_scaled.practical.p_success_95"], fmt = "{:.3f}" }
+"b.pw.match.dev" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_match_scaled.development_point.p_success_95"], fmt = "{:.3f}" }
+"b.pw.match.rec" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_match_scaled.practical_recovered.p_success_95"], fmt = "{:.3f}" }
+"b.pw.match.prac" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_match_scaled.practical.p_success_95"], fmt = "{:.3f}" }
+"b.pw.a1.dev" = { src = "pb:before_scoring.json", keys = ["power.a1_test_se.development_point.p_success_95"], fmt = "{:.3f}" }
+"b.pw.a1.rec" = { src = "pb:before_scoring.json", keys = ["power.a1_test_se.practical_recovered.p_success_95"], fmt = "{:.3f}" }
+"b.pw.a1.prac" = { src = "pb:before_scoring.json", keys = ["power.a1_test_se.practical.p_success_95"], fmt = "{:.3f}" }
+"b.pw.eq" = { src = "pb:before_scoring.json", keys = ["power.dev_sd_shot_scaled.development_point.p_equivalent_002"], fmt = "{:.3f}" }
+
+# --- the label-free preparation (results/xgs_test_prep) ---
+"c.G.c" = { src = "ck:final_fit.json", keys = ["G.chosen_c"], fmt = "{:.3f}" }
+"c.GS.c" = { src = "ck:final_fit.json", keys = ["GS.chosen_c"], fmt = "{:.3f}" }
+"c.zinv" = { src = "ck:checks.json", keys = ["z_inversion.member_max_abs_dz"], fmt = "{:.1e}" }
+"c.zinv.n" = { src = "ck:checks.json", keys = ["z_inversion.member_shots"], fmt = "{:,d}" }
+"c.zinv.tol" = { src = "ck:checks.json", keys = ["z_inversion.member_tolerance"], fmt = "{:.0e}" }
+"c.zr.mean" = { src = "ck:checks.json", keys = ["z_distribution.ratio.mean"], fmt = "{:.3f}" }
+"c.zr.sd" = { src = "ck:checks.json", keys = ["z_distribution.ratio.sd"], fmt = "{:.3f}" }
+"c.zr.bounds" = { src = "ck:checks.json", keys = ["z_distribution.bounds.0", "z_distribution.bounds.1"], fmt = "[{:.1f}; {:.2f}]" }
+"c.cov.shots" = { src = "ck:checks.json", keys = ["coverage.shots"], fmt = "{:,d}" }
+"c.cov.matches" = { src = "ck:checks.json", keys = ["coverage.matches"], fmt = "{:d}" }
+
+# --- the test (results/xgs_test_report/readings.json, from results/xgs_test/result.json) ---
+"t.level" = { src = "ts:readings.json", keys = ["level_in_force"], scale = 100, fmt = "{:.0f}%" }
+"t.shots" = { src = "ts:readings.json", keys = ["population.shots"], fmt = "{:,d}" }
+"t.matches" = { src = "ts:readings.json", keys = ["population.matches"], fmt = "{:d}" }
+"t.goals" = { src = "ts:readings.json", keys = ["population.goals"], fmt = "{:d}" }
+"t.g.ci" = { src = "ts:readings.json", keys = ["primary.delta_ll", "primary.lo95", "primary.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.g.ci90" = { src = "ts:readings.json", keys = ["primary.lo90", "primary.hi90"], fmt = "[{:+.5f}; {:+.5f}]" }
+"t.g.point" = { src = "ts:readings.json", keys = ["primary.delta_ll"], fmt = "{:+.5f}" }
+"t.g.lo" = { src = "ts:readings.json", keys = ["primary.lo95"], fmt = "{:+.5f}" }
+"t.g.sd" = { src = "ts:readings.json", keys = ["primary.boot_sd"], fmt = "{:.5f}" }
+"t.margin" = { src = "ts:readings.json", keys = ["primary.smallest_margin"], fmt = "{:.5f}" }
+"t.gs.ci" = { src = "ts:readings.json", keys = ["descriptive.GS_vs_R.delta_ll", "descriptive.GS_vs_R.lo95", "descriptive.GS_vs_R.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.gs.ci90" = { src = "ts:readings.json", keys = ["descriptive.GS_vs_R.lo90", "descriptive.GS_vs_R.hi90"], fmt = "[{:+.5f}; {:+.5f}]" }
+"t.gc.ci" = { src = "ts:readings.json", keys = ["descriptive.G_vs_g_combo.delta_ll", "descriptive.G_vs_g_combo.lo95", "descriptive.G_vs_g_combo.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.gc.ci90" = { src = "ts:readings.json", keys = ["descriptive.G_vs_g_combo.lo90", "descriptive.G_vs_g_combo.hi90"], fmt = "[{:+.5f}; {:+.5f}]" }
+"t.rc.ci" = { src = "ts:readings.json", keys = ["descriptive.R_vs_g_combo.delta_ll", "descriptive.R_vs_g_combo.lo95", "descriptive.R_vs_g_combo.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.rc.ci90" = { src = "ts:readings.json", keys = ["descriptive.R_vs_g_combo.lo90", "descriptive.R_vs_g_combo.hi90"], fmt = "[{:+.5f}; {:+.5f}]" }
+"t.ev.n" = { src = "ts:readings.json", keys = ["descriptive.evaluation.shots"], fmt = "{:,d}" }
+"t.ev.ci" = { src = "ts:readings.json", keys = ["descriptive.evaluation.delta_ll", "descriptive.evaluation.lo95", "descriptive.evaluation.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.gt.n" = { src = "ts:readings.json", keys = ["descriptive.gate.shots"], fmt = "{:d}" }
+"t.gt.ci" = { src = "ts:readings.json", keys = ["descriptive.gate.delta_ll", "descriptive.gate.lo95", "descriptive.gate.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"t.R.ll" = { src = "ts:readings.json", keys = ["scores.R.log_loss"], fmt = "{:.5f}" }
+"t.G.ll" = { src = "ts:readings.json", keys = ["scores.G.log_loss"], fmt = "{:.5f}" }
+"t.GS.ll" = { src = "ts:readings.json", keys = ["scores.GS.log_loss"], fmt = "{:.5f}" }
+"t.C.ll" = { src = "ts:readings.json", keys = ["scores.g_combo.log_loss"], fmt = "{:.5f}" }
+"t.R.auc" = { src = "ts:readings.json", keys = ["scores.R.auc"], fmt = "{:.3f}" }
+"t.G.auc" = { src = "ts:readings.json", keys = ["scores.G.auc"], fmt = "{:.3f}" }
+"t.GS.auc" = { src = "ts:readings.json", keys = ["scores.GS.auc"], fmt = "{:.3f}" }
+"t.C.auc" = { src = "ts:readings.json", keys = ["scores.g_combo.auc"], fmt = "{:.3f}" }
+"t.R.brier" = { src = "ts:readings.json", keys = ["scores.R.brier"], fmt = "{:.4f}" }
+"t.G.brier" = { src = "ts:readings.json", keys = ["scores.G.brier"], fmt = "{:.4f}" }
+"t.GS.brier" = { src = "ts:readings.json", keys = ["scores.GS.brier"], fmt = "{:.4f}" }
+"t.C.brier" = { src = "ts:readings.json", keys = ["scores.g_combo.brier"], fmt = "{:.4f}" }
+"t.R.slope" = { src = "ts:readings.json", keys = ["scores.R.cal_slope"], fmt = "{:.2f}" }
+"t.G.slope" = { src = "ts:readings.json", keys = ["scores.G.cal_slope"], fmt = "{:.2f}" }
+"t.GS.slope" = { src = "ts:readings.json", keys = ["scores.GS.cal_slope"], fmt = "{:.2f}" }
+"t.C.slope" = { src = "ts:readings.json", keys = ["scores.g_combo.cal_slope"], fmt = "{:.2f}" }
+
+# --- E3 categories of the test (results/xgs_test/categories.csv, descriptive) ---
+"k.box.n" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["n"], fmt = "{:,d}" }
+"k.box.R" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.box.G" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.box.d" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"k.ang.n" = { src = "tc:categories.csv", row = { category = "e3_angle_lt_15deg", arm = "G" }, cols = ["n"], fmt = "{:,d}" }
+"k.ang.R" = { src = "tc:categories.csv", row = { category = "e3_angle_lt_15deg", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.ang.G" = { src = "tc:categories.csv", row = { category = "e3_angle_lt_15deg", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.ang.d" = { src = "tc:categories.csv", row = { category = "e3_angle_lt_15deg", arm = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"k.dst.n" = { src = "tc:categories.csv", row = { category = "e3_dist_lt_6m", arm = "G" }, cols = ["n"], fmt = "{:d}" }
+"k.dst.R" = { src = "tc:categories.csv", row = { category = "e3_dist_lt_6m", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.dst.G" = { src = "tc:categories.csv", row = { category = "e3_dist_lt_6m", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.dst.d" = { src = "tc:categories.csv", row = { category = "e3_dist_lt_6m", arm = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"k.cor.n" = { src = "tc:categories.csv", row = { category = "sn_corner_20s", arm = "G" }, cols = ["n"], fmt = "{:d}" }
+"k.cor.R" = { src = "tc:categories.csv", row = { category = "sn_corner_20s", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.cor.G" = { src = "tc:categories.csv", row = { category = "sn_corner_20s", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.cor.d" = { src = "tc:categories.csv", row = { category = "sn_corner_20s", arm = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"k.fk.n" = { src = "tc:categories.csv", row = { category = "sn_direct_fk", arm = "G" }, cols = ["n"], fmt = "{:d}" }
+"k.fk.R" = { src = "tc:categories.csv", row = { category = "sn_direct_fk", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.fk.G" = { src = "tc:categories.csv", row = { category = "sn_direct_fk", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }
+"k.fk.d" = { src = "tc:categories.csv", row = { category = "sn_direct_fk", arm = "G" }, cols = ["delta_ll", "lo95", "hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+
+# --- the StatsBomb look (Data: StatsBomb.) ---
+"s.shots" = { src = "ts:readings.json", keys = ["statsbomb.shots"], fmt = "{:,d}" }
+"s.rho.R" = { src = "ts:readings.json", keys = ["statsbomb.spearman.R"], fmt = "{:.3f}" }
+"s.rho.G" = { src = "ts:readings.json", keys = ["statsbomb.spearman.G"], fmt = "{:.3f}" }
+"s.rho.C" = { src = "ts:readings.json", keys = ["statsbomb.spearman.g_combo"], fmt = "{:.3f}" }
+"s.box.n" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "G" }, cols = ["n_in"], fmt = "{:,d}" }
+"s.box.R" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "R" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.box.G" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "G" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.box.C" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "g_combo" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.box.lcR" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "R" }, cols = ["logit_gap_contrast"], fmt = "{:.2f}" }
+"s.box.lcG" = { src = "sb:categories.csv", row = { category = "sb_outside_box", model = "G" }, cols = ["logit_gap_contrast"], fmt = "{:.2f}" }
+"s.ang.n" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "G" }, cols = ["n_in"], fmt = "{:d}" }
+"s.ang.R" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "R" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.ang.G" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "G" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.ang.C" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "g_combo" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.ang.lcR" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "R" }, cols = ["logit_gap_contrast"], fmt = "{:.2f}" }
+"s.ang.lcG" = { src = "sb:categories.csv", row = { category = "sb_angle_lt_15deg", model = "G" }, cols = ["logit_gap_contrast"], fmt = "{:.2f}" }
+"s.dst.n" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "G" }, cols = ["n_in"], fmt = "{:d}" }
+"s.dst.R" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "R" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.dst.G" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "G" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.dst.C" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "g_combo" }, cols = ["gap_points_in"], fmt = "{:+.1f}" }
+"s.dst.lcR" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "R" }, cols = ["logit_gap_contrast"], fmt = "{:+.2f}" }
+"s.dst.lcG" = { src = "sb:categories.csv", row = { category = "sb_dist_lt_6yd", model = "G" }, cols = ["logit_gap_contrast"], fmt = "{:+.2f}" }
+
+# --- development context (results/xgs_stack/real) ---
+"d.shots" = { src = "dv:summary.json", keys = ["scores.R.n"], fmt = "{:,d}" }
+"d.g.ci" = { src = "dv:summary.json", keys = ["deltas.G.delta_ll", "deltas.G.lo95", "deltas.G.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
+"d.gs.ci" = { src = "dv:summary.json", keys = ["deltas.GS.delta_ll", "deltas.GS.lo95", "deltas.GS.hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}]" }
