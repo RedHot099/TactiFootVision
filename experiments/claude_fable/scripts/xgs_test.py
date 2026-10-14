@@ -95,29 +95,29 @@ class Prepared:
     files: dict[str, str]
 
 
-def write_json(path: Path, obj) -> None:
-    path.write_text(json.dumps(obj, indent=2, default=float) + "\n")
-
-
 def as_json(obj) -> str:
     return json.dumps(obj, indent=2, default=float) + "\n"
 
 
+def write_json(path: Path, obj) -> None:
+    path.write_text(as_json(obj))
+
+
 # ------------------------------------------------------------------ inputs of the test side
-def g_combo_ensemble() -> tuple[dict, str]:
+def g_combo_ensemble(g_combo: Path = G_COMBO, g_test: Path = G_TEST) -> tuple[dict, str]:
     """G-combo's ensemble.json, refused unless it is the one its test predictions were made with."""
-    path = G_COMBO / "ensemble.json"
+    path = g_combo / "ensemble.json"
     digest = sha256_file(path)
-    if json.loads((G_TEST / "complete.json").read_text())["inputs"]["ensemble_json"] != digest:
+    if json.loads((g_test / "complete.json").read_text())["inputs"]["ensemble_json"] != digest:
         raise Refused("results/xgv_g_combo/ensemble.json is not the one G-combo's test predictions were made with")
     return json.loads(path.read_text()), digest
 
 
-def deployed_probability(shots: pd.DataFrame) -> pd.Series:
+def deployed_probability(shots: pd.DataFrame, g_test: Path = G_TEST) -> pd.Series:
     """G-combo's deployed test probability of the population's shots (index shot_id, population order), checked
     against its completion record; no label column is read."""
-    records.verified_file(G_TEST / "predictions.csv")
-    stored = pd.read_csv(G_TEST / "predictions.csv", usecols=["shot_id", "game", "is_penalty", "p"]).set_index("shot_id")
+    records.verified_file(g_test / "predictions.csv")
+    stored = pd.read_csv(g_test / "predictions.csv", usecols=["shot_id", "game", "is_penalty", "p"]).set_index("shot_id")
     if not stored.index.is_unique:
         raise Refused("G-combo's test predictions repeat a shot id")
     if missing := int((~shots.index.isin(stored.index)).sum()):
@@ -128,18 +128,19 @@ def deployed_probability(shots: pd.DataFrame) -> pd.Series:
     return rows.p.astype(float)
 
 
-def member_logits(ensemble: dict) -> tuple[pd.DataFrame, dict[str, float]]:
+def member_logits(ensemble: dict, g_combo: Path = G_COMBO, g_test: Path = G_TEST) -> tuple[pd.DataFrame, dict[str, float]]:
     """(shot_id x member logits where they are stored: the gate shots' stored predictions of each member and the
     unpaired evaluation shots' unpaired_members.csv; the members' temperatures). No goal column is read."""
-    temperatures = {f"f{m['fold']}s{m['seed']}": float(m["temperature"])
-                    for m in sorted(ensemble["members"], key=lambda m: (m["fold"], m["seed"]))}
-    gate = {}
-    for name in temperatures:
-        path = G_COMBO / f"fold{name[1]}" / f"seed{name[3]}" / f"{G_NAME}_gate_predictions.csv"
+    members = sorted(ensemble["members"], key=lambda m: (m["fold"], m["seed"]))
+    temperatures, gate = {}, {}
+    for m in members:
+        name = f"f{m['fold']}s{m['seed']}"
+        temperatures[name] = float(m["temperature"])
+        path = g_combo / f"fold{m['fold']}" / f"seed{m['seed']}" / f"{G_NAME}_gate_predictions.csv"
         records.verified_file(path)
         gate[name] = pd.read_csv(path, usecols=["shot_id", "logit"]).set_index("shot_id").logit
-    records.verified_file(G_TEST / "unpaired_members.csv")
-    unpaired = pd.read_csv(G_TEST / "unpaired_members.csv").set_index("shot_id")[list(temperatures)]
+    records.verified_file(g_test / "unpaired_members.csv")
+    unpaired = pd.read_csv(g_test / "unpaired_members.csv").set_index("shot_id")[list(temperatures)]
     logits = pd.concat([pd.DataFrame(gate), unpaired])
     if not logits.index.is_unique:
         raise Refused("a shot has member logits in two sources")
@@ -200,10 +201,10 @@ def all_passed(checks: dict) -> bool:
 
 def power(population: si.Population) -> dict:
     """The power scenarios (`rule.power_scenarios`) from the development run and controls, with no test label."""
-    summary = json.loads((DEV / "summary.json").read_text())
-    controls = json.loads((CONTROLS / "controls.json").read_text())
     for path in (DEV / "summary.json", CONTROLS / "controls.json"):
         records.verified_file(path)
+    summary = json.loads((DEV / "summary.json").read_text())
+    controls = json.loads((CONTROLS / "controls.json").read_text())
     g = summary["deltas"]["G"]
     dev = {"shots": population.counts["shots"], "matches": population.counts["matches"], "delta_ll": g["delta_ll"],
            "boot_sd": g["boot_sd"], "draws": g["draws"]}
@@ -218,11 +219,32 @@ def before_scoring(power_record: dict, gate: dict) -> dict:
     return {"power": power_record, "gate": gate, "level_in_force": gate["level_in_force"]}
 
 
+def write_before_scoring(rule: dict, block: dict, path: Path = tr.RULE_JSON) -> bool:
+    """Write `block` as the rule's `before_scoring` block into `path`; leave an identical block (False) and refuse
+    another one."""
+    if tr.BEFORE_SCORING in rule:
+        if json.loads(as_json(rule[tr.BEFORE_SCORING])) != json.loads(as_json(block)):
+            raise Refused(f"{path} already holds another before_scoring block")
+        return False
+    path.write_text(json.dumps(rule | {tr.BEFORE_SCORING: block}, indent=2, ensure_ascii=False, default=float) + "\n")
+    return True
+
+
+def dry_run(rule: dict, prepared: Prepared) -> None:
+    """The test's scoring path on synthetic outcomes y* ~ Bernoulli(p_R) (seed 0), no label: it loads every module the
+    labelled run uses before the code closure is taken, so `--test` cannot fail its closure check after the label read."""
+    p_r = prepared.predictions.p_R.to_numpy()
+    y = (np.random.default_rng(0).random(len(p_r)) < p_r).astype(int)
+    level = {tr.BEFORE_SCORING: rule.get(tr.BEFORE_SCORING, {}) | {"level_in_force": tr.DEFAULT_LEVEL}}
+    apply_rule(rule | level, y, prepared.predictions, prepared.table)
+
+
 def run_prepare(rule: dict) -> None:
     if PREP.exists():
         raise Refused(f"{PREP} exists; the preparation is written once")
     with ts.no_vendor_reads(), seal.development_labels_only(a1.PLAN_DIR / "plan.csv", INDEX):
         prepared = prepare()
+        dry_run(rule, prepared)
         code = loaded_code()
         power_record = power(prepared.population)
         p = prepared.predictions
@@ -245,13 +267,8 @@ def run_prepare(rule: dict) -> None:
                      | {"gate": None if gate is None else gate["false_success_rate"], "all_passed": passed}, indent=2))
     if not passed:
         raise Refused("a label-free check or the synthetic-null gate failed: the test does not run (see results/xgs_test_prep)")
-    block = before_scoring(power_record, gate)
-    if tr.BEFORE_SCORING in rule:
-        if json.loads(json.dumps(rule[tr.BEFORE_SCORING], default=float)) != json.loads(json.dumps(block, default=float)):
-            raise Refused(f"{tr.RULE_JSON} already holds another before_scoring block")
-        return
-    tr.RULE_JSON.write_text(json.dumps(rule | {tr.BEFORE_SCORING: block}, indent=2, ensure_ascii=False, default=float) + "\n")
-    print(f"wrote the before_scoring block into {tr.RULE_JSON} (level in force {gate['level_in_force']})")
+    if write_before_scoring(rule, before_scoring(power_record, gate)):
+        print(f"wrote the before_scoring block into {tr.RULE_JSON} (level in force {gate['level_in_force']})")
 
 
 # ------------------------------------------------------------------ the frozen state
@@ -297,9 +314,11 @@ def pinned_files(population: si.Population, games: list[str]) -> list[Path]:
 
 
 def replay_problems(prepared: Prepared) -> list[str]:
-    """The replayed files that differ from the preparation's, byte for byte."""
-    return [f"{name} differs from the preparation's" for name, text in prepared.files.items()
-            if not (PREP / name).is_file() or (PREP / name).read_text() != text]
+    """The replayed files (`REPLAYED`) that differ from the preparation's, byte for byte."""
+    if set(prepared.files) != set(REPLAYED):
+        return [f"the replay wrote {sorted(prepared.files)}, not {list(REPLAYED)}"]
+    return [f"{name} differs from the preparation's" for name in REPLAYED
+            if not (PREP / name).is_file() or (PREP / name).read_text() != prepared.files[name]]
 
 
 def prep_problems(rule: dict, code: dict[str, str]) -> list[str]:
@@ -343,7 +362,7 @@ def freeze(rule: dict, prepared: Prepared, code: dict[str, str]) -> None:
     print(f"wrote {HASHLIST}: sha256 {sha256_file(HASHLIST)}")
 
 
-def verify(expected: str, prepared: Prepared, code: dict[str, str], *, check_git: bool = True) -> dict:
+def verify(expected: str, rule: dict, prepared: Prepared, code: dict[str, str], *, check_git: bool = True) -> dict:
     """The frozen state, refused (`Refused`, every problem listed) unless the hash list hashes to `expected` (and is
     committed and clean), every pinned file and the loaded `code` match it, the preparation passed under this rule and
     the replay reproduces its files."""
@@ -358,7 +377,6 @@ def verify(expected: str, prepared: Prepared, code: dict[str, str], *, check_git
     if code != frozen["code"]:
         changed = sorted({n for n, _ in set(code.items()) ^ set(frozen["code"].items())})
         problems.append(f"the loaded code is not the pinned closure: {changed[:10]}")
-    rule = tr.load_rule()
     problems += prep_problems(rule, code) + replay_problems(prepared)
     if problems:
         raise Refused("the frozen test refuses to run:\n  " + "\n  ".join(problems))
@@ -421,11 +439,12 @@ def main() -> None:
     with ts.no_vendor_reads():
         with seal.development_labels_only(a1.PLAN_DIR / "plan.csv", INDEX):
             prepared = prepare()
+            dry_run(rule, prepared)
             code = loaded_code()
             if args.freeze:
                 freeze(rule, prepared, code)
                 return
-            state = verify(args.expect_hashlist, prepared, code)
+            state = verify(args.expect_hashlist, rule, prepared, code)
             print(f"frozen state verified (hash list {state['hashlist_sha256']}, success level "
                   f"{tr.level_in_force(state['rule'])}); replay identical; no test label read", flush=True)
             if args.check:

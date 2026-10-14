@@ -78,13 +78,13 @@ All run before the freeze and again, by replay, in `--check` and `--test`. Any f
 |---|---|---|
 | z inversion | max \|Platt(z) − p\| over the 3,819 shots; max \|z − member z\| where member logits are stored (the 814 gate shots' stored member predictions and the 284 unpaired evaluation shots' `unpaired_members.csv`), member z = the mean over the ten members of logit(sigmoid(logit / T)); no p at the clip. The 2,721 paired shots' p were checked against their member logits in xg-detector ticket 06 (`results/xgd_gcombo_test/checks.json`, max \|Δp\| 5.6e−17). | round trip > 1e−12, member gap > 1e−6, or any p at the clip |
 | z distribution | the test z's mean and SD (ddof 1) over the 7,062 training out-of-fold z's | either ratio outside [0.8, 1.25] |
-| coverage | 3,819 shots; 172 matches (135 + 37); 3,005 and 814 shots; unique shot ids; one-to-one joins of the G-combo p, E3 rows and flags; finite z; predictions inside (0, 1) | any item fails |
-| provenance | no test shot or match is a training one; every test shot is of an evaluation or gate match; the arms' columns equal the C6 protocol's and carry no banned name; the flags do not change when "Goal" annotations are added and shot types swapped; every read runs inside the label seal and with no StatsBomb or xg-compare path (`testset.no_vendor_reads`) | any item fails |
+| coverage | 3,819 shots; 172 matches (135 + 37); 3,005 and 814 shots; unique shot ids; one-to-one joins of the G-combo p and flags; finite z; predictions inside (0, 1); the E3 rows' exact coverage raises in the build | any item fails |
+| provenance | no test shot or match is a training one; every test shot is of an evaluation or gate match; the arms' columns equal the C6 protocol's and carry no banned name; the flags do not change when "Goal" annotations are added and shot types swapped (recorded in `checks.json`). Enforced rather than recorded: every read runs inside the label seal and with no StatsBomb or xg-compare path (`testset.no_vendor_reads`), and a refused read raises | any item fails |
 | E3 replay | the replayed E3 features equal the cache exactly | any difference |
 | ball source | t0 level counts in test and training, levels unseen in training | reported only |
 | angle wrap | test shots per offset whose angle the wrap changed | reported only |
 
-The replay in `--check` and `--test` rebuilds the final fit, the test inputs, the predictions and the checks, and must reproduce `results/xgs_test_prep/{final_fit.json, test_inputs.csv, predictions.csv, checks.json}` byte for byte.
+Before the code closure is taken, `--prepare`, `--freeze`, `--check` and `--test` also run the scoring path once on synthetic outcomes y* ~ Bernoulli(p_R) (seed 0, no label), so the labelled run loads no module the closure lacks. The replay in `--check` and `--test` rebuilds the final fit, the test inputs, the predictions and the checks, and must reproduce `results/xgs_test_prep/{final_fit.json, test_inputs.csv, predictions.csv, checks.json}` byte for byte.
 
 ## 9. Synthetic-null false-success gate (labels unread)
 
@@ -142,12 +142,12 @@ The development SD comes from out-of-fold fits on about 5,650 shots each, while 
 None of these is a success, none rescues the primary reading, and nothing feeds the headline. Each is labelled "hypothesis formed on these matches".
 
 - **GS against R:** ΔLL with the same draws and intervals; no success label.
-- **G against the deployed G-combo,** and R against the deployed G-combo: ΔLL with the same draws.
+- **G against the deployed G-combo:** ΔLL with the same draws. R against the deployed G-combo is added beside it for reference (beyond C7 Q4's list).
 - **Scores:** log-loss, AUC, Brier, mean p, calibration slope and intercept of R, G, GS and the deployed G-combo.
 - **Evaluation and gate matches:** ΔLL(G − R) restricted to the 3,005 evaluation shots and to the 814 gate shots, the same draws, each replicate the weighted mean over the role's shots.
 - **E3 categories:** O, E, O/E per arm and ΔLL against R with its 95% interval from the same draws restricted to the category's shots, in the development's categories: E3 `shot_x@0` < 88.5 (outside the box), E3 `angle@0` < 15°, E3 `dist@0` < 6 m, `sn_corner_20s` = 1, `sn_direct_fk` = 1. A shot whose defining input is missing is outside the category's population.
 - **StatsBomb agreement on the 135 evaluation matches** (Data: StatsBomb.), once, by `scripts/xgs_test_statsbomb.py`, which refuses unless `results/xgs_test/complete.json` exists under this hash list. Population: xg-compare's primary shots (`results/xgc_compare/table`, 2,721 paired shots), joined one to one with the test predictions.
-  - Spearman's ρ of p_R, p_G and the deployed G-combo p with the vendor's xG.
+  - Spearman's ρ of p_R and p_G with the vendor's xG; the deployed G-combo's ρ is added for reference (beyond C7 Q4's list).
   - xg-compare's gap items in StatsBomb coordinates, kept apart from the E3 < 6 m category: outside the box (x < 102 or |y − 40| > 22 yd), goal-mouth angle < 15°, distance < 6 yd. Per model, over the shots where the category is defined: shots in and out, the mean p of the model and the vendor in, the gap in xG points 100 (mean p_model − mean p_vendor) in and out, and the unadjusted contrast of the logit gap (in minus out). These use the models' own probabilities, not xg-compare's cross-fitted main scale.
   - StatsBomb is never an input, target, selection or check of any model, and is not read before the test result exists.
 

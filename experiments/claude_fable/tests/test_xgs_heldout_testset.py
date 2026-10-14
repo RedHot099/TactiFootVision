@@ -135,3 +135,20 @@ def test_no_vendor_reads_refuses_xg_compares_table_and_restores_the_guard(tmp_pa
             open(tmp_path / "statsbomb_open_v1.json", "w")
     assert guard.FORBIDDEN is original
     assert pd.read_parquet(target).a.tolist() == [1]
+
+
+def test_heldout_table_refuses_incomplete_e3_or_a_misordered_z(tmp_path, monkeypatch):
+    shots = pd.DataFrame({"game": ["g", "g"], "half": 1, "position_ms": [1, 2], "role": "gate"},
+                         index=pd.Index(["a", "b"], name="shot_id"))
+    pd.DataFrame({"shot_id": ["a"]}).to_parquet(tmp_path / "frames.parquet")
+    pd.DataFrame({"shot_id": ["a"]}).to_parquet(tmp_path / "features.parquet")
+    detector = pd.DataFrame({c: 0.0 for c in si.E3_COLUMNS}, index=pd.Index(["a"], name="shot_id"))
+    monkeypatch.setattr(si, "e3_table", lambda frames, features: (detector, {}))
+    z = pd.Series([-2.0, -1.0], index=shots.index)
+    with pytest.raises(ValueError, match="E3 does not cover"):
+        ts.heldout_table(shots, z, tmp_path, {"g": []})
+    monkeypatch.setattr(si, "e3_table", lambda frames, features: (detector.reindex(shots.index), {"0": 0}))
+    with pytest.raises(ValueError, match="shot order"):
+        ts.heldout_table(shots, z.iloc[::-1], tmp_path, {"g": []})
+    table, wrapped = ts.heldout_table(shots, z, tmp_path, {"g": []})
+    assert table[sf.Z].tolist() == [-2.0, -1.0] and wrapped == {"0": 0} and set(si.S_FLAGS) <= set(table)

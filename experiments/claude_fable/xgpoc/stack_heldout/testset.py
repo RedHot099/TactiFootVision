@@ -17,7 +17,8 @@ Checks (each returns a record with `passed`; a failed check stops the test)
                        the probability clip (where the inversion is not exact)
     `z_distribution`   the test z's mean and SD over the training out-of-fold z's: each ratio inside [0.8, 1.25]
     `coverage`         3,819 shots, 172 matches (135 evaluation, 37 gate; 3,005 and 814 shots), unique shot ids,
-                       every shot with its G-combo probability, E3 row and flags, finite predictions
+                       every shot with its G-combo probability and flags, finite z, predictions inside (0, 1); the E3 rows'
+                       exact coverage is enforced by `heldout_table`, which raises
     `ball_levels`      the t0 ball-source levels of the test against the training rows; a level never seen in training
                        enters no model (the zero-variance list is the training rows'); an unknown level stops earlier,
                        in `inputs.offset_row`
@@ -46,7 +47,7 @@ INDEX_COLUMNS = ["shot_id", "game", "half", "position_ms", "is_penalty"]       #
 Z_RATIO = (0.8, 1.25)
 ROUND_TRIP_TOLERANCE = 1e-12               # |Platt(z) - p|
 MEMBER_TOLERANCE = 1e-6                    # |z - member z|: unpaired_members.csv stores logits with 9 significant digits
-VENDOR_PATHS = r"|xgc_compare"             # xg-compare's table holds vendor xG and StatsBomb locations
+VENDOR_PATTERN = r"xgc_compare"            # xg-compare's table holds vendor xG and StatsBomb locations
 
 
 @contextlib.contextmanager
@@ -54,7 +55,7 @@ def no_vendor_reads() -> Iterator[None]:
     """`guard.no_statsbomb_reads()` with xg-compare's outputs also refused: its table (results/xgc_compare) holds the
     vendor's xG and StatsBomb locations under a path the guard's pattern does not name."""
     original = guard.FORBIDDEN
-    guard.FORBIDDEN = re.compile(original.pattern + VENDOR_PATHS, original.flags)
+    guard.FORBIDDEN = re.compile(f"{original.pattern}|{VENDOR_PATTERN}", original.flags)
     try:
         with guard.no_statsbomb_reads():
             yield
@@ -141,7 +142,6 @@ def coverage(table: pd.DataFrame, predictions: pd.DataFrame) -> dict:
         "unique_shot_ids": bool(table.index.is_unique and predictions.shot_id.is_unique),
         "predictions_align": predictions.shot_id.tolist() == table.index.tolist(),
         "z_finite": bool(np.isfinite(table[sf.Z].to_numpy(float)).all()),
-        "e3_rows": bool(table[si.E3_COLUMNS].notna().any(axis=1).all()),
         "flags": bool(table[si.S_FLAGS].notna().all().all()),
         "probabilities_open_unit": bool(((probabilities > 0) & (probabilities < 1)).all().all()),
     }

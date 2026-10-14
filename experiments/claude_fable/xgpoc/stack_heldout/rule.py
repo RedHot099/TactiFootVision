@@ -44,7 +44,7 @@ FIXED = {("confirmatory",): "G", ("reference",): "R", ("bootstrap", "draws"): 50
          ("equivalence", "margin"): MARGIN, ("equivalence", "also_margin"): ALSO_MARGIN,
          ("equivalence", "interval"): TOST_INTERVAL, ("practical_bar",): PRACTICAL, ("population", "matches"): 172,
          ("population", "expected_shots"): 3819, ("gate", "max_false_success"): 0.05,
-         ("gate", "random_intercept_sd"): 0.25}
+         ("gate", "random_intercept_sd"): 0.25, ("gate", "replicates"): 5000, ("gate", "seed"): 301}
 
 
 def _field(rule: dict, keys: tuple[str, ...]):

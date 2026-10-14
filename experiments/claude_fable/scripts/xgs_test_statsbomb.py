@@ -3,9 +3,9 @@
     ./run.sh --no-sync python scripts/xgs_test_statsbomb.py --expect-hashlist SHA
         # -> results/xgs_test_statsbomb/{agreement.json, categories.csv, complete.json}
 
-It runs only after the test: it refuses unless research/xg_stack_test_hashes.json hashes to SHA, the test's
-results/xgs_test/complete.json exists, names that hash list and matches its files, and the preparation's predictions
-are the ones the hash list pins. It refuses an existing output folder, so the look happens once.
+It runs only after the test: it refuses unless research/xg_stack_test_hashes.json hashes to SHA and is committed
+unmodified, the test's results/xgs_test/complete.json exists, names that hash list and matches its files, and the
+preparation's predictions and this look's own code (`CODE`) are the files the hash list pins. It refuses an existing output folder, so the look happens once.
 
 The one StatsBomb input is xg-compare's shot table (`results/xgc_compare/table`, read with `compare.table.read`, which
 checks it against its sidecar; the folder's completion record is checked too). Its primary rows (the 2,721 paired
@@ -17,6 +17,7 @@ StatsBomb."; nothing feeds a model, the headline or the success rule.
 
 import argparse
 import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,7 @@ TEST = ROOT / "results/xgs_test"
 PREDICTIONS = ROOT / "results/xgs_test_prep/predictions.csv"
 TABLE = ROOT / "results/xgc_compare/table"
 OUT = ROOT / "results/xgs_test_statsbomb"
+CODE = (Path(__file__).resolve(), ROOT / "xgpoc/stack_heldout/vendor.py")    # pinned by the hash list (xgs_test.STATSBOMB_CODE)
 MODELS = ("R", "G", "g_combo")
 PRIMARY_SHOTS = 2721
 
@@ -40,10 +42,27 @@ class Refused(SystemExit):
     """The StatsBomb look refuses to run."""
 
 
-def require_test_done(expected: str, hashlist: Path = HASHLIST, test: Path = TEST, predictions: Path = PREDICTIONS) -> None:
+def committed(path: Path) -> bool:
+    """Tracked and unchanged against HEAD."""
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", str(path)], cwd=path.parent, capture_output=True)
+    unchanged = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", str(path)], cwd=path.parent)
+    return tracked.returncode == 0 and unchanged.returncode == 0
+
+
+def pinned(pins: dict[str, str], path: Path) -> bool:
+    """`path` is pinned by its checkout-relative name (or its absolute path) with its current sha256."""
+    path = Path(path).absolute()                  # not resolved: pinned names keep symlinked folders as written
+    names = [n for n in pins if n == str(path) or str(path).endswith("/" + n)]
+    return len(names) == 1 and pins[names[0]] == sha256_file(path)
+
+
+def require_test_done(expected: str, hashlist: Path = HASHLIST, test: Path = TEST, predictions: Path = PREDICTIONS,
+                      code: tuple[Path, ...] = CODE, check_git: bool = True) -> None:
     """Refuse unless the test has been run under the hash list of sha256 `expected` (module docstring)."""
     if not hashlist.is_file() or sha256_file(hashlist) != expected:
         raise Refused(f"{hashlist} does not hash to {expected}")
+    if check_git and not committed(hashlist):
+        raise Refused(f"{hashlist} is not the committed, unmodified file")
     record = test / "complete.json"
     if not record.is_file():
         raise Refused(f"{record} does not exist: StatsBomb is read only after the test result is written")
@@ -53,10 +72,10 @@ def require_test_done(expected: str, hashlist: Path = HASHLIST, test: Path = TES
     for name, digest in complete["files"].items():
         if not (test / name).is_file() or sha256_file(test / name) != digest:
             raise Refused(f"{test / name} does not match the test's completion record")
-    pinned = json.loads(hashlist.read_text())["files"]
-    if not any(name.endswith("results/xgs_test_prep/predictions.csv") and digest == sha256_file(predictions)
-               for name, digest in pinned.items()):
-        raise Refused(f"{predictions} is not the file the hash list pins")
+    pins = json.loads(hashlist.read_text())["files"]
+    for path in (predictions, *code):
+        if not pinned(pins, path):
+            raise Refused(f"{path} is not the file the hash list pins")
 
 
 def primary_frame(shots: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
@@ -86,7 +105,7 @@ def main() -> None:
     pd.DataFrame(result["categories"]).assign(label=vendor.LABEL).to_csv(OUT / "categories.csv", index=False, float_format="%.9g")
     record = {"hashlist_sha256": args.expect_hashlist, "test_complete_sha256": sha256_file(TEST / "complete.json"),
               "inputs": {"table": sha256_file(TABLE / tb.TABLE_FILE), "predictions": sha256_file(PREDICTIONS)},
-              "code": {name: sha256_file(ROOT / name) for name in ("scripts/xgs_test_statsbomb.py", "xgpoc/stack_heldout/vendor.py")},
+              "code": {str(p.relative_to(ROOT)): sha256_file(p) for p in CODE},
               "git": records.git_state(), "finished": datetime.now(UTC).isoformat(timespec="seconds"),
               "files": records.output_hashes(OUT)}
     (OUT / "complete.json").write_text(json.dumps(record, indent=2) + "\n")
