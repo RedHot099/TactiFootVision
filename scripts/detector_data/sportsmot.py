@@ -1,4 +1,4 @@
-"""SportsMOT football clips -> player-only YOLO set with manifest and leak report.
+"""SportsMOT football clips -> player-only YOLO set with manifest and tag report.
 
     uv run python -m scripts.detector_data.sportsmot
 
@@ -9,6 +9,7 @@ coaches and spectators are deliberately unlabelled and there is no ball, so only
 mask the other classes). Near-duplicate frames inside a clip (static shots) are removed with the dHash rule.
 """
 
+import argparse
 import configparser
 import json
 from pathlib import Path
@@ -25,7 +26,9 @@ SPLITS = {"train": "train", "val": "valid"}
 PLAYER = common.CLASS_NAMES.index("player")
 
 MANIFEST = {
-    "source": "SportsMOT (Cui et al., ICCV 2023), football clips only (splits_txt/football.txt), train + val",
+    "source": "sportsmot",
+    "licence_tag": "CC BY-NC 4.0",
+    "description": "SportsMOT (Cui et al., ICCV 2023), football clips only (splits_txt/football.txt), train + val",
     "licence": "CC BY-NC 4.0 (dataset card; HF gate text: non-commercial use only)",
     "access_route": "Hugging Face MCG-NJU/SportsMOT dataset/{train,val}.tar streamed, football clips kept "
     "(scripts/detector_data/download_sportsmot.py); test split has no public ground truth",
@@ -36,7 +39,7 @@ MANIFEST = {
         "use this set only with a class mask or for person pretraining",
         "YouTube broadcast clips, 720p",
     ],
-    "provenance": "YouTube video id + clip id per image; no SoccerNet games; benchmark dHash check run",
+    "provenance": "YouTube video id (game) + clip id + frame per image; no SoccerNet games; benchmark near-dups tagged",
 }
 
 
@@ -55,7 +58,7 @@ def clip_samples(clip_dir: Path) -> tuple[list[Sample], dict[str, dict]]:
     info.read(clip_dir / "seqinfo.ini")
     width, height = int(info["Sequence"]["imWidth"]), int(info["Sequence"]["imHeight"])
     gt = read_gt(clip_dir / "gt" / "gt.txt")
-    samples, provenance = [], {}
+    samples, tags = [], {}
     for image in sorted((clip_dir / "img1").glob("*.jpg")):
         frame = int(image.stem)
         if (frame - 1) % STRIDE:
@@ -67,49 +70,53 @@ def clip_samples(clip_dir: Path) -> tuple[list[Sample], dict[str, dict]]:
             )
         )
         video = clip_dir.name.rsplit("_c", 1)[0]
-        provenance[str(image)] = {"video": video, "clip": clip_dir.name, "frame": frame}
-    return samples, provenance
+        tags[str(image)] = {
+            "game": f"youtube:{video.removeprefix('v_')}",
+            "clip": clip_dir.name,
+            "frame": frame,
+        }
+    return samples, tags
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-thin", action="store_true", help="keep near-duplicate frames"
+    )
+    args = parser.parse_args()
     splits: dict[str, list[Sample]] = {}
-    provenance: dict[str, dict] = {}
+    tags: dict[str, dict] = {}
     for raw_split, split in SPLITS.items():
         for clip_dir in sorted((RAW / raw_split).iterdir()):
-            samples, prov = clip_samples(clip_dir)
+            samples, clip_tags = clip_samples(clip_dir)
             splits.setdefault(split, []).extend(samples)
-            provenance |= prov
+            tags |= clip_tags
     dataset = Dataset(
         Task.DETECT, list(common.CLASS_NAMES), splits, name="sportsmot_football"
     )
-    samples = list(dataset)
-    found = common.Fingerprints.of([s.image_path for s in samples])
-    drop = {str(samples[i].image_path) for i in common.dedup_within(found)}
-    dataset = Dataset(
-        Task.DETECT,
-        dataset.class_names,
-        {
-            s: [x for x in dataset[s] if str(x.image_path) not in drop]
-            for s in dataset.split_names
-        },
-        name=dataset.name,
+    dataset, thinned = common.thin_video_frames(dataset, thin=not args.no_thin)
+    near, report = common.tag_near_duplicates(
+        [s.image_path for s in dataset], common.benchmark_fingerprints()
     )
-    kept, report = common.leak_check(dataset, common.benchmark_fingerprints())
+    tags = {path: tags[path] | tag for path, tag in near.items()}
     manifest = MANIFEST | {
-        "clips": sorted({p["clip"] for p in provenance.values()}),
-        "frame_subsampling": f"every {STRIDE}th frame (2.5 fps), then dHash <= 4 bits + thumbnail corr >= 0.95 "
-        "within the set (first kept)",
-        "near_duplicate_frames_dropped": len(drop),
+        "clips": sorted({t["clip"] for t in tags.values()}),
+        "frame_subsampling": f"every {STRIDE}th frame (2.5 fps) at download"
+        + (
+            ", then dHash <= 4 bits + thumbnail corr >= 0.95 within the set (first kept)"
+            if not args.no_thin
+            else ""
+        ),
+        "thinning": not args.no_thin,
+        "near_duplicate_frames_thinned": thinned,
     }
-    common.export_set(
-        kept, OUT, manifest, ["player"], provenance, report, link="hardlink"
-    )
+    common.export_set(dataset, OUT, manifest, ["player"], tags, report, link="hardlink")
     print(
         json.dumps(
             {
-                "images": len(kept),
-                "near_dups": len(drop),
-                "leak_dropped": len(report["dropped"]),
+                "images": len(dataset),
+                "thinned": thinned,
+                "near_dup_tagged": report["images_tagged"],
             }
         )
     )

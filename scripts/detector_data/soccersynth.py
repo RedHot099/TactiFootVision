@@ -1,4 +1,4 @@
-"""SoccerSynth-Detection (synthetic, Unreal) -> YOLO set with manifest and leak report. Kept separate: synthetic.
+"""SoccerSynth-Detection (synthetic, Unreal) -> YOLO set with manifest and tag report. Kept separate: synthetic.
 
     uv run python -m scripts.detector_data.soccersynth
 
@@ -9,6 +9,7 @@ has no roles, so goalkeeper and referee are not annotated (and ``player`` means 
 Variant per image: 1920x1080 = ``clear``, other sizes (800x600) = ``motion_blur``.
 """
 
+import argparse
 import json
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
@@ -28,14 +29,16 @@ SPLITS = {"train": "train", "val": "valid"}
 JPEG_QUALITY = 95
 
 MANIFEST = {
-    "source": "SoccerSynth-Detection (Qin et al., arXiv 2501.09281), open-starlab",
+    "source": "soccersynth",
+    "licence_tag": "unstated (research)",
+    "description": "SoccerSynth-Detection (Qin et al., arXiv 2501.09281), open-starlab",
     "synthetic": True,
     "licence": "repo Apache-2.0; the data licence is not stated (research use)",
     "access_route": "Google Drive file 1UJd9ayx5_cXW28NEE8jlLO9oThleZ-y7 (link in github.com/open-starlab/"
     "SoccerSynth-Detection); plain download hits 'quota exceeded', fetched with HTTP range requests "
     "(scripts/detector_data/fetch_ranged.sh)",
     "mapping": {"0 (every person)": "player", "1 ball": "ball"},
-    "provenance": "rendered scenes, no real games; benchmark dHash check run anyway",
+    "provenance": "rendered scenes, no real games; benchmark near-dups tagged anyway; clip = archive split folder, frame = file number",
     "caveats": [
         "'player' is every rendered person: referees or goalkeepers, if rendered, are 'player' boxes, so use this set "
         "for pretraining or with goalkeeper/referee masked and player treated as 'person'",
@@ -127,6 +130,11 @@ def to_dataset(records: list[dict]) -> Dataset:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-thin", action="store_true", help="keep near-duplicate frames"
+    )
+    args = parser.parse_args()
     with zipfile.ZipFile(ZIP) as archive:
         names = set(archive.namelist())
     stems = sorted(
@@ -142,49 +150,41 @@ def main() -> None:
             records += part
     problems = [r for r in records if "path" not in r]
     records = [r for r in records if "path" in r]
-    dataset = to_dataset(records)
-    # Rendered sequences may hold near-identical frames: keep the first of every duplicate group.
-    samples = list(dataset)
-    drop = {
-        str(samples[i].image_path)
-        for i in common.dedup_within(
-            common.Fingerprints.of([s.image_path for s in samples])
-        )
-    }
-    dataset = Dataset(
-        Task.DETECT,
-        dataset.class_names,
-        {
-            s: [x for x in dataset[s] if str(x.image_path) not in drop]
-            for s in dataset.split_names
-        },
-        name="soccersynth",
+    dataset, thinned = common.thin_video_frames(
+        to_dataset(records), thin=not args.no_thin
     )
-    kept, report = common.leak_check(dataset, common.benchmark_fingerprints())
+    tags, report = common.tag_near_duplicates(
+        [s.image_path for s in dataset], common.benchmark_fingerprints()
+    )
     variants: dict[str, int] = {}
     for r in records:
         variants[r["variant"]] = variants.get(r["variant"], 0) + 1
-    provenance = {
-        r["path"]: {"member": r["stem"] + ".png", "variant": r["variant"]}
-        for r in records
-    }
+        if r["path"] in tags:
+            tags[r["path"]] |= {
+                "clip": r["stem"].split("/")[0],
+                "frame": int(r["stem"].split("/")[1]),
+                "image_type": r["variant"],
+            }
     manifest = MANIFEST | {
         "raw_images": len(stems),
         "unpaired_images": unpaired,
         "conversion_problems": problems,
-        "variants_before_dedup": variants,
-        "near_duplicate_frames_dropped": len(drop),
-        "frame_subsampling": "dHash <= 4 bits + thumbnail corr >= 0.95 within the set, first in name order kept",
+        "variants_before_thinning": variants,
+        "thinning": not args.no_thin,
+        "near_duplicate_frames_thinned": thinned,
+        "frame_subsampling": "dHash <= 4 bits + thumbnail corr >= 0.95 within the set, first in name order kept"
+        if not args.no_thin
+        else "none (--no-thin)",
     }
     common.export_set(
-        kept, OUT, manifest, ["ball", "player"], provenance, report, link="hardlink"
+        dataset, OUT, manifest, ["ball", "player"], tags, report, link="hardlink"
     )
     print(
         json.dumps(
             {
-                "images": len(kept),
-                "near_dups": len(drop),
-                "leak_dropped": len(report["dropped"]),
+                "images": len(dataset),
+                "thinned": thinned,
+                "near_dup_tagged": report["images_tagged"],
             }
         )
     )

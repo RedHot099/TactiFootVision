@@ -1,15 +1,17 @@
-"""SoccerNet-v3 (+ SoccerNet-v3D refined ball boxes) -> 4-class YOLO set with manifest and leak report.
+"""SoccerNet-v3 (+ SoccerNet-v3D refined ball boxes) -> 4-class YOLO set with manifest and tag report.
 
     uv run python -m scripts.detector_data.soccernet_v3 [--limit-games N]
 
 Inputs (downloaded by ``download_soccernet_v3.py``, untrusted):
-``raw/soccernet_v3/<game>/Labels-v3.json`` and ``Frames-v3.zip`` (games outside the xG held-out list only), and
+``raw/soccernet_v3/<game>/Labels-v3.json`` and ``Frames-v3.zip`` (all 400 games), and
 ``raw/soccernet_v3d/dl/SNv3D.csv`` (v3D release v1.0.0).
 
 Per image: the 4-class boxes of ``tactifoot_vision.data.soccernet_v3``; staff and walls of players are greyed out;
 the image is re-encoded as JPEG (quality 95) under ``work/soccernet_v3/images``. Where v3D refined the ball, the
 ball box becomes a square of the v3D diameter (``optimized_d``) around the original centre (see ``refine_ball``).
-Split = the official SoccerNet split (``imageMetadata.set``).
+Split = the official SoccerNet split (``imageMetadata.set``). Nothing is dropped: every image is tagged with its game
+path and ``xg_role`` (plan.csv), and benchmark near-duplicates with ``near_dup_of``. Extra v3 fields (half, position,
+action label, v3D status) sit in the manifest's ``per_image_extra``.
 """
 
 import argparse
@@ -37,7 +39,9 @@ MAX_REP_ERROR_PX = 10.0
 SIZE_RATIO = (0.5, 2.0)
 
 MANIFEST = {
-    "source": "SoccerNet-v3 (Cioppa et al., CVPRW 2022) with SoccerNet-v3D refined ball boxes "
+    "source": "soccernet_v3",
+    "licence_tag": "SoccerNet NDA (research)",
+    "description": "SoccerNet-v3 (Cioppa et al., CVPRW 2022) with SoccerNet-v3D refined ball boxes "
     "(Gutierrez-Perez et al., CVPRW 2025)",
     "licence": "SoccerNet-v3 repo MIT, paper says 'open licence'; frames are broadcast footage, used privately "
     "under the SoccerNet NDA terms (research weights only). SoccerNet-v3D repo GPL-2.0 (annotations).",
@@ -193,13 +197,12 @@ def main() -> None:
     parser.add_argument("--limit-games", type=int, default=None)
     args = parser.parse_args()
 
-    held_out = common.held_out_games()
+    roles = common.xg_roles()
     all_games = sorted(p.parent for p in RAW.glob("*/*/*/Labels-v3.json"))
-    games = [g for g in all_games if g.relative_to(RAW).as_posix() not in held_out]
     # An interrupted or running download has no zip end record, so is_zipfile skips it.
-    complete = [g for g in games if zipfile.is_zipfile(g / "Frames-v3.zip")]
+    complete = [g for g in all_games if zipfile.is_zipfile(g / "Frames-v3.zip")]
     missing_frames = sorted(
-        g.relative_to(RAW).as_posix() for g in games if g not in complete
+        g.relative_to(RAW).as_posix() for g in all_games if g not in complete
     )
     with_frames = complete[: args.limit_games]
     refine = refine_index()
@@ -213,47 +216,43 @@ def main() -> None:
             records += game_records
     problems = [r for r in records if "path" not in r]
     records = [r for r in records if "path" in r]
-    # Leak rule 1-2: game identity, checked on the label's localpath (never on folder names alone).
-    game_report = common.check_games([r["game"] for r in records], held_out)
-    assert all(
-        (RAW / r["game"]).resolve() in {g.resolve() for g in with_frames}
-        for r in records
-    ), "an image's localpath differs from its game folder"
+    # Game identity comes from the label's localpath, checked against the folder it was read from.
+    folders = {g.resolve() for g in with_frames}
+    assert all((RAW / r["game"]).resolve() in folders for r in records), (
+        "an image's localpath differs from its game folder"
+    )
+    game_report = common.game_tags([r["game"] for r in records], roles) | {
+        "games_with_labels": len(all_games),
+        "games_converted": len(with_frames),
+        "games_without_frames": missing_frames,
+    }
 
     dataset = to_dataset(records)
-    kept, leak_report = common.leak_check(
-        dataset,
-        common.benchmark_fingerprints(),
-        extra={
-            "game_rules": game_report
-            | {
-                "games_with_labels": len(all_games),
-                "held_out_games_skipped": len(all_games) - len(games),
-                "games_converted": len(with_frames),
-                "kept_games_without_frames": missing_frames,
-            }
-        },
+    tags, report = common.tag_near_duplicates(
+        [s.image_path for s in dataset], common.benchmark_fingerprints()
     )
-    within = common.dedup_within(common.Fingerprints.of([s.image_path for s in kept]))
-    leak_report["within_set_duplicates_reported"] = len(within)
+    report["game_tags"] = game_report
+    within = common.dedup_within(
+        common.Fingerprints.of([s.image_path for s in dataset])
+    )
+    report["within_set_near_duplicates_kept"] = len(within)
+    for r in records:
+        tags[r["path"]] |= {
+            "game": r["game"],
+            "clip": r["v3_name"].split("_")[0].removesuffix(".png"),
+            "image_type": r["image_type"],
+            "xg_role": roles.get(r["game"]),
+        }
 
     statuses: dict[str, int] = {}
     types: dict[str, int] = {}
     for r in records:
         statuses[r["v3d_ball"]] = statuses.get(r["v3d_ball"], 0) + 1
         types[r["image_type"]] = types.get(r["image_type"], 0) + 1
-    provenance = {
+    extras = {
         r["path"]: {
             k: r[k]
-            for k in (
-                "game",
-                "v3_name",
-                "image_type",
-                "half",
-                "position_ms",
-                "action_label",
-                "v3d_ball",
-            )
+            for k in ("v3_name", "half", "position_ms", "action_label", "v3d_ball")
         }
         for r in records
     }
@@ -264,19 +263,18 @@ def main() -> None:
         "image_types": types,
         "conversion_problems": problems,
         "games": sorted({r["game"] for r in records}),
+        "per_image_extra": extras,
     }
     common.export_set(
-        kept,
-        OUT,
-        manifest,
-        annotated=common.CLASS_NAMES,
-        provenance=provenance,
-        leak_report=leak_report,
-        link="hardlink",
+        dataset, OUT, manifest, common.CLASS_NAMES, tags, report, link="hardlink"
     )
     print(
         json.dumps(
-            {"images": len(kept), "dropped": len(leak_report["dropped"]), **statuses}
+            {
+                "images": len(dataset),
+                "near_dup_tagged": report["images_tagged"],
+                **statuses,
+            }
         )
     )
 

@@ -1,4 +1,4 @@
-"""Roboflow Universe football sets (Hugging Face mirrors) -> 4-class YOLO sets with manifest and leak report.
+"""Roboflow Universe football sets (Hugging Face mirrors) -> 4-class YOLO sets with manifest and tag report.
 
     uv run python -m scripts.detector_data.roboflow
 
@@ -6,10 +6,12 @@
 * ``martinjolif/football-ball-detection`` = Roboflow ``football-ball-detection-rejhg`` fork (ball only).
 
 Both are frames of DFL Bundesliga Data Shootout clips (file stems ``<clip>_<half>_...``). Roboflow ``.rf.<hash>``
-augmentation copies are collapsed to one image per source stem, then near-duplicate video frames are removed
-(dHash + thumbnail correlation, keeping the first in split/name order), then benchmark near-duplicates are dropped.
+augmentation copies are collapsed to one image per source stem and near-duplicate consecutive video frames are thinned
+(dHash + thumbnail correlation, keeping the first in split/name order; both counted, ``--no-thin`` keeps everything).
+Benchmark near-duplicates are tagged (``near_dup_of``), never dropped.
 """
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -20,6 +22,7 @@ from scripts.detector_data import common
 from tactifoot_vision.data import Annotations, Dataset, Sample, load_dataset
 
 RF_SUFFIX = re.compile(r"\.rf\.[0-9a-f]+$")
+DFL_STEM = re.compile(r"^([0-9a-f]{6}_\d+)_(?:mp4-)?(\d+)_(?:jpg|png)$")
 
 SOURCES = {
     "roboflow_players": {
@@ -49,10 +52,12 @@ SOURCES = {
     },
 }
 COMMON_MANIFEST = {
+    "source": "roboflow",
+    "licence_tag": "CC BY 4.0",
     "licence": "CC BY 4.0 (mirror card and Roboflow data.yaml); frames are DFL Bundesliga Data Shootout broadcast "
     "clips (Kaggle competition data), so the upstream footage terms are unclear: research use",
     "access_route": "hf download martinjolif/<name> --repo-type dataset (no key); the Roboflow API needs a key",
-    "provenance": "unverifiable game identity (DFL clip ids only); no SoccerNet games; benchmark dHash check run",
+    "provenance": "unverifiable game identity (DFL clip ids only); no SoccerNet games; benchmark near-dups tagged",
 }
 
 
@@ -81,14 +86,6 @@ def remap(dataset: Dataset) -> Dataset:
     return Dataset(dataset.task, list(common.CLASS_NAMES), splits, name=dataset.name)
 
 
-def drop_paths(dataset: Dataset, drop: set[str]) -> Dataset:
-    splits = {
-        split: [s for s in dataset[split] if str(s.image_path) not in drop]
-        for split in dataset.split_names
-    }
-    return Dataset(dataset.task, dataset.class_names, splits, name=dataset.name)
-
-
 def dedup_rf_copies(dataset: Dataset) -> tuple[Dataset, int]:
     """Keep the first image (split order, then name) of every ``.rf.`` source stem."""
     seen: set[str] = set()
@@ -99,61 +96,67 @@ def dedup_rf_copies(dataset: Dataset) -> tuple[Dataset, int]:
             if stem in seen:
                 drop.add(str(sample.image_path))
             seen.add(stem)
-    return drop_paths(dataset, drop), len(drop)
+    return common.drop_paths(dataset, drop), len(drop)
 
 
-def dedup_frames(dataset: Dataset) -> tuple[Dataset, int]:
-    """Drop near-duplicate pictures (adjacent video frames) inside the set."""
-    samples = [
-        s
-        for split in dataset.split_names
-        for s in sorted(dataset[split], key=lambda s: s.image_path.name)
-    ]
-    found = common.Fingerprints.of([s.image_path for s in samples])
-    drop = {str(samples[i].image_path) for i in common.dedup_within(found)}
-    return drop_paths(dataset, drop), len(drop)
+def clip_frame(path: Path) -> tuple[str, int | None]:
+    """DFL clip id (``<video>_<half>``) and frame index from a Roboflow stem, e.g. ``08fd33_0_mp4-0002_jpg``."""
+    match = DFL_STEM.match(source_stem(path))
+    if not match:
+        return source_stem(path), None
+    return match.group(1), int(match.group(2))
 
 
-def convert(name: str, spec: dict, references: dict) -> dict:
+def convert(name: str, spec: dict, references: dict, thin: bool = True) -> dict:
     dataset = remap(load_dataset(spec["raw"]))
     raw_images = len(dataset)
-    dataset, rf_copies = dedup_rf_copies(dataset)
-    dataset, near_dups = dedup_frames(dataset)
-    kept, report = common.leak_check(dataset, references)
-    provenance = {
-        str(s.image_path): {
-            "clip": source_stem(s.image_path).split("_")[0],
-            "source_split": split,
-        }
-        for split in kept.split_names
-        for s in kept[split]
-    }
+    rf_copies = 0
+    if thin:
+        dataset, rf_copies = dedup_rf_copies(dataset)
+    dataset, thinned = common.thin_video_frames(dataset, thin)
+    tags, report = common.tag_near_duplicates(
+        [s.image_path for s in dataset], references
+    )
+    for path, tag in tags.items():
+        clip, frame = clip_frame(Path(path))
+        tag |= {"clip": clip, "frame": frame}
     manifest = (
         spec["manifest"]
         | COMMON_MANIFEST
         | {
             "raw_images": raw_images,
-            "rf_augmentation_copies_dropped": rf_copies,
-            "near_duplicate_frames_dropped": near_dups,
-            "frame_subsampling": "dHash <= 4 bits + thumbnail corr >= 0.95 within the set, first frame kept",
-            "clips": sorted({p["clip"] for p in provenance.values()}),
+            "thinning": thin,
+            "rf_augmentation_copies_thinned": rf_copies,
+            "near_duplicate_frames_thinned": thinned,
+            "frame_subsampling": "dHash <= 4 bits + thumbnail corr >= 0.95 within the set, first frame kept"
+            if thin
+            else "none (--no-thin)",
+            "clips": sorted({t["clip"] for t in tags.values()}),
         }
     )
     out = common.ROOT / "sets" / name
     common.export_set(
-        kept, out, manifest, spec["annotated"], provenance, report, link="hardlink"
+        dataset, out, manifest, spec["annotated"], tags, report, link="hardlink"
     )
     return {
-        "images": len(kept),
+        "images": len(dataset),
         "rf": rf_copies,
-        "near_dups": near_dups,
-        "leak_dropped": len(report["dropped"]),
+        "thinned": thinned,
+        "near_dup_tagged": report["images_tagged"],
     }
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-thin", action="store_true", help="keep consecutive near-duplicate frames"
+    )
+    args = parser.parse_args()
     references = common.benchmark_fingerprints()
-    results = {name: convert(name, spec, references) for name, spec in SOURCES.items()}
+    results = {
+        name: convert(name, spec, references, thin=not args.no_thin)
+        for name, spec in SOURCES.items()
+    }
     print(json.dumps(results))
 
 

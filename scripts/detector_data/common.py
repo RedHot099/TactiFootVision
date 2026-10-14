@@ -1,9 +1,15 @@
 """Shared pieces of the detector-data source converters (detector-data 03).
 
-* the 4 target classes and the per-source manifest (licence, route, class coverage, provenance, label hashes);
-* the leak rules: xG held-out games (plan.csv roles ``evaluation``/``gate``), "no SoccerNet-v2 game is a GSR game",
-  and near-duplicate pictures against the benchmark frames (GSR valid + test, ``football_yolo`` valid);
-* near-duplicate removal inside a set (adjacent video frames).
+Collect everything, tag, split later (owner rule, 2026-10-14): converters drop nothing for leak reasons. Each image
+carries tags (see ``README.md`` in this folder for the pool-index schema):
+
+* ``xg_role`` from plan.csv (``training`` / ``evaluation`` / ``gate``; null when the game is not in the plan);
+* ``near_dup_of``: the benchmark frame (GSR valid/test frame or ``football_yolo`` valid image) the picture duplicates,
+  with ``gsr_split`` when that frame is GSR;
+* licence, annotated classes, provenance (game, clip, frame) and per-class box counts.
+
+The only thing a converter may remove is in-set near-duplicates of consecutive video frames ("thinning", counted in
+the manifest, ``--no-thin`` keeps them).
 
 Near-duplicates follow the pitch-keypoints exclusions rule: a 64-bit difference hash (dHash) within
 ``DUPLICATE_BITS`` bits is only a candidate, because the hash pairs different frames dominated by grass stripes; a
@@ -23,9 +29,10 @@ import cv2
 import numpy as np
 
 from tactifoot_vision.data import Dataset
+from tactifoot_vision.data._files import unique_names
 
 CLASS_NAMES = ["ball", "goalkeeper", "player", "referee"]
-HELD_OUT_ROLES = ("evaluation", "gate")
+HELD_OUT_ROLES = ("evaluation", "gate")  # the 172 xG matches the default view excludes
 DUPLICATE_BITS = 4
 SAME_PICTURE_CORR = 0.95
 THUMB_SIZE = (64, 36)  # width, height
@@ -42,14 +49,10 @@ FOOTBALL_YOLO_VALID = MAIN / "data/datasets/football_yolo/valid/images"
 
 
 # ---------------------------------------------------------------- game rules
-def held_out_games(plan_csv: Path = PLAN_CSV) -> set[str]:
-    """SoccerNet game paths of the 172 xG held-out matches (roles ``evaluation`` and ``gate``)."""
+def xg_roles(plan_csv: Path = PLAN_CSV) -> dict[str, str]:
+    """SoccerNet game path -> xG split-plan role (``training``, ``evaluation`` or ``gate``)."""
     with Path(plan_csv).open(newline="") as handle:
-        return {
-            row["game"]
-            for row in csv.DictReader(handle)
-            if row["role"] in HELD_OUT_ROLES
-        }
+        return {row["game"]: row["role"] for row in csv.DictReader(handle)}
 
 
 def is_gsr_game(game: str) -> bool:
@@ -65,14 +68,19 @@ def is_gsr_game(game: str) -> bool:
     return "swiss" in league or "switzerland" in league or season[:4] >= "2019"
 
 
-def check_games(games: Iterable[str], held_out: set[str]) -> dict:
-    """Leak rules for SoccerNet game paths. Raises ``AssertionError`` on a held-out or GSR game."""
+def game_tags(games: Iterable[str], roles: dict[str, str]) -> dict:
+    """Per-game ``xg_role`` and a summary; asserts no game is a GSR game (a fact for SoccerNet-v2 paths, so a
+    failure means the input is not what we think it is)."""
     games = sorted(set(games))
-    leaked = [g for g in games if g in held_out]
     gsr = [g for g in games if is_gsr_game(g)]
-    assert not leaked, f"{len(leaked)} xG held-out games in the set, e.g. {leaked[:3]}"
-    assert not gsr, f"{len(gsr)} possible GSR games in the set, e.g. {gsr[:3]}"
-    return {"games": len(games), "held_out_games_in_set": 0, "gsr_games_in_set": 0}
+    assert not gsr, (
+        f"{len(gsr)} possible GSR games among SoccerNet-v2 paths, e.g. {gsr[:3]}"
+    )
+    by_role: dict[str, int] = {}
+    for g in games:
+        key = roles.get(g) or "none"
+        by_role[key] = by_role.get(key, 0) + 1
+    return {"games": len(games), "games_by_xg_role": by_role, "gsr_games": 0}
 
 
 # --------------------------------------------------------- image fingerprints
@@ -252,34 +260,98 @@ def benchmark_fingerprints(
     }
 
 
-def leak_check(
-    dataset: Dataset, references: dict[str, Fingerprints], extra: dict | None = None
-) -> tuple[Dataset, dict]:
-    """Drop every image that is a near-duplicate of a benchmark frame; return the kept set and the report."""
-    images = [s.image_path for s in dataset]
+def reference_id(path: str) -> tuple[str, str, str | None]:
+    """``(near_dup_of, near_dup_set, gsr_split)`` for a benchmark frame path.
+
+    GSR frames become ``gsr:<split>/<clip>/<frame>`` (e.g. ``gsr:valid/SNGS-021/000001``); other references become
+    ``<set>:<file name>``.
+    """
+    parts = Path(path).parts
+    if (
+        len(parts) >= 4
+        and parts[-2] == "img1"
+        and parts[-4] in ("train", "valid", "test", "challenge")
+    ):
+        split, clip, frame = parts[-4], parts[-3], Path(parts[-1]).stem
+        return f"gsr:{split}/{clip}/{frame}", f"gsr_{split}", split
+    return f"football_yolo_valid:{parts[-1]}", "football_yolo_valid", None
+
+
+def tag_near_duplicates(
+    images: Sequence[str | Path], references: dict[str, Fingerprints]
+) -> tuple[dict[str, dict], dict]:
+    """Tag every image that shows the same picture as a benchmark frame; nothing is removed.
+
+    Returns ``{image path: {near_dup_of, near_dup_set, near_dup_corr, near_dup_hits, gsr_split}}`` (all images,
+    ``None`` where there is no hit; the best-correlated hit wins) and a report with every confirmed pair.
+    """
     found = Fingerprints.of(images)
+    tags = {
+        p: {
+            "near_dup_of": None,
+            "near_dup_set": None,
+            "near_dup_corr": None,
+            "near_dup_hits": 0,
+            "gsr_split": None,
+        }
+        for p in found.paths
+    }
     report: dict = {
-        "rule": (
-            f"dHash <= {DUPLICATE_BITS} bits and 64x36 grey thumbnail Pearson >= {SAME_PICTURE_CORR}"
-        ),
-        "images_checked": len(images),
+        "rule": f"dHash <= {DUPLICATE_BITS} bits and 64x36 grey thumbnail Pearson >= {SAME_PICTURE_CORR}",
+        "policy": "tag only (owner rule 2026-10-14: collect everything, split later); no image is dropped",
+        "images_checked": len(found.paths),
         "references": {name: len(ref.paths) for name, ref in references.items()},
         "reference_coverage": "every frame on disk (GSR valid: all 25 fps frames; GSR test: every 5th frame, all "
         "that is local; football_yolo valid: all 193)",
         "hits": {},
     }
-    dropped: set[str] = set()
     for name, ref in references.items():
         hits = near_duplicates(found, ref)
         report["hits"][name] = hits
-        dropped |= {hit["image"] for hit in hits}
-    report["dropped"] = sorted(dropped)
-    report |= extra or {}
-    kept = {
-        split: [s for s in dataset[split] if str(s.image_path) not in dropped]
+        for hit in hits:
+            tag = tags[hit["image"]]
+            tag["near_dup_hits"] += 1
+            if tag["near_dup_corr"] is None or hit["corr"] > tag["near_dup_corr"]:
+                of, ref_set, gsr_split = reference_id(hit["reference"])
+                tag |= {
+                    "near_dup_of": of,
+                    "near_dup_set": ref_set,
+                    "near_dup_corr": hit["corr"],
+                    "gsr_split": gsr_split,
+                }
+    tagged = [t for t in tags.values() if t["near_dup_of"]]
+    report["images_tagged"] = len(tagged)
+    report["tagged_by_set"] = {
+        s: sum(t["near_dup_set"] == s for t in tagged)
+        for s in sorted({t["near_dup_set"] for t in tagged})
+    }
+    return tags, report
+
+
+def drop_paths(dataset: Dataset, drop: set[str]) -> Dataset:
+    """The dataset without the images whose path is in ``drop``."""
+    splits = {
+        split: [s for s in dataset[split] if str(s.image_path) not in drop]
         for split in dataset.split_names
     }
-    return Dataset(dataset.task, dataset.class_names, kept, name=dataset.name), report
+    return Dataset(dataset.task, dataset.class_names, splits, name=dataset.name)
+
+
+def thin_video_frames(dataset: Dataset, thin: bool = True) -> tuple[Dataset, int]:
+    """Remove in-set near-duplicates (consecutive video frames), keeping the first in split/name order.
+
+    With ``thin=False`` nothing is removed (``--no-thin``). Returns the set and the number removed.
+    """
+    if not thin:
+        return dataset, 0
+    samples = [
+        s
+        for split in dataset.split_names
+        for s in sorted(dataset[split], key=lambda s: s.image_path.name)
+    ]
+    found = Fingerprints.of([s.image_path for s in samples])
+    drop = {str(samples[i].image_path) for i in dedup_within(found)}
+    return drop_paths(dataset, drop), len(drop)
 
 
 # ------------------------------------------------------------------- export
@@ -303,24 +375,71 @@ def grey_out(image: np.ndarray, boxes: np.ndarray) -> np.ndarray:
     return out
 
 
+# One row per image in pool_index.parquet; every set's manifest ``per_image`` carries exactly these keys.
+SCHEMA: dict[str, str] = {
+    "set": "set folder name under sets/ (one per source or source part)",
+    "source": "source family, e.g. soccernet_v3, roboflow, soccersynth, sportsmot, gsr",
+    "split": "split inside the set's YOLO export (the source's own split, not a training decision)",
+    "image": "absolute path of the exported image (sets/<set>/<split>/images/...); its label is the YOLO txt beside",
+    "source_image": "path of the image the export links to (raw or work copy)",
+    "width": "image width, px",
+    "height": "image height, px",
+    "game": "game identity: SoccerNet game path, GSR game_id as 'gsr:<id>', or null when unknown",
+    "clip": "clip / video id, or null",
+    "frame": "frame index inside the clip, or null",
+    "image_type": "source-specific kind (v3: action / replay; soccersynth: clear / motion_blur), or null",
+    "xg_role": "plan.csv role of the game (training / evaluation / gate), null if not a plan game",
+    "gsr_split": "GSR split of the game or of the matched benchmark frame (train / valid / test / challenge), or null",
+    "near_dup_of": "benchmark frame this picture duplicates ('gsr:<split>/<clip>/<frame>' or "
+    "'football_yolo_valid:<file>'), or null",
+    "near_dup_set": "gsr_valid / gsr_test / football_yolo_valid, or null",
+    "near_dup_corr": "thumbnail correlation of the best near-dup hit, or null",
+    "near_dup_hits": "number of confirmed benchmark near-dup pairs",
+    "licence": "short licence tag of the source",
+    "synthetic": "rendered rather than real footage",
+    "annotated_classes": "comma-separated classes the source labels exhaustively; the others are not annotated and "
+    "must be masked out of the loss (never treated as background)",
+    "n_ball": "ball boxes in the label",
+    "n_goalkeeper": "goalkeeper boxes",
+    "n_player": "player boxes",
+    "n_referee": "referee boxes",
+}
+DEFAULT_TAGS = {
+    "game": None,
+    "clip": None,
+    "frame": None,
+    "image_type": None,
+    "xg_role": None,
+    "gsr_split": None,
+    "near_dup_of": None,
+    "near_dup_set": None,
+    "near_dup_corr": None,
+    "near_dup_hits": 0,
+}
+
+
 def export_set(
     dataset: Dataset,
     out_dir: Path,
     manifest: dict,
     annotated: Sequence[str],
-    provenance: dict[str, dict] | None = None,
-    leak_report: dict | None = None,
+    tags: dict[str, dict] | None = None,
+    report: dict | None = None,
     link: str = "symlink",
 ) -> dict:
     """Write the YOLO set, ``manifest.json``, ``label_sha256.txt`` and ``leak_report.json`` into ``out_dir``.
 
-    ``annotated`` lists the classes this source labels exhaustively; the other target classes are recorded as
-    not annotated, so a trainer must ignore them for this source (a missing referee box is not background).
-    ``provenance`` maps an image path to its game / clip / frame record.
+    ``manifest`` needs ``source`` (family id), ``licence_tag`` (short) and the long ``licence`` / ``access_route``
+    texts. ``annotated`` lists the classes this source labels exhaustively; the others are recorded as not
+    annotated. ``tags`` maps a source image path to its tag values (see :data:`SCHEMA`); missing tags are null.
+    The manifest's ``per_image`` holds one :data:`SCHEMA` row per image.
     """
     unknown = set(annotated) - set(CLASS_NAMES)
     if unknown or dataset.class_names != CLASS_NAMES:
         raise ValueError(f"Unknown classes {unknown or dataset.class_names}")
+    for key in ("source", "licence_tag", "licence", "access_route"):
+        if key not in manifest:
+            raise ValueError(f"manifest needs {key!r}")
     data_yaml = dataset.to_yolo(out_dir, link=link)
     labels = sorted((out_dir).glob("*/labels/*.txt"))
     lines = [f"{sha256_file(p)}  {p.relative_to(out_dir).as_posix()}" for p in labels]
@@ -331,6 +450,38 @@ def export_set(
     counts = {
         split: {k: int(v) for k, v in row.items()} for split, row in summary.iterrows()
     }
+    rows = []
+    for split in dataset.split_names:
+        samples = dataset[split]
+        names = unique_names([s.image_path for s in samples])
+        for sample, name in zip(samples, names, strict=True):
+            per_class = np.bincount(
+                sample.annotations.class_ids, minlength=len(CLASS_NAMES)
+            )
+            extra = (tags or {}).get(str(sample.image_path), {})
+            unknown_keys = set(extra) - set(DEFAULT_TAGS)
+            if unknown_keys:  # set, image, counts, licence ... are the exporter's, never a converter's
+                raise ValueError(
+                    f"tags outside the schema's tag columns: {sorted(unknown_keys)}"
+                )
+            rows.append(
+                {
+                    "set": out_dir.name,
+                    "source": manifest["source"],
+                    "split": split,
+                    "image": str(out_dir.resolve() / split / "images" / name),
+                    "source_image": str(sample.image_path),
+                    "width": sample.width,
+                    "height": sample.height,
+                    **DEFAULT_TAGS,
+                    **extra,
+                    "licence": manifest["licence_tag"],
+                    "synthetic": bool(manifest.get("synthetic", False)),
+                    "annotated_classes": ",".join(annotated),
+                    **{f"n_{c}": int(per_class[i]) for i, c in enumerate(CLASS_NAMES)},
+                }
+            )
+    tagged = [r for r in rows if r["near_dup_of"]]
     full = {
         **manifest,
         "classes": CLASS_NAMES,
@@ -344,25 +495,28 @@ def export_set(
         "boxes_total": {
             c: int(sum(row[c] for row in counts.values())) for c in CLASS_NAMES
         },
+        "images_by_xg_role": _count(rows, "xg_role"),
+        "images_by_gsr_split": _count(rows, "gsr_split"),
+        "images_near_dup": len(tagged),
         "label_files": len(labels),
         "label_sha256_file": sha_file.name,
         "label_sha256_of_list": sha256_file(sha_file),
-        "per_image": [
-            {
-                **(provenance or {}).get(str(s.image_path), {}),
-                "split": split,
-                "image": str(s.image_path),
-            }
-            for split in dataset.split_names
-            for s in dataset[split]
-        ],
+        "per_image": rows,
     }
     (out_dir / "manifest.json").write_text(json.dumps(full, indent=1, default=str))
-    if leak_report is not None:
+    if report is not None:
         (out_dir / "leak_report.json").write_text(
-            json.dumps(leak_report, indent=1, default=str)
+            json.dumps(report, indent=1, default=str)
         )
     return full
+
+
+def _count(rows: list[dict], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = str(row[key]) if row[key] is not None else "null"
+        counts[value] = counts.get(value, 0) + 1
+    return counts
 
 
 if __name__ == "__main__":  # build the benchmark fingerprint cache once

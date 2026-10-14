@@ -108,7 +108,7 @@ def test_read_labels_refuses_unknown_class(tmp_path):
 
 
 # ------------------------------------------------------------- game rules
-def test_held_out_games_reads_evaluation_and_gate_roles(tmp_path):
+def test_xg_roles_reads_every_plan_role(tmp_path):
     plan = tmp_path / "plan.csv"
     plan.write_text(
         "game,league,season,home,official_split,role,fold\n"
@@ -116,15 +116,20 @@ def test_held_out_games_reads_evaluation_and_gate_roles(tmp_path):
         f"{HELD},spain_laliga,2016-2017,Malaga,test,evaluation,\n"
         "a/b/c,x,y,z,valid,gate,\n"
     )
-    assert common.held_out_games(plan) == {HELD, "a/b/c"}
+    assert common.xg_roles(plan) == {
+        GAME: "training",
+        HELD: "evaluation",
+        "a/b/c": "gate",
+    }
 
 
-def test_check_games_rejects_held_out_and_gsr_games():
-    assert common.check_games([GAME], {HELD})["games"] == 1
-    with pytest.raises(AssertionError, match="held-out"):
-        common.check_games([GAME, HELD], {HELD})
+def test_game_tags_count_roles_and_reject_gsr_games():
+    report = common.game_tags(
+        [GAME, HELD, HELD, "x/2015-2016/y"], {GAME: "training", HELD: "evaluation"}
+    )
+    assert report["games_by_xg_role"] == {"training": 1, "evaluation": 1, "none": 1}
     with pytest.raises(AssertionError, match="GSR"):
-        common.check_games(["switzerland_super-league/2019-2020/x"], set())
+        common.game_tags(["switzerland_super-league/2019-2020/x"], {})
     assert common.is_gsr_game("anything/2019-2020/match")
     assert not common.is_gsr_game(GAME)
 
@@ -170,19 +175,54 @@ def test_dedup_within_keeps_first_of_each_duplicate_group(tmp_path):
     assert common.dedup_within(common.Fingerprints.of(paths)) == [1, 3]
 
 
-def test_leak_check_drops_benchmark_duplicates_and_reports_them(tmp_path):
-    bench = write(tmp_path / "bench" / "000001.jpg", picture(7))
+def test_near_duplicates_are_tagged_with_the_gsr_frame_and_split_never_dropped(
+    tmp_path,
+):
+    gsr_frame = write(
+        tmp_path / "SoccerNetGS" / "valid" / "SNGS-021" / "img1" / "000007.jpg",
+        picture(7),
+    )
+    yolo_valid = write(
+        tmp_path / "football_yolo" / "valid" / "images" / "x.jpg", picture(9)
+    )
     leaked = write(tmp_path / "src" / "leak.jpg", picture(7))
+    other = write(tmp_path / "src" / "other.jpg", picture(9))
     clean = write(tmp_path / "src" / "clean.jpg", picture(8))
+    tags, report = common.tag_near_duplicates(
+        [leaked, other, clean],
+        {
+            "gsr_valid_test": common.Fingerprints.of([gsr_frame]),
+            "football_yolo_valid": common.Fingerprints.of([yolo_valid]),
+        },
+    )
+    assert set(tags) == {str(leaked), str(other), str(clean)}
+    assert tags[str(leaked)]["near_dup_of"] == "gsr:valid/SNGS-021/000007"
+    assert tags[str(leaked)]["near_dup_set"] == "gsr_valid"
+    assert tags[str(leaked)]["gsr_split"] == "valid"
+    assert tags[str(other)]["near_dup_of"] == "football_yolo_valid:x.jpg"
+    assert tags[str(other)]["gsr_split"] is None
+    assert (
+        tags[str(clean)]["near_dup_of"] is None
+        and tags[str(clean)]["near_dup_hits"] == 0
+    )
+    assert report["images_tagged"] == 2 and "dropped" not in report
+
+
+def test_thin_video_frames_counts_what_it_thins_and_no_thin_keeps_all(tmp_path):
+    frames = [
+        write(tmp_path / f"f{i}.png", picture(1 if i < 2 else i)) for i in range(4)
+    ]
     dataset = Dataset(
-        Task.DETECT, common.CLASS_NAMES, {"train": [sample(leaked), sample(clean)]}
+        Task.DETECT, common.CLASS_NAMES, {"train": [sample(p) for p in frames]}
     )
-    kept, report = common.leak_check(
-        dataset, {"gsr_valid_test": common.Fingerprints.of([bench])}
-    )
-    assert [s.image_path for s in kept["train"]] == [clean]
-    assert report["dropped"] == [str(leaked)]
-    assert report["hits"]["gsr_valid_test"][0]["reference"] == str(bench)
+    thinned, removed = common.thin_video_frames(dataset)
+    assert removed == 1 and [s.image_path.name for s in thinned["train"]] == [
+        "f0.png",
+        "f2.png",
+        "f3.png",
+    ]
+    kept, removed = common.thin_video_frames(dataset, thin=False)
+    assert removed == 0 and len(kept) == 4
 
 
 # ---------------------------------------------------------------- export
@@ -193,7 +233,15 @@ def test_grey_out_blanks_only_the_region():
     assert out[:3].sum() == 0 and out[:, 6:].sum() == 0 and image.sum() == 0
 
 
-def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
+MANIFEST = {
+    "source": "toy",
+    "licence_tag": "CC0",
+    "licence": "x",
+    "access_route": "local",
+}
+
+
+def test_export_set_writes_yolo_manifest_schema_rows_and_label_hashes(tmp_path):
     image = write(tmp_path / "src" / "img.jpg", picture(1))
     dataset = Dataset(
         Task.DETECT,
@@ -204,10 +252,10 @@ def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
     manifest = common.export_set(
         dataset,
         out,
-        {"source": "toy", "licence": "x"},
+        MANIFEST,
         ["ball", "player"],
-        {str(image): {"game": "g1", "image": "1.png", "split": "x"}},
-        {"dropped": []},
+        {str(image): {"game": "g1", "xg_role": "gate"}},
+        {"hits": {}},
     )
     assert manifest["not_annotated_classes"] == ["goalkeeper", "referee"]
     assert manifest["boxes_total"] == {
@@ -216,9 +264,21 @@ def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
         "player": 1,
         "referee": 0,
     }
-    assert manifest["per_image"] == [
-        {"game": "g1", "split": "train", "image": str(image)}
-    ]
+    (row,) = manifest["per_image"]
+    assert set(row) == set(common.SCHEMA)
+    assert (
+        row["image"] == str(out.resolve() / "train" / "images" / "img.jpg")
+        and Path(row["image"]).is_file()
+    )
+    assert (
+        row["source_image"] == str(image)
+        and row["set"] == "toy"
+        and row["split"] == "train"
+    )
+    assert (row["game"], row["xg_role"], row["near_dup_of"]) == ("g1", "gate", None)
+    assert (row["n_ball"], row["n_player"], row["n_referee"]) == (1, 1, 0)
+    assert row["annotated_classes"] == "ball,player" and row["licence"] == "CC0"
+    assert manifest["images_by_xg_role"] == {"gate": 1}
     written = json.loads((out / "manifest.json").read_text())
     assert written["label_sha256_of_list"] == common.sha256_file(
         out / "label_sha256.txt"
@@ -226,10 +286,56 @@ def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
     sha, rel = (out / "label_sha256.txt").read_text().split()
     assert rel == "train/labels/img.txt" and sha == common.sha256_file(out / rel)
     assert (out / "leak_report.json").is_file()
-    reloaded = Dataset.load(out)
-    assert reloaded.summary().loc["train", "player"] == 1
+    assert Dataset.load(out).summary().loc["train", "player"] == 1
     # re-running into the same folder works (manifest files beside the export are kept apart)
-    common.export_set(dataset, out, {"source": "toy"}, ["ball"])
+    common.export_set(dataset, out, MANIFEST, ["ball"])
+
+
+def test_export_set_refuses_tags_outside_the_schema_and_incomplete_manifests(tmp_path):
+    image = write(tmp_path / "src" / "img.jpg", picture(1))
+    dataset = Dataset(Task.DETECT, common.CLASS_NAMES, {"train": [sample(image)]})
+    with pytest.raises(ValueError, match="outside the schema"):
+        common.export_set(
+            dataset,
+            tmp_path / "a",
+            MANIFEST,
+            ["player"],
+            {str(image): {"image": "1.png"}},
+        )
+    with pytest.raises(ValueError, match="licence_tag"):
+        common.export_set(dataset, tmp_path / "b", {"source": "toy"}, ["player"])
+
+
+def test_pool_index_concatenates_sets_and_rejects_off_schema_rows(tmp_path):
+    from scripts.detector_data import pool_index
+
+    images = [write(tmp_path / "src" / f"{i}.jpg", picture(i)) for i in range(3)]
+    for name, paths in (("one", images[:2]), ("two", images[2:])):
+        dataset = Dataset(
+            Task.DETECT, common.CLASS_NAMES, {"train": [sample(p) for p in paths]}
+        )
+        common.export_set(
+            dataset,
+            tmp_path / "sets" / name,
+            MANIFEST,
+            ["player"],
+            {str(paths[0]): {"xg_role": "training"}},
+        )
+    (tmp_path / "sets" / "foreign").mkdir()
+    (tmp_path / "sets" / "foreign" / "manifest.json").write_text(
+        "{}"
+    )  # no rows yet: skipped
+    pool = pool_index.build(tmp_path / "sets")
+    assert list(pool.columns) == list(common.SCHEMA)
+    assert pool.groupby("set").size().to_dict() == {"one": 2, "two": 1}
+    assert pool.xg_role.isna().sum() == 1 and pool.n_player.sum() == 3
+    assert not pool_index.summary(pool).empty
+    manifest = tmp_path / "sets" / "two" / "manifest.json"
+    data = json.loads(manifest.read_text())
+    del data["per_image"][0]["xg_role"]
+    manifest.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="off schema"):
+        pool_index.build(tmp_path / "sets")
 
 
 # ------------------------------------------------------------- v3 converter
@@ -422,7 +528,7 @@ def test_sportsmot_clip_samples_reads_gt_at_stride(tmp_path):
         common.CLASS_NAMES.index("player")
     }
     assert provenance[str(samples[1].image_path)] == {
-        "video": "v_abc",
+        "game": "youtube:abc",
         "clip": "v_abc_c001",
         "frame": 11,
     }
