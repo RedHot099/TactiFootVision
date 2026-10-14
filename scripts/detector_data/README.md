@@ -50,7 +50,7 @@ that misses or adds one.
 | `xg_role` | plan.csv role of the game (training / evaluation / gate), null if not a plan game |
 | `gsr_split` | GSR split of the game or of the matched benchmark frame (train / valid / test / challenge), or null |
 | `near_dup_of` | benchmark frame this picture duplicates ('gsr:<split>/<clip>/<frame>' or 'football_yolo_valid:<file>'), or null |
-| `near_dup_set` | gsr_valid / gsr_test / football_yolo_valid, or null |
+| `near_dup_set` | gsr_valid / gsr_test / football_yolo_valid (benchmark), or soccernet_v3 (sources of unknown provenance are also matched against every v3 frame, so v3 game and xg_role carry over), or null |
 | `near_dup_corr` | thumbnail correlation of the best near-dup hit, or null |
 | `near_dup_hits` | number of confirmed benchmark near-dup pairs |
 | `licence` | short licence tag of the source |
@@ -86,3 +86,9 @@ key of the xG plan (`xg_role`).
 pool = pd.read_parquet(".../pool_index.parquet")
 view = pool[~pool.xg_role.isin(["evaluation", "gate"]) & ~pool.gsr_split.isin(["valid", "test"]) & pool.near_dup_of.isna()]
 ```
+
+## Sources (one set each)
+
+soccernet_v3 (+ v3D ball refinement), roboflow_players, roboflow_ball, soccer_player_detection, issia, teamtrack,
+sportsmot_football, soccana, soccersynth (synthetic), plus soccernet_gsr from the GSR converter. Blocked (owner action):
+SoccerTrack v2 (Hugging Face gate), SoccerDB (Google Drive links dead, Baidu only).
