@@ -46,7 +46,7 @@ from xgpoc.stack import selection as sl
 from xgpoc.stack import stats as ss
 
 ROOT = Path(__file__).resolve().parents[1]
-PLAN_SHA256 = None              # the C6 plan, pinned after its freeze
+PLAN_SHA256 = "f04bb774dc35ad99e56816f5641110d5872dbdcdd62672050ca86dda0059edb2"   # the C6 plan
 PROTOCOL_SHA256 = None          # the C6 protocol, pinned after its freeze
 OUT = ROOT / "results/xgs_stack"
 CONTROLS = ("1_provenance", "2_synthetic_nulls", "3_permutation", "4_positive")
