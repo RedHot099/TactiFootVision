@@ -61,6 +61,11 @@ that misses or adds one.
 | `n_player` | player boxes |
 | `n_referee` | referee boxes |
 
+GSR/Tracking rows come from the other converter's `pool_index_gsr.parquet` (research/detector-data 2ad8f07), mapped
+in `pool_index.py` (`GSR_COLUMNS`): `game_id` -> `game`, `image_target` -> `source_image`, `image_source`
+(gsr / tracking) -> `image_type`, `split` = `gsr_split`; its extra columns (label, stride_group, n_other_dropped)
+stay in that file.
+
 Conventions: GSR rows use `game = "gsr:<game_id>"`, `clip = "SNGS-NNN"`, `frame` = frame number and
 `gsr_split` = the clip's split. SoccerNet-v2 games use the game path (`league/season/date - teams`), which is the
 key of the xG plan (`xg_role`).

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -650,3 +651,54 @@ def test_teamtrack_csv_reads_players_and_ball_and_skips_empty_cells(tmp_path):
     np.testing.assert_allclose(boxes, [[100, 50, 120, 90], [300, 80, 306, 86]])
     assert ids == [2, 0]
     assert labels[2][1] == [2]
+
+
+def test_pool_index_maps_the_gsr_index_to_the_schema(tmp_path):
+    from scripts.detector_data import pool_index
+
+    gsr = pd.DataFrame(
+        {
+            "image": ["/s/a.jpg"],
+            "label": ["/s/a.txt"],
+            "image_target": ["/d/a.jpg"],
+            "source": ["soccernet_gsr"],
+            "image_source": ["tracking"],
+            "game_id": ["gsr:4"],
+            "game_path": [None],
+            "clip": ["SNGS-060"],
+            "frame": [3],
+            "stride_group": [0],
+            "gsr_split": ["train"],
+            "xg_role": [None],
+            "near_dup_of": [None],
+            "licence": ["long text"],
+            "annotated_classes": ["ball,goalkeeper,player,referee"],
+            "width": [1920],
+            "height": [1080],
+            "n_ball": [1],
+            "n_goalkeeper": [0],
+            "n_player": [15],
+            "n_referee": [2],
+            "n_other_dropped": [0],
+        }
+    )
+    path = tmp_path / "pool_index_gsr.parquet"
+    gsr.to_parquet(path)
+    (tmp_path / "sets").mkdir()
+    pool = pool_index.build(tmp_path / "sets", path)
+    assert list(pool.columns) == list(common.SCHEMA)
+    row = pool.iloc[0]
+    assert (row["set"], row["split"], row["game"], row["image_type"]) == (
+        "soccernet_gsr",
+        "train",
+        "gsr:4",
+        "tracking",
+    )
+    assert (
+        row["source_image"] == "/d/a.jpg"
+        and row["n_player"] == 15
+        and row["near_dup_hits"] == 0
+    )
+    with pytest.raises(ValueError, match="missing GSR columns"):
+        gsr.drop(columns=["clip"]).to_parquet(path)
+        pool_index.build(tmp_path / "sets", path)

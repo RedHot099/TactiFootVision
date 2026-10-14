@@ -2,8 +2,8 @@
 
     uv run python -m scripts.detector_data.pool_index
 
-Reads each ``sets/<set>/manifest.json`` ``per_image`` list (any converter that follows the schema is picked up, the
-GSR/Tracking sets included) and writes ``pool_index.parquet`` next to ``sets/``. A training split is a filter on
+Reads each ``sets/<set>/manifest.json`` ``per_image`` list (any converter that follows the schema is picked up) and
+the GSR/Tracking converter's ``pool_index_gsr.parquet`` (mapped by ``GSR_COLUMNS``), and writes ``pool_index.parquet`` next to ``sets/``. A training split is a filter on
 this table, e.g. the default view::
 
     pool[pool.xg_role.isin(["evaluation", "gate"]).eq(False) & pool.gsr_split.isin(["valid", "test"]).eq(False)
@@ -17,9 +17,58 @@ import pandas as pd
 
 from scripts.detector_data import common
 
+GSR_INDEX = common.ROOT / "pool_index_gsr.parquet"
+# pool_index_gsr.parquet (GSR/Tracking converter, research/detector-data 2ad8f07) column -> SCHEMA column.
+GSR_COLUMNS = {
+    "image": "image",
+    "image_target": "source_image",
+    "width": "width",
+    "height": "height",
+    "game_id": "game",
+    "clip": "clip",
+    "frame": "frame",
+    "image_source": "image_type",
+    "xg_role": "xg_role",
+    "gsr_split": "gsr_split",
+    "near_dup_of": "near_dup_of",
+    "annotated_classes": "annotated_classes",
+    **{f"n_{c}": f"n_{c}" for c in common.CLASS_NAMES},
+}
+GSR_LICENCE = "SoccerNet NDA (research)"
 
-def build(sets_dir: Path) -> pd.DataFrame:
-    """Concatenate the ``per_image`` rows of every manifest; refuses rows that miss or add schema columns."""
+
+def gsr_rows(path: Path) -> pd.DataFrame:
+    """The GSR/Tracking index mapped to :data:`common.SCHEMA` (``set``/``source`` = soccernet_gsr, ``split`` =
+    ``gsr_split``, ``image_type`` = gsr / tracking image origin). Its extra columns (label path, stride_group,
+    n_other_dropped) stay in the GSR file."""
+    gsr = pd.read_parquet(path)
+    missing = sorted(set(GSR_COLUMNS) - set(gsr.columns))
+    if missing:
+        raise ValueError(f"{path}: missing GSR columns {missing}")
+    if gsr["near_dup_of"].notna().any():
+        raise ValueError(
+            f"{path}: near_dup_of set on GSR rows; map near_dup_set/corr before using it"
+        )
+    rows = gsr[list(GSR_COLUMNS)].rename(columns=GSR_COLUMNS)
+    rows = rows.assign(
+        set="soccernet_gsr",
+        source="soccernet_gsr",
+        split=rows["gsr_split"],
+        near_dup_set=None,
+        near_dup_corr=float("nan"),
+        near_dup_hits=0,
+        licence=GSR_LICENCE,
+        synthetic=False,
+    )
+    return rows[list(common.SCHEMA)]
+
+
+def build(sets_dir: Path, gsr_index: Path | None = None) -> pd.DataFrame:
+    """Concatenate the ``per_image`` rows of every manifest, plus the GSR index when given.
+
+    Refuses manifest rows that miss or add schema columns; the GSR set is taken from ``gsr_index`` (its manifest has
+    no ``per_image`` rows and is skipped).
+    """
     frames = []
     for manifest_path in sorted(sets_dir.glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text())
@@ -35,6 +84,8 @@ def build(sets_dir: Path) -> pd.DataFrame:
                     f"{manifest_path}: row off schema (missing {missing}, extra {extra})"
                 )
         frames.append(pd.DataFrame(rows, columns=list(common.SCHEMA)))
+    if gsr_index is not None:
+        frames.append(gsr_rows(gsr_index))
     pool = (
         pd.concat(frames, ignore_index=True)
         if frames
@@ -71,7 +122,7 @@ def summary(pool: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    pool = build(common.ROOT / "sets")
+    pool = build(common.ROOT / "sets", GSR_INDEX if GSR_INDEX.is_file() else None)
     out = common.ROOT / "pool_index.parquet"
     pool.to_parquet(out, index=False)
     boxes = [f"n_{c}" for c in common.CLASS_NAMES]
