@@ -349,9 +349,9 @@ def export_set(
         "label_sha256_of_list": sha256_file(sha_file),
         "per_image": [
             {
+                **(provenance or {}).get(str(s.image_path), {}),
                 "split": split,
                 "image": str(s.image_path),
-                **(provenance or {}).get(str(s.image_path), {}),
             }
             for split in dataset.split_names
             for s in dataset[split]

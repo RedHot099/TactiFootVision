@@ -156,7 +156,7 @@ def convert_game(labels_path: str, refine: dict) -> list[dict]:
                     "path": str(target),
                     "split": image.metadata.get("set", "train"),
                     "game": image.game,
-                    "image": image.name,
+                    "v3_name": image.name,
                     "image_type": image.image_type,
                     "half": image.metadata.get("half"),
                     "position_ms": image.metadata.get("position"),
@@ -196,9 +196,12 @@ def main() -> None:
     held_out = common.held_out_games()
     all_games = sorted(p.parent for p in RAW.glob("*/*/*/Labels-v3.json"))
     games = [g for g in all_games if g.relative_to(RAW).as_posix() not in held_out]
-    with_frames = [g for g in games if (g / "Frames-v3.zip").is_file()][
-        : args.limit_games
-    ]
+    # An interrupted or running download has no zip end record, so is_zipfile skips it.
+    complete = [g for g in games if zipfile.is_zipfile(g / "Frames-v3.zip")]
+    missing_frames = sorted(
+        g.relative_to(RAW).as_posix() for g in games if g not in complete
+    )
+    with_frames = complete[: args.limit_games]
     refine = refine_index()
     records: list[dict] = []
     with ProcessPoolExecutor(8) as pool:
@@ -227,6 +230,7 @@ def main() -> None:
                 "games_with_labels": len(all_games),
                 "held_out_games_skipped": len(all_games) - len(games),
                 "games_converted": len(with_frames),
+                "kept_games_without_frames": missing_frames,
             }
         },
     )
@@ -243,7 +247,7 @@ def main() -> None:
             k: r[k]
             for k in (
                 "game",
-                "image",
+                "v3_name",
                 "image_type",
                 "half",
                 "position_ms",

@@ -206,7 +206,7 @@ def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
         out,
         {"source": "toy", "licence": "x"},
         ["ball", "player"],
-        {str(image): {"game": "g1"}},
+        {str(image): {"game": "g1", "image": "1.png", "split": "x"}},
         {"dropped": []},
     )
     assert manifest["not_annotated_classes"] == ["goalkeeper", "referee"]
@@ -217,7 +217,7 @@ def test_export_set_writes_yolo_manifest_and_label_hashes(tmp_path):
         "referee": 0,
     }
     assert manifest["per_image"] == [
-        {"split": "train", "image": str(image), "game": "g1"}
+        {"game": "g1", "split": "train", "image": str(image)}
     ]
     written = json.loads((out / "manifest.json").read_text())
     assert written["label_sha256_of_list"] == common.sha256_file(
@@ -299,7 +299,7 @@ def test_convert_game_greys_staff_and_records_provenance(tmp_path, monkeypatch):
                 f"Frames-v3/{name}", cv2.imencode(".png", frame)[1].tobytes()
             )
     records = v3_script.convert_game(str(labels), {})
-    assert [r["image"] for r in records] == ["0.png", "0_0.png"]
+    assert [r["v3_name"] for r in records] == ["0.png", "0_0.png"]
     action = cv2.imread(records[0]["path"])
     assert (
         abs(int(action[150, 220, 0]) - common.GREY) <= 2
