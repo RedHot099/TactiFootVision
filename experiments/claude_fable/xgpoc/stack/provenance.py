@@ -5,8 +5,9 @@
     names       no design column name contains a banned fragment (`BANNED`, case-insensitive)
     held_out    no shot and no match of the population is one of the 172 held-out matches of the xg-vendor split plan
                 (the 135 evaluation and the 37 gate matches), by match and by shot id
-    flag_code   the SoccerNet flags do not change when every "Goal" annotation is moved, multiplied or added and every
-                shot annotation's type is swapped (on target <-> off target), the own shot's included
+    flag_code   the SoccerNet flags do not change when "Goal" annotations of both teams are added around every shot
+                (from -20 s to +1 s) and every shot annotation's type is swapped (on target <-> off target), the own
+                shot's included
 """
 
 import numpy as np

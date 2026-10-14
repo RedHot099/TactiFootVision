@@ -2,7 +2,7 @@
 
 Scores (`scores`)
     out-of-fold log-loss (probabilities clipped to [1e-6, 1 - 1e-6], `CLIP`), AUC, Brier, and the calibration slope
-    and intercept: the unpenalised logistic regression of y on logit(p).
+    and intercept: the logistic regression of y on logit(p) with C = 1e6 (`PlattScaler`, effectively unpenalised).
 Paired match bootstrap (`match_weights`, `paired_delta`)
     ΔLL = LL(arm) - LL(R), the mean over shots of the per-shot log-loss difference. 2,000 draws (seed 0) of the 328
     matches with replacement (`testrule.match_weights`: each shot weighted by its match's draw count, the sequence of
@@ -18,6 +18,9 @@ Categories (`CATEGORIES`, `category_table`, descriptive)
     category's shots, inside detector-defined categories; a shot whose defining input is missing is outside the
     category's population (it is neither in nor out).
 """
+
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -37,25 +40,35 @@ INTERVAL = 0.95
 ONE_SIDED = 0.95
 
 BOX_LINE = LENGTH - PITCH.penalty_box_length        # 105 - 16.5 = 88.5 m
-CATEGORIES = {                                      # name -> (defining column, rule on its non-missing values)
-    "e3_outside_box": (si.col("shot_x", 0), f"shot_x@0 < {BOX_LINE}"),
-    "e3_angle_lt_15deg": (si.col("angle", 0), "angle@0 < 15 degrees"),
-    "e3_dist_lt_6m": (si.col("dist", 0), "dist@0 < 6 m"),
-    "sn_corner_20s": ("sn_corner_20s", "sn_corner_20s = 1"),
-    "sn_direct_fk": ("sn_direct_fk", "sn_direct_fk = 1"),
+
+
+@dataclass(frozen=True)
+class Category:
+    """A detector-defined category: its defining column, the rule's text and the rule on the column's finite values."""
+
+    column: str
+    rule: str
+    inside: Callable[[np.ndarray], np.ndarray]
+
+
+CATEGORIES = {
+    "e3_outside_box": Category(si.col("shot_x", 0), f"shot_x@0 < {BOX_LINE}", lambda x: x < BOX_LINE),
+    "e3_angle_lt_15deg": Category(si.col("angle", 0), "angle@0 < 15 degrees", lambda x: x < np.radians(15.0)),
+    "e3_dist_lt_6m": Category(si.col("dist", 0), "dist@0 < 6 m", lambda x: x < 6.0),
+    "sn_corner_20s": Category("sn_corner_20s", "sn_corner_20s = 1", lambda x: x == 1.0),
+    "sn_direct_fk": Category("sn_direct_fk", "sn_direct_fk = 1", lambda x: x == 1.0),
 }
 
 
 def category_masks(table: pd.DataFrame) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """name -> (defined, inside) boolean arrays over the population (module docstring)."""
     out = {}
-    for name, (column, _) in CATEGORIES.items():
-        x = table[column].to_numpy(float)
+    for name, category in CATEGORIES.items():
+        x = table[category.column].to_numpy(float)
         defined = np.isfinite(x)
-        with np.errstate(invalid="ignore"):
-            inside = {"e3_outside_box": x < BOX_LINE, "e3_angle_lt_15deg": x < np.radians(15.0),
-                      "e3_dist_lt_6m": x < 6.0}.get(name, x == 1.0)
-        out[name] = (defined, defined & inside)
+        inside = np.zeros(len(x), dtype=bool)
+        inside[defined] = category.inside(x[defined])
+        out[name] = (defined, inside)
     return out
 
 
@@ -126,7 +139,7 @@ def category_table(table: pd.DataFrame, y: np.ndarray, probabilities: dict[str, 
         observed = int(y[inside].sum())
         for arm, p in probabilities.items():
             expected = float(p[inside].sum())
-            row = {"category": name, "rule": CATEGORIES[name][1], "arm": arm, "n_defined": int(defined.sum()),
+            row = {"category": name, "rule": CATEGORIES[name].rule, "arm": arm, "n_defined": int(defined.sum()),
                    "n": int(inside.sum()), "observed": observed, "expected": expected,
                    "o_over_e": observed / expected if expected > 0 else np.nan}
             if arm != reference and inside.any():

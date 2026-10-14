@@ -186,6 +186,8 @@ def out_of_fold_gbm(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, arm: 
     for k in np.unique(folds):
         train, test = folds != k, folds == k
         p[test] = gbm(columns).fit(x[train], y[train]).predict_proba(x[test])[:, 1]
+    if np.isnan(p).any():
+        raise ValueError("the folds do not cover every shot")
     return p
 
 

@@ -23,13 +23,10 @@ def analyse(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, weights: np.n
     designs = all_designs(table, folds) if designs is None else designs
     p = {name: sf.out_of_fold(designs[name], y) for name in sf.ARMS}
     deltas = {name: ss.paired_delta(y, p[name], p["R"], weights) for name in sf.ARMS if name != "R"}
-    out = {"probabilities": p, "scores": {name: ss.scores(y, q) for name, q in p.items()}, "deltas": deltas,
-           "readings": ss.readings(deltas, sf.CONFIRMATORY), "gbm": {}}
-    if with_gbm:
-        for name in sf.GBM_ARMS:
-            q = sf.out_of_fold_gbm(table, folds, y, name)
-            p[f"gbm_{name}"] = q
-            out["gbm"][name] = {"scores": ss.scores(y, q), "delta_vs_R": ss.paired_delta(y, q, p["R"], weights),
-                                "delta_vs_logistic": ss.paired_delta(y, q, p[name], weights)}
-    out["categories"] = ss.category_table(table, y, {name: p[name] for name in sf.ARMS}, weights)
-    return out
+    gbm_p = {name: sf.out_of_fold_gbm(table, folds, y, name) for name in sf.GBM_ARMS} if with_gbm else {}
+    gbm = {name: {"scores": ss.scores(y, q), "delta_vs_R": ss.paired_delta(y, q, p["R"], weights),
+                  "delta_vs_logistic": ss.paired_delta(y, q, p[name], weights)} for name, q in gbm_p.items()}
+    return {"probabilities": p | {f"gbm_{name}": q for name, q in gbm_p.items()},
+            "scores": {name: ss.scores(y, q) for name, q in p.items()}, "deltas": deltas,
+            "readings": ss.readings(deltas, sf.CONFIRMATORY), "gbm": gbm,
+            "categories": ss.category_table(table, y, p, weights)}

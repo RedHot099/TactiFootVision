@@ -27,6 +27,7 @@ from xgpoc.bundle import sha256_file
 from xgpoc.detector import approach1 as a1
 from xgpoc.detector import records as detector_records
 from xgpoc.detector.guard import no_statsbomb_reads
+from xgpoc.eval.calibration import sigmoid
 from xgpoc.paths import INDEX, LABELS_ROOT
 from xgpoc.stack import analysis as sa
 from xgpoc.stack import controls as sc
@@ -81,7 +82,7 @@ def check_controls(folder: Path, protocol_sha256: str, code_digest: str) -> dict
 
 
 def write_json(path: Path, obj) -> None:
-    path.write_text(json.dumps(obj, indent=2, allow_nan=True, default=float) + "\n")
+    path.write_text(json.dumps(obj, indent=2, default=float) + "\n")
 
 
 def read_out_files(out: Path, population: si.Population, result: dict) -> None:
@@ -106,7 +107,7 @@ def run_controls(out: Path, population: si.Population, y: np.ndarray, protocol: 
     weights = ss.bootstrap_weights(population.games)
     a, b = sf.reference_fit(table, y)
     z = table[sf.Z].to_numpy(float)
-    p_r = 1 / (1 + np.exp(-(a + b * z)))
+    p_r = sigmoid(a + b * z)
     nulls, summary["2_synthetic_nulls"] = sc.synthetic_nulls(designs, weights, p_r, log=print)
     nulls.to_csv(out / "synthetic_nulls.csv", index=False, float_format="%.9g")
     summary["2_synthetic_nulls"]["reference"] = {"a": a, "b": b}

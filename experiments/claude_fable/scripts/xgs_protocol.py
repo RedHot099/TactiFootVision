@@ -4,7 +4,7 @@
     ./run.sh --no-sync python scripts/xgs_protocol.py --refreeze --reason "..."    # after a code change only
 
 Builds the population (`xgpoc.stack.inputs.build_population`, inside `no_statsbomb_reads()`; no label is read), checks
-every arm's frozen column list against a design fitted on it, and writes the C5 design (`xgpoc.stack.protocol.design`),
+that every arm's design matrix has one column per frozen name and no banned name (`provenance.check_columns`), and writes the C5 design (`xgpoc.stack.protocol.design`),
 the readings, the inputs' hashes, the population's label-free counts and the code hashes of `xgpoc.stack` and the
 modules it uses (`xgpoc.stack.records.code_hashes`). Refuses an existing protocol unless `--refreeze`, which needs a
 `--reason`, keeps the previous file's SHA-256 and the reason in `history`, and refuses any change to the models, the
@@ -52,21 +52,27 @@ def protocol_record(population: si.Population, history: list[dict]) -> dict:
     }
 
 
+def refreeze_history(path: Path, reason: str | None) -> list[dict]:
+    """The history of a re-frozen protocol: the previous file's entries plus its own SHA-256 and the reason. Refused
+    without a reason or a previous file, and when the models, the read-out or the controls would change."""
+    if not reason or not path.exists():
+        raise SystemExit("a re-freeze needs an existing protocol and --reason")
+    previous = json.loads(path.read_text())
+    if changed := [s for s in FROZEN_SECTIONS if previous["design"][s] != json.loads(json.dumps(pr.design()[s]))]:
+        raise SystemExit(f"a re-freeze may not change {changed}")
+    return [*previous["history"], {"sha256": sha256_file(path), "written": previous["written"], "git": previous["git"],
+                                   "replaced_because": reason}]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out", type=Path, default=ROOT / pr.PROTOCOL)
     parser.add_argument("--refreeze", action="store_true", help="replace the protocol after a code change")
     parser.add_argument("--reason", default=None, help="why the code changed (required with --refreeze)")
     args = parser.parse_args()
-    history = []
-    if args.out.exists():
-        if not args.refreeze or not args.reason:
-            raise SystemExit(f"{args.out} exists; a re-freeze needs --refreeze and --reason")
-        previous = json.loads(args.out.read_text())
-        if changed := [s for s in FROZEN_SECTIONS if previous["design"][s] != json.loads(json.dumps(pr.design()[s]))]:
-            raise SystemExit(f"a re-freeze may not change {changed}")
-        history = [*previous["history"], {"sha256": sha256_file(args.out), "written": previous["written"],
-                                          "git": previous["git"], "replaced_because": args.reason}]
+    history = refreeze_history(args.out, args.reason) if args.refreeze else []
+    if args.out.exists() and not args.refreeze:
+        raise SystemExit(f"{args.out} exists; a re-freeze needs --refreeze and --reason")
     with no_statsbomb_reads():
         population = si.build_population()
     record = protocol_record(population, history)

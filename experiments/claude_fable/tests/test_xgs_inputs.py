@@ -194,3 +194,14 @@ def test_outcomes_are_returned_only_in_the_population_s_order():
     assert si.Outcomes(np.array(["s1", "s2"]), np.array([1, 0])).aligned(population).tolist() == [1, 0]
     with pytest.raises(ValueError, match="order"):
         si.Outcomes(np.array(["s2", "s1"]), np.array([0, 1])).aligned(population)
+
+
+def test_outcomes_are_read_inside_the_seal_and_never_for_a_held_out_shot(tmp_path):
+    index, _, plan = write_sources(tmp_path)
+    plan.to_csv(tmp_path / "plan.csv", index=False)
+    table = pd.DataFrame({"game": ["A", "B"]}, index=pd.Index(["a1", "b1"], name="shot_id"))
+    outcomes = si.load_outcomes(si.Population(table, {}, {}), index, tmp_path / "plan.csv")
+    assert outcomes.shot_id.tolist() == ["a1", "b1"] and outcomes.y.tolist() == [1, 0]
+    held = pd.DataFrame({"game": ["A", "H"]}, index=pd.Index(["a1", "h1"], name="shot_id"))
+    with pytest.raises(ValueError, match="no label"):                       # the seal never hands over h1's label
+        si.load_outcomes(si.Population(held, {}, {}), index, tmp_path / "plan.csv")

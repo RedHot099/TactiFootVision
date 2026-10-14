@@ -77,7 +77,9 @@ def simulate(designs: dict[str, list[sf.FoldDesign]], weights: np.ndarray, p_tru
     return pd.DataFrame(rows)
 
 
-def synthetic_nulls(designs, weights, p_r: np.ndarray, n: int = N_NULL, seed: int = NULL_SEED, log=lambda _: None) -> tuple[pd.DataFrame, dict]:
+def synthetic_nulls(designs: dict[str, list[sf.FoldDesign]], weights: np.ndarray, p_r: np.ndarray, n: int = N_NULL,
+                    seed: int = NULL_SEED, log: Callable[[str], None] = lambda _: None) -> tuple[pd.DataFrame, dict]:
+    """Control 2 (module docstring): (one row per replicate, summary with the pass criterion)."""
     frame = simulate(designs, weights, p_r, n, seed, log)
     rate = float(frame.detectable_any.mean())
     summary = {"replicates": n, "seed": seed, "detectable_rate": rate, "diagnostic_mean_oracle_delta": float(frame.delta_oracle.mean()),
@@ -87,9 +89,9 @@ def synthetic_nulls(designs, weights, p_r: np.ndarray, n: int = N_NULL, seed: in
     return frame, summary
 
 
-def permutation(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, weights: np.ndarray, designs=None,
-                seed: int = PERMUTATION_SEED) -> tuple[dict, dict]:
-    """(the read-out on labels permuted within matches, summary with the pass criterion)."""
+def permutation(table: pd.DataFrame, folds: np.ndarray, y: np.ndarray, weights: np.ndarray,
+                designs: dict[str, list[sf.FoldDesign]] | None = None, seed: int = PERMUTATION_SEED) -> tuple[dict, dict]:
+    """Control 3 (module docstring): (the read-out on labels permuted within matches, summary with the pass criterion)."""
     permuted = permute_within_matches(pd.DataFrame({"goal": y}), table.game.to_numpy(), seed).goal.to_numpy()
     result = sa.analyse(table, folds, permuted, weights, designs)
     rejected = [a for a, r in result["readings"].items() if r["holm_rejected"]]
@@ -133,8 +135,11 @@ def solve_beta(a: float, b: float, z: np.ndarray, d: np.ndarray, target: float =
     return float(brentq(lambda beta: true_delta(beta, a, b, z, d) - target, *BETA_BRACKET, xtol=1e-12))
 
 
-def positive_control(designs, weights, table: pd.DataFrame, a: float, b: float, n: int = N_POSITIVE,
-                     seed: int = POSITIVE_SEED, log=lambda _: None) -> tuple[pd.DataFrame, dict]:
+def positive_control(designs: dict[str, list[sf.FoldDesign]], weights: np.ndarray, table: pd.DataFrame, a: float, b: float,
+                     n: int = N_POSITIVE, seed: int = POSITIVE_SEED,
+                     log: Callable[[str], None] = lambda _: None) -> tuple[pd.DataFrame, dict]:
+    """Control 4 (module docstring) with R's raw-scale (a, b): (one row per replicate, summary with β, power and the
+    pass criterion)."""
     z, d = table[sf.Z].to_numpy(float), signal(table)
     beta = solve_beta(a, b, z, d)
     frame = simulate(designs, weights, sigmoid(a + b * z + beta * d), n, seed, log)

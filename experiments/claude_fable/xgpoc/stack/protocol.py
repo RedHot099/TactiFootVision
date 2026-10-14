@@ -46,7 +46,7 @@ READINGS = [
     "GBM inputs are the raw G inputs without the missing indicators (native NaN), z_g_combo first and monotone "
     "increasing, the S flags for GS; no spline, imputation or standardisation.",
     "Log-loss clips probabilities to [1e-6, 1 - 1e-6] (xgpoc.eval.calibration.EPS); the calibration slope and intercept "
-    "are the unpenalised logistic regression of y on logit(p).",
+    "are the logistic regression of y on logit(p) with C = 1e6 (xgpoc.eval.calibration.PlattScaler).",
     "The one-sided 95% bound of every arm is the 5th percentile of the bootstrap ΔLL: a null reads 'no improvement "
     "larger than |bound|'. The 95th percentile is reported beside it.",
     "Category ΔLL intervals restrict the same 2,000 match draws to the category's shots. A shot whose defining E3 input "
@@ -130,7 +130,7 @@ def design() -> dict:
             "every_arm": "95% interval and one-sided 95% bound (5th percentile; a null reads 'no improvement larger than "
                          "|bound|')",
             "also": ["AUC", "Brier", "calibration slope and intercept"],
-            "categories": {name: rule for name, (_, rule) in ss.CATEGORIES.items()},
+            "categories": {name: c.rule for name, c in ss.CATEGORIES.items()},
             "categories_role": "descriptive: out-of-fold O/E and ΔLL against R inside each category",
         },
         "controls": {
@@ -153,7 +153,9 @@ def design() -> dict:
         "disclosures": [
             "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes.",
             "Stacking provenance: the training-fold z values come from models that saw the scored fold.",
-            "z_g_combo's ensemble carries a Platt fit on all 7,062 labels (2 parameters, shared by every arm).",
+            "z_g_combo's ensemble carries a Platt fit on all 7,062 labels (2 parameters, shared by every arm). As read here "
+            "(readings): the Platt step acts on p_g_combo, not on the z_g_combo the arms use; z carries each member's "
+            "epoch and temperature selected on its held-out fold.",
             "The flag windows were shaped after the StatsBomb recall/precision check on the 135 matches.",
             "The flags are research-only: a product needs an action spotter.",
             "The A1 noise floor is not quoted: the stacker is deterministic.",

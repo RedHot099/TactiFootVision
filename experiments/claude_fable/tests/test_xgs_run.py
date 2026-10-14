@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import xgs_protocol  # noqa: E402
 import xgs_run  # noqa: E402
 from xgpoc.bundle import sha256_file  # noqa: E402
 from xgpoc.stack import fit as sf  # noqa: E402
@@ -96,3 +97,19 @@ def test_the_code_hashes_cover_the_stack_package_and_the_modules_it_uses():
     assert {f"xgpoc/stack/{name}.py" for name in ("inputs", "fit", "stats", "controls", "provenance", "protocol", "analysis")} <= set(files)
     assert "xgpoc/detector/sanitation.py" in files and "scripts/xgs_run.py" not in files
     assert "scripts/xgs_run.py" in records.code_hashes(Path(xgs_run.__file__))["files"]
+
+
+def test_a_refreeze_keeps_the_history_and_refuses_a_changed_threshold(tmp_path):
+    path = tmp_path / "protocol.json"
+    with pytest.raises(SystemExit, match="existing protocol"):
+        xgs_protocol.refreeze_history(path, "code fix")
+    path.write_text(json.dumps({"design": pr.design(), "history": [{"sha256": "a" * 64}], "written": "t", "git": {"sha": "x"}}))
+    with pytest.raises(SystemExit, match="--reason"):
+        xgs_protocol.refreeze_history(path, None)
+    history = xgs_protocol.refreeze_history(path, "code fix")
+    assert [h["sha256"] for h in history] == ["a" * 64, sha256_file(path)] and history[-1]["replaced_because"] == "code fix"
+    design = pr.design()
+    design["controls"]["4_positive"]["pass"] = "mean recovered ΔLL of G in [-0.004, 0.0]"
+    path.write_text(json.dumps({"design": design, "history": [], "written": "t", "git": {}}))
+    with pytest.raises(SystemExit, match="may not change"):
+        xgs_protocol.refreeze_history(path, "looser")

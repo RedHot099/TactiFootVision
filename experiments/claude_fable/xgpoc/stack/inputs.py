@@ -106,7 +106,9 @@ E3_COLUMNS = [c for o in OFFSETS for c in (*base_columns(o), *extra_columns(o))]
 
 
 def filled_frame(offset: int, cached: dict[int, FrameResult | None]) -> FrameResult | None:
-    """The row's frame at `offset` with E3's ball (`extract3.row_features`, step for step), None when unreadable."""
+    """The row's frame at `offset` with E3's ball (`extract3.row_features`, step for step), None when unreadable. It is
+    a copy, not a call, because `extract3` returns features, not the filled frame, and changing it would change the code
+    the E3 cache records; `e3_table` refuses any row whose features differ from the cache, so the copy cannot drift."""
     result = cached.get(offset)
     if result is None:
         return None
