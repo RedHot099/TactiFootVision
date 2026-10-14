@@ -1,7 +1,8 @@
 # Sources of every number in TEST.md (xg-stack 04), the report of the owner-ordered test on the 172 held-out matches.
 # Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
 # Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
-# Test results (ts, tc: confirmatory = true) stand under headings with "wynik testu", never under "wyniki rozwojowe".
+# Test results (ts, tc, sb: confirmatory = true) stand under headings with "wynik testu", never under "wyniki
+# rozwojowe"; the title carries neither label, so the separation binds every section.
 # The preparation (ck) and the before-scoring readings (pb) were written before any test label was read; pb and ts
 # are the same folder (results/xgs_test_report), split by file: before_scoring.json and readings.json.
 # The development run (dv) stands under a "wyniki rozwojowe" heading, as do the development inputs of the power.
@@ -49,8 +50,8 @@ dv = { path = "results/xgs_stack/real", dev = true }
 "b.gate.seed" = { src = "pb:before_scoring.json", keys = ["gate.seed"], fmt = "{:d}" }
 "b.gate.fs" = { src = "pb:before_scoring.json", keys = ["gate.false_success.95"], fmt = "{:.4f}" }
 "b.gate.level" = { src = "pb:before_scoring.json", keys = ["gate.level_in_force"], scale = 100, fmt = "{:.0f}%" }
-"b.dev.shots" = { src = "pb:before_scoring.json", keys = ["power.development.shots"], fmt = "{:,d}" }
-"b.dev.matches" = { src = "pb:before_scoring.json", keys = ["power.development.matches"], fmt = "{:d}" }
+"b.train.shots" = { src = "pb:before_scoring.json", keys = ["power.development.shots"], fmt = "{:,d}" }
+"b.train.matches" = { src = "pb:before_scoring.json", keys = ["power.development.matches"], fmt = "{:d}" }
 "b.dev.sd" = { src = "pb:before_scoring.json", keys = ["power.development.boot_sd"], fmt = "{:.5f}", dev = true }
 "b.dev.point" = { src = "pb:before_scoring.json", keys = ["power.development.delta_ll"], fmt = "{:+.5f}", dev = true }
 "b.recovery" = { src = "pb:before_scoring.json", keys = ["power.recovery"], fmt = "{:.3f}" }
@@ -78,6 +79,7 @@ dv = { path = "results/xgs_stack/real", dev = true }
 "c.zr.sd" = { src = "ck:checks.json", keys = ["z_distribution.ratio.sd"], fmt = "{:.3f}" }
 "c.zr.bounds" = { src = "ck:checks.json", keys = ["z_distribution.bounds.0", "z_distribution.bounds.1"], fmt = "[{:.1f}; {:.2f}]" }
 "c.cov.shots" = { src = "ck:checks.json", keys = ["coverage.shots"], fmt = "{:,d}" }
+"c.miss" = { src = "ck:checks.json", keys = ["e3.shot_missing_t0"], fmt = "{:d}" }
 "c.cov.matches" = { src = "ck:checks.json", keys = ["coverage.matches"], fmt = "{:d}" }
 
 # --- the test (results/xgs_test_report/readings.json, from results/xgs_test/result.json) ---
@@ -119,6 +121,7 @@ dv = { path = "results/xgs_stack/real", dev = true }
 "t.C.slope" = { src = "ts:readings.json", keys = ["scores.g_combo.cal_slope"], fmt = "{:.2f}" }
 
 # --- E3 categories of the test (results/xgs_test/categories.csv, descriptive) ---
+"k.def" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["n_defined"], fmt = "{:,d}" }
 "k.box.n" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["n"], fmt = "{:,d}" }
 "k.box.R" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "R" }, cols = ["o_over_e"], fmt = "{:.2f}" }
 "k.box.G" = { src = "tc:categories.csv", row = { category = "e3_outside_box", arm = "G" }, cols = ["o_over_e"], fmt = "{:.2f}" }

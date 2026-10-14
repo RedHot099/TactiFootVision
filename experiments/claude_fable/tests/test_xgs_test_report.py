@@ -42,3 +42,32 @@ def test_the_power_and_the_readings_carry_every_scenario_and_label():
     gate = {"false_success_rate": {"0.95": 0.01, "0.975": 0.0}, "mc_se": {"0.95": 0.001}, "false_worse_rate_95": 0.2,
             "mean_null_delta": 0.0006, "replicates": 5000, "seed": 301, "level_in_force": 0.95}
     assert rp.before_scoring(gate, power)["gate"]["false_success"] == {"95": 0.01, "975": 0.0}
+
+
+def test_the_inputs_must_share_the_tests_hash_list_which_pins_the_gate_and_power(tmp_path):
+    import json
+
+    import pytest
+    from xgpoc.bundle import sha256_file
+
+    test, statsbomb, prep = tmp_path / "xgs_test", tmp_path / "sb", tmp_path / "prep"
+    for folder in (test, statsbomb, prep):
+        folder.mkdir()
+    gate = prep / "gate.json"
+    gate.write_text("{}")
+    hashlist = tmp_path / "hashes.json"
+    hashlist.write_text(json.dumps({"files": {"prep/gate.json": sha256_file(gate)}}))
+    sha = sha256_file(hashlist)
+    for folder in (test, statsbomb):
+        (folder / "complete.json").write_text(json.dumps({"hashlist_sha256": sha}))
+    assert rp.check_inputs(test, statsbomb, [gate], hashlist) == sha
+    gate.write_text('{"changed": 1}')
+    with pytest.raises(SystemExit, match="not the file the hash list pins"):
+        rp.check_inputs(test, statsbomb, [gate], hashlist)
+    (statsbomb / "complete.json").write_text(json.dumps({"hashlist_sha256": "0" * 64}))
+    with pytest.raises(SystemExit, match="another hash list"):
+        rp.check_inputs(test, statsbomb, [gate], hashlist)
+    (statsbomb / "complete.json").write_text(json.dumps({"hashlist_sha256": sha}))
+    hashlist.write_text("{}")
+    with pytest.raises(SystemExit, match="not the hash list the test ran under"):
+        rp.check_inputs(test, statsbomb, [gate], hashlist)

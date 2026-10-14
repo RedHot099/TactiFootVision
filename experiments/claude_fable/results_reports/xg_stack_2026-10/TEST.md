@@ -1,6 +1,8 @@
-# Test stackera xg-stack na meczach odłożonych: wynik testu
+# Test stackera xg-stack na meczach odłożonych
 
 Data: 2026-10-14. Faza xg-stack, ticket 04, decyzja rady C7. Reguła testu: `research/xg_stack_test_rule.md` (parametry w `research/xg_stack_test_rule.json`). Lista skrótów zamrożona przed odczytem etykiet: `research/xg_stack_test_hashes.json`, SHA-256 `1dbfad14d288592721f2c56dedb8ffb5c2a94d3e89f373dcdb28f531e10b174b`. Raport fazy z wynikami rozwojowymi leży obok (`REPORT.md`).
+
+**Zakres** (zdanie reguły): wynik dotyczy stackera C6 nad zamrożonym G-combo z geometrią E3 w postaci zaudytowanej w fazie pitch-keypoints, a nie struktury z detektora w ogóle.
 
 ## 1. Odpowiedź (wynik testu)
 
@@ -29,7 +31,7 @@ Zdanie zapisane w regule przed testem dla etykiety „equivalent within δ”, z
 
 Punkt odniesienia **R** to `z_g_combo` bez kary. **GS** (G plus flagi SoccerNet) jest tylko opisowy.
 
-**Dopasowanie końcowe.** R, G i GS dopasowano raz, na wszystkich 7 062<!--n:b.dev.shots--> strzałach treningowych z 328<!--n:b.dev.matches--> meczów:
+**Dopasowanie końcowe.** R, G i GS dopasowano raz, na wszystkich 7 062<!--n:b.train.shots--> strzałach treningowych z 328<!--n:b.train.matches--> meczów:
 - karę C wybrano walidacją krzyżową grupowaną po meczach, na 5 foldach gospodarzy;
 - w G wybrane C = 0.003<!--n:c.G.c-->, w GS C = 0.001<!--n:c.GS.c-->, czyli dolna krawędź siatki, którą reguła dopuszcza;
 - R jest bez kary;
@@ -40,7 +42,7 @@ Punkt odniesienia **R** to `z_g_combo` bez kary. **GS** (G plus flagi SoccerNet)
 **Reguła testu (A1).**
 - ΔLL = LL(G) − LL(R), log-loss ważony strzałami, prawdopodobieństwa przycięte na 1e−06<!--n:r.clip-->.
 - Sparowany bootstrap meczów: 5 000<!--n:r.draws--> losowań, ziarno 0.
-- **Sukces:** górna granica przedziału 95%<!--n:t.level--> poniżej 0.
+- **Sukces:** górna granica przedziału 95%<!--n:r.lvl--> poniżej 0 (poziom w mocy po bramce z sekcji 3.2).
 - **Pogorszenie:** dolna granica powyżej 0.
 - **Równoważność (opisowo):** TOST na przedziale 90%<!--n:r.tost-->, przy δ = 0.002<!--n:r.margin--> (wyznacza etykietę) i δ = 0.005<!--n:r.also-->.
 
@@ -76,6 +78,8 @@ Przybliżenie normalne. SD rozwojowego ΔLL dla G to 0.00043<!--n:b.dev.sd-->, a
 | SD × √(M_dev / M_test) | 0.00059<!--n:b.se.match--> | 0.192<!--n:b.pw.match.dev--> | 0.763<!--n:b.pw.match.rec--> | 0.922<!--n:b.pw.match.prac--> |
 | SE testu A1 | 0.00108<!--n:b.se.a1--> | 0.086<!--n:b.pw.a1.dev--> | 0.311<!--n:b.pw.a1.rec--> | 0.456<!--n:b.pw.a1.prac--> |
 
+To liczby planistyczne. SD rozwojowe pochodzi z dopasowań poza foldem na około czterech piątych strzałów treningowych, a dopasowanie końcowe używa wszystkich; stacker odzyskuje tylko część wszczepionego efektu; SE testu A1 dotyczy innego porównania (A1 wobec G-combo) i jest pesymistyczną wrażliwością.
+
 - Przy punkcie rozwojowym P(równoważność w δ = 0.002<!--n:r.margin-->) wynosiła 0.748<!--n:b.pw.eq-->. Etykieta „equivalent within δ” była więc najbardziej prawdopodobnym odczytem.
 - Przy −0.002<!--n:r.prac--> moc sukcesu wynosiła 0.929<!--n:b.pw.shot.prac-->. Efekt na poziomie progu praktycznego test by prawdopodobnie wykrył.
 
@@ -92,13 +96,13 @@ Przybliżenie normalne. SD rozwojowego ΔLL dla G to 0.00043<!--n:b.dev.sd-->, a
 
 Żaden z tych odczytów nie jest sukcesem i żaden nie ratuje ani nie zmienia odpowiedzi z sekcji 1. Każdy jest **hipotezą sformułowaną na tych meczach**.
 
-### 5.1 Pozostałe porównania i miary
+### 5.1 Pozostałe porównania i miary (hipoteza sformułowana na tych meczach)
 
 | Porównanie (opisowe) | ΔLL [95%<!--n:t.level-->] | przedział 90%<!--n:r.tost--> |
 |---|---|---|
 | GS − R | −0.00086 [−0.00185; +0.00011]<!--n:t.gs.ci--> | [−0.00169; −0.00004]<!--n:t.gs.ci90--> |
 | G − wdrożony G-combo | −0.00076 [−0.00207; +0.00052]<!--n:t.gc.ci--> | [−0.00187; +0.00032]<!--n:t.gc.ci90--> |
-| R − wdrożony G-combo | +0.00017 [−0.00037; +0.00073]<!--n:t.rc.ci--> | [−0.00028; +0.00064]<!--n:t.rc.ci90--> |
+| R − wdrożony G-combo (dodane dla odniesienia, poza listą C7) | +0.00017 [−0.00037; +0.00073]<!--n:t.rc.ci--> | [−0.00028; +0.00064]<!--n:t.rc.ci90--> |
 
 | Model | log-loss | AUC | Brier | nachylenie kalibracji |
 |---|---|---|---|---|
@@ -107,10 +111,10 @@ Przybliżenie normalne. SD rozwojowego ΔLL dla G to 0.00043<!--n:b.dev.sd-->, a
 | GS | 0.33694<!--n:t.GS.ll--> | 0.744<!--n:t.GS.auc--> | 0.0998<!--n:t.GS.brier--> | 1.11<!--n:t.GS.slope--> |
 | wdrożony G-combo | 0.33763<!--n:t.C.ll--> | 0.742<!--n:t.C.auc--> | 0.0999<!--n:t.C.brier--> | 1.05<!--n:t.C.slope--> |
 
-- **GS** jest opisowy i nie ma etykiety sukcesu, choć jego przedział 90%<!--n:r.tost--> leży cały poniżej 0.
-- **Nachylenie kalibracji** powyżej 1 we wszystkich modelach oznacza, że na tych meczach predykcje są nieco zbyt ostrożne.
+- **GS** jest opisowy i nie ma etykiety sukcesu. Jego przedział 90%<!--n:r.tost--> leży poniżej 0, ale przedział 90%<!--n:r.tost--> nie jest regułą sukcesu.
+- **Nachylenie kalibracji** jest powyżej 1 we wszystkich modelach (interpretacja: na tych meczach predykcje są nieco zbyt ostrożne).
 
-### 5.2 Mecze ewaluacyjne i mecze bramki
+### 5.2 Mecze ewaluacyjne i mecze bramki (hipoteza sformułowana na tych meczach)
 
 | Mecze | strzały | ΔLL(G − R) [95%<!--n:t.level-->] |
 |---|---|---|
@@ -119,9 +123,9 @@ Przybliżenie normalne. SD rozwojowego ΔLL dla G to 0.00043<!--n:b.dev.sd-->, a
 
 Kierunek jest ten sam w obu grupach.
 
-### 5.3 Kategorie E3
+### 5.3 Kategorie E3 (hipoteza sformułowana na tych meczach)
 
-O/E i ΔLL(G − R) w kategoriach z fazy rozwojowej. Przedziały pochodzą z tych samych losowań, ograniczonych do strzałów kategorii.
+O/E i ΔLL(G − R) w kategoriach z fazy rozwojowej. Przedziały pochodzą z tych samych losowań, ograniczonych do strzałów kategorii. Kategorie E3 są określone na 3 687<!--n:k.def--> strzałach: 132<!--n:c.miss--> strzały bez pozycji strzału E3 przy t0 nie należą ani do kategorii, ani do jej dopełnienia.
 
 | Kategoria | strzały | O/E R | O/E G | ΔLL(G − R) [95%<!--n:t.level-->] |
 |---|---|---|---|---|
@@ -135,14 +139,14 @@ O/E i ΔLL(G − R) w kategoriach z fazy rozwojowej. Przedziały pochodzą z tyc
 - **Kąt < 15°:** tu ΔLL ma przedział poniżej 0. To jedna kategoria z pięciu, bez korekty na wielokrotność, więc to hipoteza, nie wynik.
 - **O/E przy kącie < 15°** pozostaje daleko od 1 w obu modelach (0.75<!--n:k.ang.G--> w G).
 
-### 5.4 Zgodność ze StatsBomb na meczach ewaluacyjnych
+### 5.4 Zgodność ze StatsBomb na meczach ewaluacyjnych (hipoteza sformułowana na tych meczach; Data: StatsBomb.)
 
 Jedno spojrzenie, wykonane po zapisaniu wyniku testu (`scripts/xgs_test_statsbomb.py`). Populacja to 2 721<!--n:s.shots--> sparowanych strzałów ze 135<!--n:r.eval--> meczów ewaluacyjnych, wzięte z tabeli xg-compare. StatsBomb nie jest wejściem, celem ani kryterium żadnego modelu.
 
 **Korelacja Spearmana z xG dostawcy:**
 - R: 0.679<!--n:s.rho.R-->;
 - G: 0.688<!--n:s.rho.G-->;
-- wdrożony G-combo: 0.679<!--n:s.rho.C-->.
+- wdrożony G-combo: 0.679<!--n:s.rho.C--> (dodane dla odniesienia, poza listą C7).
 
 R i G-combo mają tę samą kolejność, bo oba są rosnącą funkcją tego samego z.
 
@@ -170,14 +174,15 @@ R i G-combo mają tę samą kolejność, bo oba są rosnącą funkcją tego same
 - Flagi SoccerNet są wyłącznie badawcze, bo produkt potrzebowałby detektora akcji. GS jest opisowy.
 - Bootstrap meczów losuje mecze dla ustalonych, dopasowanych modeli. Nie obejmuje zmienności samego dopasowania końcowego.
 - W GS wybrane C leży na krawędzi siatki. Reguła to dopuszcza.
+- Pochodzenie stackowania: wartości z treningowe pochodzą z modeli dopasowanych na pozostałych foldach treningowych. Dopasowanie końcowe używa wszystkich 7 062<!--n:b.train.shots--> strzałów treningowych, więc jego koszt estymacji jest niższy niż w fazie rozwojowej.
 
-## 7. Interpretacja (oznaczona jako interpretacja)
+## 7. Wynik testu: interpretacja (oznaczona jako interpretacja)
 
 - **Kierunek się powtórzył.** Na meczach odłożonych G daje ΔLL tego samego znaku i podobnej wielkości co w fazie rozwojowej (sekcja 8).
-- **Wielkość poprawy.** Przedział 90%<!--n:r.tost--> wyklucza poprawę większą niż 0.00192<!--n:t.margin-->, więc ewentualna poprawa leży poniżej progu praktycznego 0.002<!--n:r.margin-->.
-- **Brak dowodu poprawy.** Reguła sukcesu nie przeszła, więc test nie wykazał poprawy, choć przedział 95%<!--n:t.level--> nie wyklucza wartości do −0.00211<!--n:t.g.lo-->.
-- **Wniosek produktowy.** Geometria E3 dołożona do G-combo w tej postaci jest dodatkiem bez praktycznego znaczenia dla log-loss.
-- **Gdzie szukać dalej.** Odczyty opisowe kategorii (sekcja 5.3) i zgodności ze StatsBomb (sekcja 5.4) wskazują te same słabe miejsca co xg-compare: strzały pod ostrym kątem i z bliska. Kolejną dźwignią pozostaje percepcja: identyfikacja bramkarza, piłka i moment strzału.
+- **Brak dowodu poprawy.** Reguła sukcesu nie przeszła, więc test nie wykazał poprawy. Przedział 95%<!--n:t.level--> sięga −0.00211<!--n:t.g.lo-->, czyli za próg praktyczny −0.002<!--n:r.prac-->: test nie wykluczył poprawy na poziomie progu.
+- **Równoważność jest odczytem opisowym.** Przedział 90%<!--n:r.tost--> mieści się w ±0.002<!--n:r.margin--> (TOST, najmniejszy margines 0.00192<!--n:t.margin-->), ale to nie jest wykluczenie efektu. Pokrycie granicy jednostronnej w symulacjach C6 było poniżej progu, więc raport nie używa sformułowania „brak poprawy większej niż X”.
+- **Wniosek produktowy.** Test nie wykazał praktycznej korzyści z geometrii E3 dołożonej do G-combo w tej postaci.
+- **Gdzie szukać dalej.** Odczyty opisowe kategorii (sekcja 5.3) i zgodności ze StatsBomb (sekcja 5.4) wskazują te same słabe miejsca co xg-compare: strzały pod ostrym kątem i z bliska (hipoteza sformułowana na tych meczach; Data: StatsBomb.). Kolejną dźwignią pozostaje percepcja: identyfikacja bramkarza, piłka i moment strzału.
 
 ## 8. Kontekst: wyniki rozwojowe
 
