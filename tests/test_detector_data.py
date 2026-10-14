@@ -532,3 +532,101 @@ def test_sportsmot_clip_samples_reads_gt_at_stride(tmp_path):
         "clip": "v_abc_c001",
         "frame": 11,
     }
+
+
+# ------------------------------------------------------------------- issia
+XGTF = """<?xml version="1.0" encoding="UTF-8"?>
+<viper xmlns="http://lamp.cfar.umd.edu/viper#" xmlns:data="http://lamp.cfar.umd.edu/viperdata#">
+ <data><sourcefile filename="x">
+  <object framespan="0:200" id="0" name="BALL">
+   <attribute name="BallPos"><data:point framespan="100:101" x="30" y="40"/></attribute>
+   <attribute name="BallShot"><data:bvalue framespan="100:100" value="true"/></attribute>
+  </object>
+  <object framespan="0:200" id="1" name="Person">
+   <attribute name="LOCATION"><data:bbox framespan="40:110" height="100" width="20" x="10" y="20"/></attribute>
+  </object>
+ </sourcefile></data>
+</viper>"""
+
+
+def test_issia_xgtf_parse_frame_shift_mirroring_and_ball_box(tmp_path, monkeypatch):
+    from scripts.detector_data import issia
+
+    path = tmp_path / "cam.xgtf"
+    path.write_text(XGTF)
+    persons, balls = issia.parse_xgtf(path)
+    assert persons[40] == [[10, 20, 30, 120]] and len(persons) == 71
+    assert balls == {100: [[30, 40]], 101: [[30, 40]]}
+    monkeypatch.setattr(issia, "STRIDE", 5)
+    labels = issia.frame_labels(persons, balls, 1920, camera=1)
+    # first annotated frame 40 + 50 skipped -> 90, 95, ..., 110; video frame = annotation frame - 8
+    assert sorted(labels) == [82, 87, 92, 97, 102]
+    boxes, ids = labels[92]
+    assert ids == [2, 0]
+    np.testing.assert_allclose(
+        boxes[1], [24, 34, 36, 46]
+    )  # 0.12 x 100 px = 12 px square around (30, 40)
+    mirrored = issia.ball_box([30, 40], [[10, 20, 30, 120]], 1920, camera=2)
+    np.testing.assert_allclose(mirrored, [1884, 34, 1896, 46])
+
+
+# ------------------------------------------------ soccer player detection
+def test_soccer_player_detection_reads_mat_annotations(tmp_path):
+    from scipy.io import savemat
+    from scripts.detector_data import soccer_player_detection as spd
+
+    annot = np.zeros((1, 2), dtype=[("BBox", "O"), ("ImgName", "O")])
+    annot[0, 0] = (np.array([[1.0, 2.0, 11.0, 22.0]]), np.array(["0001.jpg"]))
+    annot[0, 1] = (np.zeros((0, 4)), np.array(["0002.jpg"]))
+    for game in (1, 2):
+        savemat(tmp_path / f"annotation_{game}.mat", {"annot": annot})
+        write(tmp_path / f"DataSet_{game:03d}" / "0001.jpg", picture(game))
+    read = spd.read_annotations(tmp_path / "annotation_1.mat")
+    np.testing.assert_allclose(read["0001.jpg"], [[1, 2, 11, 22]])
+    assert read["0002.jpg"].shape == (0, 4)
+    dataset, tags = spd.build(tmp_path)  # 0002.jpg has no image file: skipped
+    assert len(dataset) == 2
+    first = dataset["train"][0]
+    assert tags[str(first.image_path)] == {
+        "game": "youtube:XRfXrj9Bkiw",
+        "clip": "DataSet_001",
+        "frame": 1,
+    }
+    assert first.annotations.class_ids.tolist() == [2]
+
+
+# -------------------------------------------------------------- remote zip
+def test_remote_zip_lists_and_extracts_members_through_byte_ranges(
+    tmp_path, monkeypatch
+):
+    from scripts.detector_data import remote_zip
+
+    archive = tmp_path / "a.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr(
+            "teamtrack/soccer_side/train/a.csv",
+            "x" * 5000,
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+        z.writestr(
+            "teamtrack/basketball/b.csv", "stored", compress_type=zipfile.ZIP_STORED
+        )
+        z.writestr("../evil.txt", "no")
+    blob = archive.read_bytes()
+    monkeypatch.setattr(remote_zip, "total_size", lambda url: len(blob))
+    monkeypatch.setattr(
+        remote_zip, "get_range", lambda url, start, end: blob[start : end + 1]
+    )
+    members = {m["name"]: m for m in remote_zip.central_directory("u")}
+    assert set(members) == {
+        "teamtrack/soccer_side/train/a.csv",
+        "teamtrack/basketball/b.csv",
+        "../evil.txt",
+    }
+    out = tmp_path / "out"
+    for name in ("teamtrack/soccer_side/train/a.csv", "teamtrack/basketball/b.csv"):
+        remote_zip.extract("u", members[name], remote_zip.safe_path(out, name))
+    assert (out / "teamtrack/soccer_side/train/a.csv").read_text() == "x" * 5000
+    assert (out / "teamtrack/basketball/b.csv").read_text() == "stored"
+    with pytest.raises(ValueError, match="unsafe"):
+        remote_zip.safe_path(out, "../evil.txt")
