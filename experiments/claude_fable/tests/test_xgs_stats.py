@@ -60,20 +60,23 @@ def test_the_read_out_reports_every_arm_and_the_categories():
     table = synthetic_table(n_matches=40, per_match=20, seed=12)
     y = outcomes(table, seed=13)
     weights = ss.bootstrap_weights(table.game.to_numpy(), draws=200, seed=0)
-    result = sa.analyse(table, table.fold.to_numpy(), y, weights)
-    assert set(result["deltas"]) == {"G", "GS", "S", "ALL"} and set(result["readings"]) == {"G", "GS"}
+    spec = sf.spec("c", table)
+    result = sa.analyse(table, table.fold.to_numpy(), y, weights, spec)
+    assert set(result["deltas"]) == {"G", "GS", "S", "Q", "ALL"} and set(result["readings"]) == {"G", "GS"}
     assert set(result["gbm"]) == {"G", "GS"} and set(result["scores"]["R"]) >= {"log_loss", "auc", "brier", "cal_slope", "cal_intercept"}
+    assert result["chosen_c"]["R"] == [1.0] * 5 and set(result["chosen_c"]["G"]) <= set(sf.C_GRID)
     categories = result["categories"]
-    assert set(categories.category) == set(ss.CATEGORIES) and set(categories.arm) == set(sf.ARMS)
+    assert set(categories.category) == set(ss.CATEGORIES) and set(categories.arm) == set(sf.ARM_NAMES)
     assert categories.loc[categories.arm == "R", "delta_ll"].isna().all()
 
 
-def test_a_pure_noise_feature_set_gives_no_holm_rejection_in_the_long_run():
+@pytest.mark.parametrize("candidate", ["b", "c"])
+def test_a_pure_noise_feature_set_gives_no_holm_rejection_in_the_long_run(candidate):
     table = synthetic_table(n_matches=40, per_match=30, seed=14)
-    folds = table.fold.to_numpy()
-    designs = {name: sf.fold_designs(table, folds, sf.ARMS[name]) for name in ("R", *sf.CONFIRMATORY)}
+    spec = sf.spec(candidate, table)
+    designs = sf.all_designs(table, table.fold.to_numpy(), spec, ("R", *sf.CONFIRMATORY))
     weights = ss.bootstrap_weights(table.game.to_numpy(), draws=300, seed=0)
     p_true = 1 / (1 + np.exp(-table[sf.Z].to_numpy()))
-    frame = sc.simulate(designs, weights, p_true, 40, seed=15)
+    frame = sc.simulate(designs, weights, spec.model, sc.fixed(p_true), 30, seed=15)
     assert frame.detectable_any.mean() <= 0.05
     assert frame.delta_G.mean() > 0                       # noise inputs cost log-loss out of fold

@@ -11,7 +11,9 @@ E3 inputs (`e3_table`)
     (`extract3.row_features`): the replayed raw features must equal the cached `features.parquet` exactly, else nothing
     is built. The frozen sanitation rule (`detector.sanitation.sanitised_features`) is then applied to the same
     replayed frames, as for D3. Per offset (t0 and -400 ms; every column is named `<name>@<offset>`):
-        dist, angle          sanitised; missing when the shot location is missing or masked
+        dist, angle          sanitised; missing when the shot location is missing or masked. The angle is wrapped to
+                             [0, π] by min(θ, 2π - θ) after the replay check (council C6): the frozen geometry's
+                             abs(a2 - a1) exceeds π for a shot location behind the goal line
         shot_x               aligned shot x of the extraction, masked like the geometry (sanitised shot_ok = 0)
         shot_missing         1 - sanitised shot_ok (the missing indicator of dist, angle and shot_x)
         ball_<level>         the sanitised ball source one-hot: none, own (the row's own frame), m<k> (the fallback frame
@@ -148,9 +150,10 @@ def offset_row(offset: int, raw: dict, clean: dict, kp_confidence: float) -> dic
     return {col(k, offset): float(v) for k, v in out.items()}
 
 
-def e3_table(frames: pd.DataFrame, cached_features: pd.DataFrame) -> pd.DataFrame:
-    """`E3_COLUMNS`, one row per shot of `frames` (index shot_id, sorted). Raises unless the replayed raw features equal
-    `cached_features` (the E3 `features.parquet` rows of the same shots) exactly."""
+def e3_table(frames: pd.DataFrame, cached_features: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
+    """(`E3_COLUMNS`, one row per shot of `frames`, index shot_id, sorted; the number of shots per offset whose angle
+    the wrap changed). Raises unless the replayed raw features equal `cached_features` (the E3 `features.parquet` rows
+    of the same shots) exactly; the angle wrap (`wrap_angle`) is applied after that check."""
     raw_rows, rows = [], {}
     for shot_id, offset, filled, kp_confidence in replay(frames):
         raw = shot_features(filled, x3.COMMON["homography_min_confidence"]) if filled is not None else missing_features()
@@ -167,7 +170,18 @@ def e3_table(frames: pd.DataFrame, cached_features: pd.DataFrame) -> pd.DataFram
     table = pd.DataFrame.from_dict(rows, orient="index")[E3_COLUMNS]
     table.index.name = "shot_id"
     check_missing_groups(table)
-    return table.sort_index()
+    changed = {str(o): int((table[col("angle", o)] > np.pi).sum()) for o in OFFSETS}
+    for offset in OFFSETS:
+        table[col("angle", offset)] = wrap_angle(table[col("angle", offset)].to_numpy())
+    return table.sort_index(), changed
+
+
+def wrap_angle(theta: np.ndarray) -> np.ndarray:
+    """min(θ, 2π - θ): the frozen `abs(a2 - a1)` of `features.geometry` exceeds π for a shot location behind the goal
+    line (council C6); NaN stays NaN."""
+    theta = np.asarray(theta, float)
+    return np.minimum(theta, 2 * np.pi - theta)
+
 
 
 def check_missing_groups(table: pd.DataFrame) -> None:
@@ -284,7 +298,7 @@ def build_population(index: Path = INDEX, oof: Path = OOF, e3: Path = E3, labels
     ids = sorted(shots.index)
     frames = pd.read_parquet(e3 / "frames.parquet", filters=[("shot_id", "in", ids)])
     features = pd.read_parquet(e3 / "features.parquet", filters=[("shot_id", "in", ids)])
-    detector = e3_table(frames, features)
+    detector, wrapped = e3_table(frames, features)
     if not detector.index.equals(shots.index):
         raise ValueError("E3 does not cover the population exactly")
     games = sorted(shots.game.unique())
@@ -298,7 +312,8 @@ def build_population(index: Path = INDEX, oof: Path = OOF, e3: Path = E3, labels
               "flags": {f: int(table[f].sum()) for f in S_FLAGS},
               "e3_t0": {"shot_missing": int(table[col("shot_missing", 0)].sum()),
                         "frame_missing": int(table[col("frame_missing", 0)].sum()),
-                        "kp_conf_missing": int(table[col("kp_conf_missing", 0)].sum())}}
+                        "kp_conf_missing": int(table[col("kp_conf_missing", 0)].sum())},
+              "angles_wrapped": wrapped}
     if {k: counts[k] for k in EXPECTED} != EXPECTED:
         raise ValueError(f"population {counts} is not C5's {EXPECTED}")
     return Population(table, inputs, counts)

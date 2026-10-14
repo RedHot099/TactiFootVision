@@ -1,7 +1,8 @@
 """Control 1 of xg-stack: the provenance assertions (ticket 01, council C5). Each check raises `ProvenanceError`;
 `control` runs them all and records which passed.
 
-    columns     every arm's design columns equal the frozen list, and a fitted design matrix has exactly that width
+    columns     every arm's design columns equal the frozen list, a fitted design matrix has exactly that width, and no
+                input of an arm is constant (the zero-variance rule of council C6)
     names       no design column name contains a banned fragment (`BANNED`, case-insensitive)
     held_out    no shot and no match of the population is one of the 172 held-out matches of the xg-vendor split plan
                 (the 135 evaluation and the 37 gate matches), by match and by shot id
@@ -76,8 +77,15 @@ def check_flag_code(shots: pd.DataFrame, annotations: dict[str, list[dict]]) -> 
         raise ProvenanceError("the SoccerNet flags depend on a Goal annotation or on a shot's label type")
 
 
-def control(population: si.Population, frozen_columns: dict[str, list[str]], plan: pd.DataFrame, index_shots: pd.DataFrame,
-            annotations: dict[str, list[dict]]) -> dict:
+def check_constant(table: pd.DataFrame, arm: sf.Arm) -> None:
+    try:
+        sf.check_no_constant(table, arm)
+    except ValueError as e:
+        raise ProvenanceError(str(e)) from None
+
+
+def control(population: si.Population, spec: sf.Spec, frozen_columns: dict[str, list[str]], plan: pd.DataFrame,
+            index_shots: pd.DataFrame, annotations: dict[str, list[dict]]) -> dict:
     """Run every check (module docstring) and return {"passed", "checks": [{"check", "passed", "detail"}]}."""
     table = population.table
     checks = []
@@ -89,14 +97,15 @@ def control(population: si.Population, frozen_columns: dict[str, list[str]], pla
         except ProvenanceError as e:
             checks.append({"check": name, "passed": False, "detail": str(e)})
 
-    if set(frozen_columns) != set(sf.ARMS):
+    if set(frozen_columns) != set(spec.arms):
         checks.append({"check": "columns", "passed": False, "detail": f"frozen arms {sorted(frozen_columns)}"})
-    for name, arm in sf.ARMS.items():
+    for name, arm in spec.arms.items():
         if name in frozen_columns:
             x = sf.Preprocessor.fit(arm, table)(table.iloc[:5])
             run(f"columns:{name}", check_columns, arm, frozen_columns[name], x)
+            run(f"constant:{name}", check_constant, table, arm)
     for name in sf.GBM_ARMS:
-        run(f"names:gbm_{name}", check_names, sf.GBM_COLUMNS[name])
+        run(f"names:gbm_{name}", check_names, spec.gbm_columns[name])
     run("held_out", check_held_out, population.games, table.index, plan, index_shots)
     run("flag_code", check_flag_code, table[["game", "half", "position_ms"]], annotations)
     return {"passed": all(c["passed"] for c in checks), "checks": checks}

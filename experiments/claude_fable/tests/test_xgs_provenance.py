@@ -16,15 +16,17 @@ def test_a_banned_fragment_in_a_design_column_raises(name):
         sp.check_names(["z_g_combo", name])
 
 
-def test_the_frozen_arms_pass_the_name_check():
-    for arm in sf.ARMS.values():
+@pytest.mark.parametrize("candidate", ["b", "c", "bc"])
+def test_every_candidate_s_arms_pass_the_name_check(candidate):
+    spec = sf.spec(candidate, synthetic_table())
+    for arm in spec.arms.values():
         sp.check_names(arm.columns)
-    for columns in sf.GBM_COLUMNS.values():
+    for columns in spec.gbm_columns.values():
         sp.check_names(columns)
 
 
 def test_a_design_that_differs_from_the_frozen_list_raises():
-    arm = sf.ARMS["G"]
+    arm = sf.spec("c", synthetic_table()).arms["G"]
     sp.check_columns(arm, arm.columns, np.zeros((3, len(arm.columns))))
     with pytest.raises(sp.ProvenanceError, match="differ"):
         sp.check_columns(arm, arm.columns[:-1])
@@ -85,10 +87,16 @@ def test_control_records_every_check_and_fails_on_any(monkeypatch):
     table["position_ms"] = 600000
     population = si.Population(table, {}, {})
     index_shots = pd.DataFrame({"shot_id": table.index, "game": table.game})
-    frozen = {name: arm.columns for name, arm in sf.ARMS.items()}
+    spec = sf.spec("b", table)
+    frozen = {name: arm.columns for name, arm in spec.arms.items()}
     annotations = {"t0": labels(), "t1": labels("away")}
-    record = sp.control(population, frozen, plan(), index_shots, annotations)
-    assert record["passed"] and {c["check"] for c in record["checks"]} >= {"held_out", "flag_code", "columns:G", "names:gbm_GS"}
+    record = sp.control(population, spec, frozen, plan(), index_shots, annotations)
+    assert record["passed"] and {c["check"] for c in record["checks"]} >= {"held_out", "flag_code", "columns:G", "constant:G",
+                                                                             "names:gbm_GS"}
     frozen["GS"] = frozen["GS"][:-1]
-    record = sp.control(population, frozen, plan(), index_shots, annotations)
+    record = sp.control(population, spec, frozen, plan(), index_shots, annotations)
     assert not record["passed"] and [c["check"] for c in record["checks"] if not c["passed"]] == ["columns:GS"]
+    table["ball_none@0"] = 0.0                                                # a constant input the frozen spec still holds
+    record = sp.control(si.Population(table, {}, {}), spec, {n: a.columns for n, a in spec.arms.items()}, plan(), index_shots,
+                        annotations)
+    assert {c["check"] for c in record["checks"] if not c["passed"]} == {"constant:G", "constant:GS", "constant:Q", "constant:ALL"}

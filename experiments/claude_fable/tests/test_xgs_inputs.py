@@ -132,7 +132,7 @@ def planted_frames() -> pd.DataFrame:
 def test_e3_table_replays_the_cached_features_and_applies_the_sanitation():
     frames = planted_frames()
     cached = x3.replay_features(frames, si.E3_CONFIG, si.OFFSETS)
-    table = si.e3_table(frames, cached)
+    table, _ = si.e3_table(frames, cached)
     assert list(table.index) == ["a", "b", "c"] and list(table.columns) == si.E3_COLUMNS
     assert table.loc["a", "ball_m400@0"] == 1.0 and table.loc["a", "ball_own@-400"] == 1.0
     assert table.loc["a", "dist@0"] == pytest.approx(np.hypot(105 - 92.0, 34 - 33.0))       # the -400 ms ball
@@ -153,7 +153,7 @@ def test_e3_table_refuses_cached_features_that_the_replay_does_not_reproduce():
 
 def test_missing_groups_are_checked():
     frames = planted_frames()
-    table = si.e3_table(frames, x3.replay_features(frames, si.E3_CONFIG, si.OFFSETS))
+    table, _ = si.e3_table(frames, x3.replay_features(frames, si.E3_CONFIG, si.OFFSETS))
     table.loc["a", "shot_missing@0"] = 1.0
     with pytest.raises(ValueError, match="not missing exactly"):
         si.check_missing_groups(table)
@@ -205,3 +205,18 @@ def test_outcomes_are_read_inside_the_seal_and_never_for_a_held_out_shot(tmp_pat
     held = pd.DataFrame({"game": ["A", "H"]}, index=pd.Index(["a1", "h1"], name="shot_id"))
     with pytest.raises(ValueError, match="no label"):                       # the seal never hands over h1's label
         si.load_outcomes(si.Population(held, {}, {}), index, tmp_path / "plan.csv")
+
+
+def test_the_angle_wrap_folds_angles_above_pi_and_is_applied_after_the_replay_check():
+    np.testing.assert_allclose(si.wrap_angle(np.array([0.3, np.pi, 4.96, np.nan])), [0.3, np.pi, 2 * np.pi - 4.96, np.nan])
+    behind = [(106.0, 34.0, ATT, "player"), (100.0, 34.0, DEF, "player"), (104.0, 34.5, DEF, "goalkeeper")]
+    rows = []
+    for offset in (0, -400):
+        frame = frame_with(behind, (106.0, 34.0), keypoint_conf=np.full(32, 0.9))
+        rows.append(ex.frame_row("d", offset, f"d{offset}.jpg", frame))
+    frames = pd.DataFrame(rows)
+    cached = x3.replay_features(frames, si.E3_CONFIG, si.OFFSETS)
+    assert (cached.angle > np.pi).all()                                   # the frozen geometry, unwrapped
+    table, changed = si.e3_table(frames, cached)                          # the replay check passed on the raw angle
+    assert changed == {"0": 1, "-400": 1}
+    assert table.loc["d", "angle@0"] == pytest.approx(2 * np.pi - cached.angle.iloc[0]) and table.loc["d", "angle@0"] <= np.pi
