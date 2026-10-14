@@ -702,3 +702,33 @@ def test_pool_index_maps_the_gsr_index_to_the_schema(tmp_path):
     with pytest.raises(ValueError, match="missing GSR columns"):
         gsr.drop(columns=["clip"]).to_parquet(path)
         pool_index.build(tmp_path / "sets", path)
+
+
+# ----------------------------------------------------------------- soccana
+def test_soccana_loads_three_classes_into_the_four_and_names_families(
+    tmp_path, monkeypatch
+):
+    from scripts.detector_data import soccana
+
+    raw = tmp_path / "V1"
+    write(raw / "images" / "train" / "v3_sahi_0012.jpg", picture(1))
+    (raw / "labels" / "train").mkdir(parents=True)
+    (raw / "labels" / "train" / "v3_sahi_0012.txt").write_text(
+        "0 0.5 0.5 0.1 0.2\n1 0.2 0.2 0.1 0.2\n2 0.7 0.7 0.01 0.01\n"
+    )
+    write(raw / "images" / "test" / "tbd_v_7.jpg", picture(2))
+    monkeypatch.setattr(soccana, "WORK", tmp_path / "work")
+    dataset = soccana.load(raw)
+    assert dataset.split_names == ["train", "test"]
+    assert dataset["train"][0].annotations.class_ids.tolist() == [2, 3, 0]
+    assert soccana.prefix(Path("v3_sahi_0012.jpg")) == "v3_sahi"
+    assert not (raw / "data.yaml").exists()
+
+
+def test_reference_id_names_v3_work_copies():
+    path = "/x/work/soccernet_v3/images/train/england_epl__2014-2015__m__3_1.jpg"
+    assert common.reference_id(path) == (
+        "v3:england_epl__2014-2015__m__3_1",
+        "soccernet_v3",
+        None,
+    )

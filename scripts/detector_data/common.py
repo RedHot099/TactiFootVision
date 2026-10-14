@@ -264,7 +264,7 @@ def reference_id(path: str) -> tuple[str, str, str | None]:
     """``(near_dup_of, near_dup_set, gsr_split)`` for a benchmark frame path.
 
     GSR frames become ``gsr:<split>/<clip>/<frame>`` (e.g. ``gsr:valid/SNGS-021/000001``); other references become
-    ``<set>:<file name>``.
+    ``football_yolo_valid:<file name>``, and SoccerNet-v3 frames ``v3:<work-copy stem>``.
     """
     parts = Path(path).parts
     if (
@@ -274,6 +274,8 @@ def reference_id(path: str) -> tuple[str, str, str | None]:
     ):
         split, clip, frame = parts[-4], parts[-3], Path(parts[-1]).stem
         return f"gsr:{split}/{clip}/{frame}", f"gsr_{split}", split
+    if "soccernet_v3" in parts:  # a v3 frame (work copy): see v3_references()
+        return f"v3:{Path(path).stem}", "soccernet_v3", None
     return f"football_yolo_valid:{parts[-1]}", "football_yolo_valid", None
 
 
@@ -354,6 +356,21 @@ def thin_video_frames(dataset: Dataset, thin: bool = True) -> tuple[Dataset, int
     return drop_paths(dataset, drop), len(drop)
 
 
+def v3_references(
+    cache_dir: Path = ROOT / "leak_refs",
+) -> tuple[Fingerprints, dict[str, dict]]:
+    """Fingerprints of every SoccerNet-v3 frame in ``sets/soccernet_v3`` and ``{v3 work path: {game, xg_role}}``.
+
+    For sources that mix in SoccerNet frames of unknown games: a hit gives the image the v3 game and its xG role.
+    """
+    manifest = json.loads((ROOT / "sets/soccernet_v3/manifest.json").read_text())
+    rows = {
+        r["source_image"]: {"game": r["game"], "xg_role": r["xg_role"]}
+        for r in manifest["per_image"]
+    }
+    return Fingerprints.cached(cache_dir / "soccernet_v3.npz", sorted(rows)), rows
+
+
 # ------------------------------------------------------------------- export
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -392,7 +409,8 @@ SCHEMA: dict[str, str] = {
     "gsr_split": "GSR split of the game or of the matched benchmark frame (train / valid / test / challenge), or null",
     "near_dup_of": "benchmark frame this picture duplicates ('gsr:<split>/<clip>/<frame>' or "
     "'football_yolo_valid:<file>'), or null",
-    "near_dup_set": "gsr_valid / gsr_test / football_yolo_valid, or null",
+    "near_dup_set": "gsr_valid / gsr_test / football_yolo_valid (benchmark), or soccernet_v3 (sources of unknown "
+    "provenance are also matched against every v3 frame, so v3 game and xg_role carry over), or null",
     "near_dup_corr": "thumbnail correlation of the best near-dup hit, or null",
     "near_dup_hits": "number of confirmed benchmark near-dup pairs",
     "licence": "short licence tag of the source",
