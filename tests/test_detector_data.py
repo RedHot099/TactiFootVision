@@ -630,3 +630,23 @@ def test_remote_zip_lists_and_extracts_members_through_byte_ranges(
     assert (out / "teamtrack/basketball/b.csv").read_text() == "stored"
     with pytest.raises(ValueError, match="unsafe"):
         remote_zip.safe_path(out, "../evil.txt")
+
+
+# --------------------------------------------------------------- teamtrack
+def test_teamtrack_csv_reads_players_and_ball_and_skips_empty_cells(tmp_path):
+    from scripts.detector_data import teamtrack
+
+    path = tmp_path / "F_20220220_1_0000_0030.csv"
+    path.write_text(
+        "TeamID,0,0,0,0,BALL,BALL,BALL,BALL\n"
+        "PlayerID,7,7,7,7,BALL,BALL,BALL,BALL\n"
+        "Attributes,bb_height,bb_left,bb_top,bb_width,bb_height,bb_left,bb_top,bb_width\n"
+        "frame,,,,,,,,\n"
+        "1,40.0,100.0,50.0,20.0,6.0,300.0,80.0,6.0\n"
+        "2,41.0,101.0,51.0,21.0,,,,\n"
+    )
+    labels = teamtrack.read_annotations(path)
+    boxes, ids = labels[1]
+    np.testing.assert_allclose(boxes, [[100, 50, 120, 90], [300, 80, 306, 86]])
+    assert ids == [2, 0]
+    assert labels[2][1] == [2]
