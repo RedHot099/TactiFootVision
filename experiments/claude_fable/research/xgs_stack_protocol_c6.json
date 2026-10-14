@@ -1,0 +1,817 @@
+{
+  "purpose": "xg-stack, council C6: the frozen design of the chosen candidate, written after the selection on simulated outcomes and before any arm is fitted on real labels (xg-stack ticket 01)",
+  "plan": {
+    "path": "research/xgs_stack_c6_plan.json",
+    "sha256": "f04bb774dc35ad99e56816f5641110d5872dbdcdd62672050ca86dda0059edb2"
+  },
+  "selection": {
+    "path": "results/xgs_stack/selection",
+    "complete_sha256": "0446e1a343f2eccf36d32cfc9ad8604e07fdfee5ac72495b54b1bdff4b108608",
+    "summary_sha256": "2e6094e206a1b24cf2392d7379f92ccc3d1258b00fbd8438ff8ce9ce83bfb642",
+    "chosen": "bc",
+    "averaged_power_G": {
+      "b": 0.41500000000000004,
+      "c": 0.6275,
+      "bc": 0.7224999999999999
+    },
+    "observed_recovery_b": -0.0015509877668063677
+  },
+  "design": {
+    "population": {
+      "shots": 7062,
+      "matches": 328,
+      "folds": 5,
+      "rule": "the non-penalty shots of results/xgd_a1_ensemble/oof.csv (the 328 training matches of the xg-vendor split plan), with the host folds of cache/folds_xgv_home5.csv",
+      "outcome": "the index goal column (v1.2 index, xgpoc.paths.INDEX), read inside the held-out label seal, kept apart from the design; never an input",
+      "never": [
+        "StatsBomb in any form",
+        "any shot or label of the 172 held-out matches (135 evaluation, 37 gate)"
+      ]
+    },
+    "frame_logit": {
+      "column": "z_g_combo",
+      "source": "results/xgd_a1_ensemble/oof.csv"
+    },
+    "e3": {
+      "source": "cache/xgd_full3/E3 (frames.parquet, features.parquet)",
+      "config": "E3",
+      "ball_source_order": {
+        "0": [
+          -400,
+          -800,
+          0
+        ],
+        "-400": [
+          -400,
+          -800
+        ]
+      },
+      "replay": "the frames are replayed with E3's ball-source rule; the replayed raw features must equal features.parquet exactly",
+      "sanitation": "xgpoc.detector.sanitation.sanitised_features on the replayed frames",
+      "angle_wrap": "min(\u03b8, 2\u03c0 - \u03b8) on every angle column, after the replay check (C6)",
+      "renamed": {
+        "shooter_by_goal": "shooter_by_net",
+        "gk_dist_goal": "gk_dist_net"
+      },
+      "ball_levels": {
+        "0": [
+          "none",
+          "own",
+          "m400",
+          "m800"
+        ],
+        "-400": [
+          "none",
+          "own",
+          "m800"
+        ]
+      },
+      "missing_groups": {
+        "0": {
+          "shot_missing@0": [
+            "dist@0",
+            "angle@0",
+            "shot_x@0"
+          ],
+          "kp_conf_missing@0": [
+            "kp_instance_conf@0"
+          ],
+          "frame_missing@0": [
+            "n_keypoints@0",
+            "n_players@0"
+          ],
+          "ff_def_cone_missing@0": [
+            "ff_def_cone@0"
+          ],
+          "def_cone_ge1_missing@0": [
+            "def_cone_ge1@0"
+          ],
+          "def_cone_ge2_missing@0": [
+            "def_cone_ge2@0"
+          ],
+          "ff_near_opp_missing@0": [
+            "ff_near_opp@0"
+          ],
+          "ff_opp_3m_missing@0": [
+            "ff_opp_3m@0"
+          ],
+          "gk_depth_missing@0": [
+            "gk_depth@0"
+          ],
+          "gk_off_line_abs_missing@0": [
+            "gk_off_line_abs@0"
+          ],
+          "gk_dist_net_missing@0": [
+            "gk_dist_net@0"
+          ]
+        },
+        "-400": {
+          "shot_missing@-400": [
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400"
+          ],
+          "kp_conf_missing@-400": [
+            "kp_instance_conf@-400"
+          ],
+          "frame_missing@-400": [
+            "n_keypoints@-400",
+            "n_players@-400"
+          ],
+          "ff_def_cone_missing@-400": [
+            "ff_def_cone@-400"
+          ],
+          "def_cone_ge1_missing@-400": [
+            "def_cone_ge1@-400"
+          ],
+          "def_cone_ge2_missing@-400": [
+            "def_cone_ge2@-400"
+          ],
+          "ff_near_opp_missing@-400": [
+            "ff_near_opp@-400"
+          ],
+          "ff_opp_3m_missing@-400": [
+            "ff_opp_3m@-400"
+          ],
+          "gk_depth_missing@-400": [
+            "gk_depth@-400"
+          ],
+          "gk_off_line_abs_missing@-400": [
+            "gk_off_line_abs@-400"
+          ],
+          "gk_dist_net_missing@-400": [
+            "gk_dist_net@-400"
+          ]
+        }
+      }
+    },
+    "soccernet_flags": {
+      "source": "Labels-v2.json of each match (xgpoc.paths.LABELS_ROOT)",
+      "never": [
+        "the 'Goal' label (dropped at parse)",
+        "this shot's own label type (both shot types become one kind at parse)",
+        "the index label, goal or visibility columns"
+      ],
+      "team": "the team of the shot's own annotation; when it is missing, not home or away, or ambiguous, every flag is 0 and sn_team_unknown is 1",
+      "windows_ms": {
+        "sn_direct_fk": {
+          "annotation": "Direct free-kick",
+          "from": -3000,
+          "to": 300,
+          "inclusive": true
+        },
+        "sn_indirect_fk_3s": {
+          "annotation": "Indirect free-kick",
+          "from": -3000,
+          "to": 0,
+          "inclusive": true
+        },
+        "sn_corner_20s": {
+          "annotation": "Corner",
+          "from": -20000,
+          "to": 0,
+          "inclusive": true
+        },
+        "sn_prev_shot_5s": {
+          "annotation": "shot",
+          "from": -5000,
+          "to": -300,
+          "inclusive": true
+        }
+      },
+      "same_team_same_half": true,
+      "hindsight_prone": [
+        "sn_prev_shot_5s"
+      ],
+      "columns": [
+        "sn_direct_fk",
+        "sn_indirect_fk_3s",
+        "sn_corner_20s",
+        "sn_prev_shot_5s",
+        "sn_team_unknown"
+      ]
+    },
+    "preprocessing": {
+      "fitted_on": "the training rows only (outer training folds; inner training rows for the inner CV)",
+      "imputation": "training mean, plus the missing indicator columns",
+      "spline": "natural cubic, df columns, knots at the quantiles 0, 1/df, ..., 1 of the training rows",
+      "standardisation": "every design column, training mean and standard deviation (ddof 0), scale 1 if constant",
+      "zero_variance": "a linear input with population variance <= 0.0 is dropped before any fit"
+    },
+    "gbm": {
+      "class": "sklearn.ensemble.HistGradientBoostingClassifier",
+      "max_depth": 2,
+      "learning_rate": 0.05,
+      "max_iter": 300,
+      "min_samples_leaf": 40,
+      "l2_regularization": 1.0,
+      "early_stopping": false,
+      "random_state": 0,
+      "monotone": {
+        "z_g_combo": "increasing"
+      },
+      "missing": "native NaN",
+      "arms": [
+        "G",
+        "GS"
+      ],
+      "role": "sensitivity, reported either way, never changes a claim or the recommendation"
+    },
+    "read_out": {
+      "delta_ll": "LL(arm) - LL(R), mean per-shot log-loss, out of fold, on the population",
+      "clip": 1e-06,
+      "bootstrap": {
+        "draws": 2000,
+        "seed": 0,
+        "unit": "match (the 328 training matches)",
+        "definition": "xgpoc.detector.testrule.match_weights",
+        "interval": 0.95,
+        "one_sided": 0.95
+      },
+      "p_one_sided": "(1 + #{\u0394_b >= 0}) / (B + 1)",
+      "holm": {
+        "arms": [
+          "G",
+          "GS"
+        ],
+        "alpha": 0.05
+      },
+      "detectable_improvement": "a Holm-rejected confirmatory arm",
+      "practical_candidate": "a Holm-rejected arm with point \u0394LL <= -0.002",
+      "every_arm": "95% interval and one-sided 95% bound (5th percentile)",
+      "q_arm": "descriptive, bound only",
+      "also": [
+        "AUC",
+        "Brier",
+        "calibration slope and intercept",
+        "the chosen C per arm and fold"
+      ],
+      "categories": {
+        "e3_outside_box": "shot_x@0 < 88.5",
+        "e3_angle_lt_15deg": "angle@0 < 15 degrees",
+        "e3_dist_lt_6m": "dist@0 < 6 m",
+        "sn_corner_20s": "sn_corner_20s = 1",
+        "sn_direct_fk": "sn_direct_fk = 1"
+      }
+    },
+    "final_controls": {
+      "seeds": {
+        "synthetic_nulls": 201,
+        "permutation": 200,
+        "positive_dist": 202,
+        "positive_dist_angle": 203,
+        "curve_-0.003": 204,
+        "curve_-0.004": 205,
+        "clustered_nulls": 206
+      },
+      "replicates": 200,
+      "1_provenance": {
+        "pass": "every check passes (columns, constant inputs, banned names, held-out, flag code)"
+      },
+      "2_synthetic_nulls": {
+        "truth": "y* ~ Bernoulli(p_R), R fitted on the real labels under the chosen model",
+        "pass": "Holm detectable rate <= 0.09"
+      },
+      "3_permutation": {
+        "labels": "real labels permuted within matches",
+        "pass": "no Holm rejection"
+      },
+      "4_positive": {
+        "gate": "dist plant",
+        "target_true_delta": -0.002,
+        "pass": "mean recovered \u0394LL of G in [-0.003, -0.001]",
+        "reported": [
+          "the dist_angle plant at the same target",
+          "power of G and GS with Monte Carlo SE (not gated)",
+          "the oracle \u0394LL and power"
+        ]
+      },
+      "power_curve": {
+        "plant": "dist",
+        "targets": [
+          -0.002,
+          -0.003,
+          -0.004
+        ],
+        "ceiling": "the oracle",
+        "smallest_detectable": "G's Holm power >= 0.8, linear interpolation"
+      },
+      "clustered_nulls": {
+        "random_intercept_sd": 0.25,
+        "unit": "match",
+        "coverage": "one-sided bound <= the procedure's expected \u0394LL; wording allowed at >= 0.95 - 2 Monte Carlo SE"
+      }
+    },
+    "stop_rule": "if the final control 4 fails: no real run and no further iteration; the report gives the power curve and the smallest detectable effect; a real run after that needs the owner's protocol amendment (C6 Q4)",
+    "gate": "the real run starts only if every final control passes",
+    "disclosures": [
+      "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes.",
+      "Stacking provenance: the training-fold z values come from models that saw the scored fold.",
+      "z_g_combo is the averaged pre-Platt logit of the G-combo ensemble; each member's epoch and temperature were chosen on its own scored fold, an outcome-dependent step (corrected by council C6; C5's wording named a Platt fit on all 7,062 labels, which acts on p_g_combo only).",
+      "The flag windows were shaped after the StatsBomb recall/precision check on the 135 matches.",
+      "The flags are research-only: a product needs an action spotter.",
+      "The A1 noise floor is not quoted: the stacker is deterministic.",
+      "C5's frozen design failed its positive control; this design was chosen by council C6 among pre-listed candidates on simulated outcomes only."
+    ],
+    "after_the_run": "a practical candidate goes to the owner, with the recomputed power on the 172 matches and the caveat that E3 was tuned on 135 of them; a test is the owner's decision, nothing is tested otherwise",
+    "c5": {
+      "path": "research/xgs_stack_protocol.json",
+      "sha256": "4a00c90b3841b757076c8bea7847901078cd0effe084fa040701c069fa81d03d",
+      "controls": "results/xgs_stack/c5_controls (moved from results/xgs_stack/controls; complete.json sha256 b785f883151704e84eb1a9541bfb4049ccebbe301d8275adb4beb3aa777de0c5)",
+      "outcome": "control 4 failed (G recovered -0.00077 of a planted -0.002, power 0.105); no real run"
+    },
+    "chosen": "bc",
+    "description": "(b)'s columns with (c)'s penalty choice",
+    "model": {
+      "name": "inner_cv",
+      "class": "L2 logistic regression, Newton's method (xgpoc.stack.fit.logistic_fit)",
+      "c_grid": [
+        0.001,
+        0.003,
+        0.01,
+        0.03,
+        0.1,
+        0.3,
+        1.0
+      ],
+      "z_unpenalised": true,
+      "choice": "inner match-grouped CV over the other four host folds, summed inner held-out log-loss, ties to the smaller C",
+      "design": "standardised; z_g_combo linear; no interactions"
+    },
+    "arms": {
+      "R": {
+        "status": "reference",
+        "linear": [
+          "z_g_combo"
+        ],
+        "spline": [],
+        "df": 3,
+        "columns": [
+          "z_g_combo"
+        ],
+        "dropped_by_zero_variance": []
+      },
+      "G": {
+        "status": "confirmatory",
+        "linear": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "dropped_by_zero_variance": []
+      },
+      "GS": {
+        "status": "confirmatory",
+        "linear": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "dropped_by_zero_variance": [
+          "sn_team_unknown"
+        ]
+      },
+      "S": {
+        "status": "descriptive",
+        "linear": [
+          "z_g_combo",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s"
+        ],
+        "spline": [],
+        "df": 3,
+        "columns": [
+          "z_g_combo",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s"
+        ],
+        "dropped_by_zero_variance": [
+          "sn_team_unknown"
+        ]
+      },
+      "Q": {
+        "status": "descriptive",
+        "linear": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "shot_x@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "shot_x@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "dropped_by_zero_variance": [
+          "frame_missing@0"
+        ]
+      },
+      "ALL": {
+        "status": "descriptive",
+        "linear": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s",
+          "shot_x@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "shot_masked@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_missing@0",
+          "ball_none@0",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_prev_shot_5s",
+          "shot_x@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "shot_masked@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "dropped_by_zero_variance": [
+          "sn_team_unknown",
+          "frame_missing@0",
+          "frame_missing@-400"
+        ]
+      }
+    },
+    "gbm_columns": {
+      "G": [
+        "z_g_combo",
+        "angle@0",
+        "ball_none@0",
+        "dist@0"
+      ],
+      "GS": [
+        "z_g_combo",
+        "angle@0",
+        "ball_none@0",
+        "sn_direct_fk",
+        "sn_indirect_fk_3s",
+        "sn_corner_20s",
+        "sn_prev_shot_5s",
+        "dist@0"
+      ]
+    },
+    "confirmatory": [
+      "G",
+      "GS"
+    ],
+    "descriptive": [
+      "S",
+      "Q",
+      "ALL"
+    ],
+    "readings": [
+      "Column names. Every E3 column is named <name>@<offset> (t0 = @0, -400 ms = @-400). The sanitised shooter_by_goal and gk_dist_goal enter as shooter_by_net and gk_dist_net, because control 1 bans the fragment 'goal' in a design column name; the values are unchanged.",
+      "Missing indicators. dist, angle and shot_x are missing together, exactly where the sanitised shot_ok is 0, and share shot_missing; kp_instance_conf has kp_conf_missing; n_keypoints and n_players share frame_missing. Every indicator is checked to be 1 exactly where its columns are missing.",
+      "Angle wrap (C6). After the exact E3 replay check, every angle column becomes min(\u03b8, 2\u03c0 - \u03b8), so a shot location behind the goal line no longer has an angle above \u03c0; the counts of changed shots per offset are in the population counts (angles_wrapped).",
+      "Zero-variance rule (C6). A linear input whose population variance over its non-missing values is 0 is dropped from the arm before any fit (label-free); the dropped columns are listed per arm and every remaining input is asserted non-constant (control 1). GS is G plus the S flags left by the rule.",
+      "ball_source one-hot. The levels are none, own and one per fallback frame of E3's source order for that offset: at t0 own, m400, m800; at -400 ms own, m800. (b) keeps ball_none@0 as its no-ball indicator; the other levels are quality covariates.",
+      "Spline. A natural cubic spline with df columns is the truncated-power basis of Hastie, Tibshirani & Friedman (eq. 5.4-5.5) on df + 1 knots at the quantiles 0, 1/df, ..., 1 of the training rows' non-missing values (R's ns(x, df)), linear beyond the boundary knots; a missing value is imputed with the training mean before the basis.",
+      "Standardisation is applied to every design column with the training rows' mean and population standard deviation; a constant column keeps scale 1.",
+      "Model. Every logistic fit is Newton's method on the summed log-loss + 0.5 \u03a3 \u03bb_j w_j\u00b2 with an unpenalised intercept (\u03bb = 1 / C), which equals sklearn's LogisticRegression(l2, C) (tested). FIXED is C5's C = 1 on every column, z included. INNER_CV leaves z unpenalised by \u03bb_z = 0 in every arm (rather than an offset or a x100 rescaling) and chooses C from the grid inside each outer training fold: the inner folds are the other four host folds (match-grouped), each inner design is preprocessed on its own inner training rows, the summed inner held-out log-loss picks C (ties: the smaller C), and the arm is refitted on the whole outer training fold. R under INNER_CV is the unpenalised fit on z.",
+      "Q = G + the quality covariates of the C6 brief: shot_x, shot_from_ball, shooter_by_net, the keypoint instance confidence (with kp_conf_missing), n_keypoints and n_players (with frame_missing). Under (c) they are already in G, so Q equals G. Q is reported with its interval and one-sided bound only (no p-value).",
+      "ALL = GS + the quality covariates + every C5 G column (the other ball levels included) + the remaining E3 columns at t0 (sanitised geometry not in G with a <column>_missing indicator each, the sanitised flags not encoded elsewhere, the sanitation indicators and counts) + every G input and extra at -400 ms (dist and angle linear), after the zero-variance rule.",
+      "GBM inputs are the arm's raw inputs without the missing indicators (native NaN), z_g_combo first and monotone increasing; no spline, imputation or standardisation.",
+      "z_g_combo in results/xgd_a1_ensemble/oof.csv is the mean of logit(stored p) of the two G-combo models that held each shot out, before the ensemble's Platt step, which acts on p_g_combo only. Every arm refits its own intercept and slope on it.",
+      "Log-loss clips probabilities to [1e-6, 1 - 1e-6]; the calibration slope and intercept are the logistic regression of y on logit(p) with C = 1e6 (xgpoc.eval.calibration.PlattScaler).",
+      "The one-sided 95% bound of every arm is the 5th percentile of the bootstrap \u0394LL ('no improvement larger than |bound|', only where the clustered-null coverage allows the wording); the 95th percentile is reported beside it.",
+      "Category \u0394LL intervals restrict the same 2,000 match draws to the category's shots; a shot whose defining E3 input is missing is neither inside nor outside an E3 category.",
+      "Control 2's Holm detectable rate is the share of replicates in which Holm over {G, GS} rejects at least one arm.",
+      "Control 3 runs the full read-out of the real run on the permuted labels; its criterion is the Holm rejections only.",
+      "Plants. dist: the E3 t0 distance standardised over the population, missing 0 (C5). dist_angle: (d - e) standardised, d as dist and e the wrapped E3 t0 angle standardised the same way, so farther and narrower shots score less through both inputs. \u03b2 is the negative root of true \u0394LL(\u03b2) = target (brentq on [-5, 0]); the \u03b2 = 0 refit is the unpenalised logistic regression of p_\u03b2 on [1, z] over the population.",
+      "Selection truth: (a, b) of the unpenalised logistic regression of the real labels on [1, z] over every shot, one truth for every candidate; each plant's 200 outcome vectors come from that plant's seed and are shared by the candidates (common random numbers). Equal averaged powers means equal to the replicate count; the tie goes to the simpler design, in the order (b), (c), (b)+(c).",
+      "Final truth: (a, b) is R fitted on the real labels of every shot under the chosen model (C5's rule).",
+      "Power is the share of replicates in which G is a Holm 'detectable improvement', with Monte Carlo SE sqrt(p(1 - p)/n). The oracle's power is the share in which the oracle's own one-sided p (the same match draws) is <= 0.05, unadjusted: the ceiling for any arm.",
+      "The power curve's -0.002 point is control 4's dist plant; -0.003 and -0.004 use their own seeds. The smallest detectable effect is the true \u0394LL at which G's Holm power first reaches 0.8 along the grid, linearly interpolated; beyond -0.004 it is reported as not reached.",
+      "Clustered nulls: a match random intercept u_m ~ N(0, 0.25\u00b2), drawn per replicate from the same generator before the outcomes; 0.25 logit is fixed here, before any fit, as a generous match-level variation in finishing beyond the shot. The coverage of the one-sided bound is the share of replicates whose bound is <= the replicates' mean \u0394LL of the arm (the procedure's expected \u0394LL); the wording 'no improvement larger than |bound|' needs coverage >= 0.95 - 2 Monte Carlo SE. The coverage of 0 is reported beside it. Control 2's replicates give the same coverage without clustering. The estimand is the fitted arm's expected out-of-fold \u0394LL, which is what the match bootstrap of one run can cover: under a null it is positive (the arm's estimation cost), so 'no improvement larger than |bound|' reads as a statement about the arm as fitted, not about the information in its inputs; the coverage of 0 says how often the same statement holds for the inputs' true value.",
+      "Thresholds this file adds where C6 names a report but no number, fixed before any simulation: the smallest detectable effect at power 0.8, the coverage floor 0.95 - 2 Monte Carlo SE, the match random-intercept SD 0.25 logit, 200 replicates per simulation."
+    ]
+  },
+  "inputs": {
+    "index": {
+      "path": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+      "sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee"
+    },
+    "folds": {
+      "path": "cache/folds_xgv_home5.csv",
+      "sha256": "47a83fd3b9fc8fb076731bda34f6741fc26cc0b32cdca96857b09ea120ae5372"
+    },
+    "plan": {
+      "path": "results/xgv_split_plan/plan.csv",
+      "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+    },
+    "oof": {
+      "path": "results/xgd_a1_ensemble/oof.csv",
+      "sha256": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb"
+    },
+    "e3_frames": {
+      "path": "cache/xgd_full3/E3/frames.parquet",
+      "sha256": "59c127472036636c1f1a1db014af20a884ff2cf6524fcc8bf1d157c490ef12ff"
+    },
+    "e3_features": {
+      "path": "cache/xgd_full3/E3/features.parquet",
+      "sha256": "6f17d71e467864178a5e612d1ee29f770ebe699832e0b7187fe051f18f709326"
+    },
+    "labels_v2": {
+      "root": "/home/kuba/projects/football_data/xg_shots_full/soccernet_labels",
+      "files": 328,
+      "digest": "5060482fa608bb9e310b07f4d1a487f20c26c646a203be3156de266aa47bd65c"
+    }
+  },
+  "counts": {
+    "shots": 7062,
+    "matches": 328,
+    "folds": 5,
+    "shots_per_fold": {
+      "0": 1434,
+      "1": 1373,
+      "2": 1490,
+      "3": 1367,
+      "4": 1398
+    },
+    "matches_per_fold": {
+      "0": 66,
+      "1": 66,
+      "2": 66,
+      "3": 65,
+      "4": 65
+    },
+    "flags": {
+      "sn_direct_fk": 484,
+      "sn_indirect_fk_3s": 59,
+      "sn_corner_20s": 884,
+      "sn_prev_shot_5s": 233,
+      "sn_team_unknown": 0
+    },
+    "e3_t0": {
+      "shot_missing": 260,
+      "frame_missing": 0,
+      "kp_conf_missing": 1
+    },
+    "angles_wrapped": {
+      "0": 20,
+      "-400": 15
+    }
+  },
+  "code": {
+    "digest": "aa4b2b39f7bdfe9423b4ffc8ada7d44412c88da56bc9bcd958754717a49a0390",
+    "files": {
+      "scripts/xgs_protocol.py": "d2aa20d57d21235c78765eb8beb274bfdceadf7c69b85e979f6d2e0798becb15",
+      "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+      "xgpoc/compare/stats.py": "bc083cc77fe3bed0c72325c964886377803ebf4270abc9c23d02a8587d7c1982",
+      "xgpoc/detector/approach1.py": "f3020856dbca4f5a4b1d7f5f51ab043a5a3c0f3214e85fbf84280a8da10e21c5",
+      "xgpoc/detector/conventions.py": "b2ad2e2c1b0a8c3589b58cbcf6f757936ba3ff3ff771b7d13fe10e7fcd8d90a1",
+      "xgpoc/detector/extract.py": "ac267de6dab45d87cd6097250e1fd6f1f2f7259d60dca3c2c2ea5e8a41ddeef8",
+      "xgpoc/detector/extract3.py": "864e11992018dd85d5652419f931d376cf43d34605ef177d61a7ee39a8bd05f2",
+      "xgpoc/detector/features.py": "e602514c78c6fa892d667b83ebfdaa4f81afbbf5cbfbd5f73902f0e1e8719575",
+      "xgpoc/detector/guard.py": "de338fb5040c178003e4dfe7f4c67032e4b8b05390925a00ed0159d8678ea3f6",
+      "xgpoc/detector/records.py": "dfe2c1f3e86efc54f2ce29a6b144564349e5bcf2c3a4b79063d8e664566dbf9f",
+      "xgpoc/detector/sanitation.py": "fa6b525d7a6bd6226dfbf42f0b08a2839f30f703c10c960f797227c908a71705",
+      "xgpoc/detector/seal.py": "ef42c7997b0de5bedeaed80bda27b0feb97a657275fe4304cba31cc75474f4a3",
+      "xgpoc/detector/testrule.py": "1a27a59bfa807cd2e1586578188790c9ee8d0206961fd1be5565d1d100986674",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/eval/metrics.py": "835dbfff1ff938ab5a12e08568d5dc3d367d5bf5e4ca63aacae51b11e201896d",
+      "xgpoc/paths.py": "4beca7070d9ecfa1c3f5c1f62e40d048f2c611de56283be9a6033151513fa8f2",
+      "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+      "xgpoc/stack/__init__.py": "350fc6c0d84b87eed432b480116cfdcb946c834330cc9bdc8138aac112ee78e7",
+      "xgpoc/stack/analysis.py": "bb3adc25e183f7f8c83047cec7bfd775e2a082198410b3ebff23f35cdfada838",
+      "xgpoc/stack/controls.py": "84b224aefa0f24b79d5277f1547fc9fd1791697b829f257310ef4f3767433bec",
+      "xgpoc/stack/fit.py": "0da330d2d9fcfb1488ad1902fa0a5dcd3f9b7811952f8ac0378c95a9723df9d6",
+      "xgpoc/stack/inputs.py": "77bb8876dfa8a5eab9108deff8506cd716c56c80e2f46fce175b3430e3f38801",
+      "xgpoc/stack/protocol.py": "1b2c347988b35d6cdeca9d2591cbf748fa9ed3b98668baa602bca862d00c53f3",
+      "xgpoc/stack/provenance.py": "58956d1c0e9dab66e9adc13d8901a543426a9121a8cfaba6183d437f9e3059de",
+      "xgpoc/stack/records.py": "f93cec5c27ad7cc7a9299e627ed90ea5a13fc50a22b0a8017b26dafdb074fbbf",
+      "xgpoc/stack/selection.py": "9071693519e12912f088720bef77ff33db5caee4badbfdd05de47db4bc95e2a9",
+      "xgpoc/stack/stats.py": "34586b8dfcce7c0b1e020cdf916bb593cfb2ad4a847683b930bfde936b20cb74",
+      "xgpoc/vendor/refit.py": "1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02"
+    }
+  },
+  "git": {
+    "sha": "879420afeeea83bfdcacb2a837e9863ed14c37c6",
+    "dirty": false
+  },
+  "written": "2026-10-14T08:34:09+00:00",
+  "history": []
+}
