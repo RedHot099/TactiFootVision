@@ -1,6 +1,6 @@
 """The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07), audit 3
-(pitch-keypoints 04), the pitch-keypoints report (pitch-keypoints 06) and the xg-compare report (xg-compare 03): the
-real documents, and changed copies."""
+(pitch-keypoints 04), the pitch-keypoints report (pitch-keypoints 06), the xg-compare report (xg-compare 03) and the
+xg-stack report (xg-stack 03): the real documents, and changed copies."""
 
 import sys
 from pathlib import Path
@@ -17,6 +17,7 @@ from check_xgd_audit import (  # noqa: E402
     PK_REPORT,
     REPORT,
     XGC_REPORT,
+    XGS_REPORT,
     main,
 )
 from test_check_vendor_report import write_tree  # noqa: E402
@@ -79,7 +80,8 @@ def test_without_a_path_the_check_reads_every_document(monkeypatch):
                     [str(REPORT), "--claims", str(REPORT.with_name("report_claims.toml")), "--root", "/x"],
                     [str(AUDIT3), "--claims", str(AUDIT3.with_name("claims.toml")), "--root", "/x"],
                     [str(PK_REPORT), "--claims", str(PK_REPORT.with_name("report_claims.toml")), "--root", "/x"],
-                    [str(XGC_REPORT), "--claims", str(XGC_REPORT.with_name("claims.toml")), "--root", "/x"]]
+                    [str(XGC_REPORT), "--claims", str(XGC_REPORT.with_name("claims.toml")), "--root", "/x"],
+                    [str(XGS_REPORT), "--claims", str(XGS_REPORT.with_name("claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -243,3 +245,43 @@ def test_an_untagged_number_in_the_xg_compare_report_fails(tmp_path):
     errors = check(copy, XGC_CLAIMS, EXP)
     assert any("'+0.31' is not tied to a source" in e for e in errors)
     assert any("integer '512'" in e for e in errors)
+
+
+# --- the xg-stack report (xg-stack 03) ---
+
+XGS_CLAIMS = XGS_REPORT.with_name("claims.toml")
+XGS_RESULTS = ("results/xgs_stack/real", "results/xgs_stack/controls", "results/xgs_stack/c5_controls",
+               "results/xgs_stack/selection", "results/xgs_stack/report")
+XGS_READY = XGS_REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in XGS_RESULTS)
+needs_xgs_report = pytest.mark.skipif(not XGS_READY, reason="needs the xg-stack report and the phase's results")
+
+
+@needs_xgs_report
+def test_the_real_xg_stack_report_passes():
+    assert DOCUMENTS[XGS_REPORT] == XGS_CLAIMS
+    assert check(XGS_REPORT, XGS_CLAIMS, EXP) == []
+
+
+@needs_xgs_report
+@pytest.mark.parametrize("claim", ["rl.G.d", "rl.G.p", "c6.c4.power", "c6.mde", "c5.c4.rec", "cat.box.oe.G", "pt.G.prac1"])
+def test_a_changed_number_in_the_xg_stack_report_fails(tmp_path, claim):
+    assert any(f"{claim} expects" in e for e in check(changed_copy(XGS_REPORT, tmp_path, claim), XGS_CLAIMS, EXP))
+
+
+@needs_xgs_report
+def test_xg_stack_numbers_outside_a_development_heading_fail(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    text = XGS_REPORT.read_text()
+    title = text.split("\n", 1)[0]
+    copy.write_text(text.replace(title, title.replace(" (wyniki rozwojowe)", ""), 1))
+    assert any("rl.G.d is a development result outside a 'wyniki rozwojowe' heading" in e
+               for e in check(copy, XGS_CLAIMS, EXP))
+
+
+@needs_xgs_report
+def test_an_untagged_number_in_the_xg_stack_report_fails(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(XGS_REPORT.read_text() + "\nDodatkowo ΔLL −0.0031 na 4096 strzałach bez źródła.\n")
+    errors = check(copy, XGS_CLAIMS, EXP)
+    assert any("'−0.0031' is not tied to a source" in e for e in errors)
+    assert any("integer '4096'" in e for e in errors)
