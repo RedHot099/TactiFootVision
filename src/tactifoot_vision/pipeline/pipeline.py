@@ -14,12 +14,15 @@ from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.video import VideoReader, check_frame_range
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline.result import (
+    BALL_ANCHOR,
     NO_TEAM,
+    PERSON_ANCHOR,
     FrameResult,
     ObjectMasks,
     PipelineResult,
+    project_detections,
 )
-from tactifoot_vision.pitch.homography import HomographyEstimator, frame_to_pitch
+from tactifoot_vision.pitch.homography import HomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.teams.classifier import TeamClassifier
 from tactifoot_vision.teams.crops import extract_crops
@@ -244,8 +247,8 @@ class Pipeline:
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
             matrix = self.homography.update(keypoints)
-        people.data["pitch_xy"] = _project(people, sv.Position.BOTTOM_CENTER, matrix)
-        ball.data["pitch_xy"] = _project(ball, sv.Position.CENTER, matrix)
+        people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
+        ball.data["pitch_xy"] = project_detections(ball, BALL_ANCHOR, matrix)
         people.data["team_id"] = np.full(len(people), NO_TEAM, dtype=int)
         return FrameResult(
             index=index,
@@ -419,14 +422,6 @@ def _object_keys(detections: sv.Detections, samples: _TeamSamples) -> np.ndarray
     first = samples.next_untracked
     samples.next_untracked -= len(detections)
     return np.arange(first, first - len(detections), -1, dtype=int)
-
-
-def _project(
-    detections: sv.Detections, anchor: sv.Position, matrix: np.ndarray | None
-) -> np.ndarray:
-    if matrix is None or len(detections) == 0:
-        return np.full((len(detections), 2), np.nan, dtype=np.float32)
-    return frame_to_pitch(detections.get_anchors_coordinates(anchor), matrix)
 
 
 def _majority_classes(

@@ -6,17 +6,20 @@ import pickle
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import supervision as sv
 
-from tactifoot_vision.pitch.homography import project_points
+from tactifoot_vision.pitch.homography import frame_to_pitch, project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
 NO_TEAM = -1
 UNTRACKED = -1  # track id / player id of a detection without a tracker
 BALL_PLAYER_ID = -99  # player id of the ball in freeze frames
+PERSON_ANCHOR = sv.Position.BOTTOM_CENTER  # where a person's pitch position is taken
+BALL_ANCHOR = sv.Position.CENTER
 # StatsBomb's match clock: the minute at which each period kicks off.
 _PERIOD_KICK_OFF_MINUTE = {1: 0, 2: 45, 3: 90, 4: 105}
 _FREEZE_FRAME_TYPES = ("player", "goalkeeper", "referee")  # other people: "other"
@@ -125,6 +128,15 @@ class FrameResult:
         return _data(self.ball, "pitch_xy", (len(self.ball), 2), np.nan)
 
 
+def project_detections(
+    detections: sv.Detections, anchor: sv.Position, homography: np.ndarray | None
+) -> np.ndarray:
+    """``(N, 2)`` pitch positions of the detections' ``anchor`` (NaN without a homography)."""
+    if homography is None or len(detections) == 0:
+        return np.full((len(detections), 2), np.nan, dtype=np.float32)
+    return frame_to_pitch(detections.get_anchors_coordinates(anchor), homography)
+
+
 def _data(
     detections: sv.Detections, key: str, shape: tuple[int, ...], fill: float
 ) -> np.ndarray:
@@ -132,9 +144,21 @@ def _data(
     return np.asarray(value) if value is not None else np.full(shape, fill)
 
 
+@dataclass(frozen=True)
+class AppliedPostProcess:
+    """One post-process a result went through: its registered name and every option."""
+
+    name: str
+    options: dict[str, Any]
+
+
 @dataclass
 class PipelineResult:
-    """Output of :meth:`Pipeline.run`: one :class:`FrameResult` per processed frame."""
+    """Output of :meth:`Pipeline.run`: one :class:`FrameResult` per processed frame.
+
+    ``postprocesses`` lists the post-processes applied since, in order
+    (see :mod:`tactifoot_vision.pipeline.postprocess`).
+    """
 
     frames: list[FrameResult]
     fps: float
@@ -142,6 +166,7 @@ class PipelineResult:
     class_names: list[str]
     pitch: SoccerPitch = field(default_factory=SoccerPitch)
     video_path: Path | None = None
+    postprocesses: list[AppliedPostProcess] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.frames)
