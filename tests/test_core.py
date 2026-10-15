@@ -424,6 +424,32 @@ def test_an_empty_result_exports_tables_with_headers(tmp_path):
     assert list(frames.columns) == list(_result().to_freeze_frames().columns)
 
 
+def test_exported_tables_name_the_teams_when_given(tmp_path):
+    out = _result().export(tmp_path / "run", team_names=["Home", "Away"])
+    for table in ("tracks.csv", "freeze_frames.csv"):
+        rows = pd.read_csv(out / table, keep_default_na=False)
+        # The player is in team 1; the goalkeeper and the ball have no team.
+        assert rows["team_id"].tolist() == [1, NO_TEAM, NO_TEAM]
+        assert rows["team_name"].tolist() == ["Away", "", ""]
+    unnamed = _result().export(tmp_path / "unnamed")
+    assert pd.read_csv(unnamed / "tracks.csv")["team_name"].isna().all()
+
+
+@pytest.mark.parametrize(
+    ("team_names", "message"),
+    [
+        (["Home"], "no name for team 1"),
+        ("Home", "list of names"),
+        (["Home", ""], "empty"),
+        (["Home", "Home"], "twice"),
+    ],
+)
+def test_export_refuses_team_names_before_writing(tmp_path, team_names, message):
+    with pytest.raises(ValueError, match=message):
+        _result().export(tmp_path / "run", team_names=team_names)
+    assert not (tmp_path / "run").exists()
+
+
 def test_freeze_frame_rows_share_one_builder_and_named_constants():
     from tactifoot_vision.pipeline.result import BALL_PLAYER_ID, UNTRACKED
 

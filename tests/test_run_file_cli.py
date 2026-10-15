@@ -463,6 +463,34 @@ def test_cli_run_passes_run_inputs_and_overrides(tmp_path):
     assert (frames["period"] == 2).all() and frames["minute"].iloc[0] == 1
 
 
+def test_cli_run_names_the_teams(tmp_path, fake_siglip, monkeypatch):
+    # A distinct embedding per crop, so the team classifier finds two kits.
+    count = iter(range(1000))
+    monkeypatch.setattr(
+        FakeEmbedder,
+        "embed",
+        lambda self, crops: np.float32([[next(count), 0] for _ in crops]),
+    )
+    config = _write(
+        tmp_path / "run.yaml",
+        {
+            "detector": DETECTOR,
+            "teams": {"reducer": None},
+            "pipeline": {"team_sample_stride": 1},  # enough crops to fit the teams
+        },
+    )
+    out = tmp_path / "out"
+    args = ["run", str(config), "--video", str(_video(tmp_path / "clip.mp4"))]
+    args += ["--output-dir", str(out), "--no-video"]
+    assert main([*args, "--team-names", "[Home, Away]"]) == 0
+    for table in ("tracks.csv", "freeze_frames.csv"):
+        rows = pd.read_csv(out / table)
+        players = rows[rows["class_name"] == "player"]
+        assert len(players) == 6 and players["team_id"].isin([0, 1]).all()
+        names = players["team_id"].map({0: "Home", 1: "Away"})
+        assert (players["team_name"] == names).all()
+
+
 def test_cli_reports_errors_without_a_traceback(tmp_path, capsys):
     config = _write(tmp_path / "run.yaml", {"detector": {**DETECTOR, "bogus": 1}})
     video = _video(tmp_path / "clip.mp4")
@@ -504,7 +532,7 @@ def test_every_run_parameter_has_a_flag(capsys):
     export = inspect.signature(PipelineResult.export).parameters
     names = [n for n in run if n not in ("self", "video", "progress")]
     names += [n for n in export if n not in ("self", "out_dir")]
-    assert len(names) == 5
+    assert len(names) == 6
     for name in names:
         assert f"--{name.replace('_', '-')}" in out
 

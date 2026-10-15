@@ -41,6 +41,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
+| Match analysis | `tv.analysis` | `attack_direction` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
@@ -78,6 +79,7 @@ src/tactifoot_vision/
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks)
+  analysis/           direction.py (attack_direction)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -125,6 +127,7 @@ configs/              example run files
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`
 * `pipeline/tracks.py`: `join_tracks`
+* `analysis/direction.py`: `attack_direction`
 
 ## Module specifications
 
@@ -297,10 +300,16 @@ configs/              example run files
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
-  `PipelineResult.export(out_dir, *, period=1, period_start=None)` writes the
-  run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`,
-  with headers even for an empty result).
-  `to_freeze_frames(period, period_start=None)`: `period_start=None` is the
+  `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None)`
+  writes the run folder's data files (`result.pkl`, `tracks.csv`,
+  `freeze_frames.csv`, with headers even for an empty result). It is the
+  only writer of the run folder: analysis tables join it through `export`,
+  which computes them with `tv.analysis`. `team_names` (one per team id from
+  0, e.g. `["Home", "Away"]`) fill the tables' `team_name` column (empty
+  without names or a team); a name missing for a team of the result, an
+  empty name or a repeated one is a `ValueError` before anything is written.
+  `to_dataframe(team_names=None)` and
+  `to_freeze_frames(period, period_start=None, team_names=None)`: `period_start=None` is the
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
   `second` follow that match clock, `timestamp` is that match clock too
   (StatsBomb's event timestamp restarts every period), and `visible_area` is
@@ -374,6 +383,19 @@ configs/              example run files
   circle, arcs and spots in pitch units; `viz` draws them, and `pitch` does
   not import `viz`.
 
+### Match analysis (`tv.analysis`)
+
+Pure functions over a `PipelineResult`; they change nothing and write
+nothing (`PipelineResult.export` writes their tables).
+
+* `attack_direction(result)` → `{team_id: 1 | -1}`: `1` attacks the goal at
+  `x = pitch.length`, `-1` the goal at `x = 0`. A run is one period, so call
+  it on each period's result. The team whose players and goalkeeper stand
+  nearer `x = 0` on average (every frame, pitch positions only) attacks
+  towards `x = length`. The two teams are compared with each other, not with
+  the halfway line, so a camera that stays in one half still gives opposite
+  directions. Anything but two teams with pitch positions is a `ValueError`.
+
 ### Results visualisation (`tv.viz`)
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
@@ -408,7 +430,8 @@ configs/              example run files
 ### Run files and the CLI (`tv.run_file`, `tactifoot`)
 
 A **run file** is YAML that says how to process video; it holds no run inputs
-(video, output folder, frame range, period), so one file serves many matches.
+(video, output folder, frame range, period, team names), so one file serves
+many matches.
 Each section maps onto exactly one package call:
 
 | Section | Call | Notes |
@@ -473,7 +496,7 @@ postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
           [--start N] [--end N] [--stride N] [--period N] [--period-start S]
-          [--no-video] [--set KEY=VALUE ...]
+          [--team-names "[HOME, AWAY]"] [--no-video] [--set KEY=VALUE ...]
 tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
           [--set KEY=VALUE ...]
 tactifoot evaluate MODEL --weights W --data D [--split S] [--set KEY=VALUE ...]
