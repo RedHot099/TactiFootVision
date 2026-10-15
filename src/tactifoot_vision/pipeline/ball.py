@@ -28,9 +28,8 @@ from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 logger = logging.getLogger(__name__)
 
 _STD_SIZE = np.array([105.0, 68.0])  # metres of the pitch every pitch unit maps to
-_CONFIDENCE_WEIGHT = (
-    2.0  # metres of distance to the prediction a unit of confidence is worth
-)
+# metres of distance to the prediction a unit of confidence is worth
+_CONFIDENCE_WEIGHT = 2.0
 _NEIGHBOURS = 4  # kept positions per side an outlier is judged against
 _EPS = 1e-6  # seconds: timestamps are index / fps, so equal spans may differ in the last bit
 
@@ -102,17 +101,18 @@ def track_ball(
        ball at rest that long (before a set piece) is dropped too, and so
        is the real ball on a spot.
     2. The ball is followed frame by frame: the next position is predicted
-       at constant velocity, and the candidate nearest the prediction (a
-       more confident one may be slightly farther) is taken if it lies
-       within ``gate + gate_speed * dt`` m, ``dt`` being the time since the
-       last ball, at most ``max_gap`` (the prediction stops there too).
+       at constant velocity, and of the candidates within
+       ``gate + gate_speed * dt`` m of it (``dt`` being the time since the
+       last ball, at most ``max_gap``; the prediction stops there too) the
+       nearest is taken, a more confident one may be slightly farther.
     3. With nothing in the gate, the most confident candidate of at least
        ``restart_confidence`` (re)starts the track, once the ball has been
        missing for more than ``restart_after`` s (or at the first ball).
     4. Outliers are removed: a ball far (by the same gate) from the median
        of the balls before it and from the median of those after it, and a
        ball less confident than ``restart_confidence`` with no other ball
-       within ``isolation`` s.
+       within ``isolation`` s (or within the next processed frame, when
+       frames are further apart).
     5. Gaps of up to ``max_gap`` s are filled by linear interpolation on the
        pitch, in frames that have a homography: the box is centred on the
        projected position with its size interpolated, ``confidence`` is NaN
@@ -137,7 +137,8 @@ def track_ball(
         static_share: share of that window a static candidate is seen in.
         spot_radius: metres around a painted spot within which candidates are dropped.
         max_person_iou: candidates overlapping a person box more than this are dropped.
-        isolation: seconds within which a weak ball needs another ball.
+        isolation: seconds within which a weak ball needs another ball
+            (at least the spacing of the processed frames).
     """
     options = _Options(
         min_confidence=min_confidence,
@@ -298,12 +299,13 @@ def _in_gate(
     dt: float,
     options: _Options,
 ) -> int | None:
-    """The candidate near ``predicted``, a more confident one may be a little farther."""
-    if len(indices) == 0:
-        return None
+    """The candidate in the gate nearest ``predicted``, or a more confident one a little farther."""
     distance = np.linalg.norm(xy[indices] - predicted, axis=1)
-    best = int(np.argmin(distance - _CONFIDENCE_WEIGHT * confidence[indices]))
-    return int(indices[best]) if distance[best] < options.radius(dt) else None
+    inside = distance < options.radius(dt)
+    if not inside.any():
+        return None
+    score = distance[inside] - _CONFIDENCE_WEIGHT * confidence[indices[inside]]
+    return int(indices[inside][np.argmin(score)])
 
 
 def _most_confident(
@@ -356,13 +358,21 @@ def _drop_far(
 def _drop_lone(
     kept: np.ndarray, confidence: np.ndarray, times: np.ndarray, options: _Options
 ) -> None:
-    """Unkeep weak balls with no other ball within ``isolation`` seconds."""
+    """Unkeep weak balls with no other ball within ``isolation`` seconds.
+
+    Frames further apart than that (a large stride) widen it to the time to
+    the nearest frame, so a ball seen in the next frame is never alone.
+    """
     rows = np.flatnonzero(kept)
-    gaps = np.diff(times[rows])
-    before = np.concatenate([[np.inf], gaps])
-    after = np.concatenate([gaps, [np.inf]])
-    lone = np.minimum(before, after) > options.isolation + _EPS
+    spacing = _nearest_gap(times)[rows]
+    lone = _nearest_gap(times[rows]) > np.maximum(options.isolation, spacing) + _EPS
     kept[rows[lone & (confidence[rows] < options.restart_confidence)]] = False
+
+
+def _nearest_gap(times: np.ndarray) -> np.ndarray:
+    """Seconds from each time to the nearest other one (inf when alone)."""
+    gaps = np.diff(times)
+    return np.minimum(np.append(np.inf, gaps), np.append(gaps, np.inf))
 
 
 def _far(

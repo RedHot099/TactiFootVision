@@ -233,6 +233,36 @@ def test_track_ball_removes_isolated_outliers():
     assert len(wider[50].ball) == 1
 
 
+def test_track_ball_keeps_weak_balls_when_frames_are_far_apart():
+    # At stride 5 the processed frames are 0.2 s apart, more than `isolation`:
+    # a ball seen on every one of them is not alone.
+    pitch = SoccerPitch()
+    frames = [
+        _frame(t, [(_box(_pixels(pitch, _ball_metres(t))), 0.6 if t == 0 else 0.4)])
+        for t in range(0, 150, 5)
+    ]
+
+    tracked = track_ball(_result(pitch, frames))
+
+    assert all(len(frame.ball) == 1 for frame in tracked)
+    # a weak ball with an empty processed frame on each side is still dropped
+    frames[20], frames[22] = _frame(100, []), _frame(110, [])
+    assert len(track_ball(_result(pitch, frames)).frame(105).ball) == 0
+
+
+def test_track_ball_takes_the_best_candidate_inside_the_gate():
+    # A confident candidate just outside the gate scores better than a weak
+    # one inside it; the weak one is taken.
+    pitch = SoccerPitch()
+    frames = [_frame(t, [(_box(_pixels(pitch, (40, 30))), 0.6)]) for t in range(10)]
+    inside, outside = _box(_pixels(pitch, (42.5, 30))), _box(_pixels(pitch, (43, 30)))
+    frames.append(_frame(10, [(outside, 1.0), (inside, 0.2)]))
+
+    tracked = track_ball(_result(pitch, frames))
+
+    np.testing.assert_allclose(tracked[10].ball_xy[0], (42.5, 30), atol=1e-3)
+
+
 def test_track_ball_stops_extrapolating_the_lost_ball_after_max_gap():
     # Lost at 10 m/s, the ball comes back weak (no restart) where it was
     # lost, 2 s later: a prediction carried on for 2 s would sit 20 m away,
@@ -286,7 +316,10 @@ def test_track_ball_is_a_registered_post_process_that_leaves_its_input_alone():
         for name in ("ball", "ball_candidates"):
             old, new = getattr(before, name), getattr(after, name)
             np.testing.assert_array_equal(old.xyxy, new.xyxy)
-            np.testing.assert_array_equal(old.data["pitch_xy"], new.data["pitch_xy"])
+            np.testing.assert_array_equal(old.confidence, new.confidence)
+            assert old.data.keys() == new.data.keys()
+            for key in old.data:
+                np.testing.assert_array_equal(old.data[key], new.data[key])
 
 
 @pytest.mark.parametrize(

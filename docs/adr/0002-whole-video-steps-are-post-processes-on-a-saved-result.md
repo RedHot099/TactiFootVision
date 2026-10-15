@@ -17,9 +17,9 @@ A run file may list post-processes in its own section. Each entry maps to exactl
 
 ## Amendment: steps at the end of the pass
 
-`Pipeline.run` ended with two steps that look at the whole run. This is how the code works today:
+`Pipeline.run` ends with the team vote; the ball filter moved out into `track_ball`. This is how the code works today:
 
 - **The team vote stays in `Pipeline.run`.** Each track gets one team by majority vote over its crops. The crops are sampled from the frames during the pass, and a saved `PipelineResult` holds no pixels. A post-process would have to read the video again. A step that needs data only the pass has belongs at the end of the pass.
-- **The ball filter (`Pipeline._clean_ball`) moved into a post-process.** It dropped ball positions that jumped faster than `ball_max_speed` and needed only the result, which made it a post-process by this ADR. The `track_ball` post-process replaced it, together with `clean_ball_path` and `ball_max_speed`: it chooses the ball among the candidates, and its gate is the speed limit. `Pipeline.run` keeps the most confident candidate as the ball, so a homography post-process such as `reproject` has no ball filter to undo; `track_ball` runs after it.
+- **The ball filter (`Pipeline._clean_ball`) is now a post-process.** It dropped ball positions that jumped faster than `ball_max_speed` and needed only the result, which made it a post-process by this ADR. The `track_ball` post-process replaced it, together with `clean_ball_path` and `ball_max_speed`: it chooses the ball among the candidates, and its gate is the speed limit. `Pipeline.run` keeps the most confident candidate as the ball, so a homography post-process such as `reproject` has no ball filter to undo; `track_ball` runs after it.
 
 Any step that can work on a saved result is a post-process.
