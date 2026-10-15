@@ -14,7 +14,7 @@ from tactifoot_vision.pitch.pitch import SoccerPitch
 
 logger = logging.getLogger(__name__)
 
-_GRID = (22, 15)  # points along the length and across: 5 m apart along 105 m
+_GRID = (22, 15)  # points along the length and across: 5 m and 4.9 m apart
 _THRESHOLDS = (1, 2, 5)  # metres
 _COLUMNS = [
     "median_error_m", "mean_error_m", "p90_error_m",
@@ -50,10 +50,10 @@ def evaluate_homography(
     pitch = result.pitch
     point_sets = {"landmarks": pitch.vertices.astype(float), "grid": _grid(pitch)}
     frame_size = (clip.width, clip.height)
-    # Per point set, the error vectors of each processed frame with truth
-    # (None without a homography); consecutive entries are consecutive frames.
+    # Per point set, the error vectors of each processed frame, consecutive
+    # like the frames (None without a homography or without truth).
     errors: dict[str, list[np.ndarray | None]] = {name: [] for name in point_sets}
-    available = 0
+    num_frames = available = 0
     for frame in result.frames:
         try:
             truth = clip.frame(frame.index).homography
@@ -62,16 +62,15 @@ def evaluate_homography(
                 f"Processed frame {frame.index} is not in labelled clip {clip.name}; "
                 "run the pipeline on the clip's video, within its frames"
             ) from None
-        if truth is None:
-            continue
-        available += frame.homography is not None
+        scored = truth is not None and frame.homography is not None
+        num_frames += truth is not None
+        available += scored
         for name, points in point_sets.items():
             errors[name].append(
-                None
-                if frame.homography is None
-                else _errors(points, truth, frame.homography, frame_size, pitch)
+                _errors(points, truth, frame.homography, frame_size, pitch)
+                if scored
+                else None
             )
-    num_frames = len(errors["grid"])
     if num_frames == 0:
         raise ValueError(
             f"No processed frame of {clip.name} has a calibration; "
@@ -85,14 +84,8 @@ def evaluate_homography(
     ).astype({"frames": int})
     grid = per_points.loc["grid"]
     metrics = HomographyMetrics(
-        median_error_m=float(grid["median_error_m"]),
-        mean_error_m=float(grid["mean_error_m"]),
-        p90_error_m=float(grid["p90_error_m"]),
-        under_1m=float(grid["under_1m"]),
-        under_2m=float(grid["under_2m"]),
-        under_5m=float(grid["under_5m"]),
+        **{column: float(grid[column]) for column in _COLUMNS if column != "frames"},
         availability=available / num_frames,
-        jitter_m=float(grid["jitter_m"]),
         per_points=per_points,
         truth=Truth.CALIBRATION,
         num_frames=num_frames,
@@ -149,16 +142,16 @@ def _errors(
     return errors
 
 
-def _summary(frames: list[np.ndarray | None]) -> list[float]:
+def _summary(errors: list[np.ndarray | None]) -> list[float]:
     """The ``_COLUMNS`` of one point set from its per-frame error vectors."""
     # A frame is scored when it has a homography and shows at least one point.
-    scored = [e for e in frames if e is not None and not np.isnan(e).all()]
+    scored = [e for e in errors if e is not None and not np.isnan(e).all()]
     frame_errors = np.array([np.nanmean(np.linalg.norm(e, axis=1)) for e in scored])
     if len(frame_errors) == 0:
         return [np.nan] * (len(_COLUMNS) - 1) + [0]
     changes = [
         _change(previous, current)
-        for previous, current in zip(frames, frames[1:], strict=False)
+        for previous, current in zip(errors, errors[1:], strict=False)
         if previous is not None and current is not None
     ]
     changes = [c for c in changes if not np.isnan(c)]
@@ -181,7 +174,14 @@ def _change(previous: np.ndarray, current: np.ndarray) -> float:
 
 
 def _percentile(errors: np.ndarray, q: float) -> float:
-    """``np.percentile``, infinite where it would interpolate towards an infinite error."""
-    with np.errstate(invalid="ignore"):
-        value = float(np.percentile(errors, q))
-    return np.inf if np.isnan(value) else value
+    """``np.percentile`` (linear), infinite where it interpolates towards an infinite error.
+
+    numpy gives NaN next to an infinite value, even where the percentile
+    lands exactly on a finite one.
+    """
+    errors = np.sort(errors)
+    position = q / 100 * (len(errors) - 1)
+    low, high = errors[int(np.floor(position))], errors[int(np.ceil(position))]
+    if low == high or position.is_integer():
+        return float(low)
+    return float(low + (high - low) * (position - np.floor(position)))

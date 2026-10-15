@@ -139,6 +139,25 @@ def test_jitter_is_the_frame_to_frame_change_of_the_error():
     assert metrics.under_1m == pytest.approx(2 / 3)
 
 
+def test_jitter_is_not_measured_across_an_uncalibrated_frame():
+    # The error goes 0, 0, (frame 2 not calibrated), 2 m: frames 1 and 3 are
+    # not consecutive, so only the step from frame 0 to 1 is measured.
+    homographies = [TRUE, TRUE, TRUE, _shift(2) @ TRUE]
+    clip = _clip([TRUE, TRUE, None, TRUE])
+    metrics = evaluate_homography(_result(homographies), clip)
+
+    assert metrics.jitter_m == pytest.approx(0, abs=1e-9)
+
+
+def test_a_run_without_homographies_is_unavailable_with_no_error():
+    metrics = evaluate_homography(_result([None, None]), _clip([TRUE] * 2))
+
+    assert metrics.availability == 0
+    assert np.isnan(metrics.median_error_m)
+    assert np.isnan(metrics.jitter_m)
+    assert metrics.per_points.loc["grid", "frames"] == 0
+
+
 def test_only_points_in_view_are_scored():
     # The frame shows the left half (x up to 52.5 m), where the grid's
     # points sit at x = 0, 5, ..., 50: a 2% stretch is off by 0.5 m on average.
@@ -161,6 +180,14 @@ def test_a_point_beyond_the_predicted_horizon_is_an_infinite_error():
     assert metrics.p90_error_m == np.inf
     assert metrics.median_error_m == np.inf  # halfway between 0 and infinity
     assert metrics.under_5m == pytest.approx(1 / 2)
+
+
+def test_an_infinite_error_does_not_move_a_percentile_that_lands_on_a_finite_one():
+    tilted = TRUE @ np.array([[1, 0, 0], [0, 1, 0], [0, -1 / 300, 1.0]])
+    metrics = evaluate_homography(_result([tilted, TRUE, TRUE]), _clip([TRUE] * 3))
+
+    assert metrics.median_error_m == pytest.approx(0, abs=1e-9)  # of 0, 0, inf
+    assert metrics.p90_error_m == np.inf
 
 
 def test_the_metrics_name_the_truth_used():
