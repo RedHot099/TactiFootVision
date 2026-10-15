@@ -9,7 +9,10 @@ import supervision as sv
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
 
-_PIECES = 8  # per segment between frames, so the fade looks continuous
+# Each segment between frames is cut into pieces of at most _PIECE_PX pixels,
+# so the fade looks continuous; at most _PIECES, so long segments stay cheap.
+_PIECES = 8
+_PIECE_PX = 4.0
 
 
 def trail_frames(
@@ -42,8 +45,8 @@ def draw_trail(
     if len(segments) == 0:
         return
     # Opacity per pixel, only in the box around the line (clipped to the
-    # image). Each segment is cut into pieces at their mean age; newer pieces
-    # are drawn last and cover older ones at the joints.
+    # image). Each segment is cut into pieces drawn at their mean age; newer
+    # pieces are drawn last and cover older ones at the joints.
     size = (image.shape[1], image.shape[0])
     used = xy[np.union1d(segments, segments + 1)]
     x0, y0 = np.maximum(np.floor(used.min(axis=0)) - thickness - 1, 0).astype(int)
@@ -52,15 +55,22 @@ def draw_trail(
         return
     alpha = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
     origin = np.array([x0, y0]) << SUBPIXEL
-    t = np.linspace(0.0, 1.0, _PIECES + 1)[:, None]
-    for i in segments:
-        ends = to_fixed(xy[i] * (1 - t) + xy[i + 1] * t) - origin
-        piece_ages = ages[i] + (ages[i + 1] - ages[i]) * (t[:-1, 0] + t[1:, 0]) / 2
-        for k, age in enumerate(piece_ages):
-            cv2.line(
-                alpha, tuple(ends[k]), tuple(ends[k + 1]),
-                round(255 * (1 - age / seconds)), thickness, cv2.LINE_AA, SUBPIXEL,
-            )  # fmt: skip
+    lengths = np.hypot(*(xy[segments + 1] - xy[segments]).T)
+    pieces = np.clip(np.ceil(lengths / _PIECE_PX), 1, _PIECES).astype(int)
+    segment = np.repeat(segments, pieces)
+    first = np.repeat(np.cumsum(pieces) - pieces, pieces)
+    t0 = (np.arange(len(segment)) - first) / np.repeat(pieces, pieces)
+    t1 = t0 + 1 / np.repeat(pieces, pieces)
+    starts, ends = (
+        to_fixed(xy[segment] + (xy[segment + 1] - xy[segment]) * t[:, None]) - origin
+        for t in (t0, t1)
+    )
+    piece_ages = ages[segment] + (ages[segment + 1] - ages[segment]) * (t0 + t1) / 2
+    opacity = np.round(255 * (1 - piece_ages / seconds)).astype(int)
+    for start, end, value in zip(
+        starts.tolist(), ends.tolist(), opacity.tolist(), strict=True
+    ):
+        cv2.line(alpha, start, end, value, thickness, cv2.LINE_AA, SUBPIXEL)
     drawn = alpha > 0
     if drawn.any():
         region = image[y0:y1, x0:x1]

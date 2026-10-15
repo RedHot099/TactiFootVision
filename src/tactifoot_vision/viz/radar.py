@@ -206,13 +206,13 @@ class PitchRadar:
         )
         # Unassigned people first so team colours stay on top where dots overlap.
         order = np.argsort(index != len(self.team_colors), kind="stable")
+        colors = [palette[i] for i in index[order]]
         if self.trail_seconds and history and tracker_id is not None:
-            colors = [palette[i] for i in index[order]]
             self._draw_tails(image, frame_result, history, tracker_id[order], colors)
         self._draw_dots(
             image,
             frame_result.pitch_xy[order],
-            [palette[i] for i in index[order]],
+            colors,
             self.player_radius,
             [labels[i] for i in order] if labels else None,
         )
