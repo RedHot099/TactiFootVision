@@ -265,11 +265,72 @@ def test_a_clip_read_from_a_video_file_is_refused(tmp_path):
         Dataset.from_clips(clip)
 
 
-def test_a_missing_frame_image_names_it(tmp_path):
+@pytest.mark.parametrize(
+    "change",
+    [
+        "remove 000001.jpg",  # would move every label one frame back
+        "remove 000002.jpg",  # a gap: VideoReader stops before it
+        "remove 000003.jpg",
+        "add 000000.jpg",  # would move every label one frame on
+        "add 000004.jpg",
+    ],
+)
+def test_images_that_are_not_one_per_frame_are_refused(tmp_path, change):
     clip = _clip(tmp_path, "SNMOT-001")
-    (tmp_path / "SNMOT-001" / "img1" / "000003.jpg").unlink()
+    action, name = change.split()
+    image = tmp_path / "SNMOT-001" / "img1" / name
+    if action == "remove":
+        image.unlink()
+    else:
+        cv2.imwrite(str(image), np.zeros((54, 96, 3)))
 
-    with pytest.raises(ValueError, match=r"000003\.jpg"):
+    with pytest.raises(ValueError, match=r"SNMOT-001 has 3 frames .* \d images"):
+        Dataset.from_clips(clip)
+
+
+def test_boxes_are_clipped_to_the_image_and_round_trip_alike(tmp_path):
+    gt = (
+        "1,1,-4,40,10,20,1,-1,-1,-1\n"  # crosses the left and bottom edges
+        "1,3,100,10,5,5,1,-1,-1,-1\n"  # wholly outside: dropped
+        "2,3,200,10,5,5,1,-1,-1,-1\n"  # the frame's only box, outside: no sample
+    )
+    clip = _clip(tmp_path / "clips", "SNMOT-001", gt=gt)
+
+    dataset = Dataset.from_clips(clip, train=1, valid=0)
+
+    (sample,) = dataset["train"]
+    np.testing.assert_allclose(sample.annotations.boxes, [[0, 40, 6, 54]])
+    for fmt in ("yolo", "coco"):
+        again = load_dataset(getattr(dataset, f"to_{fmt}")(tmp_path / fmt))
+        (reloaded,) = again["train"]
+        np.testing.assert_allclose(
+            reloaded.annotations.boxes, [[0, 40, 6, 54]], atol=1e-3
+        )
+
+
+@pytest.mark.parametrize("class_name", ["other", None])
+def test_a_box_outside_the_class_vocabulary_names_its_clip_and_frame(
+    tmp_path, class_name
+):
+    cv2.imwrite(str(tmp_path / "000001.jpg"), np.zeros((54, 96, 3)))
+    people = _people(["player"])
+    if class_name is None:
+        del people.data["class_name"]
+    else:
+        people.data["class_name"] = np.array([class_name])
+    clip = LabelledClip(
+        name="odd",
+        video_path=tmp_path / "%06d.jpg",
+        fps=25,
+        width=96,
+        height=54,
+        frames=(LabelledFrame(0, people, sv.Detections.empty()),),
+        truth=frozenset({Truth.BOXES}),
+    )
+
+    with pytest.raises(
+        ValueError, match=f"Frame 0 of clip odd has class '{class_name or ''}'"
+    ):
         Dataset.from_clips(clip)
 
 
@@ -301,3 +362,11 @@ def test_the_lowest_numbered_image_of_the_sequence_is_frame_0(tmp_path):
     dataset = Dataset.from_clips(clip, train=1, valid=0)
 
     assert [s.image_path.name for s in dataset] == ["frame0000.png", "frame0001.png"]
+
+
+def test_the_same_clip_reached_by_another_path_is_refused(tmp_path):
+    clip = _clip(tmp_path, "SNMOT-001")
+    (tmp_path / "link").symlink_to(tmp_path / "SNMOT-001")
+
+    with pytest.raises(ValueError, match="twice"):
+        Dataset.from_clips([clip, load_labelled_clip(tmp_path / "link")])

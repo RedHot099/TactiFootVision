@@ -6,18 +6,18 @@ import random
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Literal
 
 import cv2
 import numpy as np
 import pandas as pd
 
+from tactifoot_vision.data._files import clipped_box
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
 from tactifoot_vision.data.video import sequence_images
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
 
 SPLITS = ("train", "valid", "test")
 SPLIT_ALIASES = {"val": "valid", "validation": "valid"}
@@ -143,27 +143,32 @@ class Dataset:
         box becomes a sample whose image is that frame's file of the clip's
         image sequence, referenced in place; a frame without one is left
         out, since a clip cannot tell an empty frame from an unlabelled one.
-        Classes are ``player``, ``goalkeeper``, ``referee`` and ``ball``. A
-        clip without box truth, one read from a video file (its frames have
-        no file of their own; extract them first), a missing frame image and
+        The images must be one per frame, numbered without a gap, the
+        lowest-numbered being frame 0 as :class:`VideoReader` reads them.
+        Boxes are clipped to the image. Classes are ``player``,
+        ``goalkeeper``, ``referee`` and ``ball``. A clip without box truth or
+        with another class, one read from a video file (its frames have no
+        file of their own; extract them first), a missing or extra image and
         the same clip passed twice are ``ValueError``.
         """
         clips = [clips] if isinstance(clips, LabelledClip) else list(clips)
         seen: set[Path] = set()
         for clip in clips:
-            if clip.video_path in seen:
+            # Resolved, so one sequence reached by two paths is caught too.
+            images = clip.video_path.parent.resolve() / clip.video_path.name
+            if images in seen:
                 raise ValueError(
                     f"Clip {clip.name} ({clip.video_path}) is given twice; its "
                     "frames could land in two splits"
                 )
-            seen.add(clip.video_path)
-        samples = {id(clip): _clip_samples(clip) for clip in clips}
-        splits = _split_by_fractions(clips, train, valid, test, seed)
+            seen.add(images)
+        pairs = [(clip, _clip_samples(clip)) for clip in clips]
+        splits = _split_by_fractions(pairs, train, valid, test, seed)
         return cls(
             task=Task.DETECT,
             class_names=list(_CLIP_CLASSES),
             splits={
-                split: [s for clip in members for s in samples[id(clip)]]
+                split: [sample for _, samples in members for sample in samples]
                 for split, members in splits.items()
             },
         )
@@ -300,39 +305,70 @@ class Dataset:
 
 
 def _clip_samples(clip: LabelledClip) -> list[Sample]:
-    """One sample per frame of ``clip`` with a box, its image the frame's file in place."""
+    """One sample per frame of ``clip`` with a box, its image the frame's file in place.
+
+    Boxes are clipped to the image, as both exporters write them, and a box
+    with nothing left inside it is dropped.
+    """
     if Truth.BOXES not in clip.truth:
         raise ValueError(
             f"Clip {clip.name} has no {Truth.BOXES.value} truth, so it makes no "
             "detection samples"
         )
-    try:
-        images = sequence_images(clip.video_path, (f.index for f in clip.frames))
-    except ValueError:
-        raise ValueError(
-            f"Clip {clip.name} is read from {clip.video_path}, not an image "
-            "sequence, so its frames cannot be referenced in place; extract "
-            "them first"
-        ) from None
     samples = []
-    for frame, image in zip(clip.frames, images, strict=True):
-        objects = [frame.detections, frame.ball]
-        boxes = np.concatenate([d.xyxy for d in objects]).reshape(-1, 4)
-        if not len(boxes):
-            continue
-        if not image.is_file():
+    for frame, image in zip(clip.frames, _frame_images(clip), strict=True):
+        objects = [d for d in (frame.detections, frame.ball) if len(d)]
+        names = [
+            str(n) for d in objects for n in d.data.get("class_name", [""] * len(d))
+        ]
+        unknown = sorted(set(names) - set(_CLIP_CLASSES))
+        if unknown:
             raise ValueError(
-                f"Frame {frame.index} of clip {clip.name}: {image} not found"
+                f"Frame {frame.index} of clip {clip.name} has class {unknown[0]!r}; "
+                f"a detection dataset from clips has classes {_CLIP_CLASSES}"
             )
-        names = np.concatenate([d.data.get("class_name", []) for d in objects])
-        class_ids = [_CLIP_CLASSES.index(name) for name in names]
-        samples.append(
-            Sample(image, clip.width, clip.height, Annotations(boxes, class_ids))
-        )
+        boxes, class_ids = [], []
+        for box, name in zip(
+            (box for d in objects for box in d.xyxy), names, strict=True
+        ):
+            box = clipped_box(box, clip.width, clip.height)
+            if box is not None:
+                boxes.append(box)
+                class_ids.append(_CLIP_CLASSES.index(name))
+        if boxes:
+            annotations = Annotations(np.array(boxes), class_ids)
+            samples.append(Sample(image, clip.width, clip.height, annotations))
     return samples
 
 
-def _split_by_fractions(
+def _frame_images(clip: LabelledClip) -> list[Path]:
+    """The image file of each frame of ``clip``, as :class:`VideoReader` reads them.
+
+    The lowest-numbered image is frame 0. The images must be exactly one
+    per frame, numbered without a gap: a missing or extra image would move
+    the labels onto other frames.
+    """
+    pattern = clip.video_path
+    try:
+        images = sequence_images(pattern)
+    except ValueError:
+        raise ValueError(
+            f"Clip {clip.name} is read from {pattern}, not an image sequence, so "
+            "its frames cannot be referenced in place; extract them first"
+        ) from None
+    numbers = [number for number, _ in images]
+    first = numbers[0] if numbers else 0
+    if numbers != list(range(first, first + len(clip.frames))):
+        found = f" ({images[0][1].name} to {images[-1][1].name})" if images else ""
+        raise ValueError(
+            f"Clip {clip.name} has {len(clip.frames)} frames but {pattern.parent} "
+            f"holds {len(images)} images matching {pattern.name}{found}; it needs "
+            "one image per frame, numbered without a gap"
+        )
+    return [path for _, path in images]
+
+
+def _split_by_fractions[T](
     items: list[T], train: float, valid: float, test: float, seed: int
 ) -> dict[str, list[T]]:
     """Shuffle ``items`` and cut them into the non-empty splits of these fractions.
