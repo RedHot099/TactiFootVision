@@ -13,16 +13,15 @@ from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.radar import (
-    _SUBPIXEL,
     BALL_COLOR,
     DEFAULT_COLOR,
     TEAM_COLORS,
     ColorLike,
-    _fixed,
     as_color,
     team_color_index,
     text_color_for,
 )
+from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
 
 # Ground-truth class colours: bright hues that stand out on grass, checked for
 # colour-blind separation (labels always accompany them).
@@ -183,10 +182,7 @@ class FrameAnnotator:
         if self.draw_keypoints and frame_result.keypoints is not None:
             self._draw_keypoints(image, frame_result.keypoints, homography, text_scale)
         if self.trail_seconds and history and homography is not None:
-            self._draw_trail(
-                image, frame_result, history, homography, thickness,
-                self.trail_seconds,
-            )  # fmt: skip
+            self._draw_trail(image, frame_result, history, homography, thickness)
 
         people = frame_result.detections
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
@@ -268,14 +264,14 @@ class FrameAnnotator:
         history: Sequence[FrameResult],
         homography: np.ndarray,
         thickness: int,
-        seconds: float,
     ) -> None:
         """The ball's earlier pitch positions, projected into this frame.
 
         Opacity falls linearly with age along the line, from full now to none
-        at ``seconds``. A frame without a ball position breaks the line;
+        at ``trail_seconds``. A frame without a ball position breaks the line;
         filled-in (``interpolated``) positions draw like any other.
         """
+        seconds = self.trail_seconds or 0.0  # set: annotate checked it
         now = frame_result.timestamp
         # Within a microsecond: timestamps are index / fps, as in the window.
         recent = [f for f in history if 0 < now - f.timestamp <= seconds + 1e-6]
@@ -285,25 +281,36 @@ class FrameAnnotator:
         size = (image.shape[1], image.shape[0])
         xy, valid = project_to_frame(points, homography, size)
         valid &= np.isfinite(points).all(axis=1)
-        # Opacity per pixel. Each segment is cut into pieces at their mean
-        # age; newer pieces are drawn last and cover older ones at the joints.
-        alpha = np.zeros(image.shape[:2], dtype=np.uint8)
+        segments = np.flatnonzero(valid[:-1] & valid[1:])
+        if len(segments) == 0:
+            return
+        # Opacity per pixel, only in the box around the line (clipped to the
+        # frame). Each segment is cut into pieces at their mean age; newer
+        # pieces are drawn last and cover older ones at the joints.
+        used = xy[np.union1d(segments, segments + 1)]
+        x0, y0 = np.maximum(np.floor(used.min(axis=0)) - thickness - 1, 0).astype(int)
+        x1, y1 = np.minimum(np.ceil(used.max(axis=0)) + thickness + 2, size).astype(int)
+        if x0 >= x1 or y0 >= y1:
+            return
+        alpha = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+        origin = np.array([x0, y0]) << SUBPIXEL
         t = np.linspace(0.0, 1.0, _TRAIL_PIECES + 1)[:, None]
-        for i in np.flatnonzero(valid[:-1] & valid[1:]):
-            ends = _fixed(xy[i] * (1 - t) + xy[i + 1] * t)
+        for i in segments:
+            ends = to_fixed(xy[i] * (1 - t) + xy[i + 1] * t) - origin
             piece_ages = ages[i] + (ages[i + 1] - ages[i]) * (t[:-1, 0] + t[1:, 0]) / 2
             for k, age in enumerate(piece_ages):
                 cv2.line(
                     alpha, tuple(ends[k]), tuple(ends[k + 1]),
                     round(255 * (1 - age / seconds)), thickness, cv2.LINE_AA,
-                    _SUBPIXEL,
+                    SUBPIXEL,
                 )  # fmt: skip
         drawn = alpha > 0
         if drawn.any():
+            region = image[y0:y1, x0:x1]
             weight = alpha[drawn, None] / 255.0
             color = np.array(self.ball_color.as_bgr(), dtype=float)
-            image[drawn] = np.round(
-                (1 - weight) * image[drawn] + weight * color
+            region[drawn] = np.round(
+                (1 - weight) * region[drawn] + weight * color
             ).astype(np.uint8)
 
     # --------------------------------------------------------------- pitch

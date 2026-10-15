@@ -10,6 +10,7 @@ from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.birds_eye import _warp_frame
+from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 """A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
@@ -23,7 +24,6 @@ LINE_COLOR = "#FFFFFF"
 # Real-world proportions, so circles stay round on pitches with other units
 # (StatsBomb's 120 x 80 is not 105:68).
 _STD_LENGTH, _STD_WIDTH = 105.0, 68.0
-_SUBPIXEL = 4  # cv2 drawing "shift": coordinates carry 4 fractional bits
 
 
 def as_color(color: ColorLike) -> sv.Color:
@@ -52,11 +52,6 @@ def team_color_index(team_ids: np.ndarray, n_teams: int) -> np.ndarray:
     """Palette index per object: the team id, or ``n_teams`` (default colour) when unknown."""
     team_ids = np.asarray(team_ids, dtype=int)
     return np.where((team_ids >= 0) & (team_ids < n_teams), team_ids, n_teams)
-
-
-def _fixed(points: np.ndarray) -> np.ndarray:
-    """Pixel coordinates -> int32 fixed point for cv2's ``shift`` argument."""
-    return np.round(np.asarray(points) * (1 << _SUBPIXEL)).astype(np.int32)
 
 
 class PitchRadar:
@@ -272,15 +267,15 @@ class PitchRadar:
             )
         lines, spots = pitch_markings(self.pitch)
         color = self.line_color.as_bgr()
-        polylines = [_fixed(self.to_pixels(line)) for line in lines]
+        polylines = [to_fixed(self.to_pixels(line)) for line in lines]
         cv2.polylines(
-            image, polylines, False, color, self.line_thickness, cv2.LINE_AA, _SUBPIXEL
+            image, polylines, False, color, self.line_thickness, cv2.LINE_AA, SUBPIXEL
         )
         spot_radius = max(2.0, self.line_thickness * 1.5)
-        for center in _fixed(self.to_pixels(spots)):
+        for center in to_fixed(self.to_pixels(spots)):
             cv2.circle(
-                image, tuple(center), int(spot_radius * (1 << _SUBPIXEL)), color,
-                -1, cv2.LINE_AA, _SUBPIXEL,
+                image, tuple(center), int(spot_radius * (1 << SUBPIXEL)), color,
+                -1, cv2.LINE_AA, SUBPIXEL,
             )  # fmt: skip
         return image
 
@@ -299,20 +294,20 @@ class PitchRadar:
         for i, (point, color) in enumerate(zip(pixels, colors, strict=True)):
             if not np.isfinite(point).all():
                 continue
-            center = tuple(_fixed(point))
+            center = tuple(to_fixed(point))
             # A ring in the pitch colour keeps overlapping dots apart.
             cv2.circle(
-                image, center, (radius + ring) << _SUBPIXEL, self.pitch_color.as_bgr(),
-                -1, cv2.LINE_AA, _SUBPIXEL,
+                image, center, (radius + ring) << SUBPIXEL, self.pitch_color.as_bgr(),
+                -1, cv2.LINE_AA, SUBPIXEL,
             )  # fmt: skip
             cv2.circle(
                 image,
                 center,
-                radius << _SUBPIXEL,
+                radius << SUBPIXEL,
                 color.as_bgr(),
                 -1,
                 cv2.LINE_AA,
-                _SUBPIXEL,
+                SUBPIXEL,
             )
             if labels:
                 (tw, th), _ = cv2.getTextSize(
@@ -390,7 +385,7 @@ def draw_space_control(
         pitch_to_image,
     )[0]
     on_pitch = np.zeros((height, width), dtype=np.uint8)
-    cv2.fillConvexPoly(on_pitch, _fixed(corners), 1, cv2.LINE_8, _SUBPIXEL)
+    cv2.fillConvexPoly(on_pitch, to_fixed(corners), 1, cv2.LINE_8, SUBPIXEL)
     team0, team1 = (np.array(as_color(c).as_bgr(), np.float32) for c in team_colors[:2])
     colors = control * team0 + (1 - control) * team1
     out = image.copy()

@@ -80,7 +80,8 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks)
   analysis/           direction.py (attack_direction), space.py (space_control)
-  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py
+  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
+                      subpixel.py (fixed-point coordinates for cv2 drawing)
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
