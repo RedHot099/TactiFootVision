@@ -161,7 +161,8 @@ class TeamMetrics:
 
     Only people the run detected are scored: each true person is matched to
     a detected one by IoU in each processed frame, whatever their classes,
-    and ``recall`` is the share of true people matched. A run's team ids are
+    and ``recall`` is the share of true people matched. True people of
+    ``UNKNOWN_TEAM`` are left out of every number. A run's team ids are
     arbitrary, so ``team_mapping`` (run team id -> true team id) is the
     one-to-one assignment that agrees on the most matched people; a run team
     id it leaves out is wrong wherever it is given. A matched person is right
