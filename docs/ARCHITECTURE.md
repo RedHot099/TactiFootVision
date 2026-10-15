@@ -90,7 +90,8 @@ configs/              example run files
 
 ## Conventions
 
-* **Images** are `np.ndarray` `uint8` BGR `H×W×3` (OpenCV convention) everywhere.
+* **Images** are `np.ndarray` `uint8` BGR `H×W×3` (OpenCV convention) everywhere;
+  `warp_to_pitch` adds an alpha channel (BGRA) for what the frame does not show.
   Convert to RGB only at the matplotlib boundary (`viz.show`).
 * **Boxes** are `xyxy` float pixels. **Detections** are `sv.Detections`;
   every producer fills `data["class_name"]` so consumers never rely on class-id maps.

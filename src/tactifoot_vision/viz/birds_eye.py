@@ -3,9 +3,9 @@
 import cv2
 import numpy as np
 
+from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.viz.annotate import project_to_frame
-from tactifoot_vision.viz.radar import _STD_LENGTH, _STD_WIDTH
 
 
 def warp_to_pitch(
@@ -40,12 +40,16 @@ def warp_to_pitch(
         raise ValueError(
             f"homography must be a 3 x 3 matrix, got shape {homography.shape}"
         )
-    if frame.ndim != 3 or frame.shape[2] != 3:
+    if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
         raise ValueError(
-            f"frame must be a BGR image (height x width x 3), got shape {frame.shape}"
+            "frame must be a BGR uint8 image (height x width x 3), got "
+            f"{frame.dtype} of shape {frame.shape}"
         )
     pitch = pitch or SoccerPitch()
-    width, height = round(_STD_LENGTH * px_per_m), round(_STD_WIDTH * px_per_m)
+    width, height = (
+        round(size * px_per_m)
+        for size in metres_per_unit(pitch) * [pitch.length, pitch.width]
+    )
     columns, rows = np.meshgrid(np.arange(width), np.arange(height))
     points = np.column_stack([
         (columns.ravel() + 0.5) * pitch.length / width,
@@ -55,14 +59,16 @@ def warp_to_pitch(
     xy, in_front = project_to_frame(points, homography, (frame_w, frame_h))
     # The frame outline, as in the visible area: ``xy`` is continuous, with
     # pixel ``i`` covering ``[i, i + 1)``, so cv2 samples at ``xy - 0.5``.
-    seen = (
+    visible = (
         in_front
         & (xy[:, 0] >= 0)
         & (xy[:, 0] <= frame_w)
         & (xy[:, 1] >= 0)
         & (xy[:, 1] <= frame_h)
     )
-    maps = np.where(seen[:, None], xy - 0.5, -2).astype(np.float32)
+    # Other rows of ``xy`` are meaningless (beyond the horizon): sample
+    # anywhere and blank them below.
+    maps = np.where(visible[:, None], xy - 0.5, 0).astype(np.float32)
     bgr = cv2.remap(
         frame,
         maps.reshape(height, width, 2),
@@ -70,6 +76,6 @@ def warp_to_pitch(
         cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REPLICATE,  # the half pixel at the frame edges
     )
-    seen = seen.reshape(height, width)
-    bgr[~seen] = 0
-    return np.dstack([bgr, np.where(seen, 255, 0).astype(np.uint8)])
+    visible = visible.reshape(height, width)
+    bgr[~visible] = 0
+    return np.dstack([bgr, np.where(visible, 255, 0).astype(np.uint8)])

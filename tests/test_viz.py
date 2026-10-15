@@ -409,7 +409,12 @@ def test_warp_to_pitch_leaves_the_unseen_pitch_transparent() -> None:
     assert (out[alpha == 255, :3] == 200).all()
 
 
-def _camera(position, target, focal: float, size: tuple[int, int]) -> np.ndarray:
+def _camera(
+    position: np.ndarray,
+    target: tuple[float, float],
+    focal: float,
+    size: tuple[int, int],
+) -> np.ndarray:
     """Pitch -> frame homography of a pinhole camera at ``position`` (x, y,
     height in metres) looking at ``target`` on the pitch."""
     forward = np.array([*target, 0.0]) - position
@@ -447,8 +452,10 @@ def test_warp_to_pitch_checks_its_inputs() -> None:
         viz.warp_to_pitch(frame, HOMOGRAPHY, px_per_m=0)
     with pytest.raises(ValueError, match="3 x 3"):
         viz.warp_to_pitch(frame, np.eye(2))
-    with pytest.raises(ValueError, match="BGR"):
+    with pytest.raises(ValueError, match="BGR uint8"):
         viz.warp_to_pitch(frame[..., 0], HOMOGRAPHY)
+    with pytest.raises(ValueError, match="BGR uint8"):
+        viz.warp_to_pitch(frame.astype(np.float32), HOMOGRAPHY)
 
 
 # --------------------------------------------------------------------- video
