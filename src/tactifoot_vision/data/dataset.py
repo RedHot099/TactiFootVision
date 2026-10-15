@@ -24,6 +24,8 @@ SPLIT_ALIASES = {"val": "valid", "validation": "valid"}
 LinkMode = Literal["symlink", "hardlink", "copy"]
 # The classes of a dataset built from labelled clips: the package vocabulary.
 _CLIP_CLASSES = ("player", "goalkeeper", "referee", "ball")
+# OpenCV's image-sequence reader only finds a first image numbered 0 to 4.
+_LAST_FIRST_IMAGE = 4
 
 
 def canonical_split(name: str) -> str:
@@ -144,14 +146,20 @@ class Dataset:
         image sequence, referenced in place; a frame without one is left
         out, since a clip cannot tell an empty frame from an unlabelled one.
         The images must be one per frame, numbered without a gap, the
-        lowest-numbered being frame 0 as :class:`VideoReader` reads them.
-        Boxes are clipped to the image. Classes are ``player``,
+        lowest-numbered being frame 0 as :class:`VideoReader` reads them; its
+        number must be 0 to 4, the first numbers OpenCV looks for. The
+        SoccerNet readers number from 1 (image ``n`` is frame ``n - 1``), so
+        a SoccerNet folder that also holds an image 0 is refused rather than
+        read one frame off. Boxes are clipped to the image. A clip without a
+        boxed frame still takes a clip's share of its split, with a warning. Classes are ``player``,
         ``goalkeeper``, ``referee`` and ``ball``. A clip without box truth or
         with another class, one read from a video file (its frames have no
         file of their own; extract them first), a missing or extra image and
-        the same clip passed twice are ``ValueError``.
+        the same clip passed twice are ``ValueError``, as is no clip at all.
         """
         clips = [clips] if isinstance(clips, LabelledClip) else list(clips)
+        if not clips:
+            raise ValueError("A detection dataset from clips needs at least one clip")
         seen: set[Path] = set()
         for clip in clips:
             # Resolved, so one sequence reached by two paths is caught too.
@@ -163,6 +171,13 @@ class Dataset:
                 )
             seen.add(images)
         pairs = [(clip, _clip_samples(clip)) for clip in clips]
+        for clip, samples in pairs:
+            if not samples:
+                logger.warning(
+                    "Clip %s has no frame with a box; it makes no sample but "
+                    "still counts as a clip in the split fractions",
+                    clip.name,
+                )
         splits = _split_by_fractions(pairs, train, valid, test, seed)
         return cls(
             task=Task.DETECT,
@@ -344,7 +359,8 @@ def _clip_samples(clip: LabelledClip) -> list[Sample]:
 def _frame_images(clip: LabelledClip) -> list[Path]:
     """The image file of each frame of ``clip``, as :class:`VideoReader` reads them.
 
-    The lowest-numbered image is frame 0. The images must be exactly one
+    The lowest-numbered image is frame 0, and OpenCV only opens a sequence
+    whose first image is numbered 0 to 4. The images must be exactly one
     per frame, numbered without a gap: a missing or extra image would move
     the labels onto other frames.
     """
@@ -358,6 +374,12 @@ def _frame_images(clip: LabelledClip) -> list[Path]:
         ) from None
     numbers = [number for number, _ in images]
     first = numbers[0] if numbers else 0
+    if first > _LAST_FIRST_IMAGE:
+        raise ValueError(
+            f"Clip {clip.name}: the first image matching {pattern} is "
+            f"{images[0][1].name}, numbered {first}; OpenCV (VideoReader, the "
+            f"pipeline) only opens a sequence starting at 0 to {_LAST_FIRST_IMAGE}"
+        )
     if numbers != list(range(first, first + len(clip.frames))):
         found = f" ({images[0][1].name} to {images[-1][1].name})" if images else ""
         raise ValueError(

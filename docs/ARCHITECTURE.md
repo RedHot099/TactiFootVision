@@ -179,7 +179,11 @@ configs/              example run files
   frame's file of the clip's image sequence, referenced in place; the
   sequence must hold one image per frame, numbered without a gap, its
   lowest-numbered image being frame 0 as `VideoReader` reads it, so a
-  missing or extra image cannot move the labels onto other frames. A frame
+  missing or extra image cannot move the labels onto other frames. That
+  first number must be 0 to 4, the numbers OpenCV looks for; SoccerNet
+  folders start at 1 (image `n` is frame `n - 1`). No clip at all is
+  refused; a clip without a boxed frame warns and still takes a clip's
+  share of its split. A frame
   without a box is left out, since a clip cannot tell an empty frame from
   an unlabelled one. Boxes are clipped to the image, as both exporters
   write them. Classes are `player`, `goalkeeper`, `referee`, `ball`. A clip

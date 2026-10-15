@@ -343,7 +343,7 @@ def test_the_same_clip_twice_is_refused(tmp_path):
 
 
 def test_the_lowest_numbered_image_of_the_sequence_is_frame_0(tmp_path):
-    # As VideoReader and the pipeline read it, whatever number it starts from.
+    # As VideoReader and the pipeline read it; SoccerNet folders start at 1.
     for n in range(2):
         cv2.imwrite(str(tmp_path / f"frame{n:04d}.png"), np.zeros((54, 96, 3)))
     clip = LabelledClip(
@@ -370,3 +370,41 @@ def test_the_same_clip_reached_by_another_path_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="twice"):
         Dataset.from_clips([clip, load_labelled_clip(tmp_path / "link")])
+
+
+def test_a_sequence_opencv_cannot_open_is_refused(tmp_path):
+    # OpenCV only finds a first image numbered 0 to 4.
+    for n in range(10, 12):
+        cv2.imwrite(str(tmp_path / f"{n:06d}.jpg"), np.zeros((54, 96, 3)))
+    clip = LabelledClip(
+        name="late",
+        video_path=tmp_path / "%06d.jpg",
+        fps=25,
+        width=96,
+        height=54,
+        frames=tuple(
+            LabelledFrame(i, _people(["player"]), sv.Detections.empty())
+            for i in range(2)
+        ),
+        truth=frozenset({Truth.BOXES}),
+    )
+
+    with pytest.raises(ValueError, match=r"late.*000010\.jpg.*0 to 4"):
+        Dataset.from_clips(clip)
+
+
+def test_no_clip_is_refused():
+    with pytest.raises(ValueError, match="at least one clip"):
+        Dataset.from_clips([])
+
+
+def test_a_clip_without_a_boxed_frame_warns_and_keeps_its_split_slot(tmp_path, caplog):
+    clips = [_clip(tmp_path, "SNMOT-001"), _clip(tmp_path, "SNMOT-002", gt="")]
+
+    with caplog.at_level("WARNING"):
+        dataset = Dataset.from_clips(clips, train=0.5, valid=0.5)
+
+    assert "SNMOT-002 has no frame with a box" in caplog.text
+    # The empty clip took the other split's one slot, which stays empty.
+    assert len(dataset.split_names) == 1
+    assert len(dataset) == 2
