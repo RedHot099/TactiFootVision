@@ -52,16 +52,18 @@ class KeypointMetrics:
 class TrackingMetrics:
     """HOTA, CLEAR MOT and identity metrics of a tracking run on one labelled clip.
 
-    ``hota`` is TrackEval's HOTA, the geometric mean of ``deta`` (detection
-    accuracy) and ``assa`` (association accuracy), each averaged over IoU
-    thresholds from 0.05 to 0.95; all three are NaN when evaluated with
-    ``hota=False``.     ``mota`` is ``(matched boxes - false_positives - id_switches) /
-    max(1, true boxes)`` as in TrackEval: ``1 - (false_negatives +
-    false_positives + id_switches) / true boxes``, and ``-false_positives``
-    for a class without true boxes in the scored frames. ``idf1`` is the F1
-    score of the boxes matched to the true identity of their track. The overall numbers add up the counts of every
-    class. ``per_class`` is indexed by class name with columns ``hota``,
-    ``deta``, ``assa``, ``idf1``, ``mota``, ``id_switches``, ``false_positives``, ``false_negatives`` and
+    ``hota`` is TrackEval's HOTA: at each IoU threshold from 0.05 to 0.95 the
+    geometric mean of detection accuracy (``deta``) and association accuracy
+    (``assa``), and each of the three is the mean over the thresholds. All
+    three are NaN when evaluated with ``hota=False``. ``mota`` is ``(matched
+    boxes - false_positives - id_switches) / max(1, true boxes)`` as in
+    TrackEval: ``1 - (false_negatives + false_positives + id_switches) / true
+    boxes``, and ``-false_positives`` for a class without true boxes in the
+    scored frames. ``idf1`` is the F1 score of the boxes matched to the true
+    identity of their track. The overall numbers add up the counts (for HOTA,
+    the detections) of every class. ``per_class`` is indexed by class name
+    with columns ``hota``, ``deta``, ``assa``, ``idf1``, ``mota``,
+    ``id_switches``, ``false_positives``, ``false_negatives`` and
     ``instances`` (true boxes in the scored frames).
     """
 

@@ -8,9 +8,8 @@ from typing import Any, NamedTuple
 import numpy as np
 import supervision as sv
 
-Frame = tuple[
-    np.ndarray, np.ndarray
-]  # track ids and xyxy boxes of one class in one frame
+type Frame = tuple[np.ndarray, np.ndarray]
+"""Track ids and xyxy boxes of one class in one frame."""
 
 
 class Hota(NamedTuple):
@@ -50,7 +49,9 @@ def hota_by_class(
 def _trackeval_hota() -> Any:
     try:
         from trackeval.metrics import HOTA
-    except ImportError as error:
+    except ModuleNotFoundError as error:
+        if (error.name or "").partition(".")[0] != "trackeval":
+            raise  # TrackEval is installed but broken: say what is missing
         raise ImportError(
             "HOTA needs TrackEval, from the eval extra: run `uv sync --extra eval` "
             "(or `pip install 'tactifoot-vision[eval]'`), or pass hota=False"
@@ -60,7 +61,11 @@ def _trackeval_hota() -> Any:
 
 @contextmanager
 def _numpy_aliases() -> Iterator[None]:
-    """Lend numpy the ``np.float`` and ``np.int`` that TrackEval still uses (numpy 1.24 removed them)."""
+    """Lend numpy the ``np.float`` and ``np.int`` that TrackEval still uses (numpy 1.24 removed them).
+
+    The aliases are set on the numpy module itself, so other threads see them
+    while HOTA runs.
+    """
     missing = [name for name in ("float", "int") if name not in vars(np)]
     for name in missing:
         setattr(np, name, getattr(builtins, name))

@@ -3,6 +3,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
@@ -222,6 +223,13 @@ def test_hota_without_trackeval_is_an_error_that_says_how_to_install_it(monkeypa
     metrics = evaluate_tracking(_result(PREDICTED), _clip(TRUTH), hota=False)
     assert np.isnan([metrics.hota, metrics.deta, metrics.assa]).all()
     assert metrics.per_class[["hota", "deta", "assa"]].isna().all(axis=None)
+
+
+def test_a_broken_trackeval_is_not_reported_as_missing(monkeypatch):
+    monkeypatch.setitem(sys.modules, "trackeval", ModuleType("trackeval"))
+    monkeypatch.setitem(sys.modules, "trackeval.metrics", ModuleType("metrics"))
+    with pytest.raises(ImportError, match="cannot import name 'HOTA'"):
+        evaluate_tracking(_result(PREDICTED), _clip(TRUTH))
 
 
 needs_trackeval = pytest.mark.skipif(
