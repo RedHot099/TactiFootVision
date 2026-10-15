@@ -217,8 +217,8 @@ configs/              example run files
     frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
     `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Truth:
     identities, boxes, ball.
-* `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), pitch=None,
-  fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
+* `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), *,
+  pitch=None, fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
   renders `pitch_markings(pitch)` on striped grass through one frame → pitch
   homography per frame (repeat one for a static camera, vary it for a pan),
   writes the MPEG-4 video to `path` and returns a clip whose only truth is

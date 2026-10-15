@@ -9,7 +9,12 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, LabelledFrame, Truth
-from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
+from tactifoot_vision.pitch.pitch import (
+    _STD_LENGTH,
+    _STD_WIDTH,
+    SoccerPitch,
+    pitch_markings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +53,9 @@ def synthetic_pitch_clip(
         path: the video file to write (MPEG-4); the clip is named after its stem.
         homographies: one 3x3 frame -> pitch homography per frame, in the
             units of ``pitch``, taking frame coordinates where pixel ``i``
-            covers ``[i, i + 1)``.
+            covers ``[i, i + 1)``. The frame centre must show the pitch: it
+            tells which side of the horizon is the pitch, so a centre in the
+            sky renders the pitch mirrored into it.
         frame_size: ``(width, height)`` in pixels, both even (the encoder
             drops an odd last row or column).
         pitch: the pitch drawn and its units; the default 105 x 68 m.
@@ -122,6 +129,11 @@ def _check_arguments(
         if np.linalg.matrix_rank(h) < 3:
             raise ValueError(f"Homography {index} is not invertible")
     width, height = frame_size
+    if width <= 0 or height <= 0 or width % 2 or height % 2:
+        raise ValueError(
+            f"frame_size must be positive and even (the encoder drops an odd "
+            f"last row or column), got {width} x {height}"
+        )
     for index, h in enumerate(homographies):
         # The frame centre tells which side of the horizon is the pitch.
         if abs(h[2] @ [width / 2, height / 2, 1]) < 1e-12 * np.abs(h).max():
@@ -129,11 +141,6 @@ def _check_arguments(
                 f"Homography {index} puts the frame centre on the horizon; "
                 "the frame centre must show the pitch"
             )
-    if width <= 0 or height <= 0 or width % 2 or height % 2:
-        raise ValueError(
-            f"frame_size must be positive and even (the encoder drops an odd "
-            f"last row or column), got {width} x {height}"
-        )
     if fps <= 0:
         raise ValueError(f"fps must be > 0, got {fps}")
     if line_width <= 0:
@@ -156,11 +163,13 @@ def _pitch_texture(
     # up to 40 px/m: a line narrower than 7.5 cm is drawn about 1-3 px wide.
     px_per_m = min(40.0, max(10.0, 3 / line_width))
     margin = _MARGIN_M * px_per_m
-    scale = px_per_m * np.array([105 / pitch.length, 68 / pitch.width])
+    scale = px_per_m * np.array([_STD_LENGTH / pitch.length, _STD_WIDTH / pitch.width])
     pitch_to_texture = np.array(
         [[scale[0], 0, margin - 0.5], [0, scale[1], margin - 0.5], [0, 0, 1]]
     )
-    size = np.round((np.array([105.0, 68.0]) + 2 * _MARGIN_M) * px_per_m).astype(int)
+    size = np.round(
+        (np.array([_STD_LENGTH, _STD_WIDTH]) + 2 * _MARGIN_M) * px_per_m
+    ).astype(int)
     stripe = np.floor(
         (np.arange(size[0]) + 0.5 - margin) / (size[0] - 2 * margin) * _STRIPES
     )

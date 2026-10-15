@@ -88,6 +88,19 @@ def test_markings_are_drawn_where_the_calibration_puts_them(tmp_path, pitch):
     assert green > red + 30 and green > blue + 30 and green < 200
 
 
+def test_a_panned_frame_draws_its_markings_where_its_calibration_puts_them(tmp_path):
+    cameras = [_camera(0), _camera(10)]  # the second looks 10 m to the right
+
+    clip = synthetic_pitch_clip(tmp_path / "pan.mp4", cameras, FRAME, line_width=0.4)
+
+    before, after = _frames(clip)
+    # The right penalty box's front corners: in view only after the pan.
+    corners = pitch_to_frame(SoccerPitch().vertices[[17, 20]], cameras[1])
+    for x, y in np.floor(corners).astype(int):
+        assert after[y, x].min() > 150, (x, y, after[y, x])
+        assert before[y, x].min() < 150, (x, y, before[y, x])
+
+
 def test_the_far_side_of_the_horizon_is_not_pitch(tmp_path):
     # Pitch -> frame of a camera standing at x = 50 on the pitch, looking
     # towards x = 105, with the horizon at frame row 40: without care, the
