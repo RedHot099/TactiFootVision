@@ -228,6 +228,11 @@ configs/              example run files
 ### Training and inference behind one interface (`tv.models`)
 
 * `load_model(name, weights, conf=..., device=..., **options)`; `available_models()`.
+* Detectors (`yolo`, `rfdetr`) take `class_conf`, a minimum confidence per
+  class name that replaces `conf` for those classes (`{ball: 0.05}` keeps weak
+  ball candidates while people keep `conf`). The backend runs once at the
+  lowest threshold and each detection is then held to its class's. Values
+  outside `[0, 1]` and names the model does not have are a `ValueError`.
 * `Model.predict(image)` / `model(image)`; `Model.train(dataset, config=None, **overrides) -> TrainResult`;
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
@@ -313,6 +318,11 @@ configs/              example run files
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
   The ball filter (`ball_max_speed`) also runs at the end of the pass for
   now; the `ball-tracking` feature moves it into a post-process.
+  `FrameResult.ball_candidates` keeps every ball detection of the frame,
+  best confidence first, with its `pitch_xy`; `ball` is the chosen one: the
+  best candidate, until a post-process chooses another. The tables and
+  freeze frames export `ball` only, so they keep one ball row per frame.
+  The ball filter leaves the candidates' positions alone.
 * Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
   registered with `@POSTPROCESSES.register("name")`. They return a new
   result and never change their input. Registering keeps the function's
@@ -321,8 +331,8 @@ configs/              example run files
   result's `postprocesses`; `save`/`load` and `export` keep that record.
   Shared helpers keep a changed result consistent:
   `reproject(result, homographies)` replaces the homographies (one per
-  frame, `None` for none) and recomputes `pitch_xy` from the boxes as the
-  pipeline does (so the ball filter's dropped positions come back), and
+  frame, `None` for none) and recomputes `pitch_xy` from the boxes (ball
+  candidates included) as the pipeline does (so the ball filter's dropped positions come back), and
   `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
   in `data["original_tracker_id"]`.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:

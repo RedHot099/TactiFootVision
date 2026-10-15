@@ -339,6 +339,105 @@ def test_bad_backend_options_fail_before_the_run_folder_exists(
     assert not (tmp_path / "runs").exists()
 
 
+# ---------------------------------------------------- per-class confidence
+# (class, confidence) of what a detector finds in the image, best first
+FOUND = [("player", 0.6), ("player", 0.1), ("ball", 0.1), ("ball", 0.03)]
+
+
+class _ThresholdingYOLO:
+    """Predicts ``FOUND`` like Ultralytics, keeping what reaches ``conf``."""
+
+    names = dict(enumerate(FOOTBALL_CLASSES))
+
+    def __init__(self):
+        self.thresholds: list[float] = []
+
+    def predict(self, image, conf, **options):
+        import torch
+        from ultralytics.engine.results import Results
+
+        self.thresholds.append(conf)
+        rows = [
+            [10 * i, 0, 10 * i + 5, 5, score, FOOTBALL_CLASSES.index(name)]
+            for i, (name, score) in enumerate(FOUND)
+            if score >= conf
+        ]
+        boxes = torch.tensor(rows, dtype=torch.float32).reshape(-1, 6)
+        return [Results(image, path="", names=self.names, boxes=boxes)]
+
+
+class _ThresholdingRFDETR:
+    """Predicts ``FOUND`` like RF-DETR, keeping what reaches ``threshold``."""
+
+    def __init__(self):
+        self.thresholds: list[float] = []
+
+    def predict(self, image, threshold):
+        self.thresholds.append(threshold)
+        kept = [(i, n, c) for i, (n, c) in enumerate(FOUND) if c >= threshold]
+        return sv.Detections(
+            xyxy=np.array(
+                [[10 * i, 0, 10 * i + 5, 5] for i, _, _ in kept], np.float32
+            ).reshape(-1, 4),
+            confidence=np.array([c for _, _, c in kept], np.float32),
+            class_id=np.array([FOOTBALL_CLASSES.index(n) for _, n, _ in kept], int),
+        )
+
+
+def _load_thresholding_yolo(self, weights):
+    self._yolo = _ThresholdingYOLO()
+
+
+def _load_thresholding_rfdetr(self, weights):
+    self._rf = _ThresholdingRFDETR()
+    self._class_names = list(FOOTBALL_CLASSES)
+    self._label_to_index = np.arange(len(FOOTBALL_CLASSES))
+
+
+@pytest.fixture(params=["yolo", "rfdetr"])
+def thresholding_detector(request, monkeypatch):
+    """A registered detector class whose backend predicts ``FOUND``."""
+    model = MODELS.get(request.param)
+    load = {"yolo": _load_thresholding_yolo, "rfdetr": _load_thresholding_rfdetr}
+    monkeypatch.setattr(model, "_load", load[request.param])
+    return model
+
+
+def _backend_thresholds(model) -> list[float]:
+    return (model._yolo if isinstance(model, YOLODetector) else model._rf).thresholds
+
+
+def test_class_conf_keeps_weak_balls_and_drops_weak_players(thresholding_detector):
+    model = thresholding_detector(device="cpu", conf=0.25, class_conf={"ball": 0.05})
+    detections = model.predict(np.zeros((48, 64, 3), np.uint8))
+    names = detections.data["class_name"].tolist()
+    assert list(zip(names, detections.confidence.tolist(), strict=True)) == [
+        ("player", pytest.approx(0.6)),
+        ("ball", pytest.approx(0.1)),
+    ]
+    # the backend is asked once, at the lowest threshold
+    assert _backend_thresholds(model) == [0.05]
+
+
+def test_without_class_conf_one_threshold_applies(thresholding_detector):
+    model = thresholding_detector(device="cpu", conf=0.25)
+    detections = model.predict(np.zeros((48, 64, 3), np.uint8))
+    assert detections.data["class_name"].tolist() == ["player"]
+    assert _backend_thresholds(model) == [0.25]
+
+
+@pytest.mark.parametrize(
+    ("class_conf", "match"),
+    [
+        ({"ball": 1.5}, r"class_conf\['ball'\] must be in \[0, 1\], got 1.5"),
+        ({"bal": 0.05}, "Unknown class 'bal' in class_conf.*ball, goalkeeper"),
+    ],
+)
+def test_class_conf_is_checked(thresholding_detector, class_conf, match):
+    with pytest.raises(ValueError, match=match):
+        thresholding_detector(device="cpu", class_conf=class_conf)
+
+
 # ======================================================= real weights / GPU
 @pytest.fixture(scope="module")
 def football() -> tv.Dataset:

@@ -96,8 +96,11 @@ class ObjectMasks:
 class FrameResult:
     """Everything the pipeline knows about one video frame.
 
-    ``detections`` holds tracked people (players, goalkeepers, referees) and
-    ``ball`` the ball; both are ``sv.Detections`` whose ``data`` carries:
+    ``detections`` holds tracked people (players, goalkeepers, referees),
+    ``ball_candidates`` every ball detection of the frame (best confidence
+    first) and ``ball`` the chosen ball among them: the best candidate, until
+    a post-process chooses another. The tables export ``ball`` only. All three
+    are ``sv.Detections`` whose ``data`` carries:
 
     * ``class_name`` – ``(N,)`` str
     * ``pitch_xy`` – ``(N, 2)`` float pitch coordinates (NaN without homography);
@@ -109,6 +112,7 @@ class FrameResult:
     timestamp: float  # seconds since the start of the video
     detections: sv.Detections
     ball: sv.Detections
+    ball_candidates: sv.Detections = field(kw_only=True)
     keypoints: sv.KeyPoints | None = None  # pitch keypoints in frame pixels
     homography: np.ndarray | None = None  # 3x3 frame -> pitch
     masks: ObjectMasks | None = None  # one per person (Pipeline(keep_masks=True))

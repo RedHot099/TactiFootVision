@@ -246,6 +246,22 @@ def test_unknown_keys_fail_at_load(tmp_path, section, value, bad, valid):
     assert valid in message
 
 
+@pytest.mark.parametrize("backend", ["yolo", "rfdetr"])
+def test_the_ball_threshold_reaches_run_files_by_signature(
+    tmp_path, monkeypatch, backend
+):
+    model = MODELS.get(backend)
+    monkeypatch.setattr(model, "_load", lambda self, weights: None)
+    monkeypatch.setattr(model, "class_names", property(lambda self: ["ball", "player"]))
+    data = {"detector": {"type": backend, "class_conf": {"ball": 0.05}}}
+    detector = _load(tmp_path, data).build_pipeline().detector
+    assert detector.class_conf == {"ball": 0.05}
+    overridden = _load(
+        tmp_path, {"detector": {"type": backend}}, ["detector.class_conf.ball=0.1"]
+    )
+    assert overridden.build_pipeline().detector.class_conf == {"ball": 0.1}
+
+
 def test_teams_keys_are_checked_against_the_classifier_and_its_embedder(tmp_path):
     with pytest.raises(
         ValueError, match="Unknown key 'bogus' in section 'teams'"

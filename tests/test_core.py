@@ -6,6 +6,7 @@ import sys
 
 import cv2
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
@@ -167,13 +168,19 @@ def _result():
         data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[60, 20]])},
     )
     frame = FrameResult(
-        index=4, timestamp=65.2, detections=detections, ball=ball, homography=np.eye(3)
+        index=4,
+        timestamp=65.2,
+        detections=detections,
+        ball=ball,
+        ball_candidates=ball,
+        homography=np.eye(3),
     )
     empty = FrameResult(
         index=5,
         timestamp=65.24,
         detections=sv.Detections.empty(),
         ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     return PipelineResult(
         frames=[frame, empty],
@@ -208,7 +215,13 @@ def test_result_tables(tmp_path):
 
 def test_freeze_frames_of_the_second_half_roll_over_the_minute():
     frames = [
-        FrameResult(i, i / 25, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / 25,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in (0, 1499, 1500)
     ]
     ball = sv.Detections(
@@ -217,7 +230,7 @@ def test_freeze_frames_of_the_second_half_roll_over_the_minute():
         data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[1, 1]])},
     )
     for frame in frames:
-        frame.ball = ball
+        frame.ball = frame.ball_candidates = ball
     result = PipelineResult(frames, 25.0, (100, 50), ["ball"])
     table = result.to_freeze_frames(period=2, period_start=45 * 60)
     assert table[["minute", "second"]].values.tolist() == [[45, 0], [45, 59], [46, 0]]
@@ -231,6 +244,42 @@ def test_result_save_load(tmp_path):
     path = _result().save(tmp_path / "result.pkl")
     loaded = PipelineResult.load(path)
     assert len(loaded) == 2 and loaded[0].detections.tracker_id.tolist() == [7, 8]
+
+
+def _with_spare_ball(result: PipelineResult) -> PipelineResult:
+    """``result`` whose first frame also has a spare ball, more confident than its ball."""
+    frame = result[0]
+    spare = sv.Detections(
+        xyxy=np.float32([[90, 5, 93, 8]]),
+        confidence=np.float32([0.7]),
+        class_id=np.array([0]),
+        data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[100, 5]])},
+    )
+    frame.ball_candidates = sv.Detections.merge([spare, frame.ball])
+    return result
+
+
+def test_ball_candidates_survive_save_and_load(tmp_path):
+    result = _with_spare_ball(_result())
+    for path in (
+        result.save(tmp_path / "result.pkl"),
+        result.export(tmp_path / "run") / "result.pkl",
+    ):
+        candidates = PipelineResult.load(path)[0].ball_candidates
+        assert candidates.xyxy.tolist() == [[90, 5, 93, 8], [5, 5, 8, 8]]
+        assert candidates.confidence.tolist() == pytest.approx([0.7, 0.5])
+        assert candidates.data["pitch_xy"].tolist() == [[100, 5], [60, 20]]
+        assert len(PipelineResult.load(path)[1].ball_candidates) == 0
+
+
+def test_tables_keep_one_row_for_the_chosen_ball_whatever_the_candidates():
+    alone, with_spare = _result(), _with_spare_ball(_result())
+    pd.testing.assert_frame_equal(with_spare.to_dataframe(), alone.to_dataframe())
+    pd.testing.assert_frame_equal(
+        with_spare.to_freeze_frames(), alone.to_freeze_frames()
+    )
+    balls = with_spare.to_freeze_frames().query("type == 'ball'")
+    assert [json.loads(b) for b in balls["frame_bbox"]] == [[5, 5, 8, 8]]
 
 
 def test_homography_restarts_its_average_after_a_gap():
@@ -341,16 +390,20 @@ def test_freeze_frames_of_an_unknown_period_need_a_period_start():
 
 def test_export_uses_the_kick_off_clock(tmp_path):
     out = _result().export(tmp_path / "run", period=2)
-    import pandas as pd
-
     assert pd.read_csv(out / "freeze_frames.csv")["minute"].iloc[0] == 46
 
 
 def test_an_empty_result_exports_tables_with_headers(tmp_path):
-    import pandas as pd
-
     empty = PipelineResult(
-        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        [
+            FrameResult(
+                0,
+                0.0,
+                sv.Detections.empty(),
+                sv.Detections.empty(),
+                ball_candidates=sv.Detections.empty(),
+            )
+        ],
         25.0,
         (64, 48),
         [],

@@ -67,7 +67,9 @@ def _frame_result(index: int) -> FrameResult:
         xy=pitch_to_frame(PITCH.vertices, HOMOGRAPHY)[None].astype(np.float32),
         confidence=confidence[None],
     )
-    return FrameResult(index, index / FPS, people, ball, keypoints, HOMOGRAPHY)
+    return FrameResult(
+        index, index / FPS, people, ball, keypoints, HOMOGRAPHY, ball_candidates=ball
+    )
 
 
 @pytest.fixture
@@ -308,7 +310,13 @@ def test_render_video_seeks_to_the_first_frame_of_the_result(tmp_path: Path) -> 
         writer.write(np.full((H, W, 3), (0, 20 * i, 0), dtype=np.uint8))
     writer.release()
     frames = [
-        FrameResult(i, i / FPS, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / FPS,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in (3, 5, 7)
     ]
     partial = PipelineResult(frames, FPS, (W, H), [])
@@ -498,7 +506,13 @@ def test_render_video_passes_overlay_padding(
 
 def _empty_frames(*indices: int) -> PipelineResult:
     frames = [
-        FrameResult(i, i / FPS, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / FPS,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in indices
     ]
     return PipelineResult(frames, FPS, (W, H), [])
@@ -730,7 +744,13 @@ def _people(index: int, rows: list[tuple[int, str, int, list[float]]]) -> FrameR
             "pitch_xy": np.array([xy for *_, xy in rows], dtype=float),
         },
     )
-    return FrameResult(index, index / FPS, people, sv.Detections.empty())
+    return FrameResult(
+        index,
+        index / FPS,
+        people,
+        sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
+    )
 
 
 @pytest.fixture

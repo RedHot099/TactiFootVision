@@ -2,8 +2,10 @@
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -92,6 +94,9 @@ class Model(ABC):
 
     name: ClassVar[str]
     task: ClassVar[Task]
+    # Per-class confidence thresholds (a detector's ``class_conf`` option); every
+    # other class uses ``conf``.
+    class_conf: Mapping[str, float] = MappingProxyType({})
     # Backend option -> the TrainConfig field that sets it; Model.train refuses the option.
     _train_config_aliases: ClassVar[dict[str, str]] = {}
 
@@ -108,6 +113,12 @@ class Model(ABC):
         self.device = resolve_device(device)
         self.weights: str | Path | None = weights
         self._load(weights)
+        for class_name in self.class_conf:
+            if class_name not in self.class_names:
+                raise ValueError(
+                    f"Unknown class {class_name!r} in class_conf; "
+                    f"the model's classes are {', '.join(self.class_names)}"
+                )
 
     # ---------------------------------------------------------------- backend
     @abstractmethod
@@ -156,6 +167,24 @@ class Model(ABC):
     @abstractmethod
     def predict(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
         """Run on one BGR image."""
+
+    @property
+    def _lowest_conf(self) -> float:
+        """The threshold to run the backend at: the lowest of ``conf`` and ``class_conf``."""
+        return min([self.conf, *self.class_conf.values()])
+
+    def _apply_class_conf(self, detections: sv.Detections) -> sv.Detections:
+        """Keep the detections that reach their class's threshold (``class_conf``, else ``conf``)."""
+        if not self.class_conf:
+            return detections
+        thresholds = np.array(
+            [
+                self.class_conf.get(str(n), self.conf)
+                for n in detections.data["class_name"]
+            ],
+            dtype=float,
+        )
+        return detections[detections.confidence >= thresholds]
 
     # ------------------------------------------------------------ public API
     def __call__(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
@@ -208,6 +237,17 @@ class Model(ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(weights={self.weights!r}, conf={self.conf}, device={self.device!r})"
+
+
+def check_class_conf(class_conf: Mapping[str, float] | None) -> dict[str, float]:
+    """A detector's ``class_conf`` option as a dict, every threshold in ``[0, 1]``."""
+    checked = dict(class_conf or {})
+    for class_name, value in checked.items():
+        if not 0 <= value <= 1:
+            raise ValueError(
+                f"class_conf[{class_name!r}] must be in [0, 1], got {value}"
+            )
+    return checked
 
 
 def load_model(name: str, weights: str | Path | None = None, **options: Any) -> Model:

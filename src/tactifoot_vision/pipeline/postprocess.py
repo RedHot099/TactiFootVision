@@ -90,8 +90,8 @@ def reproject(
     ``homographies[i]`` replaces ``result.frames[i].homography``; ``None``
     means no homography and NaN positions. ``pitch_xy`` is projected from the
     boxes as :meth:`Pipeline.run` does it: people at the bottom centre, the
-    ball at its centre. A ball position the pipeline's ``ball_max_speed``
-    filter dropped therefore comes back.
+    ball and its candidates at their centre. A ball position the pipeline's
+    ``ball_max_speed`` filter dropped therefore comes back.
     """
     if len(homographies) != len(result.frames):
         raise ValueError(
@@ -101,11 +101,20 @@ def reproject(
     frames = []
     for frame, homography in zip(result.frames, homographies, strict=True):
         matrix = None if homography is None else np.array(homography, dtype=float)
-        people, ball = copy.deepcopy(frame.detections), copy.deepcopy(frame.ball)
+        people = copy.deepcopy(frame.detections)
         people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
-        ball.data["pitch_xy"] = project_detections(ball, BALL_ANCHOR, matrix)
+        ball = copy.deepcopy(frame.ball)
+        candidates = copy.deepcopy(frame.ball_candidates)
+        for balls in (ball, candidates):
+            balls.data["pitch_xy"] = project_detections(balls, BALL_ANCHOR, matrix)
         frames.append(
-            dataclasses.replace(frame, detections=people, ball=ball, homography=matrix)
+            dataclasses.replace(
+                frame,
+                detections=people,
+                ball=ball,
+                ball_candidates=candidates,
+                homography=matrix,
+            )
         )
     return dataclasses.replace(result, frames=frames)
 
