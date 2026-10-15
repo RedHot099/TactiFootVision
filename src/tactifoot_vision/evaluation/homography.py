@@ -52,7 +52,7 @@ class _Scored:
 
 
 def evaluate_homography(
-    result: PipelineResult, clip: LabelledClip
+    result: PipelineResult, clip: LabelledClip, margin_m: float = 3.0
 ) -> HomographyMetrics:
     """Pitch position error in metres of ``result``'s homographies against ``clip``'s truth.
 
@@ -63,10 +63,11 @@ def evaluate_homography(
     homography shows inside the frame are mapped to their pixels, and the
     run's homography maps those pixels back to the pitch. With pitch
     positions, every processed frame with a person whose pitch position is
-    known is scored: the run's homography maps each such person's box foot
-    (bottom centre) to the pitch, to be compared with that position. The
-    ball is left out: in the air, its box foot is not where it is on the
-    pitch.
+    known and on the pitch (within ``margin_m`` of its lines, so the people
+    stand where the calibration's grid does) is scored: the run's homography
+    maps each such person's box foot (bottom centre) to the pitch, to be
+    compared with that position. The ball is left out: in the air, its box
+    foot is not where it is on the pitch.
 
     A frame's error is the mean distance between the two, in metres: pitch
     units are scaled to a 105 x 68 m pitch, so a ``SoccerPitch(120, 80)`` run
@@ -76,17 +77,20 @@ def evaluate_homography(
     counts it, the percentiles rank it last and the mean leaves it out.
     ``jitter_m`` is the mean change of each point's error vector between
     consecutive processed frames, so a constant offset has none; on pitch
-    positions a point is one identity, so people without identities have no
-    jitter.
+    positions a point is one identity, its ``tracker_id``, which must be
+    unique in a frame: a repeated or negative (untracked) id is not matched,
+    and people without identities have no jitter.
 
     Args:
         result: a run on the clip's video, with its frame indices.
         clip: the truth; it must carry calibration (frame -> pitch
             homographies) or pitch positions (``detections.data["pitch_xy"]``,
             NaN where unknown), in the units of ``result.pitch``.
+        margin_m: on pitch positions, how far beyond the pitch's lines, in
+            metres, a person is still scored.
     """
     truth = _truth(clip)
-    metrics = _metrics([_score(result, clip, truth)], truth)
+    metrics = _metrics([_score(result, clip, truth, margin_m)], truth)
     _log(clip.name, metrics)
     return metrics
 
@@ -95,6 +99,7 @@ def evaluate_homography_clips(
     pairs: Iterable[tuple[PipelineResult, LabelledClip]],
     draws: int = 2000,
     seed: int = 0,
+    margin_m: float = 3.0,
 ) -> HomographyMetrics:
     """The metrics of :func:`evaluate_homography` over several ``(result, clip)`` pairs, with intervals.
 
@@ -103,7 +108,10 @@ def evaluate_homography_clips(
     ``intervals`` holds a 95% interval of each number from a bootstrap that
     resamples whole clips with replacement ``draws`` times, since frames of
     one sequence are not independent; the same ``seed`` gives the same
-    intervals. Every clip must be scored against the same kind of truth.
+    intervals. With a single clip ``intervals`` is ``None``: resampling one
+    clip always gives that clip, so its interval would have no width. Every
+    clip must be scored against the same kind of truth; ``margin_m`` is
+    :func:`evaluate_homography`'s.
     """
     pairs = list(pairs)
     if draws < 1:
@@ -122,8 +130,9 @@ def evaluate_homography_clips(
             f"The clips are scored against different truths ({kinds}); "
             "aggregate clips with the same truth"
         )
-    scored = [_score(result, clip, truth) for result, clip in pairs]
-    metrics = _metrics(scored, truth, _intervals(scored, truth, draws, seed))
+    scored = [_score(result, clip, truth, margin_m) for result, clip in pairs]
+    intervals = _intervals(scored, truth, draws, seed) if len(scored) > 1 else None
+    metrics = _metrics(scored, truth, intervals)
     _log(f"{len(pairs)} clips", metrics)
     return metrics
 
@@ -139,7 +148,9 @@ def _truth(clip: LabelledClip) -> Truth:
     )
 
 
-def _score(result: PipelineResult, clip: LabelledClip, truth: Truth) -> _Scored:
+def _score(
+    result: PipelineResult, clip: LabelledClip, truth: Truth, margin_m: float
+) -> _Scored:
     """``result``'s per-frame errors against ``clip``'s ``truth``."""
     frame_size = (clip.width, clip.height)
     if tuple(result.frame_size) != frame_size:
@@ -169,7 +180,7 @@ def _score(result: PipelineResult, clip: LabelledClip, truth: Truth) -> _Scored:
         if truth is Truth.CALIBRATION:
             point_sets = _calibration_points(labelled, pitch_points, frame_size, centre)
         else:
-            point_sets = _position_points(labelled)
+            point_sets = _position_points(labelled, pitch, margin_m)
         scored = point_sets is not None and frame.homography is not None
         num_frames += point_sets is not None
         available += scored
@@ -228,14 +239,19 @@ def _calibration_points(
     return point_sets
 
 
-def _position_points(frame: LabelledFrame) -> dict[str, _Points] | None:
-    """The people with a known pitch position and their box feet, keyed by identity."""
+def _position_points(
+    frame: LabelledFrame, pitch: SoccerPitch, margin_m: float
+) -> dict[str, _Points] | None:
+    """The people with a known pitch position within ``margin_m`` of the pitch and their box feet, keyed by identity."""
     people = frame.detections
     positions = people.data.get("pitch_xy")
     if positions is None:
         return None
     positions = np.asarray(positions, float).reshape(-1, 2)
-    known = np.isfinite(positions).all(axis=1)
+    margin = margin_m / metres_per_unit(pitch)
+    known = (
+        (positions >= -margin) & (positions <= [pitch.length, pitch.width] + margin)
+    ).all(axis=1)  # NaN, unknown, compares false
     if not known.any():
         return None
     feet = people.get_anchors_coordinates(PERSON_ANCHOR)[known]
@@ -276,14 +292,27 @@ def _change(
     (previous_keys, previous), (current_keys, current) = previous, current
     if previous_keys is None or current_keys is None:
         return np.nan
-    finite = np.isfinite(previous).all(axis=1)
-    previous_keys, previous = previous_keys[finite], previous[finite]
-    finite = np.isfinite(current).all(axis=1)
-    current_keys, current = current_keys[finite], current[finite]
+    previous_keys, previous = _matchable(previous_keys, previous)
+    current_keys, current = _matchable(current_keys, current)
     _, before, after = np.intersect1d(previous_keys, current_keys, return_indices=True)
     if len(before) == 0:
         return np.nan
     return float(np.linalg.norm(current[after] - previous[before], axis=1).mean())
+
+
+def _matchable(keys: np.ndarray, errors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The keys and errors of the points a frame can be matched on.
+
+    Those with a finite error and a key that names one point: not negative
+    (an untracked person) and not repeated in the frame.
+    """
+    values, counts = np.unique(keys, return_counts=True)
+    keep = (
+        np.isfinite(errors).all(axis=1)
+        & (keys >= 0)
+        & ~np.isin(keys, values[counts > 1])
+    )
+    return keys[keep], errors[keep]
 
 
 def _metrics(

@@ -328,16 +328,17 @@ configs/              example run files
   numbers of one clip holding them all with their identities kept apart.
   Every clip is scored on the classes of all the clips, so predictions of a
   class a clip has no labels of are false positives there.
-* `evaluate_homography(result, clip)` → `HomographyMetrics`: the pitch
-  position error in metres of a `PipelineResult`'s homographies against the
+* `evaluate_homography(result, clip, margin_m=3.0)` → `HomographyMetrics`: the
+  pitch position error in metres of a `PipelineResult`'s homographies against the
   clip's calibration or, without one, its pitch positions (`truth` names
   which), on the processed frames that have that truth. With calibration, the
   pitch's landmarks and a fixed 22 x 15 grid over the pitch that the true
   homography shows inside the frame go to their pixels and back to the pitch
   through the run's homography. With pitch positions, each labelled person
-  with a known position has their box foot (bottom centre) put on the pitch
-  through the run's homography; the ball is left out, as its box foot is not
-  on the ground in the air. A frame's error is the mean distance, with pitch
+  with a known position within `margin_m` (3 m) of the pitch's lines has
+  their box foot (bottom centre) put on the pitch through the run's
+  homography; the ball is left out, as its box foot is not on the ground in
+  the air. A frame's error is the mean distance, with pitch
   units scaled to a 105 x 68 m pitch (`metres_per_unit`) and the truth taken
   in `result.pitch` units; the result's frame size must be the clip's. A
   point put beyond the run's horizon makes its frame an infinite error:
@@ -345,16 +346,17 @@ configs/              example run files
   last and the mean leaves them out. Median, mean and p90 over the frames
   with a homography, the share of them under 1, 2 and 5 m, and `jitter_m`
   (the mean change of each point's error from one processed frame to the
-  next, per processed step; on pitch positions a point is one identity) are
+  next, per processed step; on pitch positions a point is one `tracker_id`,
+  unique in its frame: repeated and negative ids are not matched) are
   given on the grid (on pitch positions, the people) and, in `per_points`, on
   every point set. A frame without a homography lowers `availability` and is
   not an error.
-* `evaluate_homography_clips(pairs, draws=2000, seed=0)` pools the scored
-  frames of several `(result, clip)` pairs, as one clip holding them all
+* `evaluate_homography_clips(pairs, draws=2000, seed=0, margin_m=3.0)` pools
+  the scored frames of several `(result, clip)` pairs, as one clip holding them all
   (jitter is not measured across clips), and adds `intervals`: a 95%
   interval of each top-level number from a bootstrap that resamples whole
-  clips, deterministic under `seed`. Every clip must be scored against the
-  same truth.
+  clips, deterministic under `seed`; `None` for a single clip, whose
+  resampling has no spread. Every clip must be scored against the same truth.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

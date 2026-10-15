@@ -54,14 +54,14 @@ def _clip(
     )
 
 
-def _people(points, true=TRUE):
-    """People standing at these pitch points: tracked 0, 1, ..., feet on the whole pixel that shows them."""
+def _people(points, true=TRUE, ids=None):
+    """People standing at these pitch points: tracked 0, 1, ... (or ``ids``), feet on the whole pixel that shows them."""
     points = np.asarray(points, float).reshape(-1, 2)
     feet = np.column_stack([points, np.ones(len(points))]) @ np.linalg.inv(true).T
     feet = np.round(feet[:, :2] / feet[:, 2:])
     return sv.Detections(
         xyxy=np.column_stack([feet - [5, 40], feet + [5, 0]]).astype(np.float32),
-        tracker_id=np.arange(len(points)),
+        tracker_id=np.arange(len(points)) if ids is None else np.array(ids),
         data={
             "class_name": np.array(["player"] * len(points)),
             "pitch_xy": points,
@@ -418,3 +418,62 @@ def test_the_aggregate_refuses_no_clips_and_mixed_truths():
         evaluate_homography_clips([_pair([0])], draws=0)
     with pytest.raises(ValueError, match="calibration.*pitch_positions"):
         evaluate_homography_clips([_pair([0]), (_result([TRUE]), positions)])
+
+
+def test_position_truth_leaves_out_people_beyond_the_pitch_margin():
+    # Stretched 2% from the corner and moved back 1.05 m: the error along
+    # the length is 0.02 x - 1.05, so 0.85 m at x = 10, 1.09 m at x = -2 (2 m
+    # beyond the goal line, within the 3 m margin) and 1.25 m at x = -10.
+    people = [_people([(10, 10), (-2, 34), (-10, 34)])]
+    run = _result([_shift(-1.05) @ np.diag([1.02, 1, 1]) @ TRUE])
+
+    default = evaluate_homography(run, _positions_clip(people))
+    wider = evaluate_homography(run, _positions_clip(people), margin_m=20)
+
+    assert default.mean_error_m == pytest.approx((0.85 + 1.09) / 2)
+    assert wider.mean_error_m == pytest.approx((0.85 + 1.09 + 1.25) / 3)
+
+
+def test_the_margin_is_in_metres_on_a_pitch_in_other_units():
+    # StatsBomb units: 120 x 80 for 105 x 68 m. A person 2 m beyond the goal
+    # line (x = -16/7 units) is within 3 m; one 4 m beyond is not. A 2%
+    # stretch from the corner is off by 0.04 m at the first.
+    pitch = SoccerPitch(120, 80)
+    true = np.diag([120 / 840, 80 / 544, 1.0])
+    people = [_people([(-2 * 8 / 7, 40), (-4 * 8 / 7, 40)], true=true)]
+    stretch = np.diag([1.02, 1, 1]) @ true
+    metrics = evaluate_homography(
+        _result([stretch], pitch=pitch), _positions_clip(people)
+    )
+
+    assert metrics.mean_error_m == pytest.approx(0.04)
+    assert metrics.per_points.loc["people", "frames"] == 1
+
+
+@pytest.mark.parametrize(
+    "ids",
+    [(3, 7, 7), (3, -1, -1)],
+    ids=["repeated-id", "untracked"],
+)
+def test_position_truth_jitter_matches_only_unique_tracked_identities(ids):
+    # Under a 2% stretch the people at x = 20 and x = 70 are off by 0.4 and
+    # 1.4 m, the person at x = 50 by 1 m in both frames. The two others share
+    # an id (or are untracked) and swap places, so matching them would make
+    # 1 m of jitter that no one has.
+    stretch = np.diag([1.02, 1, 1]) @ TRUE
+    first = _people([(50, 30), (20, 20), (70, 40)], ids=ids)
+    second = _people([(50, 30), (70, 40), (20, 20)], ids=ids)
+    metrics = evaluate_homography(
+        _result([stretch] * 2), _positions_clip([first, second])
+    )
+
+    assert metrics.jitter_m == pytest.approx(0, abs=1e-9)
+
+
+def test_a_single_clip_aggregate_has_no_intervals():
+    # One clip resampled is always that clip: a zero-width interval would
+    # claim a certainty it does not have.
+    metrics = evaluate_homography_clips([_pair([0, 2, 4])])
+
+    assert metrics.intervals is None
+    assert metrics.median_error_m == pytest.approx(2)
