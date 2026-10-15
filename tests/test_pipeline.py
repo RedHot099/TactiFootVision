@@ -10,7 +10,7 @@ import supervision as sv
 import tactifoot_vision as tv
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models.base import Model
-from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult
+from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult, track_ball
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
 from tactifoot_vision.teams import Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker, Tracker
@@ -222,16 +222,14 @@ def test_teams_by_vote_goalkeeper_by_position_referee_none(result):
         assert teams[names == "goalkeeper"].tolist() == [0]
 
 
-def test_ball_is_single_and_outliers_are_cleaned(result):
-    # the ball moves ~17 m/s; the one-frame teleport (~44 m) exceeds the default 40 m/s
+def test_ball_is_single_and_the_pass_keeps_its_jumps(result):
+    # choosing the ball is track_ball's job: the pass keeps the teleport
     for t, f in enumerate(result):
         assert len(f.ball) == 1
         assert f.ball.data["class_name"].tolist() == ["ball"]
+        assert np.isfinite(f.ball_xy).all()
         if t == TELEPORT_FRAME:
-            assert np.isnan(f.ball_xy).all()
-            assert f.ball.xyxy[0, 0] == pytest.approx(290, abs=2)  # the box is kept
-        else:
-            assert np.isfinite(f.ball_xy).all()
+            assert f.ball.xyxy[0, 0] == pytest.approx(290, abs=2)
 
 
 def test_table_export(result):
@@ -571,17 +569,22 @@ def test_goalkeeper_team_follows_position_when_the_kit_says_otherwise(tmp_path):
         assert frame.team_ids[names == "goalkeeper"].tolist() == [1]
 
 
-def test_ball_speed_limit_scales_with_the_stride(video):
-    # The ball moves ~17 m/s, under the 25 m/s limit: at stride 3 it covers
-    # ~2 m between processed frames, more than the limit allows per source
-    # frame (1 m) but less than per processed frame (3 m).
-    result = _pipeline(ball_max_speed=25).run(video, stride=3, progress=False)
-    assert [f.index for f in result] == [0, 3, 6, 9]
+@pytest.mark.parametrize("stride", [1, 3])
+def test_track_ball_drops_the_teleport_and_fills_it_at_any_stride(video, stride):
+    # The ball moves ~17 m/s and the teleport jumps ~44 m. The gate widens
+    # with the time since the last ball, not per processed frame, so at
+    # stride 3 the ~2 m between processed frames still pass it.
+    result = track_ball(_pipeline().run(video, stride=stride, progress=False))
+    assert [f.index for f in result] == list(range(0, FRAMES, stride))
     for frame in result:
-        if frame.index == TELEPORT_FRAME:
-            assert np.isnan(frame.ball_xy).all()
-        else:
-            assert np.isfinite(frame.ball_xy).all(), frame.index
+        assert len(frame.ball) == 1, frame.index
+        assert frame.ball.data["interpolated"].tolist() == [
+            frame.index == TELEPORT_FRAME
+        ]
+        bx = 150 + 2 * frame.index + 3  # the box centre without the teleport
+        assert frame.ball.get_anchors_coordinates(sv.Position.CENTER)[0, 0] == (
+            pytest.approx(bx, abs=2)
+        )
 
 
 def test_too_few_player_crops_leave_an_unfitted_classifier_alone(video, caplog):
@@ -640,9 +643,10 @@ def test_every_ball_candidate_is_kept_best_first(video):
         )
 
 
-def test_ball_cleaning_leaves_the_candidates_alone(result):
-    frame = result.frame(TELEPORT_FRAME)
-    assert np.isnan(frame.ball_xy).all()
+def test_track_ball_leaves_the_candidates_alone(result):
+    frame = track_ball(result).frame(TELEPORT_FRAME)
+    assert frame.ball.data["interpolated"].tolist() == [True]
+    assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(290, abs=2)
     assert np.isfinite(frame.ball_candidates.data["pitch_xy"]).all()
 
 

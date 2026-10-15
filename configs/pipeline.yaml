@@ -39,7 +39,8 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
 # homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
-#   ball_max_speed: 40.0
+# postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
+#   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
 # render:                              # tv.viz.render_video(...) arguments
 #   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)
 #   radar: {draw_ids: true}            # tv.viz.PitchRadar(...); null: no radar

@@ -1,5 +1,6 @@
 """Inference pipeline: detection -> tracking -> pitch projection -> teams."""
 
+from tactifoot_vision.pipeline.ball import track_ball
 from tactifoot_vision.pipeline.pipeline import Pipeline
 from tactifoot_vision.pipeline.postprocess import (
     POSTPROCESSES,
@@ -24,4 +25,5 @@ __all__ = [
     "PipelineResult",
     "remap_track_ids",
     "reproject",
+    "track_ball",
 ]
