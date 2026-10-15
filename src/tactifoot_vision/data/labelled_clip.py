@@ -30,8 +30,8 @@ class LabelledFrame:
     source with pitch positions puts them in ``data["pitch_xy"]``, ``(N, 2)``
     ``SoccerPitch`` coordinates (NaN where unknown), as in a ``FrameResult``.
     A source with teams puts them in ``data["team_id"]``, ``(N,)`` int team
-    ids from 0 and ``NO_TEAM`` (-1) for people without a team, as in a
-    ``FrameResult``.
+    ids from 0 and ``NO_TEAM`` (-1) for people who have no team, such as
+    referees (not for an unknown team), as in a ``FrameResult``.
     """
 
     index: int  # the frame's FrameResult.index when the pipeline runs on the clip

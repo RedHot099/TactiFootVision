@@ -99,16 +99,26 @@ def _matched_people(
                 f"Processed frame {frame.index} is not in labelled clip {clip.name}; "
                 "run the pipeline on the clip's video, within its frames"
             ) from None
-        people, truth = frame.detections, labelled.detections
-        if len(people) and people.tracker_id is None:
+        detected, truth = frame.detections, labelled.detections
+        if len(detected) and detected.tracker_id is None:
             raise ValueError(
                 "evaluate_teams needs the people's track ids; the result was "
                 "made without a tracker"
             )
+        if len(detected) and "team_id" not in detected.data:
+            raise ValueError(
+                f"The result has no team_id in frame {frame.index}; "
+                "evaluate_teams needs a result with teams"
+            )
+        if len(truth) and "team_id" not in truth.data:
+            raise ValueError(
+                f"Labelled clip {clip.name} has no team_id in frame "
+                f"{frame.index}; a clip with teams gives every person one"
+            )
         instances += len(truth)
-        rows, cols = _match(truth, people, iou_threshold)
+        rows, cols = _match(truth, detected, iou_threshold)
         if len(cols):
-            track_ids.append(np.asarray(people.tracker_id, int)[cols])
+            track_ids.append(np.asarray(detected.tracker_id, int)[cols])
             predicted.append(frame.team_ids[cols])
             true.append(np.asarray(truth.data["team_id"], int)[rows])
     return _Matches(
@@ -137,7 +147,8 @@ def _team_mapping(predicted: np.ndarray, true: np.ndarray) -> dict[int, int]:
     """Run team id -> true team id: the one-to-one assignment that agrees most.
 
     Only people with a team on both sides vote; a pair that never agrees is
-    left out, so its run team id is wrong wherever it is given.
+    left out, so its run team id is wrong wherever it is given. Between
+    assignments that agree equally often, scipy's order decides.
     """
     both = (predicted != NO_TEAM) & (true != NO_TEAM)
     predicted_ids, rows = np.unique(predicted[both], return_inverse=True)

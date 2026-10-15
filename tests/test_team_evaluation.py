@@ -8,7 +8,12 @@ import supervision as sv
 
 from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.evaluation import TeamMetrics, evaluate_teams
-from tactifoot_vision.pipeline import NO_TEAM, FrameResult, PipelineResult
+from tactifoot_vision.pipeline import (
+    NO_TEAM,
+    FrameResult,
+    PipelineResult,
+    remap_track_ids,
+)
 
 # Boxes far enough apart that only the intended pairs overlap.
 A = (0, 0, 10, 10)
@@ -186,6 +191,25 @@ def test_people_are_matched_by_iou_whatever_their_class():
     assert loose.matched == 2
 
 
+def test_track_accuracy_follows_a_remapped_tracker_id():
+    # Player 1 is tracked as 11 with the right team, then as 12 with the wrong
+    # one; joining 12 into 11 (a player-track post-process) makes one track.
+    predicted = {
+        0: [(11, "player", 0, A)],
+        1: [(11, "player", 0, A)],
+        2: [(12, "player", 1, A)],
+    }
+    truth = {i: [(1, "player", 0, A), (2, "player", 1, C)] for i in range(3)}
+    joined = remap_track_ids(_result(predicted), {12: 11})
+
+    before = evaluate_teams(_result(predicted), _clip(truth))
+    after = evaluate_teams(joined, _clip(truth))
+
+    assert before.track_accuracy == 0.5  # 11 right, 12 wrong
+    assert after.track_accuracy == pytest.approx(2 / 3)
+    assert after.accuracy == pytest.approx(2 / 3)
+
+
 def test_only_the_processed_frames_are_scored():
     metrics = evaluate_teams(_result({1: TRUTH[1]}), _clip(TRUTH))
 
@@ -218,3 +242,20 @@ def test_untracked_people_are_an_error():
 def test_a_processed_frame_missing_from_the_clip_is_an_error():
     with pytest.raises(ValueError, match="frame 9 is not in labelled clip fixture"):
         evaluate_teams(_result({9: []}), _clip(TRUTH))
+
+
+def test_a_result_without_teams_is_an_error():
+    result = _result(TRUTH)
+    for frame in result.frames:
+        del frame.detections.data["team_id"]
+
+    with pytest.raises(ValueError, match="result has no team_id in frame 0"):
+        evaluate_teams(result, _clip(TRUTH))
+
+
+def test_a_clip_frame_without_team_ids_is_an_error():
+    clip = _clip(TRUTH)
+    del clip.frame(1).detections.data["team_id"]
+
+    with pytest.raises(ValueError, match="fixture has no team_id in frame 1"):
+        evaluate_teams(_result(TRUTH), clip)
