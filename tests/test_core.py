@@ -17,6 +17,7 @@ from tactifoot_vision.pitch import (
     HomographyEstimator,
     SoccerPitch,
     frame_to_pitch,
+    pitch_markings,
     pitch_to_frame,
 )
 from tactifoot_vision.registry import Registry
@@ -27,6 +28,17 @@ def test_import_is_lazy_and_light():
         "import sys, tactifoot_vision as tv; "
         "heavy = [m for m in ('torch', 'ultralytics', 'rfdetr', 'transformers', 'matplotlib') "
         "if m in sys.modules]; print(heavy)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "[]"
+
+
+def test_pitch_does_not_import_viz():
+    code = (
+        "import sys, tactifoot_vision.pitch; "
+        "print([m for m in sys.modules if m.startswith('tactifoot_vision.viz')])"
     )
     out = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
@@ -83,8 +95,6 @@ def test_pitch_vertices_and_scaling():
 
 @pytest.mark.parametrize("size", [(105, 68), (120, 80), (100, 64)])
 def test_arc_landmarks_lie_on_the_drawn_arcs(size):
-    from tactifoot_vision.viz.radar import pitch_markings
-
     pitch = SoccerPitch(*size)
     vertices = pitch.vertices
     lines, _ = pitch_markings(pitch)

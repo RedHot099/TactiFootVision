@@ -11,14 +11,13 @@ import supervision as sv
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.homography import project_points
-from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.radar import (
     BALL_COLOR,
     DEFAULT_COLOR,
     TEAM_COLORS,
     ColorLike,
     as_color,
-    pitch_markings,
     team_color_index,
     text_color_for,
 )

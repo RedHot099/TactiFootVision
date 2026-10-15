@@ -19,7 +19,7 @@ import pandas as pd
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
-from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.annotate import CLASS_COLORS, draw_annotations
 from tactifoot_vision.viz.radar import (
     DEFAULT_COLOR,
@@ -28,7 +28,6 @@ from tactifoot_vision.viz.radar import (
     TEAM_COLORS,
     ColorLike,
     as_color,
-    pitch_markings,
 )
 
 if TYPE_CHECKING:

@@ -7,7 +7,7 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.pipeline.result import FrameResult
-from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 """A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
@@ -50,32 +50,6 @@ def team_color_index(team_ids: np.ndarray, n_teams: int) -> np.ndarray:
     """Palette index per object: the team id, or ``n_teams`` (default colour) when unknown."""
     team_ids = np.asarray(team_ids, dtype=int)
     return np.where((team_ids >= 0) & (team_ids < n_teams), team_ids, n_teams)
-
-
-def pitch_markings(
-    pitch: SoccerPitch, samples: int = 64
-) -> tuple[list[np.ndarray], np.ndarray]:
-    """Painted markings in pitch units.
-
-    Returns ``(lines, spots)``: a list of ``(P, 2)`` polylines (straight lines,
-    centre circle, penalty arcs) and the ``(3, 2)`` centre and penalty spots.
-    """
-    lines = [pitch.vertices[[a, b]].astype(float) for a, b in pitch.edges]
-    rx, ry = pitch.circle_radii
-    cx, cy = pitch.length / 2, pitch.width / 2
-    t = np.linspace(0, 2 * np.pi, samples)
-    lines.append(np.column_stack([cx + rx * np.cos(t), cy + ry * np.sin(t)]))
-    spot = pitch.penalty_spot_distance
-    reach = pitch.penalty_box_length - spot  # spot -> edge of the penalty box
-    if reach < rx:  # the "D": the part of the circle around the spot outside the box
-        half = np.arccos(reach / rx)
-        t = np.linspace(-half, half, samples // 2)
-        for x0, direction in ((spot, 1.0), (pitch.length - spot, -1.0)):
-            lines.append(
-                np.column_stack([x0 + direction * rx * np.cos(t), cy + ry * np.sin(t)])
-            )
-    spots = np.array([[cx, cy], [spot, cy], [pitch.length - spot, cy]])
-    return lines, spots
 
 
 def _fixed(points: np.ndarray) -> np.ndarray:

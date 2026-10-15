@@ -1,4 +1,4 @@
-"""Pitch model: the 32 landmark vertices the keypoint models predict, and the line layout."""
+"""Pitch model: the 32 landmark vertices the keypoint models predict, the line layout and the painted markings."""
 
 from dataclasses import dataclass
 from functools import cached_property
@@ -115,3 +115,29 @@ class SoccerPitch:
     @property
     def num_keypoints(self) -> int:
         return len(self.vertices)
+
+
+def pitch_markings(
+    pitch: SoccerPitch, samples: int = 64
+) -> tuple[list[np.ndarray], np.ndarray]:
+    """Painted markings in pitch units.
+
+    Returns ``(lines, spots)``: a list of ``(P, 2)`` polylines (straight lines,
+    centre circle, penalty arcs) and the ``(3, 2)`` centre and penalty spots.
+    """
+    lines = [pitch.vertices[[a, b]].astype(float) for a, b in pitch.edges]
+    rx, ry = pitch.circle_radii
+    cx, cy = pitch.length / 2, pitch.width / 2
+    t = np.linspace(0, 2 * np.pi, samples)
+    lines.append(np.column_stack([cx + rx * np.cos(t), cy + ry * np.sin(t)]))
+    spot = pitch.penalty_spot_distance
+    reach = pitch.penalty_box_length - spot  # spot -> edge of the penalty box
+    if reach < rx:  # the "D": the part of the circle around the spot outside the box
+        half = np.arccos(reach / rx)
+        t = np.linspace(-half, half, samples // 2)
+        for x0, direction in ((spot, 1.0), (pitch.length - spot, -1.0)):
+            lines.append(
+                np.column_stack([x0 + direction * rx * np.cos(t), cy + ry * np.sin(t)])
+            )
+    spots = np.array([[cx, cy], [spot, cy], [pitch.length - spot, cy]])
+    return lines, spots
