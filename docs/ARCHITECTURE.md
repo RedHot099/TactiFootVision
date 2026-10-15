@@ -357,6 +357,7 @@ Each section maps onto exactly one package call:
 | `render.annotator` | `FrameAnnotator(pitch=result.pitch, **section)` | |
 | `render.radar` | `PitchRadar(pitch=result.pitch, **section)` | `null`: no radar |
 | other `render` keys | `tv.viz.render_video(...)` keyword arguments | `overlay_position`, `fps`, ... |
+| `postprocess` | `POSTPROCESSES.get(type)(result, **rest)` per entry | a list, applied in order; absent, `null` or `[]`: none; keys checked against the registered function |
 
 Backend options sit flat next to `type`:
 
@@ -364,6 +365,7 @@ Backend options sit flat next to `type`:
 detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
+postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
 ```
 
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
@@ -374,9 +376,13 @@ render: {annotator: {style: video_game}, radar: null}
 * `RunFile.run(video, output_dir, *, render=True, **run_inputs)` is one run:
   it builds the pipeline and the render objects (constructors and
   `render_video` settings check every value before the first frame), runs
-  the pipeline, exports the data files and renders `annotated.mp4` unless
-  `render=False`. `run_inputs` are the `Pipeline.run` and
-  `PipelineResult.export` arguments; it returns the `PipelineResult`.
+  the pipeline and exports the data files. With a `postprocess` list it then
+  applies the entries in order and exports again, so the run folder holds
+  the post-processed result and its record. Post-process option values are
+  checked by the functions, after the pipeline: when one fails, the run
+  folder keeps the pipeline's result to post-process again. Last, it renders
+  `annotated.mp4` unless `render=False`. `run_inputs` are the `Pipeline.run`
+  and `PipelineResult.export` arguments; it returns the `PipelineResult`.
   `RunFile.render_video(result, source, output, **options)` re-renders a
   saved result; `options` (`fps=30`, `progress=False`, `radar=False`, ...)
   take precedence over the `render` section for that call.
@@ -389,6 +395,15 @@ render: {annotator: {style: video_game}, radar: null}
   created (a `null` section counts as empty, so `tracker.type=sam2` works on
   `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
+* **List overrides**: a number in the key indexes a list, and the index one
+  past the end appends. (`join_tracks` and `track_ball` in these examples come
+  with later features; no post-process is registered yet.) With `postprocess:
+  [{type: join_tracks}]`, `postprocess.0.max_gap=30` edits the entry,
+  `postprocess.1.type=track_ball` (or `postprocess.1={type: track_ball}`)
+  appends one, `postprocess.0={type: ...}` replaces it, and `postprocess=[]`
+  (or `null`) drops them all for this run. A missing or `null` list is created
+  by `postprocess.0...`. Any other index is an error, and dropping one entry
+  means replacing the whole list (`postprocess=[{type: join_tracks}]`).
 
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D

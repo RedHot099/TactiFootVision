@@ -8,6 +8,7 @@ that callable's keyword arguments::
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
+    postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
 
 ==============  ==========================================================
 ``detector``    ``tv.models.load_model(type, **rest)`` (required)
@@ -19,11 +20,15 @@ that callable's keyword arguments::
 ``pipeline``    the remaining ``Pipeline`` keyword arguments
 ``render``      ``annotator`` (``FrameAnnotator``), ``radar`` (``PitchRadar``;
                 ``null``: none) and ``render_video`` keyword arguments
+``postprocess`` a list; each entry is ``POSTPROCESSES.create(type, result, **rest)``,
+                applied in order (ADR 0002); absent, ``null`` or ``[]``: none
 ==============  ==========================================================
 
 Keys are checked against the signatures when the file is loaded; values are
 checked by the constructors, which :meth:`RunFile.run` builds (render objects
-included) before the first frame. A key left out keeps the package default, so
+included) before the first frame. The exception is ``postprocess`` options:
+the post-processes check them after the pipeline, and when one fails the run
+folder keeps the pipeline's result. A key left out keeps the package default, so
 this module holds no defaults of its own. String values starting with ``./`` or
 ``../`` are paths relative to the file.
 """
@@ -52,6 +57,7 @@ SECTIONS = (
     "homography",
     "pipeline",
     "render",
+    "postprocess",
 )
 # Pipeline arguments that other sections build.
 _PIPELINE_PARTS = (
@@ -64,7 +70,7 @@ _PIPELINE_PARTS = (
 )
 # render_video arguments the run file does not set.
 _RENDER_ARGUMENTS = ("result", "source", "output", "annotator", "radar", "progress")
-_NULLABLE = {"keypoints", "tracker", "teams"}
+_NULLABLE = {"keypoints", "tracker", "teams", "postprocess"}
 
 
 def load(path: str | Path, overrides: Iterable[str] = ()) -> "RunFile":
@@ -73,7 +79,9 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> "RunFile":
     Raises ``ValueError`` naming the section and the valid keys when a key is
     unknown. Override values are YAML (``null``, ``true``, ``0.3``, ``[a, b]``);
     paths in them starting with ``./`` or ``../`` are relative to the current
-    working directory.
+    working directory. A number in the key indexes a list, and the index one
+    past the end appends: ``postprocess.0.max_gap=30`` edits the first entry,
+    ``postprocess.1.type=join_tracks`` adds a second.
     """
     path = Path(path)
     data = _yaml(path.read_text(), str(path))
@@ -162,8 +170,11 @@ class RunFile:
         In order: build the pipeline and the render objects (so every value,
         ``render`` section included, is checked before the first frame), run
         the pipeline, :meth:`~tactifoot_vision.pipeline.PipelineResult.export`
-        the data files, and render ``annotated.mp4`` unless ``render=False``
-        (a failed render leaves no partial video).
+        the data files, apply the ``postprocess`` list in order and export
+        again, and render ``annotated.mp4`` unless ``render=False`` (a failed
+        render leaves no partial video). Post-process option values are
+        checked by the post-processes, after the pipeline: when one fails, the
+        run folder holds the pipeline's result, ready to post-process again.
 
         ``run_inputs`` are :meth:`Pipeline.run` arguments (``start``, ``end``,
         ``stride``, ``progress``) and :meth:`PipelineResult.export` arguments
@@ -171,9 +182,9 @@ class RunFile:
         Unknown names and a missing video fail before any model is loaded.
 
         Returns:
-            The :class:`PipelineResult` (also saved as ``result.pkl``).
+            The post-processed :class:`PipelineResult` (also saved as ``result.pkl``).
         """
-        from tactifoot_vision.pipeline import Pipeline, PipelineResult
+        from tactifoot_vision.pipeline import POSTPROCESSES, Pipeline, PipelineResult
 
         frame_inputs = _keywords(Pipeline.run, exclude=("video",))
         export_inputs = _keywords(PipelineResult.export, exclude=("out_dir",))
@@ -190,9 +201,13 @@ class RunFile:
         result = pipeline.run(
             video, **{k: v for k, v in run_inputs.items() if k in frame_inputs}
         )
-        out = result.export(
-            output_dir, **{k: v for k, v in run_inputs.items() if k in export_inputs}
-        )
+        export_options = {k: v for k, v in run_inputs.items() if k in export_inputs}
+        out = result.export(output_dir, **export_options)
+        if postprocesses := self._sections.get("postprocess"):
+            for entry in postprocesses:
+                options = dict(entry)
+                result = POSTPROCESSES.create(options.pop("type"), result, **options)
+            result.export(out, **export_options)
         if render:
             from tactifoot_vision.viz import render_video
 
@@ -263,7 +278,7 @@ def _create(factory: Callable[..., Any], section: dict[str, Any]) -> Any:
 # ------------------------------------------------------------------ checking
 def _check(data: dict[str, Any]) -> None:
     from tactifoot_vision.models import MODELS
-    from tactifoot_vision.pipeline import Pipeline
+    from tactifoot_vision.pipeline import POSTPROCESSES, Pipeline
     from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
     from tactifoot_vision.tracking import TRACKERS
 
@@ -276,6 +291,9 @@ def _check(data: dict[str, Any]) -> None:
         raise ValueError("The run file needs a 'detector' section")
     for name, section in data.items():
         if section is None and name in _NULLABLE:
+            continue
+        if name == "postprocess":
+            _check_postprocess(section, POSTPROCESSES)
             continue
         section = _mapping(name, section)
         if name in ("detector", "keypoints"):
@@ -310,6 +328,17 @@ def _check_teams(section: dict[str, Any]) -> None:
     _check_keys("teams", section, TeamClassifier, factory)
 
 
+def _check_postprocess(section: Any, registry: Registry[Any]) -> None:
+    """Each entry is ``{type, **options}``; the options exclude the result argument."""
+    if not isinstance(section, list):
+        raise ValueError(
+            f"Section 'postprocess' must be a list or null, got {section!r}"
+        )
+    for i, entry in enumerate(section):
+        name = f"postprocess.{i}"
+        _check_typed(name, _mapping(name, entry), registry, takes_result=True)
+
+
 def _check_render(name: str, section: dict[str, Any]) -> None:
     from tactifoot_vision.viz import FrameAnnotator, PitchRadar, render_video
 
@@ -336,7 +365,17 @@ def _check_render(name: str, section: dict[str, Any]) -> None:
     )
 
 
-def _check_typed(name: str, section: dict[str, Any], registry: Registry[Any]) -> None:
+def _check_typed(
+    name: str,
+    section: dict[str, Any],
+    registry: Registry[Any],
+    *,
+    takes_result: bool = False,
+) -> None:
+    """``type`` names a registry entry; the other keys are its keywords.
+
+    ``takes_result``: the entry's first parameter is the result, not an option.
+    """
     kind = section.get("type")
     if not isinstance(kind, str):
         raise ValueError(
@@ -347,7 +386,8 @@ def _check_typed(name: str, section: dict[str, Any], registry: Registry[Any]) ->
     except ValueError as exc:
         raise ValueError(f"Section {name!r}: {exc}") from None
     rest = {k: v for k, v in section.items() if k != "type"}
-    _check_keys(name, rest, factory, extra=("type",))
+    first = list(inspect.signature(factory).parameters)[:1] if takes_result else []
+    _check_keys(name, rest, factory, exclude=first, extra=("type",))
 
 
 def _check_keys(
@@ -411,21 +451,47 @@ def _resolve_paths(value: Any, base: Path) -> Any:
 
 
 def _set(data: dict[str, Any], key: str, value: Any) -> None:
-    """Set ``data["a"]["b"] = value`` for ``key="a.b"``, creating missing mappings.
+    """Set ``data["a"]["b"] = value`` for ``key="a.b"``, creating missing containers.
 
-    A ``null`` on the way counts as an empty mapping, so ``tracker.type=sam2``
-    works on ``tracker: null``.
+    A number indexes a list, and the index one past the end appends
+    (``postprocess.1.type=x`` on a one-entry list). A missing or ``null``
+    value on the way becomes an empty list when the next part is a number,
+    else an empty mapping, so ``tracker.type=sam2`` works on ``tracker: null``.
     """
-    *parents, last = key.split(".")
-    node = data
-    for depth, part in enumerate(parents):
-        if node.get(part) is None:
-            node[part] = {}
-        child = node[part]
-        if not isinstance(child, dict):
+    parts = key.split(".")
+    *parents, last = parts
+    node: Any = data
+    for depth, (part, following) in enumerate(zip(parents, parts[1:], strict=True)):
+        slot = _ensure_slot(node, part, key, parents[:depth])
+        if node[slot] is None:
+            node[slot] = [] if _is_index(following) else {}
+        child = node[slot]
+        if not isinstance(child, dict | list):
             where = ".".join(parents[: depth + 1])
             raise ValueError(
-                f"Cannot override {key!r}: {where!r} is {child!r}, not a mapping"
+                f"Cannot override {key!r}: {where!r} is {child!r}, "
+                "not a mapping or a list"
             )
         node = child
-    node[last] = value
+    node[_ensure_slot(node, last, key, parents)] = value
+
+
+def _ensure_slot(
+    node: dict[str, Any] | list[Any], part: str, key: str, path: list[str]
+) -> Any:
+    """``part`` as a key of ``node``, inserting ``None`` (or appending it) if new."""
+    if isinstance(node, dict):
+        node.setdefault(part, None)
+        return part
+    if not _is_index(part) or int(part) > len(node):
+        raise ValueError(
+            f"Cannot override {key!r}: {'.'.join(path)!r} is a list of length "
+            f"{len(node)}; use an index from 0 to {len(node)}, where {len(node)} appends"
+        )
+    if int(part) == len(node):
+        node.append(None)
+    return int(part)
+
+
+def _is_index(part: str) -> bool:
+    return part.isascii() and part.isdigit()
