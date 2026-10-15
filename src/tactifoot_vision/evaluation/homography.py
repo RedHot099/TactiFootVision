@@ -18,7 +18,7 @@ _GRID = (22, 15)  # points along the length and across: 5 m and 4.9 m apart
 _THRESHOLDS = (1, 2, 5)  # metres
 _COLUMNS = [
     "median_error_m", "mean_error_m", "p90_error_m",
-    *(f"under_{t}m" for t in _THRESHOLDS), "jitter_m", "frames",
+    *(f"under_{t}m" for t in _THRESHOLDS), "beyond_horizon", "jitter_m", "frames",
 ]  # fmt: skip
 
 
@@ -34,8 +34,11 @@ def evaluate_homography(
     the mean distance between the two, in metres: pitch units are scaled to a
     105 x 68 m pitch, so a ``SoccerPitch(120, 80)`` run is scored like any
     other. A frame without a homography counts against ``availability``, not
-    as an error. ``jitter_m`` is the mean change of each point's error vector
-    between consecutive processed frames, so a constant offset has none.
+    as an error. A frame whose homography puts a point it shows beyond its
+    horizon has an infinite error: ``beyond_horizon`` counts it, the
+    percentiles rank it last and the mean leaves it out. ``jitter_m`` is the
+    mean change of each point's error vector between consecutive processed
+    frames, so a constant offset has none.
 
     Args:
         result: a run on the clip's video, with its frame indices.
@@ -47,9 +50,15 @@ def evaluate_homography(
             f"Labelled clip {clip.name} has no calibration; "
             "evaluate_homography needs a clip with calibration"
         )
+    frame_size = (clip.width, clip.height)
+    if tuple(result.frame_size) != frame_size:
+        raise ValueError(
+            f"The result's frames are {result.frame_size[0]} x "
+            f"{result.frame_size[1]} px, labelled clip {clip.name}'s "
+            f"{clip.width} x {clip.height}; run the pipeline on the clip's video"
+        )
     pitch = result.pitch
     point_sets = {"landmarks": pitch.vertices.astype(float), "grid": _grid(pitch)}
-    frame_size = (clip.width, clip.height)
     # Per point set, the error vectors of each processed frame, consecutive
     # like the frames (None without a homography or without truth).
     errors: dict[str, list[np.ndarray | None]] = {name: [] for name in point_sets}
@@ -155,11 +164,13 @@ def _summary(errors: list[np.ndarray | None]) -> list[float]:
         if previous is not None and current is not None
     ]
     changes = [c for c in changes if not np.isnan(c)]
+    finite = frame_errors[np.isfinite(frame_errors)]
     return [
         _percentile(frame_errors, 50),
-        float(frame_errors.mean()),
+        float(finite.mean()) if len(finite) else np.nan,
         _percentile(frame_errors, 90),
         *(float((frame_errors < t).mean()) for t in _THRESHOLDS),
+        float(np.isinf(frame_errors).mean()),
         float(np.mean(changes)) if changes else np.nan,
         len(frame_errors),
     ]

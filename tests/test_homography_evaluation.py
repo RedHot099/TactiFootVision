@@ -62,6 +62,7 @@ def test_the_true_homography_scores_zero():
     assert metrics.p90_error_m == pytest.approx(0, abs=1e-9)
     assert metrics.jitter_m == pytest.approx(0, abs=1e-9)
     assert (metrics.under_1m, metrics.under_2m, metrics.under_5m) == (1, 1, 1)
+    assert metrics.beyond_horizon == 0
     assert metrics.availability == 1
     assert metrics.num_frames == 3
     assert list(metrics.per_points.index) == ["landmarks", "grid"]
@@ -170,24 +171,33 @@ def test_only_points_in_view_are_scored():
     assert metrics.mean_error_m == pytest.approx(0.5)
 
 
-def test_a_point_beyond_the_predicted_horizon_is_an_infinite_error():
-    # The predicted view tilts away: frame rows below 300 px fall beyond its
-    # horizon, so the points seen there have no predicted position.
-    tilted = TRUE @ np.array([[1, 0, 0], [0, 1, 0], [0, -1 / 300, 1.0]])
-    metrics = evaluate_homography(_result([tilted, TRUE]), _clip([TRUE] * 2))
+# The predicted view tilts away: frame rows below 300 px fall beyond its
+# horizon, so the points seen there have no predicted position.
+TILTED = TRUE @ np.array([[1, 0, 0], [0, 1, 0], [0, -1 / 300, 1.0]])
 
-    assert metrics.mean_error_m == np.inf
+
+def test_a_frame_beyond_the_predicted_horizon_is_counted_and_left_out_of_the_mean():
+    metrics = evaluate_homography(
+        _result([TILTED, _shift(2) @ TRUE]), _clip([TRUE] * 2)
+    )
+
+    assert metrics.beyond_horizon == pytest.approx(1 / 2)
+    assert metrics.per_points.loc["landmarks", "beyond_horizon"] == pytest.approx(1 / 2)
+    # The mean is over the finite frame errors, so two runs still compare.
+    assert metrics.mean_error_m == pytest.approx(2)
+    # The percentiles rank the frame as an infinite error.
     assert metrics.p90_error_m == np.inf
-    assert metrics.median_error_m == np.inf  # halfway between 0 and infinity
+    assert metrics.median_error_m == np.inf  # halfway between 2 and infinity
     assert metrics.under_5m == pytest.approx(1 / 2)
 
 
 def test_an_infinite_error_does_not_move_a_percentile_that_lands_on_a_finite_one():
-    tilted = TRUE @ np.array([[1, 0, 0], [0, 1, 0], [0, -1 / 300, 1.0]])
-    metrics = evaluate_homography(_result([tilted, TRUE, TRUE]), _clip([TRUE] * 3))
+    metrics = evaluate_homography(_result([TILTED, TRUE, TRUE]), _clip([TRUE] * 3))
 
     assert metrics.median_error_m == pytest.approx(0, abs=1e-9)  # of 0, 0, inf
     assert metrics.p90_error_m == np.inf
+    assert metrics.mean_error_m == pytest.approx(0, abs=1e-9)
+    assert metrics.beyond_horizon == pytest.approx(1 / 3)
 
 
 def test_the_metrics_name_the_truth_used():
@@ -203,6 +213,7 @@ def test_the_metrics_name_the_truth_used():
         (_clip([TRUE], truth=frozenset({Truth.BOXES})), "no calibration"),
         (_clip([None]), "No processed frame"),
         (_clip([]), "not in labelled clip"),
+        (_clip([TRUE], frame_size=(420, 544)), "840 x 544"),
     ],
 )
 def test_refuses_a_clip_it_cannot_score_the_result_on(clip, match):

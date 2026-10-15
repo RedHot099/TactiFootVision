@@ -323,12 +323,15 @@ configs/              example run files
   that the true homography shows inside the frame go to their pixels and back
   to the pitch through the run's homography; a frame's error is the mean
   distance, with pitch units scaled to a 105 x 68 m pitch (`metres_per_unit`)
-  and the calibration taken in `result.pitch` units. A point put beyond the
-  run's horizon is an infinite error. Median, mean and p90 over the frames
-  with a homography, the share of them under 1, 2 and 5 m, and `jitter_m`
-  (the mean change of each point's error between consecutive processed
-  frames) are given on the grid and, in `per_points`, on both point sets.
-  A frame without a homography lowers `availability` and is not an error.
+  and the calibration taken in `result.pitch` units; the result's frame size
+  must be the clip's. A point put beyond the run's horizon makes its frame an
+  infinite error: `beyond_horizon` is the share of such frames, the median
+  and p90 rank them last and the mean leaves them out. Median, mean and p90
+  over the frames with a homography, the share of them under 1, 2 and 5 m,
+  and `jitter_m` (the mean change of each point's error from one processed
+  frame to the next, per processed step) are given on the grid and, in
+  `per_points`, on both point sets. A frame without a homography lowers
+  `availability` and is not an error.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
