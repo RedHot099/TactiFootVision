@@ -2,7 +2,7 @@
 
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import cv2
@@ -120,6 +120,28 @@ def _has_match(folder: Path, name_pattern: str) -> bool:
         return False
     name = re.compile(name_pattern)
     return any(name.fullmatch(path.name) for path in folder.iterdir())
+
+
+def sequence_images(pattern: Path, indices: Iterable[int]) -> list[Path]:
+    """The image files of frames ``indices`` of the image sequence ``pattern``.
+
+    As :class:`VideoReader` reads the sequence, its lowest-numbered image is
+    frame 0 and frame ``i`` has the number ``i`` after it. The files are not
+    checked for existence. A path without exactly one frame number is a
+    ``ValueError``.
+    """
+    parts = re.split(f"({_FRAME_NUMBER.pattern})", pattern.name)
+    if len(parts) != 3 or pattern.is_file():
+        raise ValueError(f"{pattern} is not an image-sequence pattern such as %06d.jpg")
+    prefix, token, suffix = parts
+    number = re.compile(rf"{re.escape(prefix)}(\d+){re.escape(suffix)}")
+    found = (number.fullmatch(p.name) for p in _listing(pattern.parent))
+    first = min((int(m.group(1)) for m in found if m), default=0)
+    return [pattern.with_name(prefix + token % (first + i) + suffix) for i in indices]
+
+
+def _listing(folder: Path) -> list[Path]:
+    return list(folder.iterdir()) if folder.is_dir() else []
 
 
 def check_frame_range(start: int, end: int | None, stride: int) -> None:

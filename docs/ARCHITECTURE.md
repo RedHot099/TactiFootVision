@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -172,6 +172,17 @@ configs/              example run files
   every link mode and loses nothing else. A marker entry that does not
   resolve inside the export folder (an absolute path, `..`, a symlinked
   folder) is refused, so a corrupt marker deletes nothing.
+* `Dataset.from_clips(clips, train, valid, test, seed)` builds a detection
+  dataset from one or more labelled clips with box truth. The fractions
+  count clips and round as in `resplit`, so every frame of a clip lands in
+  the clip's split. Each frame with a box is a sample whose image is that
+  frame's file of the clip's image sequence (its lowest-numbered image is
+  frame 0, as `VideoReader` reads it), referenced in place; a frame without
+  a box is left out, since a clip cannot tell an empty frame from an
+  unlabelled one. Classes are `player`, `goalkeeper`, `referee`, `ball`.
+  A clip read from a video file, a missing frame image and the same clip
+  given twice are refused. Only `to_yolo` / `to_coco` with `link="copy"`
+  copy frames.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
