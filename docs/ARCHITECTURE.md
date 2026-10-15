@@ -376,11 +376,13 @@ postprocess: [{type: join_tracks, max_gap: 40}]
 * `RunFile.run(video, output_dir, *, render=True, **run_inputs)` is one run:
   it builds the pipeline and the render objects (constructors and
   `render_video` settings check every value before the first frame), runs
-  the pipeline, applies the `postprocess` list in order (so the run folder
-  holds the post-processed result and its record), exports the data files
-  and renders `annotated.mp4` unless `render=False`. Post-process option
-  values are checked by the functions, after the pipeline has run. `run_inputs` are the `Pipeline.run` and
-  `PipelineResult.export` arguments; it returns the `PipelineResult`.
+  the pipeline and exports the data files. With a `postprocess` list it then
+  applies the entries in order and exports again, so the run folder holds
+  the post-processed result and its record. Post-process option values are
+  checked by the functions, after the pipeline: when one fails, the run
+  folder keeps the pipeline's result to post-process again. Last, it renders
+  `annotated.mp4` unless `render=False`. `run_inputs` are the `Pipeline.run`
+  and `PipelineResult.export` arguments; it returns the `PipelineResult`.
   `RunFile.render_video(result, source, output, **options)` re-renders a
   saved result; `options` (`fps=30`, `progress=False`, `radar=False`, ...)
   take precedence over the `render` section for that call.

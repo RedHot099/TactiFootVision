@@ -167,10 +167,12 @@ class RunFile:
 
         In order: build the pipeline and the render objects (so every value,
         ``render`` section included, is checked before the first frame), run
-        the pipeline, apply the ``postprocess`` list in order,
-        :meth:`~tactifoot_vision.pipeline.PipelineResult.export`
-        the data files, and render ``annotated.mp4`` unless ``render=False``
-        (a failed render leaves no partial video).
+        the pipeline, :meth:`~tactifoot_vision.pipeline.PipelineResult.export`
+        the data files, apply the ``postprocess`` list in order and export
+        again, and render ``annotated.mp4`` unless ``render=False`` (a failed
+        render leaves no partial video). Post-process option values are
+        checked by the post-processes, after the pipeline: when one fails, the
+        run folder holds the pipeline's result, ready to post-process again.
 
         ``run_inputs`` are :meth:`Pipeline.run` arguments (``start``, ``end``,
         ``stride``, ``progress``) and :meth:`PipelineResult.export` arguments
@@ -197,12 +199,13 @@ class RunFile:
         result = pipeline.run(
             video, **{k: v for k, v in run_inputs.items() if k in frame_inputs}
         )
-        for entry in self.sections.get("postprocess") or []:
-            options = dict(entry)
-            result = POSTPROCESSES.get(options.pop("type"))(result, **options)
-        out = result.export(
-            output_dir, **{k: v for k, v in run_inputs.items() if k in export_inputs}
-        )
+        export_options = {k: v for k, v in run_inputs.items() if k in export_inputs}
+        out = result.export(output_dir, **export_options)
+        if postprocesses := self.sections.get("postprocess"):
+            for entry in postprocesses:
+                options = dict(entry)
+                result = POSTPROCESSES.create(options.pop("type"), result, **options)
+            result.export(out, **export_options)
         if render:
             from tactifoot_vision.viz import render_video
 
@@ -457,7 +460,7 @@ def _set(data: dict[str, Any], key: str, value: Any) -> None:
     *parents, last = parts
     node: Any = data
     for depth, (part, following) in enumerate(zip(parents, parts[1:], strict=True)):
-        slot = _slot(node, part, key, parents[:depth])
+        slot = _ensure_slot(node, part, key, parents[:depth])
         if node[slot] is None:
             node[slot] = [] if _is_index(following) else {}
         child = node[slot]
@@ -468,13 +471,13 @@ def _set(data: dict[str, Any], key: str, value: Any) -> None:
                 "not a mapping or a list"
             )
         node = child
-    node[_slot(node, last, key, parents)] = value
+    node[_ensure_slot(node, last, key, parents)] = value
 
 
-def _slot(
+def _ensure_slot(
     node: dict[str, Any] | list[Any], part: str, key: str, path: list[str]
 ) -> Any:
-    """``part`` as a key of ``node``, which then exists (``None`` if it was new)."""
+    """``part`` as a key of ``node``, inserting ``None`` (or appending it) if new."""
     if isinstance(node, dict):
         node.setdefault(part, None)
         return part

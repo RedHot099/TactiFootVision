@@ -45,15 +45,8 @@ def _result(*frames: FrameResult) -> PipelineResult:
 
 
 @pytest.fixture
-def registry(monkeypatch):
-    """``POSTPROCESSES``, with whatever a test registers removed afterwards."""
-    monkeypatch.setattr(POSTPROCESSES, "_factories", dict(POSTPROCESSES._factories))
-    return POSTPROCESSES
-
-
-@pytest.fixture
-def offset_ids(registry):
-    @registry.register("test_offset_ids")
+def offset_ids(postprocess_registry):
+    @postprocess_registry.register("test_offset_ids")
     def offset_ids(result: PipelineResult, offset: int = 100, scale: int = 1):
         """Toy post-process: every track id becomes ``id * scale + offset``."""
         mapping = {i: i * scale + offset for i in result.track_ids}
@@ -63,8 +56,8 @@ def offset_ids(registry):
 
 
 @pytest.fixture
-def returns_frames(registry):
-    @registry.register("test_returns_frames")
+def returns_frames(postprocess_registry):
+    @postprocess_registry.register("test_returns_frames")
     def returns_frames(result: PipelineResult):
         return result.frames
 
