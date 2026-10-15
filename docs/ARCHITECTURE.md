@@ -76,7 +76,7 @@ src/tactifoot_vision/
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
-                      lines.py (line refinement, LineFit), projection.py (project_points)
+                      lines.py (line refinement, LineFit, LineRefinerConfig), projection.py (project_points)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
@@ -128,7 +128,7 @@ configs/              example run files
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`,
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`, `LineRefinerConfig`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -548,23 +548,30 @@ configs/              example run files
   landmarks given to RANSAC in the current frame's fit (not only its
   inliers), `None` when the frame gave no fit.
   `refine_with_lines` (off by default) then fits each frame's matrix to its
-  painted lines (`pitch/lines.py`, a chamfer fit):
-  model points every 0.4 pitch units along `pitch_markings` are projected and
-  pulled onto a white-line mask (a top-hat on the HSV value inside the largest
-  grass region) by a robust least squares over the pixel offsets of four
-  control points, coarse to fine. The people boxes the pipeline passes to
-  `update(keypoints, frame, boxes)` are cut from the mask and from where
-  markings are looked for, so white kits do not pull the fit. The fit starts
-  from the previous returned matrix and from the keypoint one and keeps the
-  start with more inliers, so it holds a pan through poor keypoints; the
-  returned matrix is that fit, and `smoothing_window` only averages the
-  keypoint start. Fewer
-  than `min_line_points` model points in view (close-ups) keep the keypoint
-  matrix. `line_fit` (`LineFit`: visible points, inlier share within
-  `line_inlier_px`, median distance) tells how the frame's fit went and
-  `FrameResult.line_fit` keeps it; `None` when not refined. The image
-  thresholds are tuned on 1080p broadcast footage, and the gain in metres
-  is so far shown on synthetic clips only. Pitch
+  painted lines (`pitch/lines.py`, a chamfer fit): model points along
+  `pitch_markings` are projected and pulled onto a white-line mask (a top-hat
+  on the HSV value inside the largest grass region) by a robust least squares
+  over the pixel offsets of four control points, coarse to fine. Points the
+  fit pushes beyond the horizon cost the stage's distance cap, and points it
+  pushes off the frame cost more the further out they go, so a fit cannot
+  score by moving the markings out of view. The people boxes the pipeline
+  passes to `update(keypoints, frame, boxes)` are cut from the mask and from
+  where markings are looked for, so white kits do not pull the fit. The fit
+  starts from the previous returned matrix and from the keypoint one and
+  keeps the one with more inliers (then more points), so it holds a pan
+  through poor keypoints; the returned matrix is that fit, and
+  `smoothing_window` only averages the keypoint start. The keypoint matrix is
+  kept when the best fit has under `min_line_inlier_share` inliers (0.5),
+  fewer than `min_line_points` model points are in view (close-ups), the
+  start puts the frame from 35 % of its height down partly beyond the
+  horizon, or the fit folds the control quadrilateral or turns a control
+  point beyond the horizon. `line_fit` (`LineFit`: visible points, inlier
+  share within `line_inlier_px`, median distance) tells how the frame's fit
+  went and `FrameResult.line_fit` keeps it; `None` when not refined. The
+  image thresholds sit in `line_options` (`LineRefinerConfig`, a mapping in
+  run files), with defaults tuned on 1080p broadcast footage; the line
+  settings are read-only. The gain in metres is so far shown on synthetic
+  clips only. Pitch
   vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same

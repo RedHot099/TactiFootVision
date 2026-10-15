@@ -13,6 +13,7 @@ from tactifoot_vision.pipeline import FrameResult, Pipeline, PipelineResult
 from tactifoot_vision.pitch import (
     HomographyEstimator,
     LineFit,
+    LineRefinerConfig,
     SoccerPitch,
     pitch_to_frame,
 )
@@ -151,6 +152,80 @@ def test_lines_hidden_from_view_fall_back_too(tmp_path):
     np.testing.assert_array_equal(refined, raw)
 
 
+@pytest.mark.parametrize("off_m", [10, 30])
+def test_a_start_too_far_off_falls_back_instead_of_degenerating(tmp_path, off_m):
+    # From these starts the fit used to fold the frame beyond the horizon while
+    # reporting most model points on a line (they had left the frame).
+    pitch, camera = SoccerPitch(), _camera()
+    clip = synthetic_pitch_clip(tmp_path / "pan.mp4", [camera], FRAME)
+    start = _camera(pitch, -off_m)
+    raw = HomographyEstimator(pitch, smoothing_window=1).update(
+        _keypoints(pitch, start)
+    )
+
+    (refined,), (fit,) = _refine(pitch, [start], _frames(clip))
+
+    assert fit is None
+    np.testing.assert_array_equal(refined, raw)
+    assert np.isfinite(_error_m(clip, [refined]))
+
+
+def test_min_line_inlier_share_sets_the_fallback(tmp_path):
+    pitch, camera = SoccerPitch(), _camera()
+    clip = synthetic_pitch_clip(
+        tmp_path / "busy.mp4", [camera], FRAME, occluders=15, noise=6, seed=2
+    )
+    start = _perturbed(camera, 10, seed=3)
+    _, (fit,) = _refine(pitch, [start], _frames(clip))
+    assert 0.5 < fit.inlier_share < 1
+
+    _, (strict,) = _refine(
+        pitch, [start], _frames(clip), min_line_inlier_share=fit.inlier_share + 1e-3
+    )
+    _, (lenient,) = _refine(
+        pitch, [start], _frames(clip), min_line_inlier_share=fit.inlier_share
+    )
+
+    assert strict is None
+    assert lenient == fit
+
+
+def test_line_options_reach_the_line_mask(tmp_path):
+    pitch, camera = SoccerPitch(), _camera()
+    clip = synthetic_pitch_clip(tmp_path / "pan.mp4", [camera], FRAME)
+    start = _perturbed(camera, 10, seed=0)
+
+    # No pixel is unsaturated enough to be a line: nothing to fit to.
+    _, (fit,) = _refine(
+        pitch, [start], _frames(clip), line_options={"max_line_saturation": 1}
+    )
+    (refined,), (tuned,) = _refine(
+        pitch, [start], _frames(clip), line_options=LineRefinerConfig(tophat_px=11)
+    )
+
+    assert fit is None
+    assert tuned is not None and _error_m(clip, [refined]) < 0.1
+
+
+def test_line_settings_are_read_only_and_follow_the_pitch(tmp_path):
+    estimator = HomographyEstimator(refine_with_lines=True)
+    for name in ("refine_with_lines", "min_line_points", "line_options"):
+        with pytest.raises(AttributeError):
+            setattr(estimator, name, None)
+    assert estimator.line_options == LineRefinerConfig()
+    estimator.update(None, np.zeros((FRAME[1], FRAME[0], 3), np.uint8))
+
+    pitch = SoccerPitch(120, 80)
+    estimator.pitch = pitch
+    camera = _camera(pitch)
+    clip = synthetic_pitch_clip(tmp_path / "big.mp4", [camera], FRAME, pitch=pitch)
+    start = _perturbed(camera, 15, seed=0)
+    refined = estimator.update(_keypoints(pitch, start), *_frames(clip))
+
+    assert estimator.line_fit is not None
+    assert _error_m(clip, [refined], pitch) < 0.1
+
+
 def test_min_line_points_sets_the_fallback(tmp_path):
     pitch, camera = SoccerPitch(), _camera()
     clip = synthetic_pitch_clip(tmp_path / "pan.mp4", [camera], FRAME)
@@ -205,6 +280,11 @@ def test_refinement_is_off_by_default_and_needs_the_frame():
         ({"min_line_points": 3}, "min_line_points"),
         ({"line_inlier_px": 0}, "line_inlier_px"),
         ({"line_inlier_px": 6}, "line_inlier_px"),
+        ({"min_line_inlier_share": 1.5}, "min_line_inlier_share"),
+        ({"line_options": {"stages": []}}, "stages"),
+        ({"line_options": {"grass_hsv_low": (30, 60)}}, "grass_hsv_low"),
+        ({"line_options": {"tophat_px": 0}}, "tophat_px"),
+        ({"line_options": {"good_inlier_share": 0}}, "good_inlier_share"),
     ],
 )
 def test_refinement_options_are_validated(kwargs, match):

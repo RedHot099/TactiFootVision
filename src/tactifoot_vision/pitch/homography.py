@@ -2,12 +2,14 @@
 
 import logging
 from collections import deque
+from collections.abc import Mapping
+from typing import Any
 
 import cv2
 import numpy as np
 import supervision as sv
 
-from tactifoot_vision.pitch.lines import LINE_DISTANCE_CAP_PX, LineFit, LineRefiner
+from tactifoot_vision.pitch.lines import LineFit, LineRefiner, LineRefinerConfig
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.pitch.projection import project_points
 
@@ -67,12 +69,19 @@ class HomographyEstimator:
     painted lines of the frame passed to :meth:`update`: the pitch markings are
     pulled onto a white-line mask from which the people ``boxes`` are cut,
     starting from the previous returned matrix and from the keypoint one, and
-    the start whose fit has more inliers wins. Fewer than ``min_line_points``
-    visible model points (close-ups, lines out of view) keep the keypoint
-    matrix. :attr:`line_fit` tells how the current frame's fit went; a model
+    the start whose fit has more inliers (then more points) wins. A model
     point within ``line_inlier_px`` pixels of a painted line is an inlier.
-    The refined matrix is the frame's own fit: ``smoothing_window`` then only
-    averages the keypoint matrix the fit starts from.
+    The keypoint matrix is kept when no start gives a fit with at least
+    ``min_line_inlier_share`` inliers, when fewer than ``min_line_points``
+    model points are in view (close-ups, lines out of view), when the start
+    puts the frame from 35 % of its height down partly beyond the horizon (a
+    view looking far up the pitch), and when the fit degenerates (folds over
+    or turns part of that region beyond the horizon). :attr:`line_fit` tells
+    how the current frame's fit went. ``line_options`` holds the image
+    thresholds (a :class:`~tactifoot_vision.pitch.lines.LineRefinerConfig`
+    or its fields as a mapping; defaults tuned on 1080p). The refined matrix
+    is the frame's own fit: ``smoothing_window`` then only averages the
+    keypoint matrix the fit starts from. The line settings are read-only.
     """
 
     def __init__(
@@ -86,6 +95,8 @@ class HomographyEstimator:
         refine_with_lines: bool = False,
         min_line_points: int = 80,
         line_inlier_px: float = 3.0,
+        min_line_inlier_share: float = 0.5,
+        line_options: LineRefinerConfig | Mapping[str, Any] | None = None,
     ) -> None:
         if not 0 <= min_confidence <= 1:
             raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
@@ -97,25 +108,32 @@ class HomographyEstimator:
             raise ValueError(f"max_age must be None or >= 0, got {max_age}")
         if min_line_points < 4:
             raise ValueError(f"min_line_points must be >= 4, got {min_line_points}")
-        if not 0 < line_inlier_px < LINE_DISTANCE_CAP_PX:
+        if line_options is None:
+            line_options = LineRefinerConfig()
+        elif not isinstance(line_options, LineRefinerConfig):
+            line_options = LineRefinerConfig(**line_options)
+        cap = line_options.distance_cap_px
+        if not 0 < line_inlier_px < cap:
             raise ValueError(
-                f"line_inlier_px must be in (0, {LINE_DISTANCE_CAP_PX}), the distance "
-                f"the fit measures up to, got {line_inlier_px}"
+                f"line_inlier_px must be in (0, {cap}), the distance the fit "
+                f"measures up to, got {line_inlier_px}"
+            )
+        if not 0 <= min_line_inlier_share <= 1:
+            raise ValueError(
+                f"min_line_inlier_share must be in [0, 1], got {min_line_inlier_share}"
             )
         self.pitch = pitch or SoccerPitch()
         self.min_confidence = min_confidence
         self.ransac_threshold = ransac_threshold
         self.max_age = max_age
-        self.refine_with_lines = refine_with_lines
-        self.min_line_points = min_line_points
-        self.line_inlier_px = line_inlier_px
-        self._refiner = (
-            LineRefiner(
-                self.pitch, min_points=min_line_points, inlier_px=line_inlier_px
-            )
-            if refine_with_lines
-            else None
-        )
+        self._refine_with_lines = refine_with_lines
+        self._min_line_points = min_line_points
+        self._line_inlier_px = line_inlier_px
+        self._min_line_inlier_share = min_line_inlier_share
+        self._line_options = line_options
+        # Built on first use and again if the pitch changes: model points are per pitch.
+        self._refiner: LineRefiner | None = None
+        self._refiner_pitch: SoccerPitch | None = None
         self._history: deque[np.ndarray] = deque(maxlen=smoothing_window)
         # The keypoint fits' average, and the matrix returned (refined or not).
         self._keypoint_matrix: np.ndarray | None = None
@@ -127,6 +145,26 @@ class HomographyEstimator:
         # only its inliers); None when this frame gave no fit.
         self.used_indices: np.ndarray | None = None
         self._age = 0
+
+    @property
+    def refine_with_lines(self) -> bool:
+        return self._refine_with_lines
+
+    @property
+    def min_line_points(self) -> int:
+        return self._min_line_points
+
+    @property
+    def line_inlier_px(self) -> float:
+        return self._line_inlier_px
+
+    @property
+    def min_line_inlier_share(self) -> float:
+        return self._min_line_inlier_share
+
+    @property
+    def line_options(self) -> LineRefinerConfig:
+        return self._line_options
 
     def reset(self) -> None:
         self._history.clear()
@@ -164,11 +202,23 @@ class HomographyEstimator:
                 previous = None
         self.matrix = self._keypoint_matrix
         self.line_fit = None
-        if self._refiner is not None and self.matrix is not None:
-            refined = self._refiner.refine(frame, (previous, self.matrix), boxes)
+        if self.refine_with_lines and self.matrix is not None:
+            refined = self._line_refiner().refine(frame, (previous, self.matrix), boxes)
             if refined is not None:
                 self.matrix, self.line_fit = refined
         return self.matrix
+
+    def _line_refiner(self) -> LineRefiner:
+        if self._refiner is None or self._refiner_pitch != self.pitch:
+            self._refiner = LineRefiner(
+                self.pitch,
+                self.line_options,
+                min_points=self.min_line_points,
+                inlier_px=self.line_inlier_px,
+                min_inlier_share=self.min_line_inlier_share,
+            )
+            self._refiner_pitch = self.pitch
+        return self._refiner
 
     def _fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
         self.used_indices = None
