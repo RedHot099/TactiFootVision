@@ -178,13 +178,59 @@ def test_the_window_is_in_seconds_whatever_the_stride():
         )
 
 
-def test_a_run_shorter_than_the_window_is_smoothed_over_the_run():
-    truth = _pan(5)
+def test_a_stretch_shorter_than_the_window_is_smoothed_over_itself():
+    truth = _pan(6)  # an even stretch: 5 of its frames make each window
     jittered = _result(_jitter(truth))
 
     smoothed = smooth_homographies(jittered, window=2.0)
 
     assert _errors(smoothed, truth).mean() < _errors(jittered, truth).mean()
+
+
+def test_the_filter_is_centred_so_a_frame_sees_the_frames_after_it():
+    still = _pan(21, speed=0.0)
+    still[10] = _shift(2.0) @ still[10]  # one bad frame in a still shot
+
+    smoothed = smooth_homographies(_result(still))
+
+    errors = _errors(smoothed, _pan(21, speed=0.0))
+    # a causal filter would leave the frames before the bad one untouched
+    assert errors[6:10].min() > 0.01
+    np.testing.assert_allclose(errors[6:10], errors[11:15][::-1])
+
+
+def test_a_frame_corner_on_the_horizon_does_not_upset_the_scaling():
+    # frame -> pitch whose top edge is the horizon: H[2, 2] is 0
+    horizon = np.array([[0.1, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 0.01, 0.0]])
+    truth = [_shift(0.4 * i) @ horizon for i in range(30)]
+
+    smoothed = smooth_homographies(_result(truth))
+
+    centre = np.array([*FRAME, 2.0]) / 2
+    for frame, true in zip(smoothed, truth, strict=True):
+        got, want = frame.homography @ centre, true @ centre
+        np.testing.assert_allclose(got[:2] / got[2], want[:2] / want[2], atol=1e-6)
+
+
+def test_a_frame_centre_on_the_horizon_keeps_its_matrix_and_splits_the_smoothing():
+    truth = _pan(41)
+    # the frame centre's row is the horizon: its homogeneous coordinate is 0
+    on_horizon = np.array([[0.1, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 1.0, -FRAME[1] / 2]])
+    homographies = [*truth[:20], on_horizon, *truth[21:]]
+
+    smoothed = smooth_homographies(_result(homographies))
+
+    np.testing.assert_array_equal(smoothed.frames[20].homography, on_horizon)
+    kept = [f for i, f in enumerate(smoothed) if i != 20]
+    assert _errors(kept, truth[:20] + truth[21:]).max() < 0.01
+
+
+def test_refuses_frames_out_of_time_order():
+    result = _result(_pan(5))
+    result.frames.reverse()
+
+    with pytest.raises(ValueError, match="increasing timestamps"):
+        smooth_homographies(result)
 
 
 def test_it_is_a_recorded_post_process_that_leaves_its_input_alone():

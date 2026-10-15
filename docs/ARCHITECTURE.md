@@ -519,8 +519,9 @@ configs/              example run files
   the matrices scaled to map the frame centre with a homogeneous coordinate
   of 1, so a steady pan moves the entries in a straight line and is not
   lagged, then re-projects `pitch_xy` with `reproject`. A frame without a
-  homography keeps none and splits the runs smoothed; a run shorter than the
-  window is smoothed over itself. Run it before `track_ball`, `join_tracks`
+  homography keeps none and splits the stretches smoothed, as does one whose
+  frame centre is on the horizon (it keeps its matrix); a stretch shorter
+  than the window is smoothed over itself. Frames must be in time order. Run it before `track_ball`, `join_tracks`
   and `assign_roles`, which read pitch positions. `line_fit` still describes
   the pass's fit.
 * `join_tracks(result, max_gap, max_speed, slack, same_team)`
