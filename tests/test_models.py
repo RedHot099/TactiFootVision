@@ -438,6 +438,28 @@ def test_class_conf_is_checked(thresholding_detector, class_conf, match):
         thresholding_detector(device="cpu", class_conf=class_conf)
 
 
+def test_class_conf_is_checked_again_after_training(tmp_path, monkeypatch):
+    def load(self, weights):
+        self._yolo = _ThresholdingYOLO()
+        if weights == "retrained.pt":  # trained without a ball class
+            self._yolo.names = {0: "player"}
+
+    def train(self, dataset, config, run_dir):
+        return TrainResult(self.name, "retrained.pt", run_dir, pd.DataFrame(), {})
+
+    monkeypatch.setattr(YOLODetector, "_load", load)
+    monkeypatch.setattr(YOLODetector, "_train", train)
+    model = YOLODetector(device="cpu", class_conf={"ball": 0.05})
+    with pytest.raises(ValueError, match="Unknown class 'ball' in class_conf"):
+        model.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs", amp=False)
+
+
+def test_repr_shows_class_conf_only_when_set(thresholding_detector):
+    assert "class_conf" not in repr(thresholding_detector(device="cpu"))
+    model = thresholding_detector(device="cpu", class_conf={"ball": 0.05})
+    assert "class_conf={'ball': 0.05}" in repr(model)
+
+
 # ======================================================= real weights / GPU
 @pytest.fixture(scope="module")
 def football() -> tv.Dataset:
