@@ -128,6 +128,25 @@ def test_the_result_records_each_post_process_with_its_options_and_defaults(
     assert _ids(twice) == [[122, 124]]
 
 
+def test_the_record_does_not_change_when_an_option_or_a_later_record_does(
+    registry,
+):
+    @registry.register("test_takes_a_dict")
+    def takes_a_dict(result: PipelineResult, gaps: dict[str, int]):
+        return remap_track_ids(result, {})
+
+    gaps = {"max": 25}
+    once = takes_a_dict(_result(_frame(0)), gaps=gaps)
+    twice = takes_a_dict(once, gaps={"max": 40})
+
+    gaps["max"] = 99
+    twice.postprocesses[0].options["gaps"]["max"] = 150
+
+    assert once.postprocesses == [
+        AppliedPostProcess("test_takes_a_dict", {"gaps": {"max": 25}})
+    ]
+
+
 def test_a_post_process_refuses_an_unknown_option(offset_ids):
     with pytest.raises(TypeError, match="max_gap"):
         offset_ids(_result(_frame(0)), max_gap=3)

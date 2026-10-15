@@ -55,16 +55,19 @@ class _PostProcessRegistry(Registry[PipelineResult]):
                 bound = signature.bind(*args, **kwargs)
                 bound.apply_defaults()
                 result, *_ = bound.arguments.values()
+                # copied before the call, so neither the post-process nor the
+                # caller changing an option afterwards rewrites the record
+                record = AppliedPostProcess(
+                    name, copy.deepcopy(_options(signature, bound))
+                )
                 output = function(*args, **kwargs)
                 if not isinstance(output, PipelineResult):
                     raise TypeError(
                         f"Post-process {name!r} returned {type(output).__name__}; "
                         "it must return a new PipelineResult"
                     )
-                record = AppliedPostProcess(name, _options(signature, bound))
-                return dataclasses.replace(
-                    output, postprocesses=[*result.postprocesses, record]
-                )
+                history = copy.deepcopy(result.postprocesses)
+                return dataclasses.replace(output, postprocesses=[*history, record])
 
             add(recorded)
             return cast(F, recorded)
