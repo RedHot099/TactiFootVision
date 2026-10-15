@@ -25,7 +25,6 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
 import numpy as np
-import supervision as sv
 
 from tactifoot_vision.pipeline.result import (
     BALL_ANCHOR,
@@ -52,8 +51,8 @@ class _PostProcessRegistry(Registry[PipelineResult]):
                 output = function(*args, **kwargs)
                 if not isinstance(output, PipelineResult):
                     raise TypeError(
-                        f"Post-process {name!r} returned {type(output).__name__}, "
-                        "not a PipelineResult"
+                        f"Post-process {name!r} returned {type(output).__name__}; "
+                        "it must return a new PipelineResult"
                     )
                 record = AppliedPostProcess(name, _options(signature, bound))
                 return dataclasses.replace(
@@ -101,7 +100,7 @@ def reproject(
     frames = []
     for frame, homography in zip(result.frames, homographies, strict=True):
         matrix = None if homography is None else np.array(homography, dtype=float)
-        people, ball = _copy(frame.detections), _copy(frame.ball)
+        people, ball = copy.deepcopy(frame.detections), copy.deepcopy(frame.ball)
         people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
         ball.data["pitch_xy"] = project_detections(ball, BALL_ANCHOR, matrix)
         frames.append(
@@ -123,7 +122,7 @@ def remap_track_ids(
     for frame in result.frames:
         people = frame.detections
         if people.tracker_id is not None:
-            people = _copy(people)
+            people = copy.deepcopy(people)
             people.data.setdefault("original_tracker_id", people.tracker_id.copy())
             people.tracker_id = np.array(
                 [mapping.get(int(i), int(i)) for i in people.tracker_id],
@@ -131,7 +130,3 @@ def remap_track_ids(
             )
         frames.append(dataclasses.replace(frame, detections=people))
     return dataclasses.replace(result, frames=frames)
-
-
-def _copy(detections: sv.Detections) -> sv.Detections:
-    return copy.deepcopy(detections)
