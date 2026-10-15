@@ -207,7 +207,7 @@ class Pipeline:
             class_names=list(self.detector.class_names),
             pitch=self.pitch,
             video_path=reader.path,
-            # untracked keys name no track of the result
+            # without a tracker the keys are made up per detection: no track to key
             track_embeddings=samples.means() if self.tracker is not None else {},
         )
 

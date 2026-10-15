@@ -24,6 +24,7 @@ from tactifoot_vision.pitch import SoccerPitch
 
 FPS = 25.0
 FRAMES = 20
+CLASS_NAMES = ["ball", "goalkeeper", "player", "referee"]
 
 Path = Callable[[int], tuple[float, float]]  # frame -> metres on 105 x 68
 KITS = {  # embedding centre of each kit
@@ -84,7 +85,7 @@ def _result(
         people = sv.Detections(
             xyxy=np.array([box for *_, box in rows], np.float32).reshape(-1, 4),
             confidence=np.full(len(rows), 0.9, np.float32),
-            class_id=np.ones(len(rows), int),
+            class_id=np.array([CLASS_NAMES.index(n) for _, n, *_ in rows], int),
             tracker_id=np.array([tracker_id for tracker_id, *_ in rows], int),
             data={
                 "class_name": np.array([name for _, name, *_ in rows]),
@@ -116,7 +117,7 @@ def _result(
         frames,
         FPS,
         (1000, 600),
-        ["ball", "goalkeeper", "player", "referee"],
+        CLASS_NAMES,
         pitch=pitch,
         track_embeddings=embeddings,
     )
@@ -124,10 +125,12 @@ def _result(
 
 
 def _roles(result: PipelineResult) -> dict[int, set[tuple[str, int]]]:
-    """``(class_name, team_id)`` of every row, by track."""
+    """``(class_name, team_id)`` of every tracked row, by track."""
     roles: dict[int, set[tuple[str, int]]] = {}
     for frame in result:
         people = frame.detections
+        if people.tracker_id is None:
+            continue
         for track, name, team in zip(
             people.tracker_id, people.data["class_name"], frame.team_ids, strict=True
         ):
@@ -245,6 +248,46 @@ def test_detector_roles_are_kept():
     assert roles[21] == {("goalkeeper", 0)}
 
 
+def test_a_goal_with_a_detector_goalkeeper_gets_no_second_one():
+    detector_keeper = (41, "goalkeeper", 0, "yellow", _at(2, 30))
+    roles = _roles(assign_roles(_result([*SCENE, detector_keeper])))
+
+    assert roles[41] == {("goalkeeper", 0)}
+    assert roles[21] == {("referee", NO_TEAM)}
+    assert roles[22] == {("goalkeeper", 1)}  # the other goal still gets one
+
+
+def test_the_class_id_follows_the_new_class_name():
+    result = _result(SCENE)
+
+    relabelled = assign_roles(result)
+
+    for frame, old in zip(relabelled, result, strict=True):
+        names = frame.detections.data["class_name"]
+        expected = [CLASS_NAMES.index(n) for n in names]
+        np.testing.assert_array_equal(frame.detections.class_id, expected)
+        assert (old.detections.class_id == CLASS_NAMES.index("player")).all()
+
+
+def test_frames_without_a_tracker_are_left_alone():
+    result = _result(SCENE)
+    untracked = result.frames[3]
+    untracked.detections.tracker_id = None
+
+    relabelled = assign_roles(result)
+
+    assert relabelled.frames[3] is untracked
+    assert _roles(relabelled)[21] == {("goalkeeper", 0)}
+
+
+def test_a_team_of_too_few_player_tracks_is_warned_about(caplog):
+    thin_blue = [track for track in SCENE if track[0] not in (12, 13, 14, 15)]
+
+    assign_roles(_result(thin_blue))
+
+    assert "Team 1 has 2 player tracks" in caplog.text
+
+
 def test_a_player_track_joined_from_tracks_uses_their_embeddings():
     # the yellow keeper is lost after frame 9 and comes back as track 25;
     # join_tracks gives it id 21 and the embeddings stay by the tracker's ids
@@ -298,7 +341,10 @@ def test_the_input_is_left_alone_and_the_call_is_recorded():
 def test_a_result_without_team_embeddings_is_refused():
     result = _result(SCENE)
     result.track_embeddings = {}
+    with pytest.raises(ValueError, match="team embeddings"):
+        assign_roles(result)
 
+    del result.track_embeddings  # as a result saved before they were kept
     with pytest.raises(ValueError, match="team embeddings"):
         assign_roles(result)
 

@@ -531,8 +531,10 @@ configs/              example run files
   median distance to it) is "other", with no colour threshold. The other
   nearest each goal, in its penalty area for at least `min_box_share` of
   its positioned rows, becomes the `goalkeeper` of the team defending that
-  goal (`attack_direction`); the rest become `referee` with `NO_TEAM`.
+  goal (`attack_direction`, so one period per result), unless a detector
+  goalkeeper stands in that area; the rest become `referee` with `NO_TEAM`.
   Detector `goalkeeper` and `referee` tracks keep their class and team.
+  A result saved without `track_embeddings` is refused.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident

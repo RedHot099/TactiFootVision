@@ -23,15 +23,18 @@ from tactifoot_vision.pipeline.result import (
     ObjectMasks,
     PipelineResult,
 )
+from tactifoot_vision.pitch.pitch import SoccerPitch
 
 logger = logging.getLogger(__name__)
 
 PLAYER, GOALKEEPER, REFEREE = "player", "goalkeeper", "referee"
+# fewer player tracks than this give no robust team centre and spread
+_MIN_TEAM_TRACKS = 3
 
 
 @dataclasses.dataclass(frozen=True)
 class _Track:
-    """One player track: its most frequent class and team, positions and embedding."""
+    """One track of people (a player track after joining): class, team, positions, kit."""
 
     id: int
     name: str
@@ -60,15 +63,19 @@ def assign_roles(
     2. Each team's centre is the median embedding of its ``player`` tracks,
        and its spread their median distance to that centre. A ``player``
        track farther than ``outlier_spread`` times the spread from every
-       team's centre has a kit of neither team: it is "other". Measuring
+       team's centre has a kit of neither team: it is an outlier. Measuring
        against each team's own spread keeps the rule free of colour
        thresholds that would hold for one match only.
-    3. Of the others in at least ``min_box_share`` of their positioned rows
-       inside a penalty area, the one whose median position is nearest that
-       goal becomes the ``goalkeeper`` of the team defending it, which
+    3. Of the outliers in at least ``min_box_share`` of their positioned
+       rows inside a penalty area, the one whose median position is nearest
+       that goal becomes the ``goalkeeper`` of the team defending it, which
        :func:`~tactifoot_vision.analysis.attack_direction` tells from where
-       the teams stand. The other others become ``referee`` with ``NO_TEAM``
+       the teams stand; a goal with a detector goalkeeper in its penalty area
+       gets none. The remaining outliers become ``referee`` with ``NO_TEAM``
        (linesmen and staff on the pitch included).
+
+    A run covers one period: the teams change ends at half-time, so call
+    this on each period's result, as ``attack_direction``.
 
     Tracks the detector calls ``goalkeeper`` or ``referee`` keep their
     class and team, and tracks without an embedding or a pitch position are
@@ -96,14 +103,19 @@ def assign_roles(
         raise ValueError(f"min_box_share must be in [0, 1], got {min_box_share}")
     if off_pitch_margin < 0:
         raise ValueError(f"off_pitch_margin must be >= 0, got {off_pitch_margin}")
+    if not getattr(result, "track_embeddings", None):
+        raise ValueError(
+            "assign_roles needs the team embeddings the pass keeps, and the result "
+            "holds none: run the pipeline (again) with a team classifier and a tracker"
+        )
     scale = metres_per_unit(result.pitch)
     size = scale * [result.pitch.length, result.pitch.width]
     tracks = _tracks(result, scale)
     off_pitch = {t.id for t in tracks if _off_pitch(t, size, off_pitch_margin)}
     on_pitch = [t for t in tracks if t.id not in off_pitch]
-    others = _kit_outliers(on_pitch, outlier_spread)
-    roles = {t.id: (REFEREE, NO_TEAM) for t in others}
-    keepers = _goalkeepers(others, result, min_box_share)
+    outliers = _kit_outliers(on_pitch, outlier_spread)
+    roles = {t.id: (REFEREE, NO_TEAM) for t in outliers}
+    keepers = _goalkeepers(outliers, on_pitch, result.pitch, scale, min_box_share)
     if keepers:
         # tv.analysis imports the pipeline, so it is imported only when needed here
         from tactifoot_vision.analysis.direction import attack_direction
@@ -120,7 +132,7 @@ def assign_roles(
     logger.info(
         "Roles: %d goalkeepers, %d referees or staff, %d people off the pitch",
         len(keepers),
-        len(others) - len(keepers),
+        len(outliers) - len(keepers),
         len(off_pitch),
     )
     return _relabel(result, off_pitch, roles)
@@ -193,6 +205,13 @@ def _kit_outliers(tracks: list[_Track], outlier_spread: float) -> list[_Track]:
     ratios = np.full(len(players), np.inf)
     for team in teams:
         members = embeddings[[t.team == team for t in players]]
+        if len(members) < _MIN_TEAM_TRACKS:
+            logger.warning(
+                "Team %d has %d player tracks with an embedding; its centre and "
+                "spread may count its outliers in, and they stay players",
+                team,
+                len(members),
+            )
         centre = np.median(members, axis=0)
         spread = np.median(np.linalg.norm(members - centre, axis=1))
         distance = np.linalg.norm(embeddings - centre, axis=1)
@@ -205,32 +224,39 @@ def _kit_outliers(tracks: list[_Track], outlier_spread: float) -> list[_Track]:
 
 
 def _goalkeepers(
-    others: list[_Track], result: PipelineResult, min_box_share: float
+    others: list[_Track],
+    tracks: list[_Track],
+    pitch: SoccerPitch,
+    scale: np.ndarray,
+    min_box_share: float,
 ) -> dict[int, _Track]:
     """The goalkeeper among ``others`` of each goal, by the direction attacking it.
 
     ``-1`` is the goal at ``x = 0`` (attacked towards ``-x``), ``1`` the goal
-    at ``x = length``.
+    at ``x = length``. A goal whose penalty area holds a detector goalkeeper
+    among ``tracks`` gets none.
     """
-    pitch, scale = result.pitch, metres_per_unit(result.pitch)
     length, centre = pitch.length * scale[0], pitch.width * scale[1] / 2
-    box_length = pitch.penalty_box_length * scale[0]
-    box_half_width = pitch.penalty_box_width * scale[1] / 2
+    box = np.array([pitch.penalty_box_length, pitch.penalty_box_width / 2]) * scale
+
+    def in_box(track: _Track, goal_x: float) -> bool:
+        if len(track.xy) == 0:
+            return False
+        inside = np.all(np.abs(track.xy - [goal_x, centre]) <= box, axis=1)
+        return bool(inside.mean() >= min_box_share)
+
     keepers = {}
     for attacks, goal_x in ((-1, 0.0), (1, length)):
-        nearest, best = None, np.inf
-        for track in others:
-            if len(track.xy) == 0:
-                continue
-            x, y = track.xy.T
-            in_box = (np.abs(x - goal_x) <= box_length) & (
-                np.abs(y - centre) <= box_half_width
+        if any(t.name == GOALKEEPER and in_box(t, goal_x) for t in tracks):
+            continue
+        candidates = [t for t in others if in_box(t, goal_x)]
+        if candidates:
+            keepers[attacks] = min(
+                candidates,
+                key=lambda t: np.linalg.norm(
+                    np.median(t.xy, axis=0) - [goal_x, centre]
+                ),
             )
-            distance = np.linalg.norm(np.median(track.xy, axis=0) - [goal_x, centre])
-            if in_box.mean() >= min_box_share and distance < best:
-                nearest, best = track, distance
-        if nearest is not None:
-            keepers[attacks] = nearest
     return keepers
 
 
