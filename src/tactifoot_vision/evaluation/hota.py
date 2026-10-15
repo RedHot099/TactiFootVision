@@ -39,9 +39,9 @@ def hota_by_class(
     metric = _trackeval_hota()
     with _numpy_aliases():
         by_class: dict[str, dict[int, Any]] = {}
-        for clip, (truth, predicted) in enumerate(clips):
+        for i, (truth, predicted) in enumerate(clips):
             for name in truth:
-                by_class.setdefault(name, {})[clip] = metric.eval_sequence(
+                by_class.setdefault(name, {})[i] = metric.eval_sequence(
                     _sequence(truth[name], predicted[name])
                 )
         if not by_class:

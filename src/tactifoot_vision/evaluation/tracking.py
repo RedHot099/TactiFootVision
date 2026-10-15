@@ -100,17 +100,7 @@ def evaluate_tracking(
         hota: compute HOTA, which needs the ``eval`` extra (TrackEval); with
             ``False`` the HOTA numbers are NaN and TrackEval is not needed.
     """
-    metrics = _evaluate([(result, clip)], iou_threshold, hota)
-    logger.info(
-        "Tracking on %s (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, %d ID switches",
-        clip.name,
-        metrics.num_frames,
-        metrics.hota,
-        metrics.idf1,
-        metrics.mota,
-        metrics.id_switches,
-    )
-    return metrics
+    return _evaluate([(result, clip)], iou_threshold, hota, clip.name)
 
 
 def evaluate_tracking_clips(
@@ -130,34 +120,26 @@ def evaluate_tracking_clips(
         raise ValueError(
             "evaluate_tracking_clips needs at least one (result, clip) pair"
         )
-    metrics = _evaluate(pairs, iou_threshold, hota)
-    logger.info(
-        "Tracking on %d clips (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, "
-        "%d ID switches",
-        len(pairs),
-        metrics.num_frames,
-        metrics.hota,
-        metrics.idf1,
-        metrics.mota,
-        metrics.id_switches,
-    )
-    return metrics
+    return _evaluate(pairs, iou_threshold, hota, f"{len(pairs)} clips")
 
 
 def _evaluate(
-    pairs: list[tuple[PipelineResult, LabelledClip]], iou_threshold: float, hota: bool
+    pairs: list[tuple[PipelineResult, LabelledClip]],
+    iou_threshold: float,
+    hota: bool,
+    label: str,
 ) -> TrackingMetrics:
-    """The metrics of every pair's counts added up."""
-    clips = [_by_class_and_frame(result, clip) for result, clip in pairs]
+    """The metrics of every pair's counts added up, logged as the tracking on ``label``."""
+    objects = [_by_class_and_frame(result, clip) for result, clip in pairs]
     counts: dict[str, _Counts] = {}
-    for truth, predicted in clips:
+    for truth, predicted in objects:
         for name in truth:
             counts[name] = counts.get(name, _Counts()) + _count(
                 truth[name], predicted[name], iou_threshold
             )
     counts = dict(sorted(counts.items()))
     if hota:
-        hota_per_class, overall = hota_by_class(clips)
+        hota_per_class, overall = hota_by_class(objects)
     else:
         hota_per_class, overall = dict.fromkeys(counts, NO_HOTA), NO_HOTA
     total = sum(counts.values(), _Counts())
@@ -169,7 +151,7 @@ def _evaluate(
         index=pd.Index(list(counts), name="class_name"),
         columns=_HOTA_COLUMNS + _COLUMNS,
     )
-    return TrackingMetrics(
+    metrics = TrackingMetrics(
         hota=overall.hota,
         deta=overall.deta,
         assa=overall.assa,
@@ -181,6 +163,16 @@ def _evaluate(
         per_class=per_class,
         num_frames=sum(len(result.frames) for result, _ in pairs),
     )
+    logger.info(
+        "Tracking on %s (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, %d ID switches",
+        label,
+        metrics.num_frames,
+        metrics.hota,
+        metrics.idf1,
+        metrics.mota,
+        metrics.id_switches,
+    )
+    return metrics
 
 
 def _by_class_and_frame(

@@ -275,9 +275,9 @@ def _noisy_fixture():
     return truth, predicted
 
 
-def _write_mot(path, frames, truth):
-    """The players of ``{index: (people rows, ball)}`` as MOTChallenge text, frames 1-based."""
-    tail = "1,1,1" if truth else "1,-1,-1,-1"  # gt: not ignored, pedestrian, visible
+def _write_mot_truth(path, frames):
+    """The players of ``{index: (people rows, ball)}`` as MOTChallenge ground truth."""
+    tail = "1,1,1"  # not ignored, pedestrian, visible
     lines = [
         f"{index + 1},{track_id},{x1},{y1},{x2 - x1},{y2 - y1},{tail}"
         for index, (people, _) in sorted(frames.items())
@@ -292,8 +292,13 @@ def _trackeval_on_mot(tmp_path, monkeypatch, truth, predicted):
     """TrackEval's own HOTA, CLEAR and Identity results for the players, read from MOT files."""
     import trackeval
 
-    _write_mot(tmp_path / "gt" / "clip" / "gt" / "gt.txt", truth, truth=True)
-    _write_mot(tmp_path / "trackers" / "ours" / "data" / "clip.txt", predicted, False)
+    _write_mot_truth(tmp_path / "gt" / "clip" / "gt" / "gt.txt", truth)
+    # The tracker's file is the export of its players, so TrackEval reads it.
+    players = {
+        i: ([row for row in people if row[1] == "player"], [])
+        for i, (people, _) in predicted.items()
+    }
+    _result(players).to_mot(tmp_path / "trackers" / "ours" / "data" / "clip.txt")
     quiet = {"PRINT_CONFIG": False}
     dataset = trackeval.datasets.MotChallenge2DBox(
         {
@@ -413,7 +418,7 @@ def test_to_mot_writes_one_row_per_object_with_1_based_frames(tmp_path):
 
     # The untracked ball is one track, after the people's largest id.
     assert path.read_text().splitlines() == [
-        "1,11,0.00,0.00,10.00,20.00,0.50,-1,-1,-1",
+        "1,11,0.00,0.00,10.00,20.00,0.5,-1,-1,-1",
         "1,12,50.00,50.00,4.00,4.00,-1,-1,-1,-1",
     ]
 

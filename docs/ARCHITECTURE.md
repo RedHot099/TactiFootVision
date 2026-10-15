@@ -343,7 +343,8 @@ configs/              example run files
   `to_dataframe(team_names=None)`, `to_csv(path, team_names=None)`,
   `to_parquet(path, team_names=None)`, `to_mot(path)` (MOT text, as
   MOTChallenge and SoccerNet Tracking read it: 1-based frames, no class
-  column, an untracked ball as one track after the people's largest id) and
+  column, the ball as one track after the people's largest id; TrackEval
+  reads it as tracker output) and
   `to_freeze_frames(period, period_start=None, team_names=None)`:
   `period_start=None` is the
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
