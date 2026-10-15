@@ -75,7 +75,8 @@ src/tactifoot_vision/
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
-  pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
+  pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
+                      lines.py (line refinement, LineFit)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
@@ -127,7 +128,7 @@ configs/              example run files
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`,
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -545,7 +546,23 @@ configs/              example run files
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
   landmarks given to RANSAC in the current frame's fit (not only its
-  inliers), `None` when the frame gave no fit. Pitch
+  inliers), `None` when the frame gave no fit.
+  `refine_with_lines` (off by default) then fits each frame's matrix to its
+  painted lines (`pitch/lines.py`, a chamfer fit after the promo prototype):
+  model points every 0.4 pitch units along `pitch_markings` are projected and
+  pulled onto a white-line mask (a top-hat on the HSV value inside the largest
+  grass region) by a robust least squares over the pixel offsets of four
+  control points, coarse to fine. The people boxes the pipeline passes to
+  `update(keypoints, frame, boxes)` are cut from the mask and from where
+  markings are looked for, so white kits do not pull the fit. The fit starts
+  from the previous returned matrix and from the keypoint one and keeps the
+  start with more inliers, so it holds a pan through poor keypoints. Fewer
+  than `min_line_points` model points in view (close-ups) keep the keypoint
+  matrix. `line_fit` (`LineFit`: visible points, inlier share within
+  `line_inlier_px`, median distance) tells how the frame's fit went and
+  `FrameResult.line_fit` keeps it; `None` when not refined. The image
+  thresholds are tuned on 1080p broadcast footage; the error in metres on
+  real data is measured separately. Pitch
   vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same

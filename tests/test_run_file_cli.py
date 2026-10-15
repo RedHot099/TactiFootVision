@@ -143,6 +143,18 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
     assert pipeline.keypoint_model is None
 
 
+def test_the_run_file_switches_line_refinement_on(tmp_path):
+    pipeline = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "homography": {"refine_with_lines": True, "min_line_points": 120},
+        },
+    ).build_pipeline()
+    assert pipeline.homography.refine_with_lines is True
+    assert pipeline.homography.min_line_points == 120
+
+
 def test_null_sections_turn_components_off(tmp_path):
     pipeline = _load(
         tmp_path, {"detector": DETECTOR, "keypoints": None, "tracker": None}
@@ -163,6 +175,9 @@ def _homography_settings(estimator):
         estimator.ransac_threshold,
         estimator.max_age,
         estimator._history.maxlen,
+        estimator.refine_with_lines,
+        estimator.min_line_points,
+        estimator.line_inlier_px,
     )
 
 

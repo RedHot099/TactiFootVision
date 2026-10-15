@@ -2,6 +2,7 @@
 
 import logging
 from collections import deque
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -9,7 +10,12 @@ import supervision as sv
 
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
+if TYPE_CHECKING:
+    from tactifoot_vision.pitch.lines import LineFit
+
 logger = logging.getLogger(__name__)
+
+_GOOD_INLIER_SHARE = 0.85
 
 
 def frame_to_pitch(points: np.ndarray, homography: np.ndarray) -> np.ndarray:
@@ -81,6 +87,15 @@ class HomographyEstimator:
     ``ransac_threshold`` is the RANSAC reprojection limit in pitch units (metres
     on the default pitch): keypoints further than this from the fitted model are
     ignored. The loose default favours smooth positions over outlier rejection.
+
+    ``refine_with_lines`` (off by default) then fits each frame's matrix to the
+    painted lines of the frame passed to :meth:`update`: the pitch markings are
+    pulled onto a white-line mask from which the people ``boxes`` are cut,
+    starting from the previous returned matrix and from the keypoint one, and
+    the start whose fit has more inliers wins. Fewer than ``min_line_points``
+    visible model points (close-ups, lines out of view) keep the keypoint
+    matrix. :attr:`line_fit` tells how the current frame's fit went; a model
+    point within ``line_inlier_px`` pixels of a painted line is an inlier.
     """
 
     def __init__(
@@ -91,6 +106,9 @@ class HomographyEstimator:
         smoothing_window: int = 3,
         ransac_threshold: float = 10.0,
         max_age: int | None = 50,
+        refine_with_lines: bool = False,
+        min_line_points: int = 80,
+        line_inlier_px: float = 3.0,
     ) -> None:
         if not 0 <= min_confidence <= 1:
             raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
@@ -100,12 +118,30 @@ class HomographyEstimator:
             raise ValueError(f"ransac_threshold must be > 0, got {ransac_threshold}")
         if max_age is not None and max_age < 0:
             raise ValueError(f"max_age must be None or >= 0, got {max_age}")
+        if min_line_points < 4:
+            raise ValueError(f"min_line_points must be >= 4, got {min_line_points}")
+        if line_inlier_px <= 0:
+            raise ValueError(f"line_inlier_px must be > 0, got {line_inlier_px}")
         self.pitch = pitch or SoccerPitch()
         self.min_confidence = min_confidence
         self.ransac_threshold = ransac_threshold
         self.max_age = max_age
+        self.refine_with_lines = refine_with_lines
+        self.min_line_points = min_line_points
+        self.line_inlier_px = line_inlier_px
+        self._model_points = None
+        if refine_with_lines:
+            # lines.py projects with this module's functions: import it late.
+            from tactifoot_vision.pitch.lines import model_points
+
+            self._model_points = model_points(self.pitch)
         self._history: deque[np.ndarray] = deque(maxlen=smoothing_window)
+        # The keypoint fits' average, and the matrix returned (refined or not).
+        self._keypoint_matrix: np.ndarray | None = None
         self.matrix: np.ndarray | None = None
+        # How the current frame's line refinement went; None when it was off,
+        # had no matrix to start from, or fell back to the keypoint matrix.
+        self.line_fit: LineFit | None = None
         # Confident keypoints given to RANSAC in the current frame's fit (not
         # only its inliers); None when this frame gave no fit.
         self.used_indices: np.ndarray | None = None
@@ -113,24 +149,72 @@ class HomographyEstimator:
 
     def reset(self) -> None:
         self._history.clear()
+        self._keypoint_matrix = None
         self.matrix = None
         self.used_indices = None
+        self.line_fit = None
         self._age = 0
 
-    def update(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
-        """Fit on this frame's keypoints (first instance) and return the current matrix."""
+    def update(
+        self,
+        keypoints: sv.KeyPoints | None,
+        frame: np.ndarray | None = None,
+        boxes: np.ndarray | None = None,
+    ) -> np.ndarray | None:
+        """Fit on this frame's keypoints (first instance) and return the current matrix.
+
+        With ``refine_with_lines``, ``frame`` (BGR) is required and the matrix
+        is fitted to its painted lines, ignoring the people ``boxes`` (xyxy).
+        """
+        if self.refine_with_lines and frame is None:
+            raise ValueError("refine_with_lines needs the frame passed to update")
+        previous = self.matrix
         fitted = self._fit(keypoints)
         if fitted is not None:
             if self._age:
                 self._history.clear()
             self._history.append(fitted)
-            self.matrix = np.mean(self._history, axis=0)
+            self._keypoint_matrix = np.mean(self._history, axis=0)
             self._age = 0
-        elif self.matrix is not None:
+        elif self._keypoint_matrix is not None:
             self._age += 1
             if self.max_age is not None and self._age > self.max_age:
                 self.reset()
+                previous = None
+        self.matrix = self._keypoint_matrix
+        self.line_fit = None
+        if self.refine_with_lines and self.matrix is not None:
+            self._refine(frame, previous, boxes)
         return self.matrix
+
+    def _refine(
+        self, frame: np.ndarray, previous: np.ndarray | None, boxes: np.ndarray | None
+    ) -> None:
+        """Replace :attr:`matrix` with the better line fit from ``previous`` or from it."""
+        from tactifoot_vision.pitch.lines import line_masks, refine_homography
+
+        line, seen = line_masks(frame, boxes)
+        best = None
+        for start in (previous, self.matrix):
+            if start is None:
+                continue
+            refined = refine_homography(
+                start,
+                self._model_points,
+                line,
+                seen,
+                min_points=self.min_line_points,
+                inlier_px=self.line_inlier_px,
+            )
+            if refined is not None and (
+                best is None or refined[1].inlier_share > best[1].inlier_share
+            ):
+                best = refined
+            # A fit this good from the previous frame needs no second try.
+            if best is not None and best[1].inlier_share > _GOOD_INLIER_SHARE:
+                break
+        if best is not None:
+            self.matrix, self.line_fit = best
 
     def _fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
         self.used_indices = None
