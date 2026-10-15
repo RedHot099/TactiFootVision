@@ -320,9 +320,7 @@ class PipelineResult:
         rows: list[dict] = []
         for f in self.frames:
             t = period_start + f.timestamp
-            area = None
-            if f.homography is not None:
-                area = visible_area(f.homography, self.frame_size)
+            area = visible_area(f.homography, self.frame_size)
             base = {
                 "frame_id": f.index,
                 "period": period,

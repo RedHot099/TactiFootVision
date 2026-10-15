@@ -580,6 +580,7 @@ def test_visible_area_is_the_frame_outline_on_the_pitch():
     # The horizon at y = 33 of a 100 x 50 frame: no outline.
     beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
     assert visible_area(beyond, (100, 50)) is None
+    assert visible_area(None, (100, 50)) is None
     assert tv.pitch.visible_area is visible_area
 
 

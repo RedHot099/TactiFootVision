@@ -127,7 +127,8 @@ configs/              example run files
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
-  when part of the frame lies beyond the horizon; freeze frames and the radar use it)
+  without a homography or when part of the frame lies beyond the horizon;
+  freeze frames and the radar use it)
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, frame windows, save/load)
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`

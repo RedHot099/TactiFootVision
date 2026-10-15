@@ -11,7 +11,7 @@ from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.homography import visible_area
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.birds_eye import _warp_frame
-from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
+from tactifoot_vision.viz.subpixel import SUBPIXEL, clip_segment, to_fixed
 from tactifoot_vision.viz.trail import draw_trail, trail_frames
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
@@ -333,14 +333,14 @@ class PitchRadar:
     ) -> None:
         """The visible area's outline, cut to the image: near the horizon its
         corners lie too far away for cv2's fixed-point coordinates."""
-        area = None if homography is None else visible_area(homography, frame_size)
+        area = visible_area(homography, frame_size)
         if area is None:
             return
         corners = self.to_pixels(area)
         margin = self.line_thickness + 2  # cut ends stay off the image
         low, high = np.array([-margin, -margin]), np.add(self.size, margin)
         edges = [
-            _clip_segment(a, b, low, high)
+            clip_segment(a, b, low, high)
             for a, b in zip(corners, np.roll(corners, -1, axis=0), strict=True)
         ]
         cv2.polylines(
@@ -419,24 +419,6 @@ def _positions_by_track(frame_result: FrameResult) -> dict[int, np.ndarray]:
     if tracker_id is None:
         return {}
     return dict(zip((int(t) for t in tracker_id), frame_result.pitch_xy, strict=True))
-
-
-def _clip_segment(
-    a: np.ndarray, b: np.ndarray, low: np.ndarray, high: np.ndarray
-) -> np.ndarray | None:
-    """The ``(2, 2)`` part of segment ``a``-``b`` inside the box ``[low, high]``
-    (Liang-Barsky), or ``None`` when it misses the box."""
-    d = b - a
-    start, end = 0.0, 1.0
-    for p, q in zip((*-d, *d), (*(a - low), *(high - a)), strict=True):
-        if p == 0:
-            if q < 0:  # parallel to this side and outside it
-                return None
-        elif p < 0:
-            start = max(start, q / p)
-        else:
-            end = min(end, q / p)
-    return None if start > end else np.array([a + start * d, a + end * d])
 
 
 def draw_space_control(

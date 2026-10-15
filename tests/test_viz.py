@@ -630,7 +630,7 @@ def test_radar_tail_length_must_be_positive(seconds: float) -> None:
 # ------------------------------------------------------------- visible area
 # frame -> pitch: 8 px a metre, the frame's top-left corner at (20, 15), so
 # the visible area is [20, 60] x [15, 45], clear of the pitch markings.
-SEEN = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
+VISIBLE = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
 
 
 def _area_radar(draw_visible_area: bool = True) -> viz.PitchRadar:
@@ -641,13 +641,13 @@ def _area_radar(draw_visible_area: bool = True) -> viz.PitchRadar:
     )  # fmt: skip
 
 
-def _seen_by(homography: np.ndarray | None, *people) -> FrameResult:
+def _visible_in(homography: np.ndarray | None, *people) -> FrameResult:
     return dataclasses.replace(_people_at(0, *people), homography=homography)
 
 
 def test_radar_outlines_the_visible_area_under_the_players() -> None:
     radar = _area_radar()
-    now = _seen_by(SEEN, (7, 0, (40.0, 15.0)))  # on the top edge
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))  # on the top edge
     image = radar.draw(now, frame_size=(W, H))
     for x, y in ((30, 15), (60, 30), (50, 45), (20, 30)):  # one point per edge
         assert (_at(radar, image, x, y) == 255).all()
@@ -665,11 +665,11 @@ def test_radar_draws_no_visible_area_beyond_the_horizon_or_without_a_homography(
     None
 ):
     radar = _area_radar()
-    plain = radar.draw(_seen_by(None), frame_size=(W, H))
-    assert (plain == _area_radar(False).draw(_seen_by(None))).all()
+    plain = radar.draw(_visible_in(None), frame_size=(W, H))
+    assert (plain == _area_radar(False).draw(_visible_in(None))).all()
     # The horizon at y = 33: the bottom of the frame lies beyond it.
     beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
-    assert (radar.draw(_seen_by(beyond), frame_size=(W, H)) == plain).all()
+    assert (radar.draw(_visible_in(beyond), frame_size=(W, H)) == plain).all()
 
 
 def test_radar_outlines_a_visible_area_reaching_towards_the_horizon() -> None:
@@ -677,17 +677,17 @@ def test_radar_outlines_a_visible_area_reaching_towards_the_horizon() -> None:
     # away, far past the radar, and the outline is cut at the radar's edge.
     to_horizon = np.diag([1.0, 1.0, 1.0])
     to_horizon[2, 1] = -(1 - 1e-8) / H
-    homography = SEEN @ to_horizon
+    homography = VISIBLE @ to_horizon
     assert np.abs(visible_area(homography, (W, H))).max() > 1e9
     radar = _area_radar()
-    image = radar.draw(_seen_by(homography), frame_size=(W, H))
+    image = radar.draw(_visible_in(homography), frame_size=(W, H))
     assert (_at(radar, image, 30, 15) == 255).all()  # the top edge
     assert (_at(radar, image, 20, 60) == 255).all()  # the left edge, to the touchline
     assert (_at(radar, image, 30, 30) == 0).all()  # inside
 
 
 def test_radar_visible_area_is_off_by_default() -> None:
-    now = _seen_by(SEEN, (7, 0, (40.0, 15.0)))
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))
     today = _area_radar(False).draw(now)
     assert (_area_radar(False).draw(now, frame_size=(W, H)) == today).all()
     assert (_area_radar().draw(now, frame_size=(W, H)) != today).any()
@@ -695,7 +695,7 @@ def test_radar_visible_area_is_off_by_default() -> None:
 
 def test_radar_visible_area_needs_the_frame_size() -> None:
     with pytest.raises(ValueError, match="frame_size"):
-        _area_radar().draw(_seen_by(SEEN))
+        _area_radar().draw(_visible_in(VISIBLE))
     assert (_area_radar().draw() == _area_radar(False).draw()).all()  # no frame
 
 

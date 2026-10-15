@@ -47,7 +47,7 @@ def project_points(
 
 
 def visible_area(
-    homography: np.ndarray, frame_size: tuple[int, int]
+    homography: np.ndarray | None, frame_size: tuple[int, int]
 ) -> np.ndarray | None:
     """The part of the pitch a frame shows: its outline through a frame->pitch homography.
 
@@ -56,8 +56,10 @@ def visible_area(
     top-left one, taken at the pixel edges (``(0, 0)`` to ``(width, height)``)
     as :func:`~tactifoot_vision.viz.warp_to_pitch` warps them. ``None`` when
     part of the frame lies beyond the horizon, where the outline has no finite
-    pitch position.
+    pitch position, or without a homography.
     """
+    if homography is None:
+        return None
     width, height = frame_size
     corners = np.array([[0, 0], [width, 0], [width, height], [0, height]], float)
     outline, in_front = project_points(corners, homography, (width / 2, height / 2))

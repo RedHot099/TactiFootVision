@@ -29,11 +29,11 @@ tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
     frame_result, history=result.window(frame_result.index, 2.0)
 )
 # The part of the pitch the camera shows, outlined under the players.
-seen = tv.viz.PitchRadar(draw_visible_area=True).draw(
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(
     frame_result, frame_size=result.frame_size
 )
 tv.show(
-    [standard, game, trail, radar, tails, seen],
+    [standard, game, trail, radar, tails, visible],
     titles=[
         "standard",
         "video game",

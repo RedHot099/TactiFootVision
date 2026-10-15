@@ -174,8 +174,8 @@ polygon freeze frames export, and needs the frame size: pass
 homography or when part of the frame lies beyond the horizon.
 """)
     nb.code("""
-seen = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_size=result.frame_size)
-tv.show(seen, titles="draw_visible_area=True", width=7)
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_size=result.frame_size)
+tv.show(visible, titles="draw_visible_area=True", width=7)
 """)
     nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
