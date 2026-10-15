@@ -13,10 +13,12 @@ from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.radar import (
+    _SUBPIXEL,
     BALL_COLOR,
     DEFAULT_COLOR,
     TEAM_COLORS,
     ColorLike,
+    _fixed,
     as_color,
     team_color_index,
     text_color_for,
@@ -29,6 +31,7 @@ KEYPOINT_COLOR = "#FFA500"  # confident keypoint that agrees with the homography
 KEYPOINT_OUTLIER_COLOR = "#FF0000"  # confident keypoint the homography disagrees with
 PITCH_LINE_COLOR = "#FFFFFF"
 MASK_OPACITY = 0.45
+_TRAIL_PIECES = 8  # per segment between frames, so the fade looks continuous
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +183,10 @@ class FrameAnnotator:
         if self.draw_keypoints and frame_result.keypoints is not None:
             self._draw_keypoints(image, frame_result.keypoints, homography, text_scale)
         if self.trail_seconds and history and homography is not None:
-            self._draw_trail(image, frame_result, history, homography, thickness)
+            self._draw_trail(
+                image, frame_result, history, homography, thickness,
+                self.trail_seconds,
+            )  # fmt: skip
 
         people = frame_result.detections
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
@@ -262,34 +268,36 @@ class FrameAnnotator:
         history: Sequence[FrameResult],
         homography: np.ndarray,
         thickness: int,
+        seconds: float,
     ) -> None:
         """The ball's earlier pitch positions, projected into this frame.
 
-        Each segment's opacity falls linearly with its mean age, from full now
-        to none at ``trail_seconds``. A frame without a ball position breaks
-        the line; filled-in (``interpolated``) positions draw like any other.
+        Opacity falls linearly with age along the line, from full now to none
+        at ``seconds``. A frame without a ball position breaks the line;
+        filled-in (``interpolated``) positions draw like any other.
         """
-        assert self.trail_seconds is not None
         now = frame_result.timestamp
         # Within a microsecond: timestamps are index / fps, as in the window.
-        recent = [
-            f for f in history if 0 < now - f.timestamp <= self.trail_seconds + 1e-6
-        ]
+        recent = [f for f in history if 0 < now - f.timestamp <= seconds + 1e-6]
         frames = [*recent, frame_result]
         ages = np.array([now - f.timestamp for f in frames])
         points = np.array([_ball_position(f) for f in frames])
         size = (image.shape[1], image.shape[0])
         xy, valid = project_to_frame(points, homography, size)
         valid &= np.isfinite(points).all(axis=1)
-        # Opacity per pixel; newer segments are drawn last and cover older ones.
+        # Opacity per pixel. Each segment is cut into pieces at their mean
+        # age; newer pieces are drawn last and cover older ones at the joints.
         alpha = np.zeros(image.shape[:2], dtype=np.uint8)
+        t = np.linspace(0.0, 1.0, _TRAIL_PIECES + 1)[:, None]
         for i in np.flatnonzero(valid[:-1] & valid[1:]):
-            opacity = 1 - (ages[i] + ages[i + 1]) / 2 / self.trail_seconds
-            ends = [tuple(np.round(p * 16).astype(int)) for p in xy[i : i + 2]]
-            cv2.line(
-                alpha, ends[0], ends[1], round(255 * opacity), thickness,
-                cv2.LINE_AA, 4,
-            )  # fmt: skip
+            ends = _fixed(xy[i] * (1 - t) + xy[i + 1] * t)
+            piece_ages = ages[i] + (ages[i + 1] - ages[i]) * (t[:-1, 0] + t[1:, 0]) / 2
+            for k, age in enumerate(piece_ages):
+                cv2.line(
+                    alpha, tuple(ends[k]), tuple(ends[k + 1]),
+                    round(255 * (1 - age / seconds)), thickness, cv2.LINE_AA,
+                    _SUBPIXEL,
+                )  # fmt: skip
         drawn = alpha > 0
         if drawn.any():
             weight = alpha[drawn, None] / 255.0

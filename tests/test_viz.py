@@ -288,14 +288,20 @@ def _straight_run(*gaps: FrameResult) -> list[FrameResult]:
 def test_the_ball_trail_passes_through_the_earlier_positions_and_fades() -> None:
     *history, now = _straight_run()
     image = _trail_annotator(1.0).annotate(_frame(), now, history=history)
-    # Segment midpoints, oldest first; opacity is 1 - age / trail_seconds at the
-    # segment's mean age: 0.35, 0.25, 0.15 and 0.05 s.
+    # Segment midpoints, oldest first; opacity is 1 - age / trail_seconds at
+    # ages 0.35, 0.25, 0.15 and 0.05 s.
     reds = [_redness(image, x, 120) for x in (60, 100, 140, 180)]
     assert reds[0] > 0 and reds == sorted(reds)
     expected = [0.65, 0.75, 0.85, 0.95]
     np.testing.assert_allclose(
         np.array(reds) / reds[-1], np.array(expected) / expected[-1], atol=0.03
     )
+    # Next to the ball the trail is ball_color at full opacity (antialiasing
+    # leaves a 1 px line just short of covering its pixels), ...
+    np.testing.assert_allclose(image[120, 198], (0, 0, 255), atol=25)
+    # ... and it fades to nothing at trail_seconds (the 0.4 s old frame 0).
+    faded = _trail_annotator(0.4).annotate(_frame(), now, history=history)
+    assert _redness(faded, 41, 120) < 8 < _redness(faded, 60, 120)
     assert tuple(image[120, 230]) == tuple(_frame()[120, 230])  # past the ball
     assert tuple(image[60, 100]) == tuple(_frame()[60, 100])  # off the line
 
