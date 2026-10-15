@@ -209,16 +209,18 @@ def _matched_people(
             predicted_roles.append(np.asarray(detected.data["class_name"], str)[cols])
             true_roles.append(np.asarray(truth.data["class_name"], str)[rows])
     return _Matches(
-        *(
-            np.concatenate([np.zeros(0, int), *parts])
-            for parts in (track_ids, predicted, true)
-        ),
-        *(
-            np.concatenate([np.zeros(0, str), *parts])
-            for parts in (predicted_roles, true_roles)
-        ),
-        instances,
+        track_ids=_joined(track_ids, int),
+        predicted=_joined(predicted, int),
+        true=_joined(true, int),
+        predicted_roles=_joined(predicted_roles, str),
+        true_roles=_joined(true_roles, str),
+        instances=instances,
     )
+
+
+def _joined(parts: list[np.ndarray], dtype: type) -> np.ndarray:
+    """``parts`` end to end, an empty array of ``dtype`` without any."""
+    return np.concatenate([np.zeros(0, dtype), *parts])
 
 
 def _missing_keys(detections: sv.Detections) -> str:

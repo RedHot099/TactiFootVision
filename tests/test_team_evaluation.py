@@ -342,6 +342,7 @@ def test_a_goalkeeper_absorbed_into_a_team_appears_in_the_role_matrix_exactly():
     )
     assert metrics.team_mapping == {3: 0, 8: 1}
     assert metrics.matched == 9
+    assert metrics.recall == pytest.approx(9 / 12)
     assert metrics.correct == 8  # all but the referee given team 3
     assert metrics.accuracy == pytest.approx(8 / 9)
     # Each track counts once: 40 is 1/2 right, the five others all right.
