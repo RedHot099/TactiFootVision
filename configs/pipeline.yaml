@@ -42,6 +42,7 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
 # postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
 #   - {type: join_tracks, max_gap: 1.6}  # join tracks into player tracks
 #   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
+#   - {type: assign_roles}             # goalkeepers, referees, people off the pitch
 # render:                              # tv.viz.render_video(...) arguments
 #   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)
 #   radar: {draw_ids: true}            # tv.viz.PitchRadar(...); null: no radar

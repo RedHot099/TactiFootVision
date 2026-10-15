@@ -15,6 +15,7 @@ from tactifoot_vision.pipeline.result import (
     ObjectMasks,
     PipelineResult,
 )
+from tactifoot_vision.pipeline.roles import assign_roles
 from tactifoot_vision.pipeline.tracks import join_tracks
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "ObjectMasks",
     "Pipeline",
     "PipelineResult",
+    "assign_roles",
     "join_tracks",
     "remap_track_ids",
     "reproject",

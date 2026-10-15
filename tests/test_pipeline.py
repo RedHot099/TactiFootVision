@@ -224,6 +224,20 @@ def test_teams_by_vote_goalkeeper_by_position_referee_none(result):
         assert teams[names == "goalkeeper"].tolist() == [0]
 
 
+def test_the_pass_keeps_each_tracks_mean_team_embedding(result):
+    # the team-class people's crops were embedded (mean colour); the referee's were not
+    frame = result[0]
+    names = frame.detections.data["class_name"]
+    ids = frame.detections.tracker_id
+    assert set(result.track_embeddings) == {int(i) for i in ids[names != "referee"]}
+    keeper = int(ids[names == "goalkeeper"][0])
+    red = int(ids[_track_of(frame, *RED_PLAYERS[0])])
+    yellow, red_kit = np.array([0, 230, 230]) / 255, np.array(KITS[0]) / 255
+    assert result.track_embeddings[keeper].dtype == np.float32
+    assert np.linalg.norm(result.track_embeddings[keeper] - yellow) < 0.15
+    assert np.linalg.norm(result.track_embeddings[red] - red_kit) < 0.15
+
+
 def test_ball_is_single_and_the_pass_keeps_its_jumps(result):
     # choosing the ball is track_ball's job: the pass keeps the teleport
     for t, f in enumerate(result):
@@ -269,6 +283,7 @@ def test_without_tracker_each_detection_gets_a_team(video):
         assert f.detections.tracker_id is None
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in RED_PLAYERS} == {0}
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in BLUE_PLAYERS} == {1}
+    assert result.track_embeddings == {}  # no tracks to keep an embedding for
 
 
 def test_prefitted_classifier_is_reused_when_asked(video):
@@ -305,6 +320,7 @@ def test_no_team_classifier_leaves_no_team(video):
         video, end=2, progress=False
     )
     assert all((f.team_ids == NO_TEAM).all() for f in result)
+    assert result.track_embeddings == {}
 
 
 def test_validation():

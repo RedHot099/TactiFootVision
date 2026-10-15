@@ -171,6 +171,10 @@ class PipelineResult:
     every post-process keeps that order. ``postprocesses`` lists the
     post-processes applied since, in order
     (see :mod:`tactifoot_vision.pipeline.postprocess`).
+    ``track_embeddings`` holds the mean of the team embeddings the pass
+    sampled for each track, by the tracker's own id (``original_tracker_id``
+    once tracks are renamed), so a post-process can compare kits without
+    the video.
     """
 
     frames: list[FrameResult]
@@ -180,6 +184,7 @@ class PipelineResult:
     pitch: SoccerPitch = field(default_factory=SoccerPitch)
     video_path: Path | None = None
     postprocesses: list[AppliedPostProcess] = field(default_factory=list)
+    track_embeddings: dict[int, np.ndarray] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.frames)
