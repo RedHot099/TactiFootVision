@@ -255,7 +255,7 @@ def _moving(
     return PipelineResult(frames, 25.0, (100, 50), ["player"], pitch or SoccerPitch())
 
 
-@pytest.mark.parametrize("stride", [1, 4])
+@pytest.mark.parametrize("stride", [1, 4, 10])
 def test_velocities_are_metres_per_second_at_any_stride(stride):
     # A player runs at (3, -1) m/s; on a 120 x 80 pitch that is
     # (3 * 120 / 105, -80 / 68) units a second.
@@ -268,7 +268,33 @@ def test_velocities_are_metres_per_second_at_any_stride(stride):
     assert len(speeds) == len(result.frames)
     for frame, velocity in zip(result.frames, speeds, strict=True):
         assert velocity.shape == (len(frame.detections), 2)
-        np.testing.assert_allclose(velocity, [[3.0, -1.0]], atol=1e-9)
+    # At stride 10 (0.4 s) the 0.5 s window widens to the frames either side.
+    # From stride 4 (0.16 s) the track's ends hold two frames in their window
+    # and have none; inside, every window holds three or more.
+    ends = stride >= 4
+    inner = np.concatenate(speeds[1:-1] if ends else speeds)
+    np.testing.assert_allclose(inner, np.tile([3.0, -1.0], (len(inner), 1)), atol=1e-9)
+    assert np.isnan(np.concatenate([speeds[0], speeds[-1]])).all() == ends
+
+
+def test_velocities_need_three_frames_and_a_plausible_speed():
+    # Three frames 0.04 s apart: only the middle one's window holds three.
+    indices = np.arange(3)
+    walk = np.stack([10 + 2 * indices / 25, np.full(3, 34.0)], -1)
+    few = tv.analysis.velocities(_moving(walk[:, None], indices), window=0.08)
+    assert np.isnan(few[0]).all() and np.isnan(few[2]).all()
+    np.testing.assert_allclose(few[1], [[2, 0]], atol=1e-9)
+    # A 15 m/s "run" (a homography jump) is above the 12 m/s cap.
+    dash = np.stack([10 + 15 * indices / 25, np.full(3, 34.0)], -1)
+    result = _moving(np.stack([walk, dash], 1), indices)
+    capped = tv.analysis.velocities(result)
+    np.testing.assert_allclose(capped[1][0], [2, 0], atol=1e-9)
+    assert np.isnan(capped[1][1]).all()
+    np.testing.assert_allclose(
+        tv.analysis.velocities(result, max_speed=20)[1][1], [15, 0], atol=1e-9
+    )
+    with pytest.raises(ValueError, match="max_speed must be > 0"):
+        tv.analysis.velocities(result, max_speed=0)
 
 
 def test_velocities_smooth_the_jitter_of_positions():
@@ -414,13 +440,34 @@ def test_space_control_model_options():
 
 
 def test_pitch_control_warns_when_cells_are_still_free_after_20_s(caplog):
-    result = _placed([[(0, 30.0, 34.0), (1, 75.0, 34.0)]])
+    result = _placed([[(0, 30.0, 34.0), (1, 75.0, 34.0)]] * 3)
     slow = tv.analysis.space_control(result, model="pitch_control", control_rate=0.01)
-    assert "stopped after 20 s" in caplog.text and "control_rate=0.01" in caplog.text
+    assert caplog.text.count("stopped after 20 s") == 1  # once a call
+    assert "control_rate=0.01" in caplog.text
     assert slow.control[34, 0] > 0.5 and slow.control[34, -1] < 0.5
     caplog.clear()
     tv.analysis.space_control(result, model="pitch_control")
     assert not caplog.text
+
+
+def test_pitch_control_reads_velocities_near_the_selected_frames_only():
+    # Team 0's player runs at 5 m/s towards x = 60 in frames 20 to 24; long
+    # before, the tracks are elsewhere. Frame 24 alone gives the same grid as
+    # the whole run's velocities would.
+    indices = np.arange(25)
+    t = indices / 25
+    running = np.stack([40 - 5 * (t[-1] - t), np.full(25, 34.0)], -1)
+    running[:10] = [5.0, 5.0]
+    standing = np.tile([80.0, 34.0], (25, 1))
+    result = _moving(np.stack([running, standing], 1), indices, teams=[0, 1])
+    grid = tv.analysis.space_control(result, frames=24, model="pitch_control")
+    velocity = tv.analysis.velocities(result)[24]
+    np.testing.assert_allclose(velocity, [[5, 0], [0, 0]], atol=1e-9)
+    late = _moving(np.stack([running, standing], 1)[15:], indices[15:], [0, 1])
+    np.testing.assert_allclose(
+        grid.control,
+        tv.analysis.space_control(late, frames=-1, model="pitch_control").control,
+    )
 
 
 def test_space_control_documents_each_model_option_and_default():

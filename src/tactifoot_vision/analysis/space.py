@@ -5,7 +5,7 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from tactifoot_vision.analysis.velocity import velocities
+from tactifoot_vision.analysis.velocity import _velocities_near
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
@@ -65,6 +65,7 @@ def space_control(
     result: PipelineResult,
     frames: int | slice | None = None,
     cell_size: float = 1.0,
+    *,
     model: str = "nearest_player",
     **options: float,
 ) -> SpaceControl:
@@ -86,17 +87,19 @@ def space_control(
     ``model="pitch_control"``: Spearman's pitch control (Spearman et al.,
     2017, "Physics-Based Modeling of Pass Probabilities in Soccer"), without
     the ball. Each player keeps running with their velocity (from
-    :func:`~tactifoot_vision.analysis.velocities`; none counts as standing)
-    for the reaction time, then runs straight to the cell at top speed: that
-    is their time to intercept. They reach the cell by time ``T`` with the
-    probability ``1 / (1 + exp(-pi / sqrt(3) / intercept_sigma * (T - tti)))``
-    and, once there, take control at ``control_rate`` per second while the
-    cell is free. The control is team 0's share of the cell once 99 % of it
-    is taken (or after 20 s, with a warning). With no ball, every cell is contested as if the ball
-    were there from the start, whatever the travel time of a pass; all
-    players, goalkeepers too, share one reaction time, one top speed and one
-    control rate, reach top speed at once and turn without slowing. The defaults are
-    Spearman's and were not tuned on this package's data.
+    :func:`~tactifoot_vision.analysis.velocities`, read near the selected
+    frames only; none counts as standing) for the reaction time, then runs
+    straight to the cell at top speed: that is their time to intercept
+    ``tti``. They reach the cell by time ``T`` with the probability
+    ``1 / (1 + exp(-pi / sqrt(3) / intercept_sigma * (T - tti)))`` and, once
+    there, take control at ``control_rate`` per second while the cell is
+    free. The control is team 0's share of the cell once 99 % of it is taken
+    (or after 20 s, with one warning a call). With no ball, every cell is
+    contested as if the ball were there from the start, whatever the travel
+    time of a pass; all players, goalkeepers too, share one reaction time,
+    one top speed and one control rate, reach top speed at once and turn
+    without slowing. The defaults are Spearman's and were not tuned on this
+    package's data.
 
     * ``reaction_time`` (0.7 s): time a player keeps their velocity before
       changing course.
@@ -106,7 +109,8 @@ def space_control(
     * ``control_rate`` (4.3 per second): how fast a player who has arrived
       takes control (Spearman's lambda).
     * ``velocity_window`` (0.5 s): the ``window`` of
-      :func:`~tactifoot_vision.analysis.velocities`, over the whole result.
+      :func:`~tactifoot_vision.analysis.velocities` (whose ``max_speed`` stays
+      12 m/s).
 
     Args:
         frames: position in ``result.frames`` (as ``result[i]``, not the video
@@ -129,7 +133,7 @@ def space_control(
     selected = every[frames] if frames is not None else every
     selected = [selected] if isinstance(selected, int) else selected
     frame_velocities = (
-        velocities(result, rule.velocity_window)
+        _velocities_near(result, selected, rule.velocity_window)
         if isinstance(rule, _PitchControl)
         else None
     )
@@ -146,7 +150,7 @@ def space_control(
         )
         * scale
     )  # metres
-    total, counted = np.zeros((rows, columns)), 0
+    total, counted, free = np.zeros((rows, columns)), 0, 0.0
     for position in selected:
         frame = result.frames[position]
         team_ids, xy = frame.team_ids, frame.pitch_xy * scale
@@ -159,8 +163,10 @@ def space_control(
         teams = [positioned & (team_ids == team) for team in (0, 1)]
         if not all(team.any() for team in teams):
             continue
-        total += rule.control(cells, [(xy[team], velocity[team]) for team in teams])
-        counted += 1
+        control, unsettled = rule.control(
+            cells, [(xy[team], velocity[team]) for team in teams]
+        )
+        total, counted, free = total + control, counted + 1, max(free, unsettled)
     if not counted:
         raise ValueError(
             "Space control needs positioned players of both teams 0 and 1 in a "
@@ -168,6 +174,13 @@ def space_control(
             f"{'' if len(selected) == 1 else 's'} selected. Select frames where "
             "both teams have pitch positions"
         )
+    if free >= _UNCONTROLLED:
+        logger.warning(
+            "Pitch control stopped after %g s with up to %.0f%% of a cell free; "
+            "the control is the teams' share of what was taken (control_rate=%g "
+            "is low)",
+            _MAX_STEPS * _DT, 100 * free, options.get("control_rate"),
+        )  # fmt: skip
     return SpaceControl(total / counted, pitch)
 
 
@@ -181,10 +194,13 @@ class _NearestPlayer:
         if self.smoothing < 0:
             raise ValueError(f"smoothing must be >= 0, got {self.smoothing}")
 
-    def control(self, cells: np.ndarray, teams: list[Team]) -> np.ndarray:
-        """Team 0's control of each cell (``cells``: (rows, columns, 2) metres)."""
+    def control(self, cells: np.ndarray, teams: list[Team]) -> tuple[np.ndarray, float]:
+        """Team 0's control of each cell (``cells``: (rows, columns, 2) metres).
+
+        With the largest share of a cell left free: none.
+        """
         nearest = [_nearest(cells, xy) for xy, _ in teams]
-        return _control(nearest[1] - nearest[0], self.smoothing)
+        return _control(nearest[1] - nearest[0], self.smoothing), 0.0
 
 
 @dataclass(frozen=True)
@@ -207,8 +223,12 @@ class _PitchControl:
             if not (np.isfinite(value) and value > 0):
                 raise ValueError(f"{name} must be a finite number > 0, got {value}")
 
-    def control(self, cells: np.ndarray, teams: list[Team]) -> np.ndarray:
-        """Team 0's control of each cell (``cells``: (rows, columns, 2) metres)."""
+    def control(self, cells: np.ndarray, teams: list[Team]) -> tuple[np.ndarray, float]:
+        """Team 0's control of each cell (``cells``: (rows, columns, 2) metres).
+
+        With the largest share of a cell left free when the integration
+        stopped, at least ``_UNCONTROLLED`` only after ``_MAX_STEPS``.
+        """
         shape = cells.shape[:2]
         arrivals = [
             self._intercept_times(cells.reshape(-1, 2), *team) for team in teams
@@ -236,21 +256,17 @@ class _PitchControl:
                 rates, rate, out=np.full_like(rates, 0.5), where=rate > 0
             )
             free -= gained
-        if free.max() >= _UNCONTROLLED:
-            logger.warning(
-                "Pitch control stopped after %g s with up to %.0f%% of a cell "
-                "free; the control is the teams' share of what was taken "
-                "(control_rate=%g is low)",
-                _MAX_STEPS * _DT, 100 * free.max(), self.control_rate,
-            )  # fmt: skip
         both = taken[0] + taken[1]
         control = np.divide(taken[0], both, out=np.full_like(both, 0.5), where=both > 0)
-        return control.reshape(shape)
+        return control.reshape(shape), float(free.max())
 
     def _intercept_times(
         self, cells: np.ndarray, xy: np.ndarray, velocity: np.ndarray
     ) -> np.ndarray:
-        """Each player's time to intercept at each of ``cells`` (N, 2), (players, N) s."""
+        """Each player's time to intercept at each of ``cells`` (N, 2) metres.
+
+        A (players, N) array of seconds.
+        """
         turn = xy + velocity * self.reaction_time
         distance = np.hypot(
             cells[:, 0] - turn[:, 0, None], cells[:, 1] - turn[:, 1, None]

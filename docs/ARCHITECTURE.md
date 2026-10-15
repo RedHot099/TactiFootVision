@@ -616,16 +616,20 @@ nothing (`PipelineResult.export` writes their tables).
   directions. Anything but two teams with pitch positions, or two means
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
-* `velocities(result, window=0.5)` → one `(N, 2)` array per frame, row for
-  row with its `detections`: each person's pitch velocity in m/s (pitch
-  units scaled to 105 x 68 m), NaN without one. It is the slope of the
-  least-squares line through the pitch positions of the person's
+* `velocities(result, window=0.5, max_speed=12.0)` → one `(N, 2)` array per
+  frame, row for row with its `detections`: each person's pitch velocity in
+  m/s (pitch units scaled to 105 x 68 m), NaN without one. It is the slope
+  of the least-squares line through the pitch positions of the person's
   `tracker_id` (a player track after `join_tracks`) within `window` s
   centred on the frame, from the frames' timestamps, so any stride gives the
-  same velocities. No tracker id, no pitch position or a single frame in the
-  window means no velocity; a tracker id twice in one frame is a
+  same velocities; a window shorter than two median time steps is widened
+  to them. A velocity needs three positions in its window (so the ends of a
+  track at a coarse stride have none) and is dropped above `max_speed`
+  (`np.inf` keeps all): a bad homography's jump, not a run. 12 m/s is a
+  sprint's top speed, not measured on this package's data. No tracker id or
+  no pitch position means no velocity; a tracker id twice in one frame is a
   `ValueError`.
-* `space_control(result, frames=None, cell_size=1.0, model="nearest_player",
+* `space_control(result, frames=None, cell_size=1.0, *, model="nearest_player",
   **options)` → `SpaceControl(control, pitch)`: team 0's control against
   team 1 per cell, in `[0, 1]` (`0.5`: shared). Everyone with a team and a
   pitch position counts. Rows run along `y` and columns along `x`
@@ -642,17 +646,18 @@ nothing (`PipelineResult.export` writes their tables).
     nearer team 0's nearest player is than team 1's, over `smoothing`
     (1.2) m; `0` gives the hard partition.
   * `"pitch_control"`, Spearman's (2017) model without the ball: a player
-    keeps their `velocities(result, velocity_window)` velocity (0.5 s; none
-    counts as standing) for `reaction_time` (0.7 s), then runs straight at
-    `max_speed` (5 m/s); they arrive by time `T` with a logistic
-    probability of spread `intercept_sigma` (0.45 s) around that time to
-    intercept, and take a free cell at `control_rate` (4.3 per s). The
-    control is team 0's share once 99 % of the cell is taken, integrated in
-    0.04 s steps from shortly before the cell's first arrival (at most 20 s,
-    with a warning, for a very low `control_rate`). Options are finite. Everyone
-    shares the parameters (goalkeepers too); a cell is contested as if the
-    ball were already there. The defaults are Spearman's, not tuned here.
-    About 0.1 s a frame on 1 m cells with 22 players.
+    keeps their `velocities(result, velocity_window)` velocity (0.5 s, read
+    from the frames near the selected ones only; none counts as standing)
+    for `reaction_time` (0.7 s), then runs straight at `max_speed` (5 m/s);
+    they arrive by time `T` with a logistic probability of spread
+    `intercept_sigma` (0.45 s) around that time to intercept, and take a
+    free cell at `control_rate` (4.3 per s). The control is team 0's share
+    once 99 % of the cell is taken, integrated in 0.04 s steps from shortly
+    before the cell's first arrival (at most 20 s, with one warning a call,
+    for a very low `control_rate`). Options are finite. Everyone shares the
+    parameters (goalkeepers too); a cell is contested as if the ball were
+    already there. The defaults are Spearman's, not tuned here. About 0.1 s
+    a frame on 1 m cells with 22 players.
 
 ### Results visualisation (`tv.viz`)
 
