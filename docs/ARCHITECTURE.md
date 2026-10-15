@@ -71,7 +71,7 @@ src/tactifoot_vision/
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
   evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
-  pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator)
+  pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
@@ -117,7 +117,7 @@ configs/              example run files
 * `data/dataset.py`: `Sample`, `Dataset` (splits `train`/`valid`/`test`)
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `HomographyEstimator`
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`
 
@@ -306,7 +306,9 @@ configs/              example run files
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
   ellipse the radar draws, so on any `length × width` those vertices lie
-  exactly on the drawn arcs.
+  exactly on the drawn arcs. `pitch_markings(pitch)` gives the painted lines,
+  circle, arcs and spots in pitch units; `viz` draws them, and `pitch` does
+  not import `viz`.
 
 ### Results visualisation (`tv.viz`)
 
