@@ -1,5 +1,6 @@
 """The inference pipeline: detection -> tracking -> pitch projection -> teams."""
 
+import copy
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -231,8 +232,7 @@ class Pipeline:
             detections.data["class_name"] = np.zeros(0, dtype=str)
         is_ball = detections.data["class_name"] == self.ball_class
         candidates = detections[is_ball]
-        if len(candidates) > 1:
-            candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
+        candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
         people = detections[~is_ball]
         if self.include_classes is not None:
             people = people[np.isin(people.data["class_name"], self.include_classes)]
@@ -258,7 +258,7 @@ class Pipeline:
             index=index,
             timestamp=index / fps,
             detections=people,
-            ball=candidates[:1],
+            ball=copy.deepcopy(candidates[:1]),  # a slice would share their arrays
             ball_candidates=candidates,
             keypoints=keypoints,
             homography=matrix,

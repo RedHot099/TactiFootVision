@@ -644,3 +644,14 @@ def test_ball_cleaning_leaves_the_candidates_alone(result):
     frame = result.frame(TELEPORT_FRAME)
     assert np.isnan(frame.ball_xy).all()
     assert np.isfinite(frame.ball_candidates.data["pitch_xy"]).all()
+
+
+def test_the_ball_shares_no_memory_with_its_candidates(video):
+    result = Pipeline(_ThreeBalls(device="cpu"), tracker=None).run(
+        video, end=1, progress=False
+    )
+    frame = result[0]
+    frame.ball.xyxy[:] = 0
+    frame.ball.data["pitch_xy"][:] = 0
+    assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(150, abs=2)
+    assert np.isnan(frame.ball_candidates.data["pitch_xy"][0]).all()

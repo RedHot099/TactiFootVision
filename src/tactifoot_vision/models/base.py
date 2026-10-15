@@ -95,7 +95,8 @@ class Model(ABC):
     name: ClassVar[str]
     task: ClassVar[Task]
     # Per-class confidence thresholds (a detector's ``class_conf`` option); every
-    # other class uses ``conf``.
+    # other class uses ``conf``. A detector sets it before calling
+    # ``Model.__init__``, which checks the class names once the model is loaded.
     class_conf: Mapping[str, float] = MappingProxyType({})
     # Backend option -> the TrainConfig field that sets it; Model.train refuses the option.
     _train_config_aliases: ClassVar[dict[str, str]] = {}

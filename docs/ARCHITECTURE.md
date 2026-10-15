@@ -332,7 +332,8 @@ configs/              example run files
   Shared helpers keep a changed result consistent:
   `reproject(result, homographies)` replaces the homographies (one per
   frame, `None` for none) and recomputes `pitch_xy` from the boxes (ball
-  candidates included) as the pipeline does (so the ball filter's dropped positions come back), and
+  candidates included) as the pipeline does (so the ball filter's dropped
+  positions come back), and
   `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
   in `data["original_tracker_id"]`.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
