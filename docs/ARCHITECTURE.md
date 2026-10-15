@@ -227,7 +227,8 @@ configs/              example run files
     goalkeeper label without one is `UNKNOWN_TEAM`. Truth: identities,
     boxes, ball, and teams when some label names one.
   * SoccerNet GSR (`Labels-GameState.json`, v1.3): image `<n:06d>.jpg` of
-    `info.im_dir` is frame `n - 1`. Boxes from `bbox_image`, classes from
+    `info.im_dir` is frame `n - 1`; an image with `is_labeled` false keeps
+    an empty, uncalibrated frame. Boxes from `bbox_image`, classes from
     `attributes.role` (`other` left out), teams from `attributes.team` (null
     is `UNKNOWN_TEAM` for players and goalkeepers), jersey numbers in
     `data["jersey"]` (`""` when null), pitch positions from the

@@ -251,6 +251,44 @@ def test_a_panned_and_rolled_gsr_camera_projects_like_soccernet(tmp_path):
     )
 
 
+def test_a_camera_whose_horizon_crosses_the_frame_corner_has_a_finite_homography(
+    tmp_path,
+):
+    """Pixel (0, 0) on the horizon makes the homography's last entry about 0."""
+    tilt = 80.0
+    focal = 2000.0
+    corner_on_horizon = focal / math.tan(math.radians(tilt))
+    parameters = {
+        **CAMERA,
+        "tilt_degrees": tilt,
+        "principal_point": [0.0, corner_on_horizon],
+    }
+    people = [a for a in ANNOTATIONS if a["supercategory"] != "camera"]
+    labels = _labels([*people, _camera("1060000002", parameters)])
+
+    homography = load_labelled_clip(_sequence(tmp_path, labels)).frame(1).homography
+
+    assert np.all(np.isfinite(homography))
+    assert np.abs(homography).max() <= 1
+    # The principal column, below the horizon, still sees the halfway line.
+    assert frame_to_pitch([[0, corner_on_horizon + 10]], homography)[0, 0] == (
+        pytest.approx(52.5, abs=1e-3)
+    )
+
+
+def test_annotations_of_an_unlabelled_gsr_image_are_left_out(tmp_path):
+    """``is_labeled`` false: the image's truth is not trusted, so its frame is empty."""
+    labels = _labels()
+    labels["images"][0]["is_labeled"] = False
+
+    clip = load_labelled_clip(_sequence(tmp_path, labels))
+
+    first = clip.frame(0)
+    assert len(first.detections) == len(first.ball) == 0
+    assert first.homography is None
+    assert len(clip.frame(2).detections) == 1
+
+
 def test_soccernet_gsr_reports_its_truth_kinds(tmp_path):
     clip = load_labelled_clip(_sequence(tmp_path))
 

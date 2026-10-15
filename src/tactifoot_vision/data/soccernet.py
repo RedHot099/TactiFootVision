@@ -121,7 +121,8 @@ def read_tracking(folder: Path) -> LabelledClip:
         frames=tuple(frames),
         truth=frozenset(
             {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
-            | _known({Truth.TEAMS: [t for _, t in tracklets.values()]})
+            # Teams when some tracklet label names one.
+            | ({Truth.TEAMS} if any(t >= 0 for _, t in tracklets.values()) else set())
         ),
     )
 
@@ -140,7 +141,10 @@ def read_gamestate(path: Path) -> LabelledClip:
     null); the ball keeps its box only. A camera annotation becomes the
     frame's homography: the pinhole part of its parameters (distortion is
     left out, as in SoccerNet's own ``Camera.to_homography``), inverted and
-    shifted likewise. Frames without one have none. The clip has teams,
+    shifted likewise. Frames without one have none. The annotations of an
+    image with ``is_labeled`` false are left out, so its frame is empty and
+    uncalibrated (evaluators still score it as a frame with nobody in it).
+    The clip has teams,
     pitch positions or calibration when some person or frame has them.
     """
     labels = _read_json(path)
@@ -155,6 +159,9 @@ def read_gamestate(path: Path) -> LabelledClip:
             "file_name, width and height"
         ) from None
     index_of = _gsr_frame_indices(path, images, length)
+    unlabelled = {
+        str(i.get("image_id")) for i in images if i.get("is_labeled") is False
+    }
     people: list[list[dict]] = [[] for _ in range(length)]
     balls: list[list[dict]] = [[] for _ in range(length)]
     homographies: dict[int, np.ndarray] = {}
@@ -165,6 +172,8 @@ def read_gamestate(path: Path) -> LabelledClip:
                 f"{path}: annotation {annotation.get('id')} is of image {image_id}, "
                 "which is not in its images"
             )
+        if image_id in unlabelled:
+            continue
         index = index_of[image_id]
         try:
             if annotation.get("supercategory") == "camera":
@@ -193,13 +202,13 @@ def read_gamestate(path: Path) -> LabelledClip:
         for index in range(length)
     )
     everyone = [row for rows in people for row in rows]
-    truth = {Truth.IDENTITIES, Truth.BOXES, Truth.BALL} | _known(
-        {
-            Truth.TEAMS: [row["team_id"] for row in everyone],
-            Truth.PITCH_POSITIONS: [row["pitch_xy"] for row in everyone],
-        }
-    )
-    truth |= {Truth.CALIBRATION} if homographies else set()
+    truth = {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
+    if any(row["team_id"] >= 0 for row in everyone):  # some person has a team
+        truth.add(Truth.TEAMS)
+    if any(np.isfinite(row["pitch_xy"]).all() for row in everyone):
+        truth.add(Truth.PITCH_POSITIONS)
+    if homographies:
+        truth.add(Truth.CALIBRATION)
     return LabelledClip(
         name=info.get("name", path.parent.name),
         video_path=path.parent / info.get("im_dir", "img1") / f"%06d{extension}",
@@ -245,21 +254,26 @@ def _gsr_object(annotation: dict[str, Any]) -> dict[str, Any] | None:
     class_name = _GSR_ROLES[role]
     if class_name is None:
         return None
-    team = attributes.get("team")
-    if team is not None and team not in _SIDES:
-        raise ValueError(f"unknown team {team!r}; known: {', '.join(_SIDES)}, null")
     box = annotation["bbox_image"]
     x, y = float(box["x_center"]), float(box["y_center"])
     w, h = float(box["w"]), float(box["h"])
+    row = {
+        "xyxy": (x - w / 2, y - h / 2, x + w / 2, y + h / 2),
+        "track_id": int(annotation["track_id"]),
+        "class_name": class_name,
+    }
+    if class_name == BALL:
+        return row
+    team = attributes.get("team")
+    if team is not None and team not in _SIDES:
+        raise ValueError(f"unknown team {team!r}; known: {', '.join(_SIDES)}, null")
     foot = annotation.get("bbox_pitch")
     pitch_xy = (np.nan, np.nan)
     if foot is not None:
         centred = (float(foot["x_bottom_middle"]), float(foot["y_bottom_middle"]), 1.0)
         pitch_xy = tuple(_CENTRE_TO_CORNER[:2] @ centred)
     return {
-        "xyxy": (x - w / 2, y - h / 2, x + w / 2, y + h / 2),
-        "track_id": int(annotation["track_id"]),
-        "class_name": class_name,
+        **row,
         "team_id": _team_id(class_name, team),
         "jersey": "" if attributes.get("jersey") is None else str(attributes["jersey"]),
         "pitch_xy": pitch_xy,
@@ -271,15 +285,6 @@ def _team_id(class_name: str | None, team: str | None) -> int:
     if class_name == "referee":
         return NO_TEAM
     return _SIDES[team] if team is not None else UNKNOWN_TEAM
-
-
-def _known(values: dict[Truth, list]) -> set[Truth]:
-    """The truth kinds some person has: a team (an id from 0), a finite pitch position."""
-    known = {
-        Truth.TEAMS: lambda v: np.any(np.asarray(v, int) >= 0),
-        Truth.PITCH_POSITIONS: lambda v: np.isfinite(np.asarray(v, float)).any(),
-    }
-    return {kind for kind, v in values.items() if len(v) and known[kind](v)}
 
 
 def _gsr_people(rows: list[dict]) -> sv.Detections:
@@ -313,7 +318,8 @@ def _camera_homography(parameters: dict[str, Any]) -> np.ndarray:
         calibration @ rotation @ np.column_stack([np.eye(3)[:, :2], -position])
     )
     homography = _CENTRE_TO_CORNER @ np.linalg.inv(pitch_to_frame)
-    return homography / homography[2, 2]
+    # Not divided by its last entry, which is 0 when pixel (0, 0) is on the horizon.
+    return homography / np.linalg.norm(homography)
 
 
 def _rz(angle: float) -> np.ndarray:
