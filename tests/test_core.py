@@ -239,6 +239,13 @@ def test_window_with_a_stride_covers_the_same_seconds_with_fewer_frames():
     result = _timed_result(range(0, 20, 2))  # stride 2: a frame every 0.5 s
     assert [f.index for f in result.window(12, 1.0)] == [8, 10]
     assert [f.index for f in result.window(12, 1.2)] == [8, 10]
+    skipped = _timed_result([0, 2, 4, 8, 10, 12])  # frame 6 was skipped
+    assert [f.index for f in skipped.window(12, 2.0)] == [4, 8, 10]
+
+
+def test_window_keeps_the_frame_exactly_the_seconds_back_at_any_frame_rate():
+    result = _timed_result(range(200), fps=25.0)  # index / 25 is not exact
+    assert all(len(result.window(i, 0.4)) == 10 for i in range(10, 200))
 
 
 def test_window_at_the_start_of_the_result_is_shorter_or_empty():

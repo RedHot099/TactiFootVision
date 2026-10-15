@@ -339,11 +339,12 @@ configs/              example run files
   with an `interpolated` flag.
   `PipelineResult.load` refuses a result saved before frames kept their
   ball candidates.
-  `PipelineResult.window(index, seconds)` returns the results of the
-  frames before video frame `index` whose `timestamp` is at most `seconds`
-  earlier, oldest first: the `history` a drawing takes (ADR 0003). A
-  stride changes how many frames it holds, not the time it covers; an
-  `index` the result does not hold is a `KeyError`.
+  `PipelineResult.window(video_index, seconds)` returns the results of the
+  frames before video frame `video_index` whose `timestamp` is at most
+  `seconds` earlier, oldest first: the `history` a drawing takes (ADR 0003).
+  A stride changes how many frames it holds, not the time it covers. A
+  frame the result does not hold is a `KeyError`, as in `frame()`. Both
+  rely on `frames` being in video order, which every post-process keeps.
 * Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
   registered with `@POSTPROCESSES.register("name")`. They return a new
   result and never change their input. Registering keeps the function's
