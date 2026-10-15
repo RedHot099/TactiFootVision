@@ -218,3 +218,192 @@ def test_space_control_grid_checks_its_values():
         tv.analysis.SpaceControl(np.full(105, 0.5), SoccerPitch())
     with pytest.raises(ValueError, match=r"in \[0, 1\]"):
         tv.analysis.SpaceControl(np.full((68, 105), 1.5), SoccerPitch())
+
+
+# ---------------------------------------------------------------- velocities
+def _moving(
+    xy: np.ndarray,
+    indices: np.ndarray,
+    teams: list[int] | None = None,
+    ids: np.ndarray | None = None,
+    pitch: SoccerPitch | None = None,
+) -> PipelineResult:
+    """``xy[frame, person]`` pitch positions at video frame ``indices`` (25 fps)."""
+    frames = []
+    for index, people, frame_ids in zip(
+        indices, xy, ids if ids is not None else [None] * len(xy), strict=True
+    ):
+        n = len(people)
+        detections = sv.Detections(
+            xyxy=np.tile(np.float32([0, 0, 10, 20]), (n, 1)),
+            tracker_id=np.arange(n) if frame_ids is None else np.asarray(frame_ids),
+            data={
+                "class_name": np.full(n, "player"),
+                "team_id": np.array(teams if teams is not None else [0] * n),
+                "pitch_xy": np.asarray(people, dtype=float),
+            },
+        )
+        frames.append(
+            FrameResult(
+                int(index),
+                index / 25,
+                detections,
+                sv.Detections.empty(),
+                ball_candidates=sv.Detections.empty(),
+            )
+        )
+    return PipelineResult(frames, 25.0, (100, 50), ["player"], pitch or SoccerPitch())
+
+
+@pytest.mark.parametrize("stride", [1, 4])
+def test_velocities_are_metres_per_second_at_any_stride(stride):
+    # A player runs at (3, -1) m/s; on a 120 x 80 pitch that is
+    # (3 * 120 / 105, -80 / 68) units a second.
+    pitch = SoccerPitch(120, 80)
+    indices = np.arange(0, 50, stride)
+    seconds = indices / 25
+    units = np.stack([20 + 3 * seconds * 120 / 105, 40 - seconds * 80 / 68], axis=-1)
+    result = _moving(units[:, None], indices, pitch=pitch)
+    speeds = tv.analysis.velocities(result)
+    assert len(speeds) == len(result.frames)
+    for frame, velocity in zip(result.frames, speeds, strict=True):
+        assert velocity.shape == (len(frame.detections), 2)
+        np.testing.assert_allclose(velocity, [[3.0, -1.0]], atol=1e-9)
+
+
+def test_velocities_smooth_the_jitter_of_positions():
+    # 2 m/s along x, with 0.3 m of noise on each position.
+    indices = np.arange(100)
+    noise = np.random.default_rng(0).normal(0, 0.3, (100, 2))
+    xy = np.stack([10 + 2 * indices / 25, np.full(100, 34.0)], -1) + noise
+    result = _moving(xy[:, None], indices)
+    raw = np.diff(xy, axis=0) * 25  # frame-to-frame velocities
+    assert np.abs(raw - [2, 0]).max() > 10
+
+    def error(window: float) -> float:
+        speeds = np.concatenate(tv.analysis.velocities(result, window=window))
+        return np.abs(speeds[13:-13] - [2, 0]).max()  # whole windows only
+
+    assert error(1.0) < error(0.5) < 3 and error(1.0) < 1.5
+    with pytest.raises(ValueError, match="window must be a finite number > 0"):
+        tv.analysis.velocities(result, window=0)
+
+
+def test_velocities_follow_track_ids_not_rows():
+    # Two players swap rows between frames; a third shows up once (one
+    # position: no velocity), a fourth has no tracker id or no position.
+    indices = np.arange(4)
+    t = indices / 25
+    a = np.stack([10 + 4 * t, np.full(4, 30.0)], -1)  # 4 m/s along x
+    b = np.stack([np.full(4, 60.0), 20 - 2 * t], -1)  # -2 m/s along y
+    xy = [
+        [a[0], b[0], [50.0, 50.0]],
+        [b[1], a[1], [np.nan, np.nan]],
+        [a[2], b[2], [70.0, 10.0]],
+        [b[3], a[3], [80.0, 10.0]],
+    ]
+    ids = [[7, 9, 3], [9, 7, 5], [7, 9, -1], [9, 7, 11]]
+    speeds = tv.analysis.velocities(_moving(np.array(xy), indices, ids=ids))
+    for frame_ids, velocity in zip(ids, speeds, strict=True):
+        np.testing.assert_allclose(velocity[frame_ids.index(7)], [4, 0], atol=1e-9)
+        np.testing.assert_allclose(velocity[frame_ids.index(9)], [0, -2], atol=1e-9)
+        assert np.isnan(velocity[2]).all()  # one sample, no position, untracked
+
+
+def test_velocities_need_a_tracker():
+    result = _moving(np.zeros((2, 1, 2)), np.arange(2))
+    for frame in result.frames:
+        frame.detections.tracker_id = None
+    assert all(np.isnan(v).all() for v in tv.analysis.velocities(result))
+
+
+# ------------------------------------------------------------- pitch control
+def test_pitch_control_gives_the_same_grid_as_nearest_player():
+    rng = np.random.default_rng(1)
+    indices = np.arange(6)
+    start = rng.uniform(0, [105, 68], (22, 2))
+    run = rng.uniform(-6, 6, (22, 2))  # m/s
+    xy = start + run * (indices / 25)[:, None, None]
+    result = _moving(xy, indices, teams=[0] * 11 + [1] * 11)
+    for cell_size in (1.0, 4.0):
+        nearest = tv.analysis.space_control(result, cell_size=cell_size)
+        pitch = tv.analysis.space_control(
+            result, cell_size=cell_size, model="pitch_control"
+        )
+        assert type(pitch) is tv.analysis.SpaceControl and pitch.pitch == result.pitch
+        assert pitch.control.shape == nearest.control.shape
+        np.testing.assert_array_equal(pitch.x, nearest.x)
+        np.testing.assert_array_equal(pitch.y, nearest.y)
+        assert np.isfinite(pitch.control).all()
+        assert pitch.control.min() >= 0 and pitch.control.max() <= 1
+        assert pitch.control.min() < 0.1 and pitch.control.max() > 0.9
+    assert tv.analysis.space_control(result, model="nearest_player").control.shape
+
+
+def test_pitch_control_the_closer_player_wins_a_contested_point():
+    # Standing players at x = 40 and x = 70 on one line: the halfway point
+    # x = 55 is shared, and a point at x = 50 is nearer team 0's player.
+    result = _placed([[(0, 40.0, 34.0), (1, 70.0, 34.0)]])
+    grid = tv.analysis.space_control(result, model="pitch_control")
+    row = grid.control[np.searchsorted(grid.y, 34.0)]
+    np.testing.assert_allclose(row[grid.x == 55.5], 1 - row[grid.x == 54.5])
+    assert row[grid.x == 50.5] > 0.6 and row[grid.x == 59.5] < 0.4
+    assert (row[grid.x < 55] > 0.5).all() and (row[grid.x > 55] < 0.5).all()
+
+
+def test_pitch_control_the_faster_player_wins_a_contested_point():
+    # Both players are 20 m from x = 60; team 0's runs towards it at 5 m/s,
+    # team 1's stands. With a standing team 0, the point is shared.
+    indices = np.arange(25)
+    t = indices / 25
+    running = np.stack([40 - 5 * (t[-1] - t), np.full(25, 34.0)], -1)
+    standing = np.tile([80.0, 34.0], (25, 1))
+    result = _moving(np.stack([running, standing], 1), indices, teams=[0, 1])
+    grid = tv.analysis.space_control(result, frames=-1, model="pitch_control")
+    column, row = np.searchsorted(grid.x, 60.0), np.searchsorted(grid.y, 34.0)
+    assert grid.x[column] == 60.5 and grid.control[row, column] > 0.7
+    still = _moving(
+        np.stack([np.tile([40.0, 34.0], (25, 1)), standing], 1), indices, [0, 1]
+    )
+    shared = tv.analysis.space_control(still, frames=-1, model="pitch_control")
+    np.testing.assert_allclose(shared.control[row, column - 1], 1 - shared.control[row, column])  # fmt: skip
+    # A faster top speed lets the same lead count for less time.
+    quick = tv.analysis.space_control(
+        result, frames=-1, model="pitch_control", max_speed=8.0
+    )
+    assert 0.5 < quick.control[row, column] < grid.control[row, column]
+
+
+def test_space_control_model_options():
+    result = _placed([[(0, 30.0, 34.0), (1, 75.0, 34.0)]])
+    with pytest.raises(
+        ValueError, match="Unknown model 'voronoi'.*nearest_player, pitch_control"
+    ):
+        tv.analysis.space_control(result, model="voronoi")
+    with pytest.raises(
+        ValueError, match="'pitch_control' takes reaction_time, max_speed.*smoothing"
+    ):
+        tv.analysis.space_control(result, model="pitch_control", smoothing=1)
+    with pytest.raises(
+        ValueError, match="'nearest_player' takes smoothing; got max_speed"
+    ):
+        tv.analysis.space_control(result, max_speed=5)
+    for option in ("reaction_time", "intercept_sigma"):
+        with pytest.raises(ValueError, match=f"{option} must be >= 0"):
+            tv.analysis.space_control(result, model="pitch_control", **{option: -1})
+    for option in ("max_speed", "control_rate", "velocity_window"):
+        with pytest.raises(ValueError, match=f"{option} must be > 0"):
+            tv.analysis.space_control(result, model="pitch_control", **{option: 0})
+
+
+def test_space_control_documents_each_model_option_and_default():
+    doc = tv.analysis.space_control.__doc__
+    for option, default in [
+        ("smoothing", "1.2"),
+        ("reaction_time", "0.7"),
+        ("max_speed", "5.0"),
+        ("intercept_sigma", "0.45"),
+        ("control_rate", "4.3"),
+        ("velocity_window", "0.5"),
+    ]:
+        assert f"``{option}`` ({default}" in doc

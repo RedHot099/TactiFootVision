@@ -41,7 +41,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
-| Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
+| Match analysis | `tv.analysis` | `attack_direction`, `velocities`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
@@ -83,7 +83,8 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
                       homographies.py (smooth_homographies)
-  analysis/           direction.py (attack_direction), space.py (space_control)
+  analysis/           direction.py (attack_direction), velocity.py (velocities),
+                      space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
                       subpixel.py (fixed-point coordinates for cv2 drawing),
                       trail.py (fading trails from history: ball trail, radar tails)
@@ -139,6 +140,7 @@ configs/              example run files
 * `pipeline/tracks.py`: `join_tracks`
 * `pipeline/roles.py`: `assign_roles`
 * `analysis/direction.py`: `attack_direction`
+* `analysis/velocity.py`: `velocities`
 * `analysis/space.py`: `SpaceControl`, `space_control`
 
 ## Module specifications
@@ -614,19 +616,41 @@ nothing (`PipelineResult.export` writes their tables).
   directions. Anything but two teams with pitch positions, or two means
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
-* `space_control(result, frames=None, cell_size=1.0, smoothing=1.2)` →
-  `SpaceControl(control, pitch)`: team 0's control against team 1 per cell,
-  in `[0, 1]` (`0.5`: shared), by the nearest-player rule, a smoothed
-  Voronoi partition. A cell's control is the sigmoid of how much nearer team
-  0's nearest player is than team 1's, over `smoothing` metres; `0` gives the
-  hard partition. Everyone with a team and a pitch position counts. Rows run
-  along `y` and columns along `x` (`SpaceControl.y`, `.x`: cell centres in
-  pitch units), so the array reads like the radar; cells are about
-  `cell_size` metres and tile the pitch exactly. `frames` is a position in
-  `result.frames`, a slice or `None` (every frame); over several frames the
-  control is the mean, leaving out frames without a positioned player in
-  each team. No such frame is a `ValueError`. `SpaceControl` refuses a
-  control that is not a non-empty 2-D array of values in `[0, 1]`.
+* `velocities(result, window=0.5)` → one `(N, 2)` array per frame, row for
+  row with its `detections`: each person's pitch velocity in m/s (pitch
+  units scaled to 105 x 68 m), NaN without one. It is the slope of the
+  least-squares line through the pitch positions of the person's
+  `tracker_id` (a player track after `join_tracks`) within `window` s
+  centred on the frame, from the frames' timestamps, so any stride gives the
+  same velocities. No tracker id, no pitch position or a single frame in the
+  window means no velocity.
+* `space_control(result, frames=None, cell_size=1.0, model="nearest_player",
+  **options)` → `SpaceControl(control, pitch)`: team 0's control against
+  team 1 per cell, in `[0, 1]` (`0.5`: shared). Everyone with a team and a
+  pitch position counts. Rows run along `y` and columns along `x`
+  (`SpaceControl.y`, `.x`: cell centres in pitch units), so the array reads
+  like the radar; cells are about `cell_size` metres and tile the pitch
+  exactly, the same grid for every model. `frames` is a position in
+  `result.frames` (as `result[i]`, not the video frame index), a slice or
+  `None` (every frame); over several frames the control is the mean,
+  leaving out frames without a positioned player in each team. No such
+  frame is a `ValueError`. `SpaceControl` refuses a control that is not a
+  non-empty 2-D array of values in `[0, 1]`. `options` are the model's own
+  (another model's option, or an unknown model, is a `ValueError`):
+  * `"nearest_player"`, a smoothed Voronoi partition: the sigmoid of how much
+    nearer team 0's nearest player is than team 1's, over `smoothing`
+    (1.2) m; `0` gives the hard partition.
+  * `"pitch_control"`, Spearman's (2017) model without the ball: a player
+    keeps their `velocities(result, velocity_window)` velocity (0.5 s; none
+    counts as standing) for `reaction_time` (0.7 s), then runs straight at
+    `max_speed` (5 m/s); they arrive by time `T` with a logistic
+    probability of spread `intercept_sigma` (0.45 s) around that time to
+    intercept, and take a free cell at `control_rate` (4.3 per s). The
+    control is team 0's share once 99 % of the cell is taken, integrated in
+    0.04 s steps from shortly before the cell's first arrival. Everyone
+    shares the parameters (goalkeepers too); a cell is contested as if the
+    ball were already there. The defaults are Spearman's, not tuned here.
+    About 0.1 s a frame on 1 m cells with 22 players.
 
 ### Results visualisation (`tv.viz`)
 
