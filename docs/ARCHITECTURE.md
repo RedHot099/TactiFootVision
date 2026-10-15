@@ -515,15 +515,22 @@ configs/              example run files
 * `smooth_homographies(result, window=0.36, order=2)`
   (`pipeline/homographies.py`, registered as `smooth_homographies`) smooths
   the homographies over time with a centred Savitzky-Golay filter (a
-  polynomial of degree `order` over `window` seconds, 9 frames at 25 fps) on
-  the matrices scaled to map the frame centre with a homogeneous coordinate
-  of 1, so a steady pan moves the entries in a straight line and is not
-  lagged, then re-projects `pitch_xy` with `reproject`. A frame without a
-  homography keeps none and splits the stretches smoothed, as does one whose
-  frame centre is on the horizon (it keeps its matrix); a stretch shorter
-  than the window is smoothed over itself. Frames must be in time order. Run it before `track_ball`, `join_tracks`
-  and `assign_roles`, which read pitch positions. `line_fit` still describes
-  the pass's fit.
+  polynomial of degree `order` below the frames of `window` seconds, 9 at
+  25 fps) on the matrices scaled to map the frame centre with a homogeneous
+  coordinate of 1, so a steady pan moves the entries in a straight line and
+  is not lagged, then re-projects `pitch_xy` with `reproject`. A frame
+  without a homography keeps none and splits the stretches smoothed. A frame
+  whose centre lands more than a pitch length beyond the pitch, or whose
+  scaled matrix has over 10 times its stretch's median norm, keeps its
+  matrix and splits them too. A camera cut is split only where frames carry
+  no homography (`HomographyEstimator` reuses its last matrix for up to
+  `max_age` frames). A stretch shorter than the window is smoothed over
+  itself. Frames must be in time order. Use it with
+  `HomographyEstimator(smoothing_window=1)`: the causal average lags a pan
+  and this filter cannot remove that lag. Run it before `track_ball`,
+  `join_tracks` and `assign_roles`, which read pitch positions; it logs a
+  warning when one of them already ran. `line_fit` still describes the
+  pass's fit.
 * `join_tracks(result, max_gap, max_speed, slack, same_team)`
   (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
   player tracks: it links each track end to a later track start at most

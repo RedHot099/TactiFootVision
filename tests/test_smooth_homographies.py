@@ -1,5 +1,7 @@
 """The ``smooth_homographies`` post-process: lag-free smoothing of the homographies, scored in metres."""
 
+import dataclasses
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -225,6 +227,47 @@ def test_a_frame_centre_on_the_horizon_keeps_its_matrix_and_splits_the_smoothing
     assert _errors(kept, truth[:20] + truth[21:]).max() < 0.01
 
 
+def test_a_frame_centre_near_the_horizon_keeps_its_matrix_and_splits_the_smoothing():
+    truth = _pan(41)
+    # the frame centre a hair below the horizon: it lands kilometres away
+    near_horizon = np.array(
+        [[0.1, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 1.0, -FRAME[1] / 2 + 1e-3]]
+    )
+    homographies = [*truth[:20], near_horizon, *truth[21:]]
+
+    smoothed = smooth_homographies(_result(homographies))
+
+    np.testing.assert_array_equal(smoothed.frames[20].homography, near_horizon)
+    kept = [f for i, f in enumerate(smoothed) if i != 20]
+    assert _errors(kept, truth[:20] + truth[21:]).max() < 0.01
+
+
+def test_a_wild_matrix_keeps_itself_and_splits_the_smoothing():
+    truth = _pan(41)
+    # maps the frame centre where the truth does but tilts the rest of the
+    # frame hundreds of metres away
+    cx = FRAME[0] / 2
+    wild = truth[20] + np.array([[1.0, 0.0, -cx], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    homographies = [*truth[:20], wild, *truth[21:]]
+
+    smoothed = smooth_homographies(_result(homographies))
+
+    np.testing.assert_array_equal(smoothed.frames[20].homography, wild)
+    kept = [f for i, f in enumerate(smoothed) if i != 20]
+    assert _errors(kept, truth[:20] + truth[21:]).max() < 0.01
+
+
+@pytest.mark.parametrize("name", ["track_ball", "join_tracks", "assign_roles"])
+def test_warns_when_a_post_process_that_reads_positions_ran_before_it(name, caplog):
+    result = _result(_pan(10))
+    result = dataclasses.replace(result, postprocesses=[AppliedPostProcess(name, {})])
+
+    with caplog.at_level(logging.WARNING):
+        smooth_homographies(result)
+
+    assert name in caplog.text
+
+
 def test_refuses_frames_out_of_time_order():
     result = _result(_pan(5))
     result.frames.reverse()
@@ -252,6 +295,9 @@ def test_it_is_a_recorded_post_process_that_leaves_its_input_alone():
         ({"window": 0.0}, "window"),
         ({"window": -1.0}, "window"),
         ({"order": -1}, "order"),
+        ({"window": float("inf")}, "window"),
+        ({"window": float("nan")}, "window"),
+        ({"order": 9}, "order"),  # 0.36 s is 9 frames at 25 fps
     ],
 )
 def test_refuses_options_it_cannot_smooth_with(options, match):
