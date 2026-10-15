@@ -72,13 +72,15 @@ def read_tracking(folder: Path) -> LabelledClip:
         )
     image_dir = info.get("imDir", "img1")
     extension = info.get("imExt", ".jpg")
+    # OpenCV (FFmpeg) reads an image sequence at 25 fps whatever frameRate
+    # says; SoccerNet sequences are 25 fps, so the two agree.
     return LabelledClip(
         name=info.get("name", folder.name),
         video_path=folder / image_dir / f"%06d{extension}",
         fps=fps,
         width=width,
         height=height,
-        frames=frames,
+        frames=tuple(frames),
         truth=frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL}),
     )
 

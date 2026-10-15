@@ -378,6 +378,20 @@ def test_video_frame_ranges_are_checked_when_called(
     assert list(video.frames(start=3, end=3)) == []  # an empty range is not an error
 
 
+@pytest.mark.parametrize(
+    ("name", "match"),
+    [
+        ("100%.mp4", "Video not found"),  # a % that is no image-sequence pattern
+        ("img_%06d.jpg", "No image matches"),
+    ],
+)
+def test_video_reader_refuses_a_missing_video_or_image_sequence(tmp_path, name, match):
+    _image(tmp_path / "other_000001.jpg")
+
+    with pytest.raises(FileNotFoundError, match=match):
+        VideoReader(tmp_path / name)
+
+
 def test_video_read_rejects_negative_indices(tmp_path):
     video = VideoReader(_video(tmp_path / "v.mp4"))
     with pytest.raises(IndexError, match="-1"):

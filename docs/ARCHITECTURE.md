@@ -161,7 +161,8 @@ configs/              example run files
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
 * `VideoReader(path)` (a video file, or an OpenCV image-sequence pattern
-  such as `img1/%06d.jpg` whose first image is frame 0): `fps`, `width`, `height`, `frame_count`, `duration`,
+  such as `img1/%06d.jpg` whose first image is frame 0; `FileNotFoundError`
+  when no file or image matches): `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
   `stride >= 1`); `read` refuses negative indices.
@@ -180,8 +181,9 @@ configs/              example run files
 * `load_labelled_clip(path)` → `LabelledClip`: a continuous clip with
   per-frame truth, read from a folder whose layout it detects. A `Dataset`
   holds independent images; a labelled clip keeps its frames in order.
-  `clip.frames` (also `iter(clip)`) holds one `LabelledFrame` per frame of
-  the clip, unlabelled frames included; `clip.frame(index)` reads one.
+  `clip.frames` (also `iter(clip)`) is a tuple with one `LabelledFrame` per
+  frame of the clip, unlabelled frames included; `clip.frame(index)` reads
+  one. A clip is frozen.
   A `LabelledFrame` is shaped like a `FrameResult`: `index` is the
   `FrameResult.index` of that frame when the pipeline runs on the clip,
   `detections` holds the people and `ball` the ball (`sv.Detections` with

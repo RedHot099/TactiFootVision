@@ -1,3 +1,5 @@
+import dataclasses
+
 import cv2
 import numpy as np
 import pytest
@@ -82,6 +84,15 @@ def test_soccernet_tracking_frames_align_with_the_video_frame_index(tmp_path):
     assert video.frame_count == len(clip)
     for frame in clip:
         assert abs(video.read(frame.index).mean() - 60 * (frame.index + 1)) < 2
+
+
+def test_a_clip_cannot_be_changed_after_loading(tmp_path):
+    """``frame()`` looks frames up by index, so the frames must stay as loaded."""
+    clip = load_labelled_clip(_sequence(tmp_path))
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        clip.frames = []
+    assert isinstance(clip.frames, tuple)
 
 
 def test_reading_a_frame_that_is_not_in_the_clip_fails(tmp_path):

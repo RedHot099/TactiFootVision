@@ -34,7 +34,7 @@ class LabelledFrame:
     homography: np.ndarray | None = None  # 3x3 frame -> pitch
 
 
-@dataclass
+@dataclass(frozen=True)
 class LabelledClip:
     """A video clip with per-frame truth, read with :func:`load_labelled_clip`.
 
@@ -51,12 +51,14 @@ class LabelledClip:
     fps: float
     width: int
     height: int
-    frames: list[LabelledFrame] = field(repr=False)
+    frames: tuple[LabelledFrame, ...] = field(repr=False)
     truth: frozenset[Truth]
 
     def __post_init__(self) -> None:
-        self.truth = frozenset(Truth(kind) for kind in self.truth)
-        self._by_index = {frame.index: frame for frame in self.frames}
+        # Frozen, so the index built here cannot go stale.
+        object.__setattr__(self, "frames", tuple(self.frames))
+        object.__setattr__(self, "truth", frozenset(Truth(t) for t in self.truth))
+        object.__setattr__(self, "_by_index", {f.index: f for f in self.frames})
 
     def __len__(self) -> int:
         return len(self.frames)
