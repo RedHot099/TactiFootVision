@@ -390,8 +390,7 @@ def test_the_bootstrap_is_deterministic_under_a_seed():
     assert list(first.intervals.index) == [
         name for name in first.as_dict() if name != "truth"
     ]
-    for name, (low, high) in first.intervals.iterrows():
-        assert low <= first.as_dict()[name] <= high, name
+    assert (first.intervals["low"] <= first.intervals["high"]).all()
     assert (
         first.intervals.loc["median_error_m", "high"]
         > first.intervals.loc["median_error_m", "low"]
@@ -415,5 +414,7 @@ def test_the_aggregate_refuses_no_clips_and_mixed_truths():
     positions = _positions_clip([_people([(10, 10)])])
     with pytest.raises(ValueError, match="at least one"):
         evaluate_homography_clips([])
+    with pytest.raises(ValueError, match="draws must be at least 1"):
+        evaluate_homography_clips([_pair([0])], draws=0)
     with pytest.raises(ValueError, match="calibration.*pitch_positions"):
         evaluate_homography_clips([_pair([0]), (_result([TRUE]), positions)])

@@ -122,7 +122,7 @@ class HomographyMetrics:
     top-level numbers are on. ``intervals``, given by an aggregate over
     several clips, is indexed by the names of :meth:`as_dict`'s numbers with
     columns ``low`` and ``high``: their 95% interval from a bootstrap that
-    resamples clips.
+    resamples clips, over the draws where the number is defined.
     """
 
     median_error_m: float

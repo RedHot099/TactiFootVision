@@ -6,12 +6,11 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-import supervision as sv
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.evaluation.metrics import HomographyMetrics
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
-from tactifoot_vision.pipeline.result import PipelineResult
+from tactifoot_vision.pipeline.result import PERSON_ANCHOR, PipelineResult
 from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
@@ -23,13 +22,17 @@ _COLUMNS = [
     "median_error_m", "mean_error_m", "p90_error_m",
     *(f"under_{t}m" for t in _THRESHOLDS), "beyond_horizon", "jitter_m", "frames",
 ]  # fmt: skip
-# The point sets each truth scores; the top-level numbers are on the last.
+# The point sets each truth scores, the top-level numbers on the last; a
+# clip is scored against the first of these truths it carries.
 _POINT_SETS = {
     Truth.CALIBRATION: ("landmarks", "grid"),
     Truth.PITCH_POSITIONS: ("people",),
 }
 # The top-level numbers, in HomographyMetrics.as_dict's order.
-_NUMBERS = [*_COLUMNS[:-3], "beyond_horizon", "availability", "jitter_m"]
+_NUMBERS = [
+    "median_error_m", "mean_error_m", "p90_error_m", "under_1m", "under_2m",
+    "under_5m", "beyond_horizon", "availability", "jitter_m",
+]  # fmt: skip
 _INTERVAL = (2.5, 97.5)  # percentiles of the bootstrap draws: a 95% interval
 
 # One point set of one frame: the points' keys (which point or which
@@ -103,6 +106,8 @@ def evaluate_homography_clips(
     intervals. Every clip must be scored against the same kind of truth.
     """
     pairs = list(pairs)
+    if draws < 1:
+        raise ValueError(f"draws must be at least 1, got {draws}")
     if not pairs:
         raise ValueError(
             "evaluate_homography_clips needs at least one (result, clip) pair"
@@ -118,8 +123,7 @@ def evaluate_homography_clips(
             "aggregate clips with the same truth"
         )
     scored = [_score(result, clip, truth) for result, clip in pairs]
-    metrics = _metrics(scored, truth)
-    metrics.intervals = _intervals(scored, truth, draws, seed)
+    metrics = _metrics(scored, truth, _intervals(scored, truth, draws, seed))
     _log(f"{len(pairs)} clips", metrics)
     return metrics
 
@@ -163,7 +167,7 @@ def _score(result: PipelineResult, clip: LabelledClip, truth: Truth) -> _Scored:
                 "run the pipeline on the clip's video, within its frames"
             ) from None
         if truth is Truth.CALIBRATION:
-            point_sets = _calibration_points(labelled, pitch_points, frame_size)
+            point_sets = _calibration_points(labelled, pitch_points, frame_size, centre)
         else:
             point_sets = _position_points(labelled)
         scored = point_sets is not None and frame.homography is not None
@@ -202,14 +206,13 @@ def _calibration_points(
     frame: LabelledFrame,
     pitch_points: dict[str, np.ndarray],
     frame_size: tuple[int, int],
+    centre: tuple[float, float],
 ) -> dict[str, _Points] | None:
     """The ``pitch_points`` the true homography shows in the frame, keyed by index."""
     if frame.homography is None:
         return None
     width, height = frame_size
-    (front,), _ = project_points(
-        np.array([(width / 2, height / 2)]), frame.homography, (width / 2, height / 2)
-    )
+    (front,), _ = project_points(np.array([centre]), frame.homography, centre)
     inverse = np.linalg.inv(frame.homography)
     point_sets = {}
     for name, points in pitch_points.items():
@@ -235,7 +238,7 @@ def _position_points(frame: LabelledFrame) -> dict[str, _Points] | None:
     known = np.isfinite(positions).all(axis=1)
     if not known.any():
         return None
-    feet = people.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)[known]
+    feet = people.get_anchors_coordinates(PERSON_ANCHOR)[known]
     keys = None if people.tracker_id is None else people.tracker_id[known]
     return {"people": (keys, positions[known], feet)}
 
@@ -283,7 +286,9 @@ def _change(
     return float(np.linalg.norm(current[after] - previous[before], axis=1).mean())
 
 
-def _metrics(scored: list[_Scored], truth: Truth) -> HomographyMetrics:
+def _metrics(
+    scored: list[_Scored], truth: Truth, intervals: pd.DataFrame | None = None
+) -> HomographyMetrics:
     """The metrics of these clips' scored frames pooled."""
     names = _POINT_SETS[truth]
     per_points = pd.DataFrame(
@@ -292,16 +297,21 @@ def _metrics(scored: list[_Scored], truth: Truth) -> HomographyMetrics:
         columns=_COLUMNS,
     ).astype({"frames": int})
     headline = per_points.loc[names[-1]]
-    num_frames = sum(s.num_frames for s in scored)
     return HomographyMetrics(
         **{
             column: float(headline[column]) for column in _COLUMNS if column != "frames"
         },
-        availability=sum(s.available for s in scored) / num_frames,
+        availability=_availability(scored),
         per_points=per_points,
         truth=truth,
-        num_frames=num_frames,
+        num_frames=sum(s.num_frames for s in scored),
+        intervals=intervals,
     )
+
+
+def _availability(scored: list[_Scored]) -> float:
+    """The share of these clips' frames with truth that have a homography."""
+    return sum(s.available for s in scored) / sum(s.num_frames for s in scored)
 
 
 def _summary(scored: list[_Scored], name: str) -> list[float]:
@@ -332,11 +342,11 @@ def _intervals(
     for _ in range(draws):
         sample = [scored[i] for i in rng.integers(len(scored), size=len(scored))]
         values = dict(zip(_COLUMNS, _summary(sample, name), strict=True))
-        values["availability"] = sum(s.available for s in sample) / sum(
-            s.num_frames for s in sample
-        )
+        values["availability"] = _availability(sample)
         samples.append([values[number] for number in _NUMBERS])
-    samples = np.array(samples).reshape(-1, len(_NUMBERS))
+    # A draw where a number is undefined (NaN: no jitter step, say) is left
+    # out of that number's interval.
+    samples = np.array(samples)
     return pd.DataFrame(
         [
             [_percentile(column[~np.isnan(column)], q) for q in _INTERVAL]
