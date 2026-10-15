@@ -36,8 +36,8 @@ class _Tracks:
 
     ids: np.ndarray
     teams: np.ndarray
-    first: np.ndarray  # seconds of the first row
-    last: np.ndarray  # seconds of the last row
+    first_seen: np.ndarray  # seconds of the first row
+    last_seen: np.ndarray  # seconds of the last row
     # the first and last rows with a pitch position (NaN for none)
     start_time: np.ndarray
     start_xy: np.ndarray
@@ -61,8 +61,9 @@ def join_tracks(
     other's first), and with the same ``team_id`` (``NO_TEAM`` joins only
     ``NO_TEAM``). Of these links the cheapest are taken first, the cost being
     the distance plus 1.25 m per second of gap, and each track gets at most
-    one successor and one predecessor. A chain of linked tracks is one player
-    track, with the id of its first track.
+    one successor and one predecessor. Tracks linked one after another form
+    one player track, with the id of its earliest track. A track without a
+    pitch position (no homography in any of its frames) is never linked.
 
     The tracker's ids are kept in ``detections.data["original_tracker_id"]``
     (see :func:`~tactifoot_vision.pipeline.remap_track_ids`). No rows are
@@ -110,12 +111,12 @@ def _tracks(frames: list[FrameResult], scale: np.ndarray) -> _Tracks:
             if tracker_id != UNTRACKED:
                 rows[int(tracker_id)].append((frame.timestamp, position, int(team)))
     ids = sorted(rows)
-    teams, first, last, starts, ends = [], [], [], [], []
+    teams, first_seen, last_seen, starts, ends = [], [], [], [], []
     for tracker_id in ids:
         track = rows[tracker_id]
         teams.append(Counter(team for *_, team in track).most_common(1)[0][0])
-        first.append(track[0][0])
-        last.append(track[-1][0])
+        first_seen.append(track[0][0])
+        last_seen.append(track[-1][0])
         located = [(time, xy) for time, xy, _ in track if np.isfinite(xy).all()]
         none = (np.nan, np.full(2, np.nan))
         starts.append(located[0] if located else none)
@@ -123,8 +124,8 @@ def _tracks(frames: list[FrameResult], scale: np.ndarray) -> _Tracks:
     return _Tracks(
         ids=np.array(ids, dtype=int),
         teams=np.array(teams, dtype=int),
-        first=np.array(first, dtype=float),
-        last=np.array(last, dtype=float),
+        first_seen=np.array(first_seen, dtype=float),
+        last_seen=np.array(last_seen, dtype=float),
         start_time=np.array([time for time, _ in starts], dtype=float),
         start_xy=np.array([xy for _, xy in starts], dtype=float).reshape(-1, 2),
         end_time=np.array([time for time, _ in ends], dtype=float),
@@ -138,7 +139,7 @@ def _link(
     """Index of each linked track's successor: the cheapest allowed links first."""
     links = []
     for a in range(len(tracks.ids)):
-        gap = tracks.first - tracks.last[a]
+        gap = tracks.first_seen - tracks.last_seen[a]
         distance = np.linalg.norm(tracks.start_xy - tracks.end_xy[a], axis=1)
         reach = slack + max_speed * (tracks.start_time - tracks.end_time[a])
         # NaN positions fail the distance test
@@ -157,7 +158,7 @@ def _link(
 
 
 def _player_tracks(ids: np.ndarray, successors: dict[int, int]) -> dict[int, int]:
-    """Player-track id of every track: the id of the first track of its chain."""
+    """Player-track id of every track: the id of the earliest track linked to it."""
     heads = set(range(len(ids))) - set(successors.values())
     mapping = {}
     for head in heads:

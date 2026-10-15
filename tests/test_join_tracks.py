@@ -8,7 +8,6 @@ import pytest
 import supervision as sv
 
 from tactifoot_vision.pipeline import (
-    NO_TEAM,
     POSTPROCESSES,
     AppliedPostProcess,
     FrameResult,
@@ -16,6 +15,7 @@ from tactifoot_vision.pipeline import (
     join_tracks,
     reproject,
 )
+from tactifoot_vision.pipeline.result import NO_TEAM, UNTRACKED
 from tactifoot_vision.pitch import SoccerPitch
 
 FPS = 25.0
@@ -115,7 +115,7 @@ def test_join_tracks_joins_the_fragments_of_two_crossing_players(pitch, stride):
     assert joined.track_ids == [1, 2]
 
 
-def test_join_tracks_joins_a_chain_of_fragments_into_one_player_track():
+def test_join_tracks_joins_several_tracks_into_one_player_track():
     walk = _walk((20, 10), (3, 1))
     result = _result([
         (5, 1, range(0, 20), walk),
@@ -178,6 +178,25 @@ def test_join_tracks_leaves_tracks_too_far_apart_for_max_speed():
     assert _ids_by_original(join_tracks(result, max_speed=8.4)) == {1: {1}, 2: {2}}
 
 
+def test_join_tracks_prefers_a_shorter_gap_to_a_slightly_shorter_distance():
+    """Tracks start 1.2 m and 1 m from where the player was lost, 0.24 s and 0.84 s later."""
+    result = _result([
+        (1, 0, range(0, 25), _walk((50, 30), (0, 0))),
+        (2, 0, range(45, 70), _walk((50, 31), (0, 0))),
+        (3, 0, range(30, 70), _walk((51.2, 30), (0, 0))),
+    ])  # fmt: skip
+
+    assert _ids_by_original(join_tracks(result)) == {1: {1}, 2: {2}, 3: {1}}
+
+
+def test_join_tracks_never_links_tracks_without_a_pitch_position():
+    still = _walk((50, 30), (0, 0))
+    result = _result([(1, 0, range(0, 25), still), (2, 0, range(30, 60), still)])
+    result = reproject(result, [None] * len(result))
+
+    assert _ids_by_original(join_tracks(result)) == {1: {1}, 2: {2}}
+
+
 def test_join_tracks_keeps_the_original_ids_and_adds_no_rows():
     result = _result(CROSSING)
 
@@ -214,13 +233,15 @@ def test_join_tracks_leaves_untracked_people_and_untracked_frames_alone():
     frames[0] = FrameResult(
         0, 0.0, untracked, frames[0].ball, ball_candidates=frames[0].ball_candidates
     )
-    frames[1].detections.tracker_id[:] = -1  # UNTRACKED
-    result = PipelineResult(frames, FPS, (1000, 600), ["ball", "player"])
+    frames[1].detections.tracker_id[:] = UNTRACKED
+    result = PipelineResult(
+        frames, FPS, (1000, 600), ["ball", "player"], pitch=result.pitch
+    )
 
     joined = join_tracks(result)
 
     assert joined[0].detections.tracker_id is None
-    assert joined[1].detections.tracker_id.tolist() == [-1, -1]
+    assert joined[1].detections.tracker_id.tolist() == [UNTRACKED] * 2
     assert _ids_by_original(joined)[4] == {1}
 
 

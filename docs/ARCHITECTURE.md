@@ -355,7 +355,8 @@ configs/              example run files
   `max_gap` s later, within `slack + max_speed * dt` m and, with
   `same_team`, of the same `team_id` (`NO_TEAM` joins only `NO_TEAM`),
   cheapest first (distance plus 1.25 m per second of gap, one successor and
-  one predecessor per track). A chain takes its first track's id through
+  one predecessor per track; tracks without a pitch position are not
+  linked). A player track takes its earliest track's id through
   `remap_track_ids`, so the tracker's id stays in
   `data["original_tracker_id"]`. No rows are added: tables keep measured
   positions only. Metres and seconds, as in `track_ball`.
