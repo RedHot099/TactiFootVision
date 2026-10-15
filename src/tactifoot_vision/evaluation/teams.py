@@ -15,9 +15,9 @@ from tactifoot_vision.pipeline.result import NO_TEAM, ROLES, PipelineResult
 
 logger = logging.getLogger(__name__)
 
-# The mapped team of a run team id with no true team: scored true team ids
-# are NO_TEAM or above (UNKNOWN_TEAM is not scored), so it is never right.
-_UNMAPPED = NO_TEAM - 1
+# The mapped team of a run team id with no true team: true team ids are
+# UNKNOWN_TEAM or above, so it is never right.
+_UNMAPPED = UNKNOWN_TEAM - 1
 
 
 class _Matches(NamedTuple):

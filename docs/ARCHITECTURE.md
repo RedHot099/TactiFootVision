@@ -210,8 +210,9 @@ configs/              example run files
   teams puts them in `detections.data["team_id"]` (`NO_TEAM` for people
   without a team), like `FrameResult`'s, and `tv.data.UNKNOWN_TEAM` (-2) for
   people whose team the source does not know; truth `NO_TEAM` never means
-  unknown. Team sides (`left`, `right` of the camera view) are teams 0 and 1. `clip.truth` is the set of `Truth`
-  kinds the source provides (`identities`, `boxes`, `ball`,
+  unknown. SoccerNet's team labels `left` and `right` (the team on that
+  side of the main camera's picture) are teams 0 and 1. `clip.truth` is the
+  set of `Truth` kinds the source provides (`identities`, `boxes`, `ball`,
   `pitch_positions`, `calibration`, `teams`), so a consumer can refuse a clip
   that lacks one. The clip also carries `name`, `fps`, `width`, `height` and
   `video_path`, which the frames are read from in place: readers never copy
@@ -222,9 +223,9 @@ configs/              example run files
     (`other` tracklets are left out). MOT frame `n` is `img1/<n:06d>.jpg`,
     frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
     `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Teams
-    from the tracklet labels' side (`player team left;7`); a player or
+    from the tracklet labels (`player team left;7`); a player or
     goalkeeper label without one is `UNKNOWN_TEAM`. Truth: identities,
-    boxes, ball, teams.
+    boxes, ball, and teams when some label names one.
   * SoccerNet GSR (`Labels-GameState.json`, v1.3): image `<n:06d>.jpg` of
     `info.im_dir` is frame `n - 1`. Boxes from `bbox_image`, classes from
     `attributes.role` (`other` left out), teams from `attributes.team` (null
@@ -234,8 +235,8 @@ configs/              example run files
     metres, shifted by half the pitch into `SoccerPitch` coordinates. A camera
     annotation becomes the frame's homography: the pinhole part of the
     SoccerNet camera (distortion left out), inverted and shifted likewise.
-    Truth: identities, boxes, ball, pitch positions, teams, and calibration
-    when any frame has a camera.
+    Truth: identities, boxes, ball, and pitch positions, teams and
+    calibration when some person or frame has them.
 * `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), *,
   pitch=None, fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
   renders `pitch_markings(pitch)` on striped grass through one frame → pitch

@@ -100,9 +100,10 @@ def load_labelled_clip(path: str | Path) -> LabelledClip:
 
     Known layouts: a SoccerNet Tracking sequence folder (``gt/gt.txt``,
     ``gameinfo.ini``, ``seqinfo.ini``) and a SoccerNet Game State
-    Reconstruction sequence folder (``Labels-GameState.json``). Video frames are referenced in place,
-    never copied or re-encoded. A folder in no known layout, or one missing a
-    file of its layout, is a ``ValueError`` naming the path and the layout.
+    Reconstruction sequence folder (``Labels-GameState.json``). Video
+    frames are referenced in place, never copied or re-encoded. A folder in
+    no known layout, or one missing a file of its layout, is a
+    ``ValueError`` naming the path and the layout.
     """
     from tactifoot_vision.data import soccernet  # it imports this module
 

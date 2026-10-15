@@ -124,6 +124,21 @@ def test_soccernet_tracking_keeps_the_team_side_of_its_tracklet_labels(tmp_path)
     assert clip.frame(1).detections.data["team_id"].dtype == int
 
 
+def test_an_unknown_tracklet_team_fails(tmp_path):
+    gameinfo = GAMEINFO.replace("player team left", "player team middle")
+
+    with pytest.raises(ValueError, match=r"trackletid_1 .*'middle'"):
+        load_labelled_clip(_sequence(tmp_path, gameinfo=gameinfo))
+
+
+def test_soccernet_tracking_without_team_labels_has_no_team_truth(tmp_path):
+    gameinfo = GAMEINFO.replace(" team left", "").replace(" team right", "")
+
+    clip = load_labelled_clip(_sequence(tmp_path, gameinfo=gameinfo))
+
+    assert clip.truth == {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
+
+
 def test_soccernet_tracking_has_identities_boxes_ball_and_teams_but_no_pitch_truth(
     tmp_path,
 ):

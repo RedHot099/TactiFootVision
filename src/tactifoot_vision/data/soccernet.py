@@ -36,8 +36,9 @@ _GSR_ROLES = {
     "ball": BALL,
     "other": None,
 }
-# A team side (left or right of the camera view) -> team id. Sides name a
-# team within one clip only; evaluate_teams maps team ids per clip anyway.
+# SoccerNet's team label (the team on the left or right of the main camera's
+# picture) -> team id. A label names a team within one clip only;
+# evaluate_teams maps team ids per clip anyway.
 _SIDES = {"left": 0, "right": 1}
 _PITCH = SoccerPitch()  # GSR pitches are 105 x 68 m, as SoccerPitch's default
 # GSR pitch metres have their origin at the centre spot; SoccerPitch's is the
@@ -54,9 +55,10 @@ def read_tracking(folder: Path) -> LabelledClip:
     ``gt/gt.txt`` rows are ``frame, track id, x, y, w, h, ...`` with 1-based
     frames: MOT frame ``n`` is image ``img1/<n:06d>.jpg``, which the pipeline
     reads as frame ``n - 1``. ``gameinfo.ini`` names each track's class and,
-    for players and goalkeepers, their team side (``player team left;7``):
-    ``left`` is team 0 and ``right`` team 1, a label without a side is
-    ``UNKNOWN_TEAM`` and referees have ``NO_TEAM``.
+    for players and goalkeepers, their team (``player team left;7``):
+    ``left`` is team 0 and ``right`` team 1, a label without a team is
+    ``UNKNOWN_TEAM`` and referees have ``NO_TEAM``. The clip has teams when
+    some label names one.
     """
     info = _read_ini(folder / "seqinfo.ini")
     try:
@@ -117,7 +119,10 @@ def read_tracking(folder: Path) -> LabelledClip:
         width=width,
         height=height,
         frames=tuple(frames),
-        truth=frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL, Truth.TEAMS}),
+        truth=frozenset(
+            {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
+            | _known({Truth.TEAMS: [t for _, t in tracklets.values()]})
+        ),
     )
 
 
@@ -127,7 +132,7 @@ def read_gamestate(path: Path) -> LabelledClip:
     Each image ``<n:06d>.jpg`` of ``info.im_dir`` is the pipeline's frame
     ``n - 1``. Object annotations give the boxes (``bbox_image`` centre and
     size, frame pixels), track ids and ``attributes``: the role is the class
-    name, the team side ``left`` is team 0 and ``right`` team 1, a player or
+    name, the team ``left`` is team 0 and ``right`` team 1, a player or
     goalkeeper with a null team has ``UNKNOWN_TEAM``, referees ``NO_TEAM``,
     and the jersey number is ``data["jersey"]`` (``""`` when null). A
     person's ``bbox_pitch`` bottom middle, in GSR's centre-origin metres, is
@@ -135,7 +140,8 @@ def read_gamestate(path: Path) -> LabelledClip:
     null); the ball keeps its box only. A camera annotation becomes the
     frame's homography: the pinhole part of its parameters (distortion is
     left out, as in SoccerNet's own ``Camera.to_homography``), inverted and
-    shifted likewise. Frames without one have none.
+    shifted likewise. Frames without one have none. The clip has teams,
+    pitch positions or calibration when some person or frame has them.
     """
     labels = _read_json(path)
     try:
@@ -176,14 +182,24 @@ def read_gamestate(path: Path) -> LabelledClip:
     frames = tuple(
         LabelledFrame(
             index=index,
-            detections=_gsr_detections(people[index], with_people_data=True),
-            ball=_gsr_detections(balls[index], with_people_data=False),
+            detections=_gsr_people(people[index]),
+            ball=_detections(
+                np.array([row["xyxy"] for row in balls[index]], float),
+                np.array([row["track_id"] for row in balls[index]], int),
+                np.array([BALL] * len(balls[index]), dtype=object),
+            ),
             homography=homographies.get(index),
         )
         for index in range(length)
     )
-    truth = {Truth.IDENTITIES, Truth.BOXES, Truth.BALL, Truth.PITCH_POSITIONS}
-    truth |= {Truth.TEAMS} | ({Truth.CALIBRATION} if homographies else set())
+    everyone = [row for rows in people for row in rows]
+    truth = {Truth.IDENTITIES, Truth.BOXES, Truth.BALL} | _known(
+        {
+            Truth.TEAMS: [row["team_id"] for row in everyone],
+            Truth.PITCH_POSITIONS: [row["pitch_xy"] for row in everyone],
+        }
+    )
+    truth |= {Truth.CALIBRATION} if homographies else set()
     return LabelledClip(
         name=info.get("name", path.parent.name),
         video_path=path.parent / info.get("im_dir", "img1") / f"%06d{extension}",
@@ -229,46 +245,48 @@ def _gsr_object(annotation: dict[str, Any]) -> dict[str, Any] | None:
     class_name = _GSR_ROLES[role]
     if class_name is None:
         return None
-    side = attributes.get("team")
-    if side is not None and side not in _SIDES:
-        raise ValueError(f"unknown team {side!r}; known: {', '.join(_SIDES)}, null")
+    team = attributes.get("team")
+    if team is not None and team not in _SIDES:
+        raise ValueError(f"unknown team {team!r}; known: {', '.join(_SIDES)}, null")
     box = annotation["bbox_image"]
     x, y = float(box["x_center"]), float(box["y_center"])
     w, h = float(box["w"]), float(box["h"])
     foot = annotation.get("bbox_pitch")
     pitch_xy = (np.nan, np.nan)
     if foot is not None:
-        pitch_xy = (
-            float(foot["x_bottom_middle"]) + _PITCH.length / 2,
-            float(foot["y_bottom_middle"]) + _PITCH.width / 2,
-        )
+        centred = (float(foot["x_bottom_middle"]), float(foot["y_bottom_middle"]), 1.0)
+        pitch_xy = tuple(_CENTRE_TO_CORNER[:2] @ centred)
     return {
         "xyxy": (x - w / 2, y - h / 2, x + w / 2, y + h / 2),
         "track_id": int(annotation["track_id"]),
         "class_name": class_name,
-        "team_id": _team_id(class_name, side),
-        "jersey": attributes.get("jersey") or "",
+        "team_id": _team_id(class_name, team),
+        "jersey": "" if attributes.get("jersey") is None else str(attributes["jersey"]),
         "pitch_xy": pitch_xy,
     }
 
 
-def _team_id(class_name: str, side: str | None) -> int:
-    """A person's team id from their team side; referees have none."""
+def _team_id(class_name: str | None, team: str | None) -> int:
+    """A person's team id from their team label; referees have none."""
     if class_name == "referee":
         return NO_TEAM
-    return _SIDES[side] if side is not None else UNKNOWN_TEAM
+    return _SIDES[team] if team is not None else UNKNOWN_TEAM
 
 
-def _gsr_detections(rows: list[dict], with_people_data: bool) -> sv.Detections:
-    xyxy = np.array([row["xyxy"] for row in rows], float)
-    track_ids = np.array([row["track_id"] for row in rows], int)
-    names = np.array([row["class_name"] for row in rows], dtype=object)
-    if not with_people_data:
-        return _detections(xyxy, track_ids, names)
+def _known(values: dict[Truth, list]) -> set[Truth]:
+    """The truth kinds some person has: a team (an id from 0), a finite pitch position."""
+    known = {
+        Truth.TEAMS: lambda v: np.any(np.asarray(v, int) >= 0),
+        Truth.PITCH_POSITIONS: lambda v: np.isfinite(np.asarray(v, float)).any(),
+    }
+    return {kind for kind, v in values.items() if len(v) and known[kind](v)}
+
+
+def _gsr_people(rows: list[dict]) -> sv.Detections:
     return _detections(
-        xyxy,
-        track_ids,
-        names,
+        np.array([row["xyxy"] for row in rows], float),
+        np.array([row["track_id"] for row in rows], int),
+        np.array([row["class_name"] for row in rows], dtype=object),
         team_id=np.array([row["team_id"] for row in rows], int),
         jersey=np.array([row["jersey"] for row in rows], dtype=object).astype(str),
         pitch_xy=np.array([row["pitch_xy"] for row in rows], float).reshape(-1, 2),
@@ -336,15 +354,15 @@ def _tracklets(path: Path) -> dict[int, tuple[str | None, int]]:
                 f"{path}: {key} has the unknown class {label!r}; known: "
                 f"{', '.join(_TRACKLET_CLASSES)}"
             )
-        # "player team left": the side follows "team", when the label has one.
-        side = words[2] if words[1:2] == ["team"] and len(words) > 2 else None
-        if side is not None and side not in _SIDES:
+        # "player team left": the team follows "team", when the label has one.
+        team = words[2] if words[1:2] == ["team"] and len(words) > 2 else None
+        if team is not None and team not in _SIDES:
             raise ValueError(
-                f"{path}: {key} has the unknown team side {side!r}; known: "
+                f"{path}: {key} has the unknown team {team!r}; known: "
                 f"{', '.join(_SIDES)}"
             )
         name = _TRACKLET_CLASSES[word]
-        tracklets[int(number)] = (name, _team_id(name or "", side))
+        tracklets[int(number)] = (name, _team_id(name, team))
     return tracklets
 
 

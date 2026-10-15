@@ -210,6 +210,47 @@ def test_a_gsr_camera_becomes_a_frame_to_pitch_homography(tmp_path):
     assert clip.frame(2).homography is None
 
 
+def test_a_panned_and_rolled_gsr_camera_projects_like_soccernet(tmp_path):
+    """The rotation as SoccerNet's ``Camera.from_json_parameters`` writes it out."""
+    pan, tilt, roll = 7.3, 76.0, -1.9
+    position = np.array([-4.0, 52.0, -14.0])
+    parameters = {
+        **CAMERA,
+        "pan_degrees": pan,
+        "tilt_degrees": tilt,
+        "roll_degrees": roll,
+        "position_meters": list(position),
+        "y_focal_length": 1900.0,
+    }
+    people = [a for a in ANNOTATIONS if a["supercategory"] != "camera"]
+    labels = _labels([*people, _camera("1060000002", parameters)])
+
+    homography = load_labelled_clip(_sequence(tmp_path, labels)).frame(1).homography
+
+    p, t, r = np.radians([pan, tilt, roll])
+    sp, cp, st, ct, sr, cr = (
+        np.sin(p),
+        np.cos(p),
+        np.sin(t),
+        np.cos(t),
+        np.sin(r),
+        np.cos(r),
+    )
+    rotation = np.array(
+        [
+            [-sp * sr * ct + cp * cr, sp * cr + sr * cp * ct, sr * st],
+            [-sp * cr * ct - sr * cp, -sp * sr + cp * cr * ct, st * cr],
+            [sp * st, -st * cp, ct],
+        ]
+    )  # world -> camera
+    world = np.array([[0.0, 0.0], [-30.0, 10.0], [20.0, -15.0], [36.0, 20.16]])
+    camera = (rotation @ (np.column_stack([world, np.zeros(4)]) - position).T).T
+    pixels = camera[:, :2] / camera[:, 2:] * [2000, 1900] + [960, 540]
+    np.testing.assert_allclose(
+        frame_to_pitch(pixels, homography), world + [52.5, 34], atol=1e-3
+    )
+
+
 def test_soccernet_gsr_reports_its_truth_kinds(tmp_path):
     clip = load_labelled_clip(_sequence(tmp_path))
 
@@ -230,6 +271,26 @@ def test_a_gsr_sequence_without_cameras_has_no_calibration(tmp_path):
 
     assert Truth.CALIBRATION not in clip.truth
     assert all(frame.homography is None for frame in clip)
+
+
+def test_a_gsr_sequence_without_known_teams_or_pitch_positions_lacks_them(tmp_path):
+    people = [
+        {**a, "bbox_pitch": None, "attributes": {**a["attributes"], "team": None}}
+        for a in ANNOTATIONS
+        if a["supercategory"] == "object"
+    ]
+
+    clip = load_labelled_clip(_sequence(tmp_path, _labels(people)))
+
+    assert clip.truth == {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
+
+
+def test_a_gsr_jersey_number_keeps_its_digits(tmp_path):
+    zero = _person("1060000002", 9, "player", "left", 0, (1, 1, 5, 5), None)
+
+    clip = load_labelled_clip(_sequence(tmp_path, _labels([*ANNOTATIONS, zero])))
+
+    assert list(clip.frame(1).detections.data["jersey"]) == ["0"]
 
 
 def test_loading_a_gsr_sequence_writes_nothing(tmp_path):
