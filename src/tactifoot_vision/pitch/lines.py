@@ -8,6 +8,7 @@ robust least squares fits them coarse to fine. The image thresholds are tuned
 on 1080p broadcast footage.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import cv2
@@ -15,8 +16,8 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 from scipy.optimize import least_squares
 
-from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
+from tactifoot_vision.pitch.projection import project_points
 
 # Grass in OpenCV HSV (hue 0-180): green, saturated, not dark.
 _GRASS_LOW, _GRASS_HIGH = (30, 60, 40), (90, 255, 255)
@@ -26,6 +27,9 @@ _MAX_LINE_SATURATION = 110  # lines are white, kits often are not
 # (distance cap in px, robust loss scale in px) per stage, coarse to fine: the
 # first stage pulls lines up to 40 px off, the last one ignores what is beyond 6 px.
 _STAGES = ((40.0, 8.0), (12.0, 2.5), (6.0, 1.2))
+LINE_DISTANCE_CAP_PX = _STAGES[-1][0]  # the fit's distances are measured up to this
+_GOOD_INLIER_SHARE = 0.85  # a fit this good from the first start needs no second
+_MODEL_STEP = 0.4  # pitch units between model points along the markings
 _MAX_EVALUATIONS = 200  # per stage
 # Control points as fractions of the frame (width, height), below the stands.
 _CONTROLS = np.array([[0.15, 0.35], [0.85, 0.35], [0.85, 0.9], [0.15, 0.9]])
@@ -38,7 +42,7 @@ class LineFit:
     ``points`` model points along the markings were visible on the grass;
     ``inlier_share`` of them lie within the estimator's ``line_inlier_px`` of
     a painted-line pixel, and ``median_px`` is their median distance to one
-    (capped at 6 px). A low share means the fit found few lines to hold on to.
+    (capped at :data:`LINE_DISTANCE_CAP_PX`). A low share means the fit found few lines to hold on to.
     """
 
     points: int
@@ -46,14 +50,63 @@ class LineFit:
     median_px: float
 
 
-def model_points(pitch: SoccerPitch, step: float = 0.4) -> np.ndarray:
-    """Points every ``step`` pitch units along the painted lines, circle and arcs of ``pitch``."""
+class LineRefiner:
+    """Fits frame -> pitch homographies to the painted lines of their frames.
+
+    Holds the model points of ``pitch`` and the thresholds of
+    :class:`~tactifoot_vision.pitch.HomographyEstimator`'s ``refine_with_lines``,
+    which validates them.
+    """
+
+    def __init__(
+        self, pitch: SoccerPitch, *, min_points: int, inlier_px: float
+    ) -> None:
+        self.model = model_points(pitch)
+        self.min_points = min_points
+        self.inlier_px = inlier_px
+
+    def refine(
+        self,
+        frame: np.ndarray,
+        starts: Sequence[np.ndarray | None],
+        boxes: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, LineFit] | None:
+        """The fit with the largest inlier share among those from each of ``starts``.
+
+        ``None`` starts are skipped, and so are the rest once a fit is good
+        enough. Returns ``None`` when no start gives a fit (too few model points
+        in view, or no painted line).
+        """
+        line, seen = line_masks(frame, boxes)
+        best = None
+        for start in starts:
+            if start is None:
+                continue
+            refined = refine_homography(
+                start,
+                self.model,
+                line,
+                seen,
+                min_points=self.min_points,
+                inlier_px=self.inlier_px,
+            )
+            if refined is not None and (
+                best is None or refined[1].inlier_share > best[1].inlier_share
+            ):
+                best = refined
+            if best is not None and best[1].inlier_share > _GOOD_INLIER_SHARE:
+                break
+        return best
+
+
+def model_points(pitch: SoccerPitch) -> np.ndarray:
+    """Points every ``_MODEL_STEP`` pitch units along the painted lines, circle and arcs of ``pitch``."""
     lines, _ = pitch_markings(pitch, samples=256)
     points = []
     for line in lines:
         segments = np.diff(line, axis=0)
         for start, segment in zip(line[:-1], segments, strict=True):
-            n = max(1, int(np.ceil(np.hypot(*segment) / step)))
+            n = max(1, int(np.ceil(np.hypot(*segment) / _MODEL_STEP)))
             points.append(start + np.arange(n)[:, None] / n * segment)
     return np.vstack(points)
 
@@ -72,13 +125,13 @@ def line_masks(
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     grass = _grass_mask(hsv)
     people = np.zeros(grass.shape, np.uint8)
-    for x1, y1, x2, y2 in np.asarray(boxes if boxes is not None else [], int).reshape(
-        -1, 4
-    ):
+    boxes = np.asarray(boxes if boxes is not None else [], int).reshape(-1, 4)
+    for x1, y1, x2, y2 in boxes:
         w, h = x2 - x1, y2 - y1
-        people[max(0, y1 - h // 4) : y2 + h // 6, max(0, x1 - w // 3) : x2 + w // 3] = (
-            255
-        )
+        # Clipped at both ends: a negative end would count from the far edge.
+        top, bottom = max(0, y1 - h // 4), max(0, y2 + h // 6)
+        left, right = max(0, x1 - w // 3), max(0, x2 + w // 3)
+        people[top:bottom, left:right] = 255
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_TOPHAT_SIZE,) * 2)
     tophat = cv2.morphologyEx(hsv[..., 2], cv2.MORPH_TOPHAT, kernel)
     line = (tophat > _MIN_TOPHAT) & (hsv[..., 1] < _MAX_LINE_SATURATION)

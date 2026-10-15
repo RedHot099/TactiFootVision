@@ -20,30 +20,31 @@ from tactifoot_vision.pitch import (
 FRAME = (640, 360)
 
 
-def _camera(pitch=None, pan=0.0):
-    """Frame -> pitch homography of a broadcast view of the right penalty area, panned ``pan`` metres."""
-    pitch = pitch or SoccerPitch()
+CORNERS = np.float32([[0, 360], [640, 360], [640, 0], [0, 0]])  # of the frame
+
+
+def _view(corners_on_pitch, pitch):
+    """Frame -> pitch homography putting the frame's ``CORNERS`` at these 105 x 68 m points."""
     scale = np.float32([pitch.length / 105, pitch.width / 68])
-    src = np.float32([[56, 64], [100, 64], [112, 2], [50, 2]]) + np.float32([pan, 0])
-    dst = np.float32([[0, 360], [640, 360], [640, 0], [0, 0]])
-    return cv2.getPerspectiveTransform(dst, src * scale)
+    return cv2.getPerspectiveTransform(CORNERS, np.float32(corners_on_pitch) * scale)
+
+
+def _camera(pitch=None, pan=0.0):
+    """A broadcast view of the right penalty area, panned ``pan`` metres."""
+    corners = np.float32([[56, 64], [100, 64], [112, 2], [50, 2]]) + [pan, 0]
+    return _view(corners, pitch or SoccerPitch())
 
 
 def _close_up(pitch=None):
     """A frame showing only grass between the penalty area and the centre circle."""
-    pitch = pitch or SoccerPitch()
-    scale = np.float32([pitch.length / 105, pitch.width / 68])
-    src = np.float32([[24, 34], [34, 34], [33, 27], [25, 27]])
-    dst = np.float32([[0, 360], [640, 360], [640, 0], [0, 0]])
-    return cv2.getPerspectiveTransform(dst, src * scale)
+    return _view([[24, 34], [34, 34], [33, 27], [25, 27]], pitch or SoccerPitch())
 
 
 def _perturbed(homography, shift_px, seed):
     """``homography`` with the frame's corners moved by up to ``shift_px`` pixels."""
     rng = np.random.default_rng(seed)
-    corners = np.float32([[0, 360], [640, 360], [640, 0], [0, 0]])
-    moved = corners + rng.uniform(-shift_px, shift_px, corners.shape).astype(np.float32)
-    pitch_xy = cv2.perspectiveTransform(corners[:, None], homography)
+    moved = CORNERS + rng.uniform(-shift_px, shift_px, CORNERS.shape).astype(np.float32)
+    pitch_xy = cv2.perspectiveTransform(CORNERS[:, None], homography)
     return cv2.getPerspectiveTransform(moved, pitch_xy.reshape(-1, 2))
 
 
@@ -203,6 +204,7 @@ def test_refinement_is_off_by_default_and_needs_the_frame():
     [
         ({"min_line_points": 3}, "min_line_points"),
         ({"line_inlier_px": 0}, "line_inlier_px"),
+        ({"line_inlier_px": 6}, "line_inlier_px"),
     ],
 )
 def test_refinement_options_are_validated(kwargs, match):
@@ -282,3 +284,16 @@ def test_the_pipeline_refines_on_its_frames_and_keeps_each_fit(tmp_path):
     assert all(frame.line_fit is None for frame in raw)
     assert all(frame.line_fit.inlier_share > 0.9 for frame in refined)
     np.testing.assert_array_equal(pipeline.homography.boxes, [[420, 150, 450, 230]])
+
+
+def test_boxes_beyond_the_frame_hide_nothing_inside_it(tmp_path):
+    pitch, camera = SoccerPitch(), _camera()
+    clip = synthetic_pitch_clip(tmp_path / "pan.mp4", [camera], FRAME)
+    start = _perturbed(camera, 15, seed=0)
+    # A tracker can predict boxes that have left the frame.
+    boxes = np.array([[-200, -300, -150, -100], [-90, 40, -60, 120]], float)
+
+    (refined,), (fit,) = _refine(pitch, [start], _frames(clip), boxes)
+
+    assert fit is not None
+    assert _error_m(clip, [refined]) < 0.1

@@ -2,20 +2,16 @@
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.pitch.lines import LINE_DISTANCE_CAP_PX, LineFit, LineRefiner
 from tactifoot_vision.pitch.pitch import SoccerPitch
-
-if TYPE_CHECKING:
-    from tactifoot_vision.pitch.lines import LineFit
+from tactifoot_vision.pitch.projection import project_points
 
 logger = logging.getLogger(__name__)
-
-_GOOD_INLIER_SHARE = 0.85
 
 
 def frame_to_pitch(points: np.ndarray, homography: np.ndarray) -> np.ndarray:
@@ -29,27 +25,6 @@ def frame_to_pitch(points: np.ndarray, homography: np.ndarray) -> np.ndarray:
 def pitch_to_frame(points: np.ndarray, homography: np.ndarray) -> np.ndarray:
     """Map ``(N, 2)`` pitch coordinates to frame pixels (inverse of :func:`frame_to_pitch`)."""
     return frame_to_pitch(points, np.linalg.inv(homography))
-
-
-def project_points(
-    points: np.ndarray, homography: np.ndarray, front: tuple[float, float]
-) -> tuple[np.ndarray, np.ndarray]:
-    """Map ``(N, 2)`` points with ``homography``, flagging those beyond the horizon.
-
-    A perspective view has a horizon: points on its far side have no image on
-    the other plane and would wrap around to absurd coordinates. ``front`` is a
-    point known to lie on the visible side (e.g. the frame centre for a
-    frame->pitch homography). Returns ``(xy, valid)``: the mapped points and
-    a mask of those on the same side as ``front``; invalid rows of ``xy`` are
-    meaningless.
-    """
-    points = np.asarray(points, dtype=float).reshape(-1, 2)
-    homography = np.asarray(homography, dtype=float)
-    side = np.sign((homography @ np.array([front[0], front[1], 1.0]))[2])
-    projected = np.column_stack([points, np.ones(len(points))]) @ homography.T
-    valid = projected[:, 2] * side > 1e-9
-    xy = projected[:, :2] / np.where(valid, projected[:, 2], 1.0)[:, None]
-    return xy, valid
 
 
 def visible_area(
@@ -96,6 +71,8 @@ class HomographyEstimator:
     visible model points (close-ups, lines out of view) keep the keypoint
     matrix. :attr:`line_fit` tells how the current frame's fit went; a model
     point within ``line_inlier_px`` pixels of a painted line is an inlier.
+    The refined matrix is the frame's own fit: ``smoothing_window`` then only
+    averages the keypoint matrix the fit starts from.
     """
 
     def __init__(
@@ -120,8 +97,11 @@ class HomographyEstimator:
             raise ValueError(f"max_age must be None or >= 0, got {max_age}")
         if min_line_points < 4:
             raise ValueError(f"min_line_points must be >= 4, got {min_line_points}")
-        if line_inlier_px <= 0:
-            raise ValueError(f"line_inlier_px must be > 0, got {line_inlier_px}")
+        if not 0 < line_inlier_px < LINE_DISTANCE_CAP_PX:
+            raise ValueError(
+                f"line_inlier_px must be in (0, {LINE_DISTANCE_CAP_PX}), the distance "
+                f"the fit measures up to, got {line_inlier_px}"
+            )
         self.pitch = pitch or SoccerPitch()
         self.min_confidence = min_confidence
         self.ransac_threshold = ransac_threshold
@@ -129,12 +109,13 @@ class HomographyEstimator:
         self.refine_with_lines = refine_with_lines
         self.min_line_points = min_line_points
         self.line_inlier_px = line_inlier_px
-        self._model_points = None
-        if refine_with_lines:
-            # lines.py projects with this module's functions: import it late.
-            from tactifoot_vision.pitch.lines import model_points
-
-            self._model_points = model_points(self.pitch)
+        self._refiner = (
+            LineRefiner(
+                self.pitch, min_points=min_line_points, inlier_px=line_inlier_px
+            )
+            if refine_with_lines
+            else None
+        )
         self._history: deque[np.ndarray] = deque(maxlen=smoothing_window)
         # The keypoint fits' average, and the matrix returned (refined or not).
         self._keypoint_matrix: np.ndarray | None = None
@@ -183,38 +164,11 @@ class HomographyEstimator:
                 previous = None
         self.matrix = self._keypoint_matrix
         self.line_fit = None
-        if self.refine_with_lines and self.matrix is not None:
-            self._refine(frame, previous, boxes)
+        if self._refiner is not None and self.matrix is not None:
+            refined = self._refiner.refine(frame, (previous, self.matrix), boxes)
+            if refined is not None:
+                self.matrix, self.line_fit = refined
         return self.matrix
-
-    def _refine(
-        self, frame: np.ndarray, previous: np.ndarray | None, boxes: np.ndarray | None
-    ) -> None:
-        """Replace :attr:`matrix` with the better line fit from ``previous`` or from it."""
-        from tactifoot_vision.pitch.lines import line_masks, refine_homography
-
-        line, seen = line_masks(frame, boxes)
-        best = None
-        for start in (previous, self.matrix):
-            if start is None:
-                continue
-            refined = refine_homography(
-                start,
-                self._model_points,
-                line,
-                seen,
-                min_points=self.min_line_points,
-                inlier_px=self.line_inlier_px,
-            )
-            if refined is not None and (
-                best is None or refined[1].inlier_share > best[1].inlier_share
-            ):
-                best = refined
-            # A fit this good from the previous frame needs no second try.
-            if best is not None and best[1].inlier_share > _GOOD_INLIER_SHARE:
-                break
-        if best is not None:
-            self.matrix, self.line_fit = best
 
     def _fit(self, keypoints: sv.KeyPoints | None) -> np.ndarray | None:
         self.used_indices = None
