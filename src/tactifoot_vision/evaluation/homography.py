@@ -1,0 +1,187 @@
+"""Pitch position error in metres of a pipeline result's homographies against a labelled clip."""
+
+import logging
+
+import numpy as np
+import pandas as pd
+
+from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
+from tactifoot_vision.evaluation.metrics import HomographyMetrics
+from tactifoot_vision.pipeline.postprocess import metres_per_unit
+from tactifoot_vision.pipeline.result import PipelineResult
+from tactifoot_vision.pitch.homography import project_points
+from tactifoot_vision.pitch.pitch import SoccerPitch
+
+logger = logging.getLogger(__name__)
+
+_GRID = (22, 15)  # points along the length and across: 5 m apart along 105 m
+_THRESHOLDS = (1, 2, 5)  # metres
+_COLUMNS = [
+    "median_error_m", "mean_error_m", "p90_error_m",
+    *(f"under_{t}m" for t in _THRESHOLDS), "jitter_m", "frames",
+]  # fmt: skip
+
+
+def evaluate_homography(
+    result: PipelineResult, clip: LabelledClip
+) -> HomographyMetrics:
+    """Pitch position error in metres of ``result``'s homographies against ``clip``'s calibration.
+
+    Every processed frame the clip has a calibration for is scored: the
+    pitch's landmarks and a fixed grid of pitch points that the true
+    homography shows inside the frame are mapped to their pixels, and the
+    run's homography maps those pixels back to the pitch. A frame's error is
+    the mean distance between the two, in metres: pitch units are scaled to a
+    105 x 68 m pitch, so a ``SoccerPitch(120, 80)`` run is scored like any
+    other. A frame without a homography counts against ``availability``, not
+    as an error. ``jitter_m`` is the mean change of each point's error vector
+    between consecutive processed frames, so a constant offset has none.
+
+    Args:
+        result: a run on the clip's video, with its frame indices.
+        clip: the truth; it must carry calibration, frame -> pitch
+            homographies in the units of ``result.pitch``.
+    """
+    if Truth.CALIBRATION not in clip.truth:
+        raise ValueError(
+            f"Labelled clip {clip.name} has no calibration; "
+            "evaluate_homography needs a clip with calibration"
+        )
+    pitch = result.pitch
+    point_sets = {"landmarks": pitch.vertices.astype(float), "grid": _grid(pitch)}
+    frame_size = (clip.width, clip.height)
+    # Per point set, the error vectors of each processed frame with truth
+    # (None without a homography); consecutive entries are consecutive frames.
+    errors: dict[str, list[np.ndarray | None]] = {name: [] for name in point_sets}
+    available = 0
+    for frame in result.frames:
+        try:
+            truth = clip.frame(frame.index).homography
+        except IndexError:
+            raise ValueError(
+                f"Processed frame {frame.index} is not in labelled clip {clip.name}; "
+                "run the pipeline on the clip's video, within its frames"
+            ) from None
+        if truth is None:
+            continue
+        available += frame.homography is not None
+        for name, points in point_sets.items():
+            errors[name].append(
+                None
+                if frame.homography is None
+                else _errors(points, truth, frame.homography, frame_size, pitch)
+            )
+    num_frames = len(errors["grid"])
+    if num_frames == 0:
+        raise ValueError(
+            f"No processed frame of {clip.name} has a calibration; "
+            "run the pipeline on its calibrated frames"
+        )
+
+    per_points = pd.DataFrame(
+        [_summary(errors[name]) for name in point_sets],
+        index=pd.Index(list(point_sets), name="points"),
+        columns=_COLUMNS,
+    ).astype({"frames": int})
+    grid = per_points.loc["grid"]
+    metrics = HomographyMetrics(
+        median_error_m=float(grid["median_error_m"]),
+        mean_error_m=float(grid["mean_error_m"]),
+        p90_error_m=float(grid["p90_error_m"]),
+        under_1m=float(grid["under_1m"]),
+        under_2m=float(grid["under_2m"]),
+        under_5m=float(grid["under_5m"]),
+        availability=available / num_frames,
+        jitter_m=float(grid["jitter_m"]),
+        per_points=per_points,
+        truth=Truth.CALIBRATION,
+        num_frames=num_frames,
+    )
+    logger.info(
+        "Homography on %s (%d frames, %s truth): median error %.2f m, "
+        "p90 %.2f m, available %.0f%%",
+        clip.name,
+        num_frames,
+        metrics.truth,
+        metrics.median_error_m,
+        metrics.p90_error_m,
+        100 * metrics.availability,
+    )
+    return metrics
+
+
+def _grid(pitch: SoccerPitch) -> np.ndarray:
+    """The fixed grid of pitch points, edges included, in pitch units."""
+    x, y = np.meshgrid(
+        np.linspace(0, pitch.length, _GRID[0]), np.linspace(0, pitch.width, _GRID[1])
+    )
+    return np.column_stack([x.ravel(), y.ravel()])
+
+
+def _errors(
+    points: np.ndarray,
+    truth: np.ndarray,
+    predicted: np.ndarray,
+    frame_size: tuple[int, int],
+    pitch: SoccerPitch,
+) -> np.ndarray:
+    """``(N, 2)`` predicted minus true pitch position of each point, in metres.
+
+    NaN for a point the frame does not show, infinite for one whose pixel the
+    predicted homography puts beyond its horizon.
+    """
+    width, height = frame_size
+    centre = (width / 2, height / 2)
+    (front,), _ = project_points(np.array([centre]), truth, centre)
+    pixels, in_front = project_points(points, np.linalg.inv(truth), tuple(front))
+    shown = (
+        in_front
+        & (pixels[:, 0] >= 0)
+        & (pixels[:, 0] <= width)
+        & (pixels[:, 1] >= 0)
+        & (pixels[:, 1] <= height)
+    )
+    projected, valid = project_points(pixels[shown], predicted, centre)
+    errors = np.full(points.shape, np.nan)
+    errors[shown] = np.where(
+        valid[:, None], (projected - points[shown]) * metres_per_unit(pitch), np.inf
+    )
+    return errors
+
+
+def _summary(frames: list[np.ndarray | None]) -> list[float]:
+    """The ``_COLUMNS`` of one point set from its per-frame error vectors."""
+    # A frame is scored when it has a homography and shows at least one point.
+    scored = [e for e in frames if e is not None and not np.isnan(e).all()]
+    frame_errors = np.array([np.nanmean(np.linalg.norm(e, axis=1)) for e in scored])
+    if len(frame_errors) == 0:
+        return [np.nan] * (len(_COLUMNS) - 1) + [0]
+    changes = [
+        _change(previous, current)
+        for previous, current in zip(frames, frames[1:], strict=False)
+        if previous is not None and current is not None
+    ]
+    changes = [c for c in changes if not np.isnan(c)]
+    return [
+        _percentile(frame_errors, 50),
+        float(frame_errors.mean()),
+        _percentile(frame_errors, 90),
+        *(float((frame_errors < t).mean()) for t in _THRESHOLDS),
+        float(np.mean(changes)) if changes else np.nan,
+        len(frame_errors),
+    ]
+
+
+def _change(previous: np.ndarray, current: np.ndarray) -> float:
+    """Mean distance between two frames' error vectors at the points with a finite error in both."""
+    both = np.isfinite(previous).all(axis=1) & np.isfinite(current).all(axis=1)
+    if not both.any():
+        return np.nan
+    return float(np.linalg.norm(current[both] - previous[both], axis=1).mean())
+
+
+def _percentile(errors: np.ndarray, q: float) -> float:
+    """``np.percentile``, infinite where it would interpolate towards an infinite error."""
+    with np.errstate(invalid="ignore"):
+        value = float(np.percentile(errors, q))
+    return np.inf if np.isnan(value) else value

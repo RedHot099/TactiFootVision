@@ -40,7 +40,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `compare_with_statsbomb` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` → `HomographyMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -73,7 +73,7 @@ src/tactifoot_vision/
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
-                      statsbomb.py, __init__ (evaluate dispatcher)
+                      homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
@@ -316,6 +316,19 @@ configs/              example run files
   numbers of one clip holding them all with their identities kept apart.
   Every clip is scored on the classes of all the clips, so predictions of a
   class a clip has no labels of are false positives there.
+* `evaluate_homography(result, clip)` → `HomographyMetrics`: the pitch
+  position error in metres of a `PipelineResult`'s homographies against the
+  clip's calibration (`truth` names it), on the processed frames the clip
+  calibrates. The pitch's landmarks and a fixed 22 x 15 grid over the pitch
+  that the true homography shows inside the frame go to their pixels and back
+  to the pitch through the run's homography; a frame's error is the mean
+  distance, with pitch units scaled to a 105 x 68 m pitch (`metres_per_unit`)
+  and the calibration taken in `result.pitch` units. A point put beyond the
+  run's horizon is an infinite error. Median, mean and p90 over the frames
+  with a homography, the share of them under 1, 2 and 5 m, and `jitter_m`
+  (the mean change of each point's error between consecutive processed
+  frames) are given on the grid and, in `per_points`, on both point sets.
+  A frame without a homography lowers `availability` and is not an error.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

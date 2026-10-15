@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from tactifoot_vision.data.labelled_clip import Truth
+
 
 @dataclass
 class DetectionMetrics:
@@ -88,4 +90,51 @@ class TrackingMetrics:
             "id_switches": self.id_switches,
             "false_positives": self.false_positives,
             "false_negatives": self.false_negatives,
+        }
+
+
+@dataclass
+class HomographyMetrics:
+    """Pitch position error of a run's frame -> pitch homographies, in metres.
+
+    Each scored frame's error is the mean distance, on the pitch, between
+    pitch points in view and where the run's homography puts the pixels that
+    show them; a point the homography puts beyond its horizon is an infinite
+    error. The points are the pitch's landmarks and a fixed grid over the
+    pitch, so errors far from the landmarks are not hidden. ``median_error_m``,
+    ``mean_error_m``, ``p90_error_m`` and ``under_1m``, ``under_2m``,
+    ``under_5m`` (the share of scored frames whose error is below that) are
+    over the frames with a homography; ``availability`` is their share of the
+    frames with truth, so a missing homography lowers it and is not an error.
+    ``jitter_m`` is the mean frame-to-frame change of the error at each point,
+    between consecutive processed frames. The top-level numbers are on the
+    grid; ``per_points`` is indexed by ``landmarks`` and ``grid`` with columns
+    ``median_error_m``, ``mean_error_m``, ``p90_error_m``, ``under_1m``,
+    ``under_2m``, ``under_5m``, ``jitter_m`` and ``frames`` (frames scored on
+    those points). ``truth`` names the truth the errors are measured against.
+    """
+
+    median_error_m: float
+    mean_error_m: float
+    p90_error_m: float
+    under_1m: float
+    under_2m: float
+    under_5m: float
+    availability: float  # share of the frames with truth that have a homography
+    jitter_m: float
+    per_points: pd.DataFrame
+    truth: Truth
+    num_frames: int  # processed frames with truth
+
+    def as_dict(self) -> dict[str, float | str]:
+        return {
+            "median_error_m": self.median_error_m,
+            "mean_error_m": self.mean_error_m,
+            "p90_error_m": self.p90_error_m,
+            "under_1m": self.under_1m,
+            "under_2m": self.under_2m,
+            "under_5m": self.under_5m,
+            "availability": self.availability,
+            "jitter_m": self.jitter_m,
+            "truth": self.truth.value,
         }

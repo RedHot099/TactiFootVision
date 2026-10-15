@@ -1,4 +1,4 @@
-"""Backend-independent evaluation: detection mAP, keypoint error, tracking and StatsBomb comparison."""
+"""Backend-independent evaluation: detection mAP, keypoint error, tracking, homography error and StatsBomb comparison."""
 
 import inspect
 from typing import Any
@@ -6,9 +6,11 @@ from typing import Any
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
 from tactifoot_vision.evaluation.detection import evaluate_detector
+from tactifoot_vision.evaluation.homography import evaluate_homography
 from tactifoot_vision.evaluation.keypoints import evaluate_keypoints
 from tactifoot_vision.evaluation.metrics import (
     DetectionMetrics,
+    HomographyMetrics,
     KeypointMetrics,
     TrackingMetrics,
 )
@@ -50,11 +52,13 @@ def evaluate(
 
 __all__ = [
     "DetectionMetrics",
+    "HomographyMetrics",
     "KeypointMetrics",
     "TrackingMetrics",
     "compare_with_statsbomb",
     "evaluate",
     "evaluate_detector",
+    "evaluate_homography",
     "evaluate_keypoints",
     "evaluate_tracking",
     "evaluate_tracking_clips",
