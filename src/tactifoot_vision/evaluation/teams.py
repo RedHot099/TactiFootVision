@@ -14,6 +14,10 @@ from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
 
 logger = logging.getLogger(__name__)
 
+# The mapped team of a run team id with no true team: true team ids are
+# NO_TEAM or above, so it is never right.
+_UNMAPPED = NO_TEAM - 1
+
 
 class _Matches(NamedTuple):
     """The true people matched to a detection over the scored frames, one entry each."""
@@ -47,13 +51,10 @@ def evaluate_teams(
     """
     matches = _matched_people(result, clip, iou_threshold)
     mapping = _team_mapping(matches.predicted, matches.true)
-    right = np.array(
-        [
-            (NO_TEAM if p == NO_TEAM else mapping.get(int(p))) == t
-            for p, t in zip(matches.predicted, matches.true, strict=True)
-        ],
-        dtype=bool,
-    )
+    mapped = np.where(matches.predicted == NO_TEAM, NO_TEAM, _UNMAPPED)
+    for predicted, true in mapping.items():
+        mapped[matches.predicted == predicted] = true
+    right = mapped == matches.true
     matched = len(right)
     metrics = TeamMetrics(
         accuracy=float(right.mean()) if matched else float("nan"),
@@ -114,6 +115,12 @@ def _matched_people(
             raise ValueError(
                 f"Labelled clip {clip.name} has no team_id in frame "
                 f"{frame.index}; a clip with teams gives every person one"
+            )
+        if len(truth) and np.min(truth.data["team_id"]) < NO_TEAM:
+            raise ValueError(
+                f"Labelled clip {clip.name} has a team_id below NO_TEAM "
+                f"({NO_TEAM}) in frame {frame.index}; true teams are ids from 0, "
+                "or NO_TEAM for people without a team"
             )
         instances += len(truth)
         rows, cols = _match(truth, detected, iou_threshold)

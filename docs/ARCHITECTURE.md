@@ -371,7 +371,8 @@ configs/              example run files
   referee) and wrong for a player. `accuracy` is per matched detection,
   `track_accuracy` the per-detection share averaged over the run's tracks
   (`tracker_id`), each counting once. The clip must carry boxes and teams,
-  and people without a `team_id`, in the result or the clip, are a
+  and people without a `team_id`, in the result or the clip, or a true
+  `team_id` below `NO_TEAM` (kept free for a future "unknown" marker) are a
   `ValueError`.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)

@@ -259,3 +259,13 @@ def test_a_clip_frame_without_team_ids_is_an_error():
 
     with pytest.raises(ValueError, match="fixture has no team_id in frame 1"):
         evaluate_teams(_result(TRUTH), clip)
+
+
+def test_a_true_team_id_below_no_team_is_an_error():
+    clip = _clip(TRUTH)
+    clip.frame(1).detections.data["team_id"][0] = NO_TEAM - 1
+
+    with pytest.raises(
+        ValueError, match="fixture has a team_id below NO_TEAM .* frame 1"
+    ):
+        evaluate_teams(_result(TRUTH), clip)
