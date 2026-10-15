@@ -5,9 +5,9 @@ returns a new result and never changes its input (the new result may share
 the parts it leaves unchanged). Register it by name::
 
     @POSTPROCESSES.register("join_tracks")
-    def join_tracks(result: PipelineResult, max_gap: int = 25) -> PipelineResult: ...
+    def join_tracks(result: PipelineResult, max_gap: float = 1.6) -> PipelineResult: ...
 
-    joined = join_tracks(result, max_gap=40)           # notebook mode
+    joined = join_tracks(result, max_gap=2.0)          # notebook mode
     joined = POSTPROCESSES.get("join_tracks")(result)  # by name, as run files do
 
 Registering wraps the function, keeping its signature, so that every call
@@ -15,7 +15,8 @@ appends an :class:`AppliedPostProcess` (the name and every option, defaults
 included) to the returned result's ``postprocesses``. When a registered
 post-process calls another, only the outer call is recorded. A post-process that
 moves positions or changes identities keeps the result consistent with
-:func:`reproject` and :func:`remap_track_ids`.
+:func:`reproject` and :func:`remap_track_ids`, and measures in metres with
+:func:`metres_per_unit`.
 """
 
 import copy
@@ -34,7 +35,10 @@ from tactifoot_vision.pipeline.result import (
     PipelineResult,
     project_detections,
 )
+from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.registry import Registry
+
+_STD_SIZE = np.array([105.0, 68.0])  # metres of the pitch every pitch unit maps to
 
 
 class _PostProcessRegistry(Registry[PipelineResult]):
@@ -80,6 +84,15 @@ def _options(
         else:
             options[key] = value
     return options
+
+
+def metres_per_unit(pitch: SoccerPitch) -> np.ndarray:
+    """Metres per pitch unit along the length and the width.
+
+    A pitch of ``length x width`` units is taken as a standard 105 x 68 m
+    pitch, as :class:`~tactifoot_vision.pitch.SoccerPitch` scales its markings.
+    """
+    return _STD_SIZE / [pitch.length, pitch.width]
 
 
 def reproject(

@@ -77,7 +77,7 @@ src/tactifoot_vision/
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
-                      ball.py (track_ball)
+                      ball.py (track_ball), tracks.py (join_tracks)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -122,8 +122,9 @@ configs/              example run files
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
-* `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`
+* `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`
+* `pipeline/tracks.py`: `join_tracks`
 
 ## Module specifications
 
@@ -334,7 +335,8 @@ configs/              example run files
   candidates included) as the pipeline does, without choosing the ball
   again (run `track_ball` after it), and
   `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
-  in `data["original_tracker_id"]`.
+  in `data["original_tracker_id"]`. `metres_per_unit(pitch)` scales pitch
+  units to metres of a 105 x 68 m pitch.
 * `track_ball(result, ...)` (`pipeline/ball.py`, registered as
   `track_ball`) chooses one ball per frame among the candidates: it drops
   candidates that are weak, static, on a painted spot of `result.pitch` or
@@ -347,6 +349,16 @@ configs/              example run files
   pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
   Frames with no ball chosen get an empty `ball`. Positions are on the pitch
   plane; an airborne ball's is displaced (no ball height).
+* `join_tracks(result, max_gap, max_speed, slack, same_team)`
+  (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
+  player tracks: it links each track end to a later track start at most
+  `max_gap` s later, within `slack + max_speed * dt` m and, with
+  `same_team`, of the same `team_id` (`NO_TEAM` joins only `NO_TEAM`),
+  cheapest first (distance plus 1.25 m per second of gap, one successor and
+  one predecessor per track). A chain takes its first track's id through
+  `remap_track_ids`, so the tracker's id stays in
+  `data["original_tracker_id"]`. No rows are added: tables keep measured
+  positions only. Metres and seconds, as in `track_ball`.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
@@ -417,7 +429,7 @@ Backend options sit flat next to `type`:
 detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
-postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
+postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
@@ -448,9 +460,8 @@ postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
   `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
 * **List overrides**: a number in the key indexes a list, and the index one
-  past the end appends. (`join_tracks` in these examples comes with a later
-  feature.) With `postprocess:
-  [{type: join_tracks}]`, `postprocess.0.max_gap=30` edits the entry,
+  past the end appends. With `postprocess: [{type: join_tracks}]`,
+  `postprocess.0.max_gap=1.2` edits the entry,
   `postprocess.1.type=track_ball` (or `postprocess.1={type: track_ball}`)
   appends one, `postprocess.0={type: ...}` replaces it, and `postprocess=[]`
   (or `null`) drops them all for this run. A missing or `null` list is created

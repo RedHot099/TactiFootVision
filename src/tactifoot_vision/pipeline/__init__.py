@@ -14,6 +14,7 @@ from tactifoot_vision.pipeline.result import (
     ObjectMasks,
     PipelineResult,
 )
+from tactifoot_vision.pipeline.tracks import join_tracks
 
 __all__ = [
     "NO_TEAM",
@@ -23,6 +24,7 @@ __all__ = [
     "ObjectMasks",
     "Pipeline",
     "PipelineResult",
+    "join_tracks",
     "remap_track_ids",
     "reproject",
     "track_ball",

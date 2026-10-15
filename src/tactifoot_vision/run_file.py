@@ -8,7 +8,7 @@ that callable's keyword arguments::
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
-    postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
+    postprocess: [{type: join_tracks, max_gap: 2.0}]
 
 ==============  ==========================================================
 ``detector``    ``tv.models.load_model(type, **rest)`` (required)
@@ -80,7 +80,7 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> "RunFile":
     unknown. Override values are YAML (``null``, ``true``, ``0.3``, ``[a, b]``);
     paths in them starting with ``./`` or ``../`` are relative to the current
     working directory. A number in the key indexes a list, and the index one
-    past the end appends: ``postprocess.0.max_gap=30`` edits the first entry,
+    past the end appends: ``postprocess.0.max_gap=1.2`` edits the first entry,
     ``postprocess.1.type=join_tracks`` adds a second.
     """
     path = Path(path)
