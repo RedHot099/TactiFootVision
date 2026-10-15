@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` → `LabelledClip`, `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -65,7 +65,8 @@ src/tactifoot_vision/
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
-                      yolo.py, coco.py (format IO), video.py, statsbomb.py
+                      yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
+                      load_labelled_clip), soccernet.py, video.py, statsbomb.py
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
@@ -115,6 +116,7 @@ configs/              example run files
 
 * `data/annotations.py`: `Task`, `Annotations` (pixel boxes, class ids, keypoints, flip_idx)
 * `data/dataset.py`: `Sample`, `Dataset` (splits `train`/`valid`/`test`)
+* `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
@@ -174,6 +176,28 @@ configs/              example run files
   that is neither a box nor a polygon (an odd number of values) fails with
   its file and line, and a `flip_idx` without one entry per keypoint fails
   when the dataset is loaded or constructed.
+* `load_labelled_clip(path)` → `LabelledClip`: a continuous clip with
+  per-frame truth, read from a folder whose layout it detects. A `Dataset`
+  holds independent images; a labelled clip keeps its frames in order.
+  `clip.frames` (also `iter(clip)`) holds one `LabelledFrame` per frame of
+  the clip, unlabelled frames included; `clip.frame(index)` reads one.
+  A `LabelledFrame` is shaped like a `FrameResult`: `index` is the
+  `FrameResult.index` of that frame when the pipeline runs on the clip,
+  `detections` holds the people and `ball` the ball (`sv.Detections` with
+  `xyxy` pixels, the source's `tracker_id` and `data["class_name"]` in the
+  package vocabulary: `player`, `goalkeeper`, `referee`, `ball`), and
+  `homography` the frame → pitch calibration when known. `clip.truth` is the
+  set of `Truth` kinds the source provides (`identities`, `boxes`, `ball`,
+  `pitch_positions`, `calibration`), so a consumer can refuse a clip that
+  lacks one. The clip also carries `name`, `fps`, `width`, `height` and
+  `video_path`, which the frames are read from in place: readers never copy
+  or re-encode a frame. A folder in no known layout, or missing a file of
+  its layout, is a `ValueError` naming the path and the expected layout.
+  * SoccerNet Tracking (`gt/gt.txt`, `gameinfo.ini`, `seqinfo.ini`): MOT
+    boxes with track ids, classes from the `gameinfo.ini` tracklet labels
+    (`other` tracklets are left out). MOT frame `n` is `img1/<n:06d>.jpg`,
+    frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
+    `img1/%06d.jpg`. Truth: identities, boxes, ball.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
