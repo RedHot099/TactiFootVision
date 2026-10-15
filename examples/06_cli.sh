@@ -12,7 +12,8 @@ uv run tactifoot info
 # --set overrides one run file value for this run (the value is YAML).
 # In Python: tv.run_file.load(path, overrides).run(video, output_dir, start=..., end=...).
 # render.annotator.trail_seconds draws the ball's last second in the video,
-# render.radar.trail_seconds each person's last two seconds on the radar.
+# render.radar.trail_seconds each person's last two seconds on the radar;
+# with teams=null every tail is in the default colour.
 uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/run" \
     --start 250 --end 300 \
     --set teams=null --set render.annotator.style=video_game \

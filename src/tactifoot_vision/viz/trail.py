@@ -11,6 +11,9 @@ from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
 
 # Each segment between frames is cut into pieces of at most _PIECE_PX pixels,
 # so the fade looks continuous; at most _PIECES, so long segments stay cheap.
+# Segments shorter than _PIECES * _PIECE_PX get fewer pieces, so the ball
+# trail's anti-aliased pixels there differ slightly from always cutting 8
+# (the fade is the same).
 _PIECES = 8
 _PIECE_PX = 4.0
 
