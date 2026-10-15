@@ -72,7 +72,8 @@ src/tactifoot_vision/
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
-  evaluation/         detection.py, keypoints.py, tracking.py, statsbomb.py, __init__ (evaluate dispatcher)
+  evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
+                      statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
@@ -293,8 +294,8 @@ configs/              example run files
   `PipelineResult` is accepted too and goes through `to_freeze_frames(period)`,
   like the exported CSV, so both routes agree.
 * `evaluate` refuses options its evaluator does not take.
-* `evaluate_tracking(result, clip, iou_threshold=0.5)` → `TrackingMetrics`:
-  IDF1, MOTA, ID switches, false positives and false negatives of a
+* `evaluate_tracking(result, clip, iou_threshold=0.5, hota=True)` → `TrackingMetrics`:
+  HOTA (with DetA and AssA), IDF1, MOTA, ID switches, false positives and false negatives of a
   `PipelineResult` against a `LabelledClip`, per class (`per_class`, the
   clip's class names) and overall (the class counts added up). Only the
   processed frames are scored, so a strided run is not charged for skipped
@@ -302,7 +303,13 @@ configs/              example run files
   post-process; an untracked ball is one identity. Definitions follow
   TrackEval: frame-by-frame Hungarian matching on IoU that keeps last frame's
   matches (CLEAR MOT), and a one-to-one pairing of identities over the run
-  (IDF1).
+  (IDF1). HOTA is computed by TrackEval itself (`evaluation/hota.py`), from
+  the optional `eval` extra (`uv sync --extra eval`), imported only when
+  HOTA is asked for; without it `evaluate_tracking` raises an `ImportError`
+  that says how to install it or to pass `hota=False` (HOTA is then NaN).
+  The overall HOTA adds up the detections of every class, like TrackEval's
+  detection-averaged combination. A test checks the native IDF1 and MOTA
+  against TrackEval; it is skipped without the extra.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

@@ -11,6 +11,7 @@ import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
+from tactifoot_vision.evaluation.hota import NO_HOTA, hota_by_class
 from tactifoot_vision.evaluation.metrics import TrackingMetrics
 from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 
@@ -23,6 +24,7 @@ _EPS = np.finfo(float).eps
 _COLUMNS = [
     "idf1", "mota", "id_switches", "false_positives", "false_negatives", "instances",
 ]  # fmt: skip
+_HOTA_COLUMNS = ["hota", "deta", "assa"]
 
 
 class _Objects(NamedTuple):
@@ -70,9 +72,12 @@ class _Counts:
 
 
 def evaluate_tracking(
-    result: PipelineResult, clip: LabelledClip, iou_threshold: float = 0.5
+    result: PipelineResult,
+    clip: LabelledClip,
+    iou_threshold: float = 0.5,
+    hota: bool = True,
 ) -> TrackingMetrics:
-    """IDF1, MOTA, ID switches, false positives and false negatives of ``result`` on ``clip``.
+    """HOTA, IDF1, MOTA, ID switches, false positives and false negatives of ``result`` on ``clip``.
 
     Only the frames ``result`` processed are scored, so a run with ``stride``
     or a frame range is not charged with misses in frames it skipped. Each
@@ -84,11 +89,15 @@ def evaluate_tracking(
     box when their IoU is at least ``iou_threshold``, frame by frame with
     Hungarian matching on IoU that keeps last frame's matches (CLEAR MOT),
     and over the whole run with a one-to-one pairing of identities (IDF1).
+    HOTA, DetA and AssA come from TrackEval itself, on the same matching by
+    class, averaged over its own IoU thresholds rather than ``iou_threshold``.
 
     Args:
         result: a tracked run on the clip's video, with its frame indices.
         clip: the truth; it must carry identities and boxes.
         iou_threshold: the least IoU at which a box matches a true box.
+        hota: compute HOTA, which needs the ``eval`` extra (TrackEval); with
+            ``False`` the HOTA numbers are NaN and TrackEval is not needed.
     """
     missing = {Truth.IDENTITIES, Truth.BOXES} - clip.truth
     if missing:
@@ -126,21 +135,33 @@ def evaluate_tracking(
             clip.name,
             ", ".join(ignored),
         )
+    truth_by_class = {
+        name: [t.get(name, _EMPTY) for t in truth] for name in class_names
+    }
+    predicted_by_class = {
+        name: [p.get(name, _EMPTY) for p in predicted] for name in class_names
+    }
     counts = {
-        name: _count(
-            [t.get(name, _EMPTY) for t in truth],
-            [p.get(name, _EMPTY) for p in predicted],
-            iou_threshold,
-        )
+        name: _count(truth_by_class[name], predicted_by_class[name], iou_threshold)
         for name in class_names
     }
+    if hota:
+        hota_per_class, overall = hota_by_class(truth_by_class, predicted_by_class)
+    else:
+        hota_per_class, overall = dict.fromkeys(class_names, NO_HOTA), NO_HOTA
     total = sum(counts.values(), _Counts())
     per_class = pd.DataFrame(
-        [[getattr(c, column) for column in _COLUMNS] for c in counts.values()],
+        [
+            [*hota_per_class[name], *(getattr(c, column) for column in _COLUMNS)]
+            for name, c in counts.items()
+        ],
         index=pd.Index(list(counts), name="class_name"),
-        columns=_COLUMNS,
+        columns=_HOTA_COLUMNS + _COLUMNS,
     )
     metrics = TrackingMetrics(
+        hota=overall.hota,
+        deta=overall.deta,
+        assa=overall.assa,
         idf1=total.idf1,
         mota=total.mota,
         id_switches=total.id_switches,
@@ -150,9 +171,10 @@ def evaluate_tracking(
         num_frames=len(result.frames),
     )
     logger.info(
-        "Tracking on %s (%d frames): IDF1 %.4f, MOTA %.4f, %d ID switches",
+        "Tracking on %s (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, %d ID switches",
         clip.name,
         metrics.num_frames,
+        metrics.hota,
         metrics.idf1,
         metrics.mota,
         metrics.id_switches,

@@ -50,18 +50,24 @@ class KeypointMetrics:
 
 @dataclass
 class TrackingMetrics:
-    """CLEAR MOT and identity metrics of a tracking run on one labelled clip.
+    """HOTA, CLEAR MOT and identity metrics of a tracking run on one labelled clip.
 
-    ``mota`` is ``(matched boxes - false_positives - id_switches) /
+    ``hota`` is TrackEval's HOTA, the geometric mean of ``deta`` (detection
+    accuracy) and ``assa`` (association accuracy), each averaged over IoU
+    thresholds from 0.05 to 0.95; all three are NaN when evaluated with
+    ``hota=False``.     ``mota`` is ``(matched boxes - false_positives - id_switches) /
     max(1, true boxes)`` as in TrackEval: ``1 - (false_negatives +
     false_positives + id_switches) / true boxes``, and ``-false_positives``
     for a class without true boxes in the scored frames. ``idf1`` is the F1
     score of the boxes matched to the true identity of their track. The overall numbers add up the counts of every
-    class. ``per_class`` is indexed by class name with columns ``idf1``,
-    ``mota``, ``id_switches``, ``false_positives``, ``false_negatives`` and
+    class. ``per_class`` is indexed by class name with columns ``hota``,
+    ``deta``, ``assa``, ``idf1``, ``mota``, ``id_switches``, ``false_positives``, ``false_negatives`` and
     ``instances`` (true boxes in the scored frames).
     """
 
+    hota: float
+    deta: float
+    assa: float
     idf1: float
     mota: float
     id_switches: int
@@ -72,6 +78,9 @@ class TrackingMetrics:
 
     def as_dict(self) -> dict[str, float]:
         return {
+            "hota": self.hota,
+            "deta": self.deta,
+            "assa": self.assa,
             "idf1": self.idf1,
             "mota": self.mota,
             "id_switches": self.id_switches,

@@ -617,7 +617,7 @@ def _labelled_clip(video: Path) -> LabelledClip:
 
 def test_a_strided_run_is_scored_on_its_processed_frames_only(video):
     result = _pipeline().run(video, stride=2, progress=False)
-    metrics = evaluate_tracking(result, _labelled_clip(video))
+    metrics = evaluate_tracking(result, _labelled_clip(video), hota=False)
     # The odd frames hold truth but were skipped: no misses there.
     assert metrics.num_frames == FRAMES // 2
     assert metrics.per_class.loc["player", "instances"] == 6 * FRAMES // 2
