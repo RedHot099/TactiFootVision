@@ -635,6 +635,22 @@ def test_render_video_writes_a_birds_eye_video(
     )  # fmt: skip
 
 
+def test_a_birds_eye_video_pads_an_odd_width(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    radar = viz.PitchRadar(width_px=261)
+    assert radar.size == (261, 186)  # an odd width, an even height
+    output = viz.render_video(
+        result, video, tmp_path / "top.mp4", radar=radar, birds_eye=True,
+        progress=False,
+    )  # fmt: skip
+    frames, _ = _read_all(output)
+    assert len(frames) == 5 and frames[0].shape == (186, 262, 3)
+    # The added column repeats the radar's last one.
+    expected = radar.draw(result[0], frame=_frame())
+    np.testing.assert_allclose(frames[0][:, -1], expected[:, -1], atol=40)
+
+
 def test_a_birds_eye_video_needs_the_radar(
     result: PipelineResult, video: Path, tmp_path: Path
 ) -> None:

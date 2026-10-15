@@ -140,13 +140,13 @@ def render_video(
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
-            if annotator is None and radar:  # the bird's-eye view
+            if birds_eye:  # check_render_options: there is a radar
                 image = radar.draw(frame_result, frame=frame)
                 image = cv2.copyMakeBorder(
                     image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
                     cv2.BORDER_REPLICATE,
                 )  # fmt: skip
-            elif annotator is not None:
+            else:
                 image = annotator.annotate(frame, frame_result)
                 if radar:
                     image = overlay(
@@ -188,8 +188,9 @@ def check_render_options(**options: Any) -> None:
     Takes any :func:`render_video` keyword arguments (a name it does not take
     is a ``ValueError``) and checks the values it knows: the overlay settings,
     ``fps``, and ``birds_eye`` with ``radar=False``. The others pass
-    unchecked, so a new ``render_video`` parameter needs no change here. A run file uses this to fail before the
-    first frame instead of after the whole run.
+    unchecked, so a new ``render_video`` parameter needs no change here. A
+    run file uses this to fail before the first frame instead of after the
+    whole run.
     """
     valid = inspect.signature(render_video).parameters
     unknown = [name for name in options if name not in valid]
