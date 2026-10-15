@@ -414,7 +414,8 @@ nothing (`PipelineResult.export` writes their tables).
   `cell_size` metres and tile the pitch exactly. `frames` is a position in
   `result.frames`, a slice or `None` (every frame); over several frames the
   control is the mean, leaving out frames without a positioned player in
-  each team. No such frame is a `ValueError`.
+  each team. No such frame is a `ValueError`. `SpaceControl` refuses a
+  control that is not a non-empty 2-D array of values in `[0, 1]`.
 
 ### Results visualisation (`tv.viz`)
 

@@ -13,13 +13,22 @@ Person = tuple[str, int, float]  # class name, team id, pitch x (NaN: no positio
 
 def _result(frames: list[list[Person]]) -> PipelineResult:
     """One frame per list of people; every pitch y is mid-pitch."""
-    return _placed([[(team, x, 34.0) for _, team, x in people] for people in frames])
+    return _build(
+        [[(name, team, x, 34.0) for name, team, x in people] for people in frames]
+    )
 
 
 def _placed(
     frames: list[list[tuple[int, float, float]]], pitch: SoccerPitch | None = None
 ) -> PipelineResult:
-    """One frame per list of ``(team id, pitch x, pitch y)`` people."""
+    """One frame per list of ``(team id, pitch x, pitch y)`` players."""
+    return _build([[("player", *p) for p in people] for people in frames], pitch)
+
+
+def _build(
+    frames: list[list[tuple[str, int, float, float]]], pitch: SoccerPitch | None = None
+) -> PipelineResult:
+    """One frame per list of ``(class name, team id, pitch x, pitch y)`` people."""
     results = []
     for index, people in enumerate(frames):
         n = len(people)
@@ -27,9 +36,9 @@ def _placed(
             xyxy=np.tile(np.float32([0, 0, 10, 20]), (n, 1)),
             tracker_id=np.arange(n),
             data={
-                "class_name": np.array(["player"] * n),
-                "team_id": np.array([team for team, _, _ in people], dtype=int),
-                "pitch_xy": np.array([[x, y] for _, x, y in people]).reshape(n, 2),
+                "class_name": np.array([name for name, _, _, _ in people]),
+                "team_id": np.array([team for _, team, _, _ in people], dtype=int),
+                "pitch_xy": np.array([[x, y] for *_, x, y in people]).reshape(n, 2),
             },
         )
         results.append(
@@ -200,3 +209,10 @@ def test_space_control_cell_size_and_smoothing_options():
         tv.analysis.space_control(result, cell_size=0)
     with pytest.raises(ValueError, match="smoothing must be >= 0"):
         tv.analysis.space_control(result, smoothing=-1)
+
+
+def test_space_control_grid_checks_its_values():
+    with pytest.raises(ValueError, match=r"non-empty \(rows, columns\).*\(105,\)"):
+        tv.analysis.SpaceControl(np.full(105, 0.5), SoccerPitch())
+    with pytest.raises(ValueError, match=r"in \[0, 1\]"):
+        tv.analysis.SpaceControl(np.full((68, 105), 1.5), SoccerPitch())

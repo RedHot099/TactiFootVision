@@ -248,10 +248,14 @@ class PitchRadar:
             raise ValueError(
                 "The space control covers a "
                 f"{space_control.pitch.length:g} x {space_control.pitch.width:g} "
-                f"pitch, the radar a {self.pitch.length:g} x {self.pitch.width:g} pitch"
+                f"pitch, the radar a {self.pitch.length:g} x {self.pitch.width:g} "
+                "pitch; compute it on a result with the radar's pitch"
             )
         if len(self.team_colors) < 2:
-            raise ValueError("Drawing space control needs two team colours")
+            raise ValueError(
+                "Drawing space control needs two team colours; give team_colors "
+                "a colour for team 0 and one for team 1"
+            )
         (left, top), (right, bottom) = (
             self.to_pixels([[0, 0], [self.pitch.length, self.pitch.width]])
             .round()

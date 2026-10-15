@@ -9,7 +9,7 @@ from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class SpaceControl:
     """Control of team 0 against team 1 over a grid of cells covering the pitch.
 
@@ -22,17 +22,25 @@ class SpaceControl:
     control: np.ndarray  # (rows, columns) float
     pitch: SoccerPitch
 
+    def __post_init__(self) -> None:
+        control = self.control
+        if control.ndim != 2 or not control.size:
+            raise ValueError(
+                f"control must be a non-empty (rows, columns) array, got shape "
+                f"{control.shape}"
+            )
+        if not ((control >= 0) & (control <= 1)).all():
+            raise ValueError("control values must be in [0, 1]")
+
     @property
     def x(self) -> np.ndarray:
         """Pitch ``x`` of each column's cell centres."""
-        n = self.control.shape[1]
-        return (np.arange(n) + 0.5) * self.pitch.length / n
+        return _centres(self.control.shape[1], self.pitch.length)
 
     @property
     def y(self) -> np.ndarray:
         """Pitch ``y`` of each row's cell centres."""
-        n = self.control.shape[0]
-        return (np.arange(n) + 0.5) * self.pitch.width / n
+        return _centres(self.control.shape[0], self.pitch.width)
 
 
 def space_control(
@@ -74,28 +82,44 @@ def space_control(
         max(1, round(metres / cell_size))
         for metres in scale * [pitch.length, pitch.width]
     )
-    grid = SpaceControl(np.empty((rows, columns)), pitch)
-    cells = np.stack(np.meshgrid(grid.x, grid.y), axis=-1) * scale  # metres
-    controls = []
+    cells = (
+        np.stack(
+            np.meshgrid(_centres(columns, pitch.length), _centres(rows, pitch.width)),
+            axis=-1,
+        )
+        * scale
+    )  # metres
+    total, counted = np.zeros((rows, columns)), 0
     for frame in selected:
         team_ids, xy = frame.team_ids, frame.pitch_xy * scale
         positioned = np.isfinite(xy).all(axis=1)
-        nearest = []
-        for team in (0, 1):
-            players = xy[positioned & (team_ids == team)]
-            if not len(players):
-                break
-            gaps = cells[:, :, None, :] - players
-            nearest.append(np.hypot(gaps[..., 0], gaps[..., 1]).min(axis=-1))
-        else:
-            controls.append(_control(nearest[1] - nearest[0], smoothing))
-    if not controls:
+        teams = [xy[positioned & (team_ids == team)] for team in (0, 1)]
+        if not all(len(players) for players in teams):
+            continue
+        nearest = [_nearest(cells, players) for players in teams]
+        total += _control(nearest[1] - nearest[0], smoothing)
+        counted += 1
+    if not counted:
         raise ValueError(
             "Space control needs positioned players of both teams 0 and 1 in a "
             f"frame; none in the {len(selected)} frame"
-            f"{'' if len(selected) == 1 else 's'} selected"
+            f"{'' if len(selected) == 1 else 's'} selected. Select frames where "
+            "both teams have pitch positions"
         )
-    return SpaceControl(np.mean(controls, axis=0), pitch)
+    return SpaceControl(total / counted, pitch)
+
+
+def _centres(n: int, size: float) -> np.ndarray:
+    """Centres of ``n`` equal cells tiling ``[0, size]``."""
+    return (np.arange(n) + 0.5) * size / n
+
+
+def _nearest(cells: np.ndarray, players: np.ndarray) -> np.ndarray:
+    """Distance from each cell to the nearest of ``players``, one player at a time."""
+    nearest = np.full(cells.shape[:2], np.inf)
+    for x, y in players:
+        np.minimum(nearest, np.hypot(cells[..., 0] - x, cells[..., 1] - y), out=nearest)
+    return nearest
 
 
 def _control(lead: np.ndarray, smoothing: float) -> np.ndarray:
