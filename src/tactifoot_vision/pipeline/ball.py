@@ -64,6 +64,14 @@ class _Options:
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
 
+    def elapsed(self, dt: float) -> float:
+        """Seconds the ball counts as moving: past ``max_gap`` it is taken as stopped."""
+        return min(dt, self.max_gap)
+
+    def radius(self, dt: float) -> float:
+        """Gate radius in metres ``dt`` seconds after the last ball."""
+        return self.gate + self.gate_speed * self.elapsed(dt)
+
 
 @POSTPROCESSES.register("track_ball")
 def track_ball(
@@ -97,7 +105,7 @@ def track_ball(
        at constant velocity, and the candidate nearest the prediction (a
        more confident one may be slightly farther) is taken if it lies
        within ``gate + gate_speed * dt`` m, ``dt`` being the time since the
-       last ball, at most ``max_gap``.
+       last ball, at most ``max_gap`` (the prediction stops there too).
     3. With nothing in the gate, the most confident candidate of at least
        ``restart_confidence`` (re)starts the track, once the ball has been
        missing for more than ``restart_after`` s (or at the first ball).
@@ -147,11 +155,16 @@ def track_ball(
     )
     frames = result.frames
     times = np.array([f.timestamp for f in frames], dtype=float)
+    if np.any(np.diff(times) <= 0):
+        raise ValueError("track_ball needs frames in order of increasing timestamps")
     scale = _STD_SIZE / [result.pitch.length, result.pitch.width]
     positions = [_candidate_xy(f) * scale for f in frames]
-    usable = _usable(frames, positions, times, result.pitch, scale, options)
-    chosen = _follow(frames, positions, usable, times, options)
-    kept = _remove_outliers(frames, positions, chosen, times, options)
+    confidences = [_confidence(f.ball_candidates) for f in frames]
+    usable = _usable(
+        frames, positions, confidences, times, result.pitch, scale, options
+    )
+    chosen = _follow(positions, confidences, usable, times, options)
+    kept = _remove_outliers(positions, confidences, chosen, times, options)
     balls = [
         _chosen_ball(frame, choice if keep else None)
         for frame, choice, keep in zip(frames, chosen, kept, strict=True)
@@ -183,6 +196,7 @@ def _candidate_xy(frame: FrameResult) -> np.ndarray:
 def _usable(
     frames: list[FrameResult],
     positions: list[np.ndarray],
+    confidences: list[np.ndarray],
     times: np.ndarray,
     pitch: SoccerPitch,
     scale: np.ndarray,
@@ -192,21 +206,19 @@ def _usable(
     _, spots = pitch_markings(pitch)
     spots = spots * scale
     usable = []
-    for frame, xy, static in zip(
-        frames, positions, _static(positions, times, options), strict=True
+    statics = _static(positions, times, options)
+    for frame, xy, confidence, static in zip(
+        frames, positions, confidences, statics, strict=True
     ):
-        candidates = frame.ball_candidates
-        ok = np.isfinite(xy).all(axis=1)
-        if candidates.confidence is not None:
-            ok &= candidates.confidence >= options.min_confidence
+        keep = np.isfinite(xy).all(axis=1) & ~static
+        keep &= confidence >= options.min_confidence
         if len(xy):
             to_spot = np.linalg.norm(xy[:, None] - spots[None], axis=2).min(axis=1)
-            ok &= ~(to_spot <= options.spot_radius)
+            keep &= ~(to_spot <= options.spot_radius)
         if len(xy) and len(frame.detections):
-            iou = sv.box_iou_batch(candidates.xyxy, frame.detections.xyxy)
-            ok &= iou.max(axis=1) <= options.max_person_iou
-        ok &= ~static
-        usable.append(ok)
+            iou = sv.box_iou_batch(frame.ball_candidates.xyxy, frame.detections.xyxy)
+            keep &= iou.max(axis=1) <= options.max_person_iou
+        usable.append(keep)
     return usable
 
 
@@ -217,7 +229,7 @@ def _static(
     counts = np.array([len(xy) for xy in positions])
     # every candidate in one array: frame i's are rows starts[i]:starts[i + 1]
     starts = np.concatenate([[0], np.cumsum(counts)])
-    every = np.concatenate(
+    stacked = np.concatenate(
         [xy.reshape(-1, 2) for xy in positions] or [np.zeros((0, 2))]
     )
     half = options.static_window / 2
@@ -229,7 +241,7 @@ def _static(
         flags = np.zeros(len(xy), dtype=bool)
         if len(xy) and times[hi] - times[lo] >= half - _EPS:
             near = np.linalg.norm(
-                xy[:, None] - every[starts[lo] : starts[hi + 1]][None], axis=2
+                xy[:, None] - stacked[starts[lo] : starts[hi + 1]][None], axis=2
             )
             seen = counts[lo : hi + 1] > 0  # each frame with candidates counts once
             blocks = starts[lo : hi + 1][seen] - starts[lo]
@@ -240,8 +252,8 @@ def _static(
 
 
 def _follow(
-    frames: list[FrameResult],
     positions: list[np.ndarray],
+    confidences: list[np.ndarray],
     usable: list[np.ndarray],
     times: np.ndarray,
     options: _Options,
@@ -251,15 +263,15 @@ def _follow(
     last: np.ndarray | None = None
     last_time = 0.0
     velocity = np.zeros(2)
-    for frame, xy, ok, time in zip(frames, positions, usable, times, strict=True):
-        indices = np.flatnonzero(ok)
-        confidence = _confidence(frame.ball_candidates)
+    for xy, confidence, keep, time in zip(
+        positions, confidences, usable, times, strict=True
+    ):
+        indices = np.flatnonzero(keep)
         choice = None
         if last is not None:
             dt = time - last_time
-            choice = _in_gate(
-                xy, confidence, indices, last + velocity * dt, dt, options
-            )
+            predicted = last + velocity * options.elapsed(dt)
+            choice = _in_gate(xy, confidence, indices, predicted, dt, options)
         restarted = choice is None and (
             last is None or time - last_time > options.restart_after + _EPS
         )
@@ -268,6 +280,8 @@ def _follow(
         chosen.append(choice)
         if choice is None:
             continue
+        # The prototype damps the velocity after a gap; averaging the old and
+        # new velocity does the same, and a restart forgets the old one.
         if restarted:
             velocity = np.zeros(2)
         else:
@@ -289,8 +303,7 @@ def _in_gate(
         return None
     distance = np.linalg.norm(xy[indices] - predicted, axis=1)
     best = int(np.argmin(distance - _CONFIDENCE_WEIGHT * confidence[indices]))
-    radius = options.gate + options.gate_speed * min(dt, options.max_gap)
-    return int(indices[best]) if distance[best] < radius else None
+    return int(indices[best]) if distance[best] < options.radius(dt) else None
 
 
 def _most_confident(
@@ -307,39 +320,49 @@ def _confidence(candidates: sv.Detections) -> np.ndarray:
 
 
 def _remove_outliers(
-    frames: list[FrameResult],
     positions: list[np.ndarray],
+    confidences: list[np.ndarray],
     chosen: list[int | None],
     times: np.ndarray,
     options: _Options,
 ) -> np.ndarray:
     """Which frames keep their followed ball (step 4)."""
     kept = np.array([choice is not None for choice in chosen])
-    xy = np.full((len(frames), 2), np.nan)
-    confidence = np.zeros(len(frames))
+    xy = np.full((len(chosen), 2), np.nan)
+    confidence = np.zeros(len(chosen))
     for i in np.flatnonzero(kept):
         xy[i] = positions[i][chosen[i]]
-        confidence[i] = _confidence(frames[i].ball_candidates)[chosen[i]]
+        confidence[i] = confidences[i][chosen[i]]
     for _ in range(2):  # a second pass catches what the first one's outliers hid
-        rows = np.flatnonzero(kept)
-        for j, i in enumerate(rows):
-            sides = (
-                rows[max(0, j - _NEIGHBOURS) : j],
-                rows[j + 1 : j + 1 + _NEIGHBOURS],
-            )
-            judged = [side for side in sides if len(side) >= 2]
-            if judged and all(
-                _far(xy[i], times[i], xy[side], times[side], options) for side in judged
-            ):
-                kept[i] = False
+        _drop_far(kept, xy, times, options)
+    _drop_lone(kept, confidence, times, options)
+    return kept
+
+
+def _drop_far(
+    kept: np.ndarray, xy: np.ndarray, times: np.ndarray, options: _Options
+) -> None:
+    """Unkeep balls far from their neighbours on every side that has at least two."""
     rows = np.flatnonzero(kept)
     for j, i in enumerate(rows):
-        before = times[i] - times[rows[j - 1]] if j > 0 else np.inf
-        after = times[rows[j + 1]] - times[i] if j + 1 < len(rows) else np.inf
-        lone = min(before, after) > options.isolation + _EPS
-        if lone and confidence[i] < options.restart_confidence:
+        sides = (rows[max(0, j - _NEIGHBOURS) : j], rows[j + 1 : j + 1 + _NEIGHBOURS])
+        judged = [side for side in sides if len(side) >= 2]
+        if judged and all(
+            _far(xy[i], times[i], xy[s], times[s], options) for s in judged
+        ):
             kept[i] = False
-    return kept
+
+
+def _drop_lone(
+    kept: np.ndarray, confidence: np.ndarray, times: np.ndarray, options: _Options
+) -> None:
+    """Unkeep weak balls with no other ball within ``isolation`` seconds."""
+    rows = np.flatnonzero(kept)
+    gaps = np.diff(times[rows])
+    before = np.concatenate([[np.inf], gaps])
+    after = np.concatenate([gaps, [np.inf]])
+    lone = np.minimum(before, after) > options.isolation + _EPS
+    kept[rows[lone & (confidence[rows] < options.restart_confidence)]] = False
 
 
 def _far(
@@ -352,7 +375,7 @@ def _far(
     """Whether ``xy`` lies outside the gate around the median of its neighbours on one side."""
     distance = np.linalg.norm(xy - np.median(side_xy, axis=0))
     dt = float(np.median(np.abs(side_times - time)))
-    return bool(distance > options.gate + options.gate_speed * dt)
+    return bool(distance > options.radius(dt))
 
 
 def _chosen_ball(frame: FrameResult, choice: int | None) -> sv.Detections:

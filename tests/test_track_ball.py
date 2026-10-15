@@ -38,7 +38,7 @@ def _box(centre: np.ndarray, width: float = 6, height: float = 6) -> list[float]
 def _frame(
     index: int,
     balls: list[tuple[list[float], float]],
-    people: list[list[float]] = (),
+    people: tuple[list[float], ...] = (),
 ) -> FrameResult:
     """A frame whose ball candidates are ``(xyxy, confidence)``, best first."""
     balls = sorted(balls, key=lambda ball: -ball[1])
@@ -233,6 +233,34 @@ def test_track_ball_removes_isolated_outliers():
     assert len(wider[50].ball) == 1
 
 
+def test_track_ball_stops_extrapolating_the_lost_ball_after_max_gap():
+    # Lost at 10 m/s, the ball comes back weak (no restart) where it was
+    # lost, 2 s later: a prediction carried on for 2 s would sit 20 m away,
+    # beyond the gate, which stops widening after max_gap.
+    pitch = SoccerPitch()
+    frames = []
+    for t in range(80):
+        if t < 10:
+            balls = [(_box(_pixels(pitch, (30 + 0.4 * t, 20))), 0.6)]
+        elif t >= 60:
+            balls = [(_box(_pixels(pitch, (35, 20))), 0.4)]
+        else:
+            balls = []
+        frames.append(_frame(t, balls))
+
+    tracked = track_ball(_result(pitch, frames))
+
+    assert all(len(tracked[t].ball) == 1 for t in range(60, 80))
+    assert all(len(tracked[t].ball) == 0 for t in range(10, 60))
+
+
+def test_track_ball_needs_increasing_timestamps():
+    pitch = SoccerPitch()
+    ball = [(_box(_pixels(pitch, (30, 20))), 0.6)]
+    with pytest.raises(ValueError, match="timestamps"):
+        track_ball(_result(pitch, [_frame(1, ball), _frame(1, ball)]))
+
+
 def test_track_ball_rejects_static_candidates_only_over_a_long_enough_window():
     pitch = SoccerPitch()
     spare = _box(_pixels(pitch, (106.5, 30)))
@@ -255,8 +283,10 @@ def test_track_ball_is_a_registered_post_process_that_leaves_its_input_alone():
     assert tracked.postprocesses[-1].options["max_gap"] == 0.3
     assert "gate" in tracked.postprocesses[-1].options  # defaults are recorded
     for before, after in zip(result, snapshot, strict=True):
-        np.testing.assert_array_equal(before.ball.xyxy, after.ball.xyxy)
-        np.testing.assert_array_equal(before.ball_xy, after.ball_xy)
+        for name in ("ball", "ball_candidates"):
+            old, new = getattr(before, name), getattr(after, name)
+            np.testing.assert_array_equal(old.xyxy, new.xyxy)
+            np.testing.assert_array_equal(old.data["pitch_xy"], new.data["pitch_xy"])
 
 
 @pytest.mark.parametrize(
@@ -267,6 +297,9 @@ def test_track_ball_is_a_registered_post_process_that_leaves_its_input_alone():
         {"static_share": 1.5},
         {"max_person_iou": 0},
         {"restart_confidence": 2},
+        {"restart_after": -0.1},
+        {"spot_radius": -1},
+        {"isolation": -1},
     ],
 )
 def test_track_ball_validates_its_options(options):
