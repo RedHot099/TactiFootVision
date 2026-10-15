@@ -6,6 +6,7 @@ import supervision as sv
 
 import tactifoot_vision as tv
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult, PipelineResult
+from tactifoot_vision.pitch import SoccerPitch
 
 Person = tuple[str, int, float]  # class name, team id, pitch x (NaN: no position)
 
@@ -78,7 +79,17 @@ def test_attack_direction_needs_two_teams_with_positions():
         tv.analysis.attack_direction(three_teams)
 
 
-def test_attack_direction_refuses_teams_at_the_same_mean_x():
+def test_attack_direction_refuses_teams_too_close_to_call():
     level = _result([[("player", 0, 40.0), ("player", 1, 40.0)]])
-    with pytest.raises(ValueError, match="same mean pitch x"):
-        tv.analysis.attack_direction(level)
+    with pytest.raises(ValueError, match="0.00 m apart"):
+        tv.analysis.attack_direction(level, min_separation=0)
+    close = _result([[("player", 0, 40.0), ("player", 1, 40.8)]])
+    with pytest.raises(ValueError, match="0.80 m apart.*min_separation=1.0"):
+        tv.analysis.attack_direction(close)  # the 1 m default
+    assert tv.analysis.attack_direction(close, min_separation=0.5) == {0: 1, 1: -1}
+    # Metres, not pitch units: 0.8 units of a 120-unit pitch are 0.7 m.
+    close.pitch = SoccerPitch(120, 80)
+    with pytest.raises(ValueError, match="0.70 m apart"):
+        tv.analysis.attack_direction(close, min_separation=0.75)
+    with pytest.raises(ValueError, match="min_separation must be >= 0"):
+        tv.analysis.attack_direction(close, min_separation=-1)

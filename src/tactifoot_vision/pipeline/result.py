@@ -211,7 +211,10 @@ class PipelineResult:
         without names or a team); ``interpolated`` marks a ball position
         filled by ``track_ball``.
         """
-        names = self._check_team_names(team_names)
+        return self._tracks_table(self._check_team_names(team_names))
+
+    def _tracks_table(self, names: list[str] | None) -> pd.DataFrame:
+        """:meth:`to_dataframe` with ``names`` already checked."""
         rows: list[dict] = []
         for f in self.frames:
             for kind, detections, pitch_xy, team_ids in _objects(f):
@@ -268,18 +271,24 @@ class PipelineResult:
         ``player_id`` is the track id (``UNTRACKED`` without a tracker,
         ``BALL_PLAYER_ID`` for the ball), and ``interpolated`` marks a ball
         position filled by ``track_ball``. ``team_name`` is
-        ``team_names[team_id]``, as in :meth:`to_dataframe`. ``visible_area`` is the frame
-        outline on the pitch as StatsBomb's flat ``[x1, y1, x2, y2, ...]``
-        polygon (``None`` without a homography, or when part of the frame lies
-        beyond the horizon, where the outline has no finite pitch position).
+        ``team_names[team_id]``, as in :meth:`to_dataframe`: the object's own
+        team, unlike the ``team_name`` of
+        :func:`~tactifoot_vision.data.load_statsbomb`, which is the team of
+        the event. ``visible_area`` is the frame outline on the pitch as
+        StatsBomb's flat ``[x1, y1, x2, y2, ...]`` polygon (``None`` without a
+        homography, or when part of the frame lies beyond the horizon, where
+        the outline has no finite pitch position).
         """
-        if period_start is None:
-            if period not in _PERIOD_KICK_OFF_MINUTE:
-                raise ValueError(
-                    f"Period {period} has no StatsBomb kick-off time; pass period_start"
-                )
-            period_start = _PERIOD_KICK_OFF_MINUTE[period] * 60.0
-        names = self._check_team_names(team_names)
+        return self._freeze_frames_table(
+            period,
+            _period_start(period, period_start),
+            self._check_team_names(team_names),
+        )
+
+    def _freeze_frames_table(
+        self, period: int, period_start: float, names: list[str] | None
+    ) -> pd.DataFrame:
+        """:meth:`to_freeze_frames` with ``period_start`` and ``names`` resolved."""
         width, height = self.frame_size
         corners = np.array([[0, 0], [width, 0], [width, height], [0, height]], float)
         centre = (width / 2, height / 2)
@@ -359,20 +368,22 @@ class PipelineResult:
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
-        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_csv`) and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period`` and
-        ``period_start``; ``None`` is the period's kick-off). ``team_names``
-        (one per team id from 0, e.g. ``["Home", "Away"]``) fill the tables'
-        ``team_name`` column; they are checked before anything is written.
-        Render the annotated video with
-        :func:`tactifoot_vision.viz.render_video`, or write the whole run
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`)
+        and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
+        and ``period_start``; ``None`` is the period's kick-off).
+        ``team_names`` (one per team id from 0, e.g. ``["Home", "Away"]``)
+        fill the tables' ``team_name`` column. ``period`` and ``team_names``
+        are checked before anything is written. Render the annotated video
+        with :func:`tactifoot_vision.viz.render_video`, or write the whole run
         folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
         """
-        self._check_team_names(team_names)
+        start = _period_start(period, period_start)
+        names = self._check_team_names(team_names)
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
-        self.to_csv(out_dir / "tracks.csv", team_names)
-        self.to_freeze_frames(period, period_start, team_names).to_csv(
+        self._tracks_table(names).to_csv(out_dir / "tracks.csv", index=False)
+        self._freeze_frames_table(period, start, names).to_csv(
             out_dir / "freeze_frames.csv", index=False
         )
         return out_dir
@@ -401,6 +412,17 @@ class PipelineResult:
                 "run the pipeline again to post-process it"
             )
         return result
+
+
+def _period_start(period: int, period_start: float | None) -> float:
+    """``period_start``, or the period's kick-off on StatsBomb's clock when ``None``."""
+    if period_start is not None:
+        return period_start
+    if period not in _PERIOD_KICK_OFF_MINUTE:
+        raise ValueError(
+            f"Period {period} has no StatsBomb kick-off time; pass period_start"
+        )
+    return _PERIOD_KICK_OFF_MINUTE[period] * 60.0
 
 
 def _objects(

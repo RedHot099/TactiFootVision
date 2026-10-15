@@ -304,13 +304,17 @@ configs/              example run files
   writes the run folder's data files (`result.pkl`, `tracks.csv`,
   `freeze_frames.csv`, with headers even for an empty result). It is the
   only writer of the run folder: analysis tables (none yet) are to join it
-  through `export`, which computes them with `tv.analysis`. `team_names` (one per team id from
-  0, e.g. `["Home", "Away"]`) fill the tables' `team_name` column (empty
-  without names or a team); a name missing for a team of the result, an
-  empty or non-text name (quote `"1860"` in YAML) or a repeated one is a
-  `ValueError` before anything is written. `to_dataframe(team_names=None)`,
-  `to_csv(path, team_names=None)`, `to_parquet(path, team_names=None)` and
-  `to_freeze_frames(period, period_start=None, team_names=None)`: `period_start=None` is the
+  through `export`, which computes them with `tv.analysis`. `team_names`
+  (one per team id from 0, e.g. `["Home", "Away"]`) fill the tables'
+  `team_name` column (empty without names or a team): each object's own
+  team, unlike the event team's `team_name` of `load_statsbomb`. A name
+  missing for a team of the result, an empty or non-text name (quote
+  `"1860"` in YAML) or a repeated one is a `ValueError`; `export` checks
+  the names and the period once, before anything is written.
+  `to_dataframe(team_names=None)`, `to_csv(path, team_names=None)`,
+  `to_parquet(path, team_names=None)` and
+  `to_freeze_frames(period, period_start=None, team_names=None)`:
+  `period_start=None` is the
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
   `second` follow that match clock, `timestamp` is that match clock too
   (StatsBomb's event timestamp restarts every period), and `visible_area` is
@@ -389,14 +393,15 @@ configs/              example run files
 Pure functions over a `PipelineResult`; they change nothing and write
 nothing (`PipelineResult.export` writes their tables).
 
-* `attack_direction(result)` → `{team_id: 1 | -1}`: `1` attacks the goal at
+* `attack_direction(result, min_separation=1.0)` → `{team_id: 1 | -1}`: `1` attacks the goal at
   `x = pitch.length`, `-1` the goal at `x = 0`. A run is one period, so call
   it on each period's result. The team whose players and goalkeeper stand
   nearer `x = 0` on average (every frame, pitch positions only) attacks
   towards `x = length`. The two teams are compared with each other, not with
   the halfway line, so a camera that stays in one half still gives opposite
-  directions. Anything but two teams with pitch positions, or two teams at
-  the same mean `x`, is a `ValueError`.
+  directions. Anything but two teams with pitch positions, or two means
+  less than `min_separation` (1 m by default, along a 105 m length) apart,
+  is a `ValueError`.
 
 ### Results visualisation (`tv.viz`)
 

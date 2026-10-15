@@ -455,6 +455,12 @@ def test_export_refuses_team_names_before_writing(tmp_path, team_names, message)
     assert not (tmp_path / "run").exists()
 
 
+def test_export_checks_the_period_before_writing(tmp_path):
+    with pytest.raises(ValueError, match="period_start"):
+        _result().export(tmp_path / "run", period=5)
+    assert not (tmp_path / "run").exists()
+
+
 def test_freeze_frame_rows_share_one_builder_and_named_constants():
     from tactifoot_vision.pipeline.result import BALL_PLAYER_ID, UNTRACKED
 
