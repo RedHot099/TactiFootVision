@@ -4,6 +4,7 @@
 
     image = tv.viz.FrameAnnotator(style="video_game").annotate(frame, result[0])
     image = tv.viz.overlay(image, tv.viz.PitchRadar().draw(result[0]))
+    top_down = tv.viz.warp_to_pitch(frame, result[0].homography, result.pitch)
     tv.viz.render_video(result, "match.mp4", "annotated.mp4")
     tv.viz.plot_heatmap(result, team=0)
 
@@ -12,6 +13,7 @@ matplotlib figures (matplotlib is imported on first use).
 """
 
 from tactifoot_vision.viz.annotate import FrameAnnotator, draw_annotations
+from tactifoot_vision.viz.birds_eye import warp_to_pitch
 from tactifoot_vision.viz.plots import (
     draw_pitch,
     plot_distance_histogram,
@@ -48,4 +50,5 @@ __all__ = [
     "show",
     "show_augmentations",
     "show_samples",
+    "warp_to_pitch",
 ]

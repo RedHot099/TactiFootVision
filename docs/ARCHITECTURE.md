@@ -42,7 +42,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
-| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
+| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
@@ -80,7 +80,7 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks)
   analysis/           direction.py (attack_direction), space.py (space_control)
-  viz/                annotate.py, radar.py, video.py, plots.py
+  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
@@ -436,6 +436,12 @@ nothing (`PipelineResult.export` writes their tables).
   the pitch tinted from team 1's colour (control `0`) to team 0's (`1`).
   `pitch_to_image` is the 3x3 pitch → pixel homography; off the pitch the
   image is unchanged.
+* `warp_to_pitch(frame, homography, pitch=None, px_per_m=10.0)` → the bird's-eye
+  view: the frame warped onto the whole pitch as BGRA, `105 * px_per_m` by
+  `68 * px_per_m` pixels (other pitch units scaled, as on the radar), pixels
+  tiling the pitch. Pitch outside the visible area, or behind the camera
+  (beyond the horizon), is transparent and black; the frame centre must lie
+  on the pitch side of the horizon, as in `FrameAnnotator`.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
