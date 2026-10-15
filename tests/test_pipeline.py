@@ -233,7 +233,9 @@ def test_the_pass_keeps_each_tracks_mean_team_embedding(result):
     keeper = int(ids[names == "goalkeeper"][0])
     red = int(ids[_track_of(frame, *RED_PLAYERS[0])])
     yellow, red_kit = np.array([0, 230, 230]) / 255, np.array(KITS[0]) / 255
-    assert result.track_embeddings[keeper].dtype == np.float32
+    assert result.track_embeddings[keeper].dtype == np.float16
+    # the vote samples the first frame of a track and every 10th: frames 0 and 10
+    assert result.track_embedding_samples == dict.fromkeys(result.track_embeddings, 2)
     assert np.linalg.norm(result.track_embeddings[keeper] - yellow) < 0.15
     assert np.linalg.norm(result.track_embeddings[red] - red_kit) < 0.15
 

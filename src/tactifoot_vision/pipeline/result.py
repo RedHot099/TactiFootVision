@@ -172,9 +172,10 @@ class PipelineResult:
     post-processes applied since, in order
     (see :mod:`tactifoot_vision.pipeline.postprocess`).
     ``track_embeddings`` holds the mean of the team embeddings the pass
-    sampled for each track, by the tracker's own id (``original_tracker_id``
-    once tracks are renamed), so a post-process can compare kits without
-    the video.
+    sampled for each track (float16), by the tracker's own id
+    (``original_tracker_id`` once tracks are renamed), and
+    ``track_embedding_samples`` how many embeddings each mean is over, so a
+    post-process can compare kits without the video.
     """
 
     frames: list[FrameResult]
@@ -185,6 +186,7 @@ class PipelineResult:
     video_path: Path | None = None
     postprocesses: list[AppliedPostProcess] = field(default_factory=list)
     track_embeddings: dict[int, np.ndarray] = field(default_factory=dict)
+    track_embedding_samples: dict[int, int] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.frames)
@@ -468,7 +470,8 @@ class PipelineResult:
     def load(cls, path: str | Path) -> "PipelineResult":
         """Read a result written by :meth:`save` (pickle: only load files you trust).
 
-        A result saved before frames kept their ``ball_candidates`` is refused.
+        A result saved before frames kept their ``ball_candidates``, or
+        before results kept their ``track_embeddings``, is refused.
         """
         with Path(path).open("rb") as fh:
             result = pickle.load(fh)
@@ -477,6 +480,11 @@ class PipelineResult:
         if not all(hasattr(frame, "ball_candidates") for frame in result.frames):
             raise ValueError(
                 f"{path} was saved before results kept the ball candidates; "
+                "run the pipeline again to post-process it"
+            )
+        if not hasattr(result, "track_embedding_samples"):
+            raise ValueError(
+                f"{path} was saved before results kept the team embeddings; "
                 "run the pipeline again to post-process it"
             )
         return result

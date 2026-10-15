@@ -72,8 +72,12 @@ def _result(
     scale: float = 1.0,
     spread: float = 0.02,
     masks: bool = False,
+    samples: dict[int, int] | None = None,
 ) -> PipelineResult:
-    """The tracks on every frame; kits are embeddings ``scale`` apart with ``spread`` noise."""
+    """The tracks on every frame; kits are embeddings ``scale`` apart with ``spread`` noise.
+
+    Each embedding is a mean over ``samples[tracker_id]`` crops (20 when missing).
+    """
     pitch = pitch or SoccerPitch()
     rng = np.random.default_rng(0)
     frames = []
@@ -109,7 +113,9 @@ def _result(
             )
         )
     embeddings = {
-        tracker_id: scale * (np.array(KITS[kit]) + rng.normal(0, spread, 4))
+        tracker_id: (scale * (np.array(KITS[kit]) + rng.normal(0, spread, 4))).astype(
+            np.float16
+        )
         for tracker_id, _, _, kit, _ in tracks
         if kit is not None
     }
@@ -120,6 +126,7 @@ def _result(
         CLASS_NAMES,
         pitch=pitch,
         track_embeddings=embeddings,
+        track_embedding_samples={t: (samples or {}).get(t, 20) for t in embeddings},
     )
     return reproject(result, [_homography(pitch)] * len(frames))
 
@@ -269,6 +276,20 @@ def test_the_class_id_follows_the_new_class_name():
         assert (old.detections.class_id == CLASS_NAMES.index("player")).all()
 
 
+def test_a_class_the_result_does_not_name_keeps_the_players_class_id(caplog):
+    result = _result(SCENE)
+    result.class_names = ["ball", "goalkeeper", "player"]
+
+    with caplog.at_level("INFO"):
+        relabelled = assign_roles(result)
+
+    for frame in relabelled:
+        is_referee = frame.detections.data["class_name"] == "referee"
+        assert is_referee.any()
+        assert (frame.detections.class_id[is_referee] == 2).all()
+    assert "class names have no 'referee'" in caplog.text
+
+
 def test_frames_without_a_tracker_are_left_alone():
     result = _result(SCENE)
     untracked = result.frames[3]
@@ -305,6 +326,51 @@ def test_a_player_track_joined_from_tracks_uses_their_embeddings():
 
     assert 25 not in roles
     assert roles[21] == {("goalkeeper", 0)}
+
+
+def test_a_joined_track_weighs_its_tracks_by_their_samples():
+    # 99 red crops and one yellow: the joined track is a red player, where
+    # an unweighted mean would put it halfway to yellow, an outlier
+    red_part = (21, "player", 0, "red", _at(3, 34))
+    yellow_part = (25, "player", 0, "yellow", _at(3, 34))
+    result = _result([*PLAYERS, red_part, yellow_part], samples={21: 99, 25: 1})
+    for frame in result:
+        keep = ((frame.detections.tracker_id != 21) | (frame.index < 10)) & (
+            (frame.detections.tracker_id != 25) | (frame.index >= 12)
+        )
+        frame.detections = frame.detections[keep]
+
+    roles = _roles(assign_roles(join_tracks(result)))
+
+    assert roles[21] == {("player", 0)}
+
+
+def test_one_track_keeps_one_goal_at_most():
+    # in each penalty area half the time: the goal at x = 0 takes it first
+    def both_boxes(index: int) -> tuple[float, float]:
+        return (3.0, 34.0) if index % 2 else (101.0, 34.0)
+
+    keeper = (21, "player", 1, "yellow", both_boxes)
+    roles = _roles(assign_roles(_result([*PLAYERS, keeper]), min_box_share=0.4))
+
+    assert roles[21] == {("goalkeeper", 0)}
+
+
+def test_undecided_sides_leave_the_goalkeeper_candidates_players(caplog):
+    # both teams stand around the halfway line: no side to give a goalkeeper
+    level = [
+        (tracker_id, name, team, kit, _at(52 + 0.1 * team, 6 + 6 * (tracker_id % 10)))
+        for tracker_id, name, team, kit, _ in PLAYERS
+    ]
+    steward = (31, "player", 0, "red", _at(50, -6))
+
+    roles = _roles(assign_roles(_result([*level, *SCENE[10:], steward])))
+
+    assert roles[21] == {("player", 1)}
+    assert roles[22] == {("player", 0)}
+    assert roles[23] == {("referee", NO_TEAM)}
+    assert 31 not in roles
+    assert "cannot tell which goal each team defends" in caplog.text
 
 
 def test_tracks_without_an_embedding_or_a_position_keep_their_role():
@@ -344,9 +410,14 @@ def test_a_result_without_team_embeddings_is_refused():
     with pytest.raises(ValueError, match="team embeddings"):
         assign_roles(result)
 
-    del result.track_embeddings  # as a result saved before they were kept
-    with pytest.raises(ValueError, match="team embeddings"):
-        assign_roles(result)
+
+def test_a_result_saved_before_team_embeddings_were_kept_is_refused(tmp_path):
+    result = _result(SCENE)
+    del result.track_embeddings, result.track_embedding_samples
+    path = result.save(tmp_path / "result.pkl")
+
+    with pytest.raises(ValueError, match="before results kept the team embeddings"):
+        PipelineResult.load(path)
 
 
 @pytest.mark.parametrize(
@@ -354,6 +425,7 @@ def test_a_result_without_team_embeddings_is_refused():
     [
         ({"outlier_spread": 0}, "outlier_spread"),
         ({"min_box_share": 1.5}, "min_box_share"),
+        ({"min_box_share": 0}, "min_box_share"),
         ({"off_pitch_margin": -1}, "off_pitch_margin"),
     ],
 )

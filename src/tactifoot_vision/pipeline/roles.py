@@ -19,6 +19,7 @@ import numpy as np
 from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, metres_per_unit
 from tactifoot_vision.pipeline.result import (
     NO_TEAM,
+    ROLES,
     UNTRACKED,
     ObjectMasks,
     PipelineResult,
@@ -27,7 +28,7 @@ from tactifoot_vision.pitch.pitch import SoccerPitch
 
 logger = logging.getLogger(__name__)
 
-PLAYER, GOALKEEPER, REFEREE = "player", "goalkeeper", "referee"
+PLAYER, GOALKEEPER, REFEREE, _ = ROLES
 # fewer player tracks than this give no robust team centre and spread
 _MIN_TEAM_TRACKS = 3
 
@@ -40,7 +41,7 @@ class _Track:
     name: str
     team: int
     xy: np.ndarray  # (K, 2) metres of its rows with a pitch position
-    embedding: np.ndarray | None  # mean of its tracks' team embeddings
+    embedding: np.ndarray | None  # mean of its tracks' team embeddings, by samples
 
 
 @POSTPROCESSES.register("assign_roles")
@@ -55,7 +56,9 @@ def assign_roles(
     A track is judged as a whole (a player track after
     :func:`~tactifoot_vision.pipeline.join_tracks`), by its most frequent
     ``class_name`` and ``team_id``; its embedding is the mean of the team
-    embeddings of the tracks it joins (``result.track_embeddings``).
+    embeddings of the tracks it joins (``result.track_embeddings``), each
+    weighted by its number of samples. Kits are compared in the embedder's
+    own space, not in the team classifier's UMAP space.
 
     1. A track whose median pitch position lies more than
        ``off_pitch_margin`` m outside the pitch (stewards, cameramen,
@@ -71,8 +74,10 @@ def assign_roles(
        that goal becomes the ``goalkeeper`` of the team defending it, which
        :func:`~tactifoot_vision.analysis.attack_direction` tells from where
        the teams stand; a goal with a detector goalkeeper in its penalty area
-       gets none. The remaining outliers become ``referee`` with ``NO_TEAM``
-       (linesmen and staff on the pitch included).
+       gets none, and one track keeps one goal at most. When the teams' sides
+       cannot be told, a warning is logged and the goalkeeper candidates stay
+       players of their voted team. The remaining outliers become
+       ``referee`` with ``NO_TEAM`` (linesmen and staff on the pitch included).
 
     A run covers one period: the teams change ends at half-time, so call
     this on each period's result, as ``attack_direction``.
@@ -80,30 +85,29 @@ def assign_roles(
     Tracks the detector calls ``goalkeeper`` or ``referee`` keep their
     class and team, and tracks without an embedding or a pitch position are
     not judged by what they lack. ``class_id`` follows a new class name when
-    ``result.class_names`` holds it. People without a tracker id are left
-    alone.
+    ``result.class_names`` holds it, and stays the player's (logged) when it
+    does not. People without a tracker id are left alone.
 
     Args:
         result: a result of a pipeline run with a team classifier and a tracker.
         outlier_spread: how many team spreads from both team centres a kit
             is an outlier.
-        min_box_share: least share of a goalkeeper's positioned rows inside
-            the penalty area.
+        min_box_share: least share, above 0, of a goalkeeper's positioned
+            rows inside the penalty area.
         off_pitch_margin: metres outside the pitch a median position may lie
             and still count as on it (linesmen walk the touchline).
 
     Raises:
-        ValueError: on an option out of range, when the result holds no
-            team embeddings of two teams' player tracks, or when a
-            goalkeeper is found but the teams' sides cannot be told.
+        ValueError: on an option out of range, or when the result holds no
+            team embeddings of two teams' player tracks.
     """
     if outlier_spread <= 0:
         raise ValueError(f"outlier_spread must be positive, got {outlier_spread}")
-    if not 0 <= min_box_share <= 1:
-        raise ValueError(f"min_box_share must be in [0, 1], got {min_box_share}")
+    if not 0 < min_box_share <= 1:
+        raise ValueError(f"min_box_share must be in (0, 1], got {min_box_share}")
     if off_pitch_margin < 0:
         raise ValueError(f"off_pitch_margin must be >= 0, got {off_pitch_margin}")
-    if not getattr(result, "track_embeddings", None):
+    if not result.track_embeddings:
         raise ValueError(
             "assign_roles needs the team embeddings the pass keeps, and the result "
             "holds none: run the pipeline (again) with a team classifier and a tracker"
@@ -123,16 +127,29 @@ def assign_roles(
         try:
             directions = attack_direction(_relabel(result, off_pitch, roles))
         except ValueError as error:
-            raise ValueError(
-                f"assign_roles cannot tell which goal each team defends: {error}"
-            ) from error
+            logger.warning(
+                "assign_roles cannot tell which goal each team defends (%s); "
+                "the %d goalkeeper candidates stay players",
+                error,
+                len(keepers),
+            )
+            for track in keepers.values():
+                del roles[track.id]
+            keepers = {}
         for attacks, track in keepers.items():
             # the team attacking towards the other goal defends this one
             roles[track.id] = (GOALKEEPER, _team_attacking(directions, -attacks))
+    for name in sorted({name for name, _ in roles.values()}):
+        if name not in result.class_names:
+            logger.info(
+                "The result's class names have no %r: its rows keep the player's "
+                "class_id",
+                name,
+            )
     logger.info(
         "Roles: %d goalkeepers, %d referees or staff, %d people off the pitch",
         len(keepers),
-        len(outliers) - len(keepers),
+        sum(name == REFEREE for name, _ in roles.values()),
         len(off_pitch),
     )
     return _relabel(result, off_pitch, roles)
@@ -167,18 +184,21 @@ def _tracks(result: PipelineResult, scale: np.ndarray) -> list[_Track]:
                 positions[track].append(point)
     tracks = []
     for track in sorted(names):
-        embeddings = [
-            result.track_embeddings[o]
-            for o in sorted(originals[track])
-            if o in result.track_embeddings
-        ]
+        embedded = [o for o in sorted(originals[track]) if o in result.track_embeddings]
+        embedding = None
+        if embedded:
+            embedding = np.average(
+                [result.track_embeddings[o].astype(np.float32) for o in embedded],
+                axis=0,
+                weights=[result.track_embedding_samples[o] for o in embedded],
+            )
         tracks.append(
             _Track(
                 id=track,
                 name=names[track].most_common(1)[0][0],
                 team=teams[track].most_common(1)[0][0],
                 xy=np.array(positions[track], dtype=float).reshape(-1, 2),
-                embedding=np.mean(embeddings, axis=0) if embeddings else None,
+                embedding=embedding,
             )
         )
     return tracks
@@ -234,7 +254,8 @@ def _goalkeepers(
 
     ``-1`` is the goal at ``x = 0`` (attacked towards ``-x``), ``1`` the goal
     at ``x = length``. A goal whose penalty area holds a detector goalkeeper
-    among ``tracks`` gets none.
+    among ``tracks`` gets none, and the goal at ``x = 0``'s goalkeeper is no
+    candidate for the other goal.
     """
     length, centre = pitch.length * scale[0], pitch.width * scale[1] / 2
     box = np.array([pitch.penalty_box_length, pitch.penalty_box_width / 2]) * scale
@@ -249,7 +270,8 @@ def _goalkeepers(
     for attacks, goal_x in ((-1, 0.0), (1, length)):
         if any(t.name == GOALKEEPER and in_box(t, goal_x) for t in tracks):
             continue
-        candidates = [t for t in others if in_box(t, goal_x)]
+        taken = [keeper.id for keeper in keepers.values()]
+        candidates = [t for t in others if t.id not in taken and in_box(t, goal_x)]
         if candidates:
             keepers[attacks] = min(
                 candidates,
