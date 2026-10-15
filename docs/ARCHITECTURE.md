@@ -81,7 +81,8 @@ src/tactifoot_vision/
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
-                      ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles)
+                      ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
+                      homographies.py (smooth_homographies)
   analysis/           direction.py (attack_direction), space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
                       subpixel.py (fixed-point coordinates for cv2 drawing),
@@ -511,6 +512,17 @@ configs/              example run files
   pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
   Frames with no ball chosen get an empty `ball`. Positions are on the pitch
   plane; an airborne ball's is displaced (no ball height).
+* `smooth_homographies(result, window=0.36, order=2)`
+  (`pipeline/homographies.py`, registered as `smooth_homographies`) smooths
+  the homographies over time with a centred Savitzky-Golay filter (a
+  polynomial of degree `order` over `window` seconds, 9 frames at 25 fps) on
+  the matrices scaled to map the frame centre with a homogeneous coordinate
+  of 1, so a steady pan moves the entries in a straight line and is not
+  lagged, then re-projects `pitch_xy` with `reproject`. A frame without a
+  homography keeps none and splits the runs smoothed; a run shorter than the
+  window is smoothed over itself. Run it before `track_ball`, `join_tracks`
+  and `assign_roles`, which read pitch positions. `line_fit` still describes
+  the pass's fit.
 * `join_tracks(result, max_gap, max_speed, slack, same_team)`
   (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
   player tracks: it links each track end to a later track start at most
