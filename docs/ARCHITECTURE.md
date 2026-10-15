@@ -74,7 +74,8 @@ src/tactifoot_vision/
   pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
   teams/              crops.py, embedders.py, classifier.py
-  pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult)
+  pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
+                      postprocess.py (POSTPROCESSES, reproject, remap_track_ids)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -118,6 +119,7 @@ configs/              example run files
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `HomographyEstimator`
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
+* `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`
 
 ## Module specifications
 
@@ -283,6 +285,18 @@ configs/              example run files
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
   The ball filter (`ball_max_speed`) also runs at the end of the pass for
   now; the `ball-tracking` feature moves it into a post-process.
+* Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
+  registered with `@POSTPROCESSES.register("name")`. They return a new
+  result and never change their input. Registering keeps the function's
+  signature and makes every call, direct or by name, append an
+  `AppliedPostProcess(name, options)` (defaults included) to the returned
+  result's `postprocesses`; `save`/`load` and `export` keep that record.
+  Shared helpers keep a changed result consistent:
+  `reproject(result, homographies)` replaces the homographies (one per
+  frame, `None` for none) and recomputes `pitch_xy` from the boxes as the
+  pipeline does (so the ball filter's dropped positions come back), and
+  `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
+  in `data["original_tracker_id"]`.
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
