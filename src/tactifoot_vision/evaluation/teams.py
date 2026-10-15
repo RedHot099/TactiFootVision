@@ -11,18 +11,13 @@ from scipy.optimize import linear_sum_assignment
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
 from tactifoot_vision.evaluation.metrics import TeamMetrics
-from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
+from tactifoot_vision.pipeline.result import NO_TEAM, ROLES, PipelineResult
 
 logger = logging.getLogger(__name__)
 
 # The mapped team of a run team id with no true team: true team ids are
 # NO_TEAM or above, so it is never right.
 _UNMAPPED = NO_TEAM - 1
-
-
-# The roles of the confusion matrix; a class name that is none of the first
-# three is "other", as in the freeze frames' ``type``.
-_ROLES = ("player", "goalkeeper", "referee", "other")
 
 
 class _Matches(NamedTuple):
@@ -130,19 +125,19 @@ def _metrics(scored: list[_Scored]) -> TeamMetrics:
 
 def _role_confusion(true: np.ndarray, predicted: np.ndarray) -> pd.DataFrame:
     """Matched people counted by true role (rows) and predicted role (columns)."""
-    counts = np.zeros((len(_ROLES), len(_ROLES)), int)
+    counts = np.zeros((len(ROLES), len(ROLES)), int)
     np.add.at(counts, (_role_index(true), _role_index(predicted)), 1)
     return pd.DataFrame(
         counts,
-        index=pd.Index(_ROLES, name="true_role"),
-        columns=pd.Index(_ROLES, name="predicted_role"),
+        index=pd.Index(ROLES, name="true_role"),
+        columns=pd.Index(ROLES, name="predicted_role"),
     )
 
 
 def _role_index(class_names: np.ndarray) -> np.ndarray:
-    """Each class name's position in ``_ROLES``: its own role, else ``other``."""
-    index = np.full(len(class_names), len(_ROLES) - 1)
-    for i, role in enumerate(_ROLES[:-1]):
+    """Each class name's position in ``ROLES``: its own role, else ``other``."""
+    index = np.full(len(class_names), ROLES.index("other"))
+    for i, role in enumerate(ROLES):
         index[class_names == role] = i
     return index
 

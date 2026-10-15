@@ -371,9 +371,9 @@ configs/              example run files
   referee) and wrong for a player. `accuracy` is per matched detection,
   `track_accuracy` the per-detection share averaged over the run's tracks
   (`tracker_id`), each counting once. `role_confusion` counts the matched
-  people by true and predicted role (`player`, `goalkeeper`, `referee`,
-  `other`), from `class_name`, so a goalkeeper absorbed into a team as a
-  player shows. The clip must carry boxes and teams, and people without a
+  people by true and predicted role (`tv.pipeline.ROLES`: `player`,
+  `goalkeeper`, `referee`, `other`), from `class_name`, so a goalkeeper
+  absorbed into a team as a player shows; `as_dict()` leaves it out. The clip must carry boxes and teams, and people without a
   `team_id` or `class_name`, in the result or the clip, or a true `team_id`
   below `NO_TEAM` (kept free for a future "unknown" marker) are a
   `ValueError`.
