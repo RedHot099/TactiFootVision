@@ -883,3 +883,132 @@ def test_a_new_render_video_parameter_reaches_render_without_edits(
     loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
     assert received == [5]
     assert (tmp_path / "out" / "annotated.mp4").is_file()
+
+
+# ------------------------------------------------------------- post-processes
+@pytest.fixture
+def toy_postprocesses(monkeypatch):
+    """Two registered toy post-processes whose order shows in the track ids."""
+    from tactifoot_vision.pipeline import POSTPROCESSES, remap_track_ids
+
+    monkeypatch.setattr(POSTPROCESSES, "_factories", dict(POSTPROCESSES._factories))
+
+    @POSTPROCESSES.register("test_add")
+    def add(result: PipelineResult, offset: int = 10) -> PipelineResult:
+        return remap_track_ids(result, {i: i + offset for i in result.track_ids})
+
+    @POSTPROCESSES.register("test_double")
+    def double(result: PipelineResult) -> PipelineResult:
+        return remap_track_ids(result, {i: 2 * i for i in result.track_ids})
+
+
+@pytest.mark.parametrize(
+    ("postprocess", "match"),
+    [
+        ([{"type": "test_ad"}], r"Section 'postprocess\.0': Unknown post-process 'test_ad'.*test_add, test_double"),
+        ([{"type": "test_add"}, {"type": "test_add", "ofset": 1}], r"Unknown key 'ofset' in section 'postprocess\.1'; valid keys: type, offset"),
+        ([{"offset": 1}], r"Section 'postprocess\.0' needs a 'type' key, one of: .*test_add"),
+        ([{"type": "test_double", "result": 1}], r"Unknown key 'result' in section 'postprocess\.0'"),
+        (["test_add"], r"Section 'postprocess\.0' must be a mapping, got 'test_add'"),
+        ({"type": "test_add"}, r"Section 'postprocess' must be a list or null"),
+    ],
+)  # fmt: skip
+def test_postprocess_typos_fail_at_load(
+    tmp_path, toy_postprocesses, postprocess, match
+):
+    with pytest.raises(ValueError, match=match):
+        _load(tmp_path, {"detector": DETECTOR, "postprocess": postprocess})
+
+
+def test_run_file_run_applies_post_processes_in_order(tmp_path, toy_postprocesses):
+    from tactifoot_vision.pipeline import AppliedPostProcess
+
+    video = _video(tmp_path / "clip.mp4")
+
+    def run(postprocess, name):
+        loaded = _load(tmp_path, {"detector": DETECTOR, "postprocess": postprocess})
+        result = loaded.run(video, tmp_path / name, render=False, progress=False)
+        saved = PipelineResult.load(tmp_path / name / "result.pkl")
+        tracks = pd.read_csv(tmp_path / name / "tracks.csv")
+        assert saved.postprocesses == result.postprocesses
+        players = tracks[tracks["class_name"] == "player"]
+        assert sorted(players["track_id"].unique()) == result.track_ids
+        return result
+
+    add_then_double = run(
+        [{"type": "test_add", "offset": 3}, {"type": "test_double"}], "a"
+    )
+    double_then_add = run([{"type": "test_double"}, {"type": "test_add"}], "b")
+
+    assert add_then_double.track_ids == [8]  # (1 + 3) * 2
+    assert double_then_add.track_ids == [12]  # 1 * 2 + 10
+    assert add_then_double.postprocesses == [
+        AppliedPostProcess("test_add", {"offset": 3}),
+        AppliedPostProcess("test_double", {}),
+    ]
+    assert double_then_add.postprocesses == [
+        AppliedPostProcess("test_double", {}),
+        AppliedPostProcess("test_add", {"offset": 10}),
+    ]
+    # an empty or null section is no post-process at all
+    assert run([], "c").postprocesses == run(None, "d").postprocesses == []
+    assert run([], "e").track_ids == [1]
+
+
+def test_overrides_edit_append_and_drop_list_entries(tmp_path, toy_postprocesses):
+    data = {"detector": DETECTOR, "postprocess": [{"type": "test_add"}]}
+
+    def postprocess(*overrides):
+        return _load(tmp_path, data, overrides).sections.get("postprocess")
+
+    assert postprocess("postprocess.0.offset=3") == [{"type": "test_add", "offset": 3}]
+    assert postprocess("postprocess.1={type: test_double}") == [
+        {"type": "test_add"},
+        {"type": "test_double"},
+    ]
+    assert postprocess(
+        "postprocess.1.type=test_double", "postprocess.2.type=test_add"
+    ) == [
+        {"type": "test_add"},
+        {"type": "test_double"},
+        {"type": "test_add"},
+    ]
+    assert postprocess("postprocess.0={type: test_double}") == [{"type": "test_double"}]
+    assert postprocess("postprocess=[]") == []
+    assert postprocess("postprocess=null") is None
+    # a missing or null list is created by appending at index 0
+    data = {"detector": DETECTOR}
+    assert postprocess("postprocess.0.type=test_double") == [{"type": "test_double"}]
+    data = {"detector": DETECTOR, "postprocess": None}
+    assert postprocess("postprocess.0.type=test_double") == [{"type": "test_double"}]
+
+
+@pytest.mark.parametrize(
+    ("override", "match"),
+    [
+        (
+            "postprocess.2.type=test_add",
+            r"'postprocess' is a list of length 1; .*0 to 1",
+        ),
+        ("postprocess.-1.offset=3", r"'postprocess' is a list of length 1; .*0 to 1"),
+        (
+            "postprocess.first.offset=3",
+            r"'postprocess' is a list of length 1; .*0 to 1",
+        ),
+        ("postprocess.0.offset.x=3", r"'postprocess\.0\.offset' is 10, not a mapping"),
+        ("postprocess.1.offset=3", r"needs a 'type' key"),
+    ],
+)
+def test_list_override_errors(tmp_path, toy_postprocesses, override, match):
+    data = {"detector": DETECTOR, "postprocess": [{"type": "test_add", "offset": 10}]}
+    with pytest.raises(ValueError, match=match):
+        _load(tmp_path, data, [override])
+
+
+def test_cli_run_applies_post_processes_from_set(tmp_path, toy_postprocesses):
+    out = _cli_run(
+        tmp_path,
+        "--no-video",
+        *("--set", "postprocess.0.type=test_add", "--set", "postprocess.0.offset=4"),
+    )
+    assert PipelineResult.load(out / "result.pkl").track_ids == [5]
