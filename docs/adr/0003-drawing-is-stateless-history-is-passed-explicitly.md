@@ -1,6 +1,6 @@
 # Drawing is stateless; frame history is passed explicitly
 
-Some drawings need earlier frames: the ball trail, the radar's motion tails. `FrameAnnotator` and `PitchRadar` keep no memory between calls. A drawing that needs earlier frames takes them as an explicit `history` argument (the results of the preceding frames, oldest first), and `PipelineResult.window(index, seconds)` supplies that window. `render_video` uses the same window, so a notebook and a render draw the same image for the same frame.
+Some drawings need earlier frames: the ball trail, the radar's motion tails. `FrameAnnotator` and `PitchRadar` keep no memory between calls. A drawing that needs earlier frames takes them as an explicit `history` argument (the results of the preceding frames, oldest first), and `PipelineResult.window(video_index, seconds)` supplies that window. `render_video` uses the same window, so a notebook and a render draw the same image for the same frame.
 
 ## Considered options
 

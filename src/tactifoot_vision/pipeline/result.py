@@ -167,7 +167,8 @@ class PipelineResult:
     """Output of :meth:`Pipeline.run`: one :class:`FrameResult` per processed frame.
 
     ``frames`` are in video order, as :meth:`Pipeline.run` makes them, and
-    every post-process keeps that order. ``postprocesses`` lists the post-processes applied since, in order
+    every post-process keeps that order. ``postprocesses`` lists the
+    post-processes applied since, in order
     (see :mod:`tactifoot_vision.pipeline.postprocess`).
     """
 
@@ -212,6 +213,10 @@ class PipelineResult:
         """Where the frame ``video_index`` is in ``frames``."""
         position = bisect.bisect_left(self.frames, video_index, key=lambda f: f.index)
         if position == len(self.frames) or self.frames[position].index != video_index:
+            if any(f.index == video_index for f in self.frames):
+                raise ValueError(
+                    "PipelineResult needs frames in video order to look one up"
+                )
             raise KeyError(f"Frame {video_index} was not processed")
         return position
 

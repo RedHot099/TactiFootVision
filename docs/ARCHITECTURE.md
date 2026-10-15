@@ -344,7 +344,8 @@ configs/              example run files
   `seconds` earlier, oldest first: the `history` a drawing takes (ADR 0003).
   A stride changes how many frames it holds, not the time it covers. A
   frame the result does not hold is a `KeyError`, as in `frame()`. Both
-  rely on `frames` being in video order, which every post-process keeps.
+  rely on `frames` being in video order, which every post-process keeps,
+  and raise a `ValueError` on a result out of that order.
 * Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
   registered with `@POSTPROCESSES.register("name")`. They return a new
   result and never change their input. Registering keeps the function's

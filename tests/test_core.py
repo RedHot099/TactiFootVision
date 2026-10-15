@@ -260,6 +260,15 @@ def test_window_of_a_frame_not_in_the_result_says_so():
         result.window(3, 1.0)
 
 
+def test_lookup_in_a_result_out_of_video_order_says_so():
+    result = _timed_result(range(10))
+    result.frames.reverse()
+    with pytest.raises(ValueError, match="video order"):
+        result.frame(7)
+    with pytest.raises(ValueError, match="video order"):
+        result.window(7, 1.0)
+
+
 def test_freeze_frames_of_the_second_half_roll_over_the_minute():
     frames = [
         FrameResult(
