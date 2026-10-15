@@ -496,8 +496,11 @@ def test_radar_draws_the_dots_on_the_warped_frame(result: PipelineResult) -> Non
     # Each radar pixel shows the frame at its pitch point: no half-pixel offset.
     columns, rows = np.meshgrid(np.arange(radar.width_px), np.arange(radar.height_px))
     centres = np.column_stack([columns.ravel(), rows.ravel()]).astype(float)
-    to_pitch = np.linalg.inv(radar._pitch_to_image)
-    in_frame = pitch_to_frame(frame_to_pitch(centres, to_pitch), HOMOGRAPHY)
+    origin, scale = (
+        radar.to_pixels([[0, 0]]),
+        radar.to_pixels([[1, 1]]) - radar.to_pixels([[0, 0]]),
+    )
+    in_frame = pitch_to_frame((centres - origin) / scale, HOMOGRAPHY)
     expected = 0.75 * (in_frame - 0.5)  # pixel c holds 0.75 c at its centre c + 0.5
     lines = cv2.dilate(
         (empty != empty[0, 0]).any(axis=2).astype(np.uint8), np.ones((5, 5))
@@ -624,6 +627,12 @@ def test_render_video_writes_a_birds_eye_video(
     np.testing.assert_allclose(frames[0][y, x], radar.draw()[y, x], atol=12)
     x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
     np.testing.assert_allclose(frames[0][y, x], (255, 191, 0), atol=40)  # team 0
+    # The annotator is not drawn, so its pitch is not checked.
+    other = viz.FrameAnnotator(pitch=SoccerPitch(120, 80))
+    viz.render_video(
+        result, video, tmp_path / "top2.mp4", annotator=other, radar=radar,
+        birds_eye=True, progress=False,
+    )  # fmt: skip
 
 
 def test_a_birds_eye_video_needs_the_radar(

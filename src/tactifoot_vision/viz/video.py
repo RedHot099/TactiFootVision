@@ -101,7 +101,10 @@ def render_video(
         )
     if fps is None:
         fps = reader.fps / step
-    annotator = annotator or FrameAnnotator(pitch=result.pitch)
+    if birds_eye:
+        annotator = None  # not drawn, so not built or checked
+    else:
+        annotator = annotator or FrameAnnotator(pitch=result.pitch)
     if radar is None:
         radar = PitchRadar(pitch=result.pitch)
     for part in (annotator, radar):
@@ -112,9 +115,7 @@ def render_video(
             )
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    size = reader.size
-    if birds_eye and radar:  # even, or the encoder drops the last row or column
-        size = (radar.size[0] + radar.size[0] % 2, radar.size[1] + radar.size[1] % 2)
+    size = _even_size(radar.size) if birds_eye and radar else reader.size
     writer = cv2.VideoWriter(str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
     if not writer.isOpened():
         raise RuntimeError(f"OpenCV cannot write {output}")
@@ -139,23 +140,23 @@ def render_video(
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
-            if birds_eye and radar:
+            if annotator is None and radar:  # the bird's-eye view
                 image = radar.draw(frame_result, frame=frame)
                 image = cv2.copyMakeBorder(
                     image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
                     cv2.BORDER_REPLICATE,
                 )  # fmt: skip
-            else:
+            elif annotator is not None:
                 image = annotator.annotate(frame, frame_result)
-            if radar and not birds_eye:
-                image = overlay(
-                    image,
-                    radar.draw(frame_result),
-                    position=overlay_position,
-                    width_fraction=overlay_width_fraction,
-                    alpha=overlay_alpha,
-                    padding=overlay_padding,
-                )
+                if radar:
+                    image = overlay(
+                        image,
+                        radar.draw(frame_result),
+                        position=overlay_position,
+                        width_fraction=overlay_width_fraction,
+                        alpha=overlay_alpha,
+                        padding=overlay_padding,
+                    )
             writer.write(image)
             written.add(index)
             if bar is not None:
@@ -186,8 +187,8 @@ def check_render_options(**options: Any) -> None:
 
     Takes any :func:`render_video` keyword arguments (a name it does not take
     is a ``ValueError``) and checks the values it knows: the overlay settings,
-    ``fps``, and ``birds_eye`` with ``radar=False``. The others pass unchecked, so a new ``render_video``
-    parameter needs no change here. A run file uses this to fail before the
+    ``fps``, and ``birds_eye`` with ``radar=False``. The others pass
+    unchecked, so a new ``render_video`` parameter needs no change here. A run file uses this to fail before the
     first frame instead of after the whole run.
     """
     valid = inspect.signature(render_video).parameters
@@ -219,6 +220,11 @@ def _same_file(output: Path, source: Path) -> bool:
     not only the same path.
     """
     return output.exists() and source.exists() and output.samefile(source)
+
+
+def _even_size(size: tuple[int, int]) -> tuple[int, int]:
+    """``size`` rounded up to even numbers: the encoder drops an odd last row or column."""
+    return size[0] + size[0] % 2, size[1] + size[1] % 2
 
 
 def _stride(indices: list[int]) -> int:

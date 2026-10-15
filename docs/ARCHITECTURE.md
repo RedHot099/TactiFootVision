@@ -423,8 +423,8 @@ nothing (`PipelineResult.export` writes their tables).
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None)`
-  → top-down pitch image; a `SpaceControl` on the radar's pitch tints the pitch under the
-  lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
+  → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
+  pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
   opacity; a `frame` (the video frame of `frame_result`) is the background,
   warped through `frame_result.homography` straight into the radar's canvas
   (the bird's-eye view at the radar's scale, no resampled `warp_to_pitch`
@@ -468,8 +468,8 @@ nothing (`PipelineResult.export` writes their tables).
   `RuntimeError` when the source lacks a result frame, and deletes the
   partial output when rendering fails. `viz.video.check_render_options(**options)`
   takes any `render_video` keyword arguments and checks the overlay settings,
-  `fps` and `birds_eye` without a radar among them, so a new `render_video` parameter reaches run files
-  without edits.
+  `fps` and `birds_eye` without a radar among them, so a new `render_video`
+  parameter reaches run files without edits.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,

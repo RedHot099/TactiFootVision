@@ -64,10 +64,10 @@ def warp_to_pitch(
         )
     pitch = pitch or SoccerPitch()
     size = tuple(int(n) for n in _canvas_size(pitch, px_per_m))
-    return warp_frame(frame, pitch_to_birds_eye(pitch, px_per_m) @ homography, size)
+    return _warp_frame(frame, pitch_to_birds_eye(pitch, px_per_m) @ homography, size)
 
 
-def warp_frame(
+def _warp_frame(
     frame: np.ndarray, frame_to_image: np.ndarray, size: tuple[int, int]
 ) -> np.ndarray:
     """``frame`` warped into a ``(width, height)`` top-down image, as BGRA ``uint8``.

@@ -247,8 +247,9 @@ class RunFile:
         """``render_video`` keyword arguments from the ``render`` section, checked.
 
         Builds the annotator and the radar (their constructors check the
-        values) and checks the overlay settings, so a bad value fails before
-        any frame is processed. Keys in ``exclude`` are left out.
+        values), then checks the other settings with the radar built (a
+        ``null`` radar is ``False``), so a bad value fails before any frame is
+        processed. Keys in ``exclude`` are left out.
         """
         from tactifoot_vision.viz import FrameAnnotator, PitchRadar
         from tactifoot_vision.viz.video import check_render_options

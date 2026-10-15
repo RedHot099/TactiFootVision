@@ -9,7 +9,7 @@ import supervision as sv
 from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
-from tactifoot_vision.viz.birds_eye import warp_frame
+from tactifoot_vision.viz.birds_eye import _warp_frame
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 """A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
@@ -252,7 +252,7 @@ class PitchRadar:
         if frame is not None and homography is not None:
             # Warped straight into this canvas, so the frame and the dots share
             # the radar's pitch -> pixel mapping.
-            view = warp_frame(frame, self._pitch_to_image @ homography, self.size)
+            view = _warp_frame(frame, self._pitch_to_image @ homography, self.size)
             seen = view[..., 3] > 0
             image[seen] = view[seen, :3]
         if space_control is not None:
