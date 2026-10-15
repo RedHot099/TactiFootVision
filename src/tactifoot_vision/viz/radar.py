@@ -11,6 +11,7 @@ from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.birds_eye import _warp_frame
 from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
+from tactifoot_vision.viz.trail import draw_trail, trail_frames
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 """A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
@@ -59,11 +60,16 @@ class PitchRadar:
     optionally over the video frame warped onto the pitch and a space-control map.
 
     ``x`` runs left to right and ``y`` top to bottom, so the far touchline of a
-    broadcast view is at the top, as on screen.
+    broadcast view is at the top, as on screen. With ``trail_seconds``, each
+    person's movement over that many seconds is drawn as a tail from the
+    ``history`` passed to :meth:`draw` (ADR 0003).
 
     >>> radar = PitchRadar()
     >>> image = radar.draw(result[0])          # BGR uint8
     >>> frame = overlay(frame, image)          # paste onto the video frame
+    >>> tails = PitchRadar(trail_seconds=2.0).draw(
+    ...     result.frame(index), history=result.window(index, 2.0)
+    ... )
     """
 
     def __init__(
@@ -81,6 +87,7 @@ class PitchRadar:
         draw_ids: bool = False,
         line_thickness: int | None = None,
         space_control_alpha: float = 0.5,
+        trail_seconds: float | None = None,
     ) -> None:
         """
         Args:
@@ -92,6 +99,9 @@ class PitchRadar:
             draw_ids: write each player's track id inside its dot.
             space_control_alpha: opacity of the team colours a space-control
                 map tints the pitch with (1 = opaque).
+            trail_seconds: draw each person's path over the last this many
+                seconds under the dots, in their colour fading to nothing at
+                that age; ``None``: no tails.
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -102,6 +112,8 @@ class PitchRadar:
         _check_pixels("ball_radius", ball_radius)
         _check_pixels("line_thickness", line_thickness)
         _check_alpha("space_control_alpha", space_control_alpha)
+        if trail_seconds is not None and not trail_seconds > 0:
+            raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
         self.pitch = pitch or SoccerPitch()
         self.width_px = int(width_px)
         self.padding_px = int(padding_px)
@@ -131,6 +143,7 @@ class PitchRadar:
         self.line_thickness = line_thickness
         self.draw_ids = draw_ids
         self.space_control_alpha = space_control_alpha
+        self.trail_seconds = trail_seconds
         self._background = self._draw_background()
 
     @property
@@ -149,6 +162,7 @@ class PitchRadar:
         frame_result: FrameResult | None = None,
         space_control: SpaceControl | None = None,
         frame: np.ndarray | None = None,
+        history: Sequence[FrameResult] | None = None,
     ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
@@ -163,6 +177,10 @@ class PitchRadar:
         bird's-eye view of :func:`~tactifoot_vision.viz.warp_to_pitch`, drawn
         at the radar's scale), the pitch colour where the frame shows nothing
         or there is no homography.
+
+        ``history``: the results of the frames before ``frame_result``, oldest
+        first, e.g. ``result.window(index, trail_seconds)``; only the motion
+        tails use it, and they ignore frames older than ``trail_seconds``.
         """
         if frame is not None and frame_result is None:
             raise ValueError(
@@ -188,6 +206,9 @@ class PitchRadar:
         )
         # Unassigned people first so team colours stay on top where dots overlap.
         order = np.argsort(index != len(self.team_colors), kind="stable")
+        if self.trail_seconds and history and tracker_id is not None:
+            colors = [palette[i] for i in index[order]]
+            self._draw_tails(image, frame_result, history, tracker_id[order], colors)
         self._draw_dots(
             image,
             frame_result.pitch_xy[order],
@@ -279,6 +300,30 @@ class PitchRadar:
             )  # fmt: skip
         return image
 
+    def _draw_tails(
+        self,
+        image: np.ndarray,
+        frame_result: FrameResult,
+        history: Sequence[FrameResult],
+        tracker_ids: np.ndarray,
+        colors: Sequence[sv.Color],
+    ) -> None:
+        """Each person's earlier pitch positions, joined by ``tracker_id``.
+
+        A frame where the person is missing, or has no pitch position, breaks
+        their tail; see :func:`~tactifoot_vision.viz.trail.draw_trail`.
+        """
+        seconds = self.trail_seconds or 0.0  # set: draw checked it
+        frames, ages = trail_frames(history, frame_result, seconds)
+        positions = [_positions_by_track(f) for f in frames]
+        thickness = max(1, round(self.player_radius / 2))
+        for track, color in zip(tracker_ids, colors, strict=True):
+            points = np.array([p.get(int(track), (np.nan, np.nan)) for p in positions])
+            valid = np.isfinite(points).all(axis=1)
+            draw_trail(
+                image, self.to_pixels(points), valid, ages, seconds, color, thickness
+            )
+
     def _draw_dots(
         self,
         image: np.ndarray,
@@ -318,6 +363,14 @@ class PitchRadar:
                     image, labels[i], org, cv2.FONT_HERSHEY_SIMPLEX, font_scale,
                     text_color_for(color).as_bgr(), 1, cv2.LINE_AA,
                 )  # fmt: skip
+
+
+def _positions_by_track(frame_result: FrameResult) -> dict[int, np.ndarray]:
+    """Pitch position per tracker id (empty without tracker ids)."""
+    tracker_id = frame_result.detections.tracker_id
+    if tracker_id is None:
+        return {}
+    return dict(zip((int(t) for t in tracker_id), frame_result.pitch_xy, strict=True))
 
 
 def draw_space_control(

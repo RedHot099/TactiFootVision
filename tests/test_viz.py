@@ -499,6 +499,129 @@ def test_overlay_blends_and_validates() -> None:
         viz.overlay(frame, patch, alpha=2)
 
 
+# ------------------------------------------------------------- motion tails
+BLUE, GREEN, BLACK = "#0000FF", "#00FF00", "#000000"
+
+
+def _people_at(
+    index: int, *people: tuple[int, int, tuple[float, float]]
+) -> FrameResult:
+    """A frame with only people: ``(tracker_id, team_id, pitch_xy)`` each."""
+    n = len(people)
+    detections = sv.Detections(
+        xyxy=np.zeros((n, 4), dtype=np.float32),
+        class_id=np.full(n, 2),
+        tracker_id=np.array([p[0] for p in people], dtype=int),
+    )
+    detections.data["team_id"] = np.array([p[1] for p in people], dtype=int)
+    detections.data["pitch_xy"] = np.array([p[2] for p in people], float).reshape(n, 2)
+    empty = sv.Detections.empty()
+    return FrameResult(index, index / FPS, detections, empty, ball_candidates=empty)
+
+
+def _tail_radar(trail_seconds: float | None = 1.0) -> viz.PitchRadar:
+    """Red team 0, green without a team, on a black pitch with black lines."""
+    return viz.PitchRadar(
+        trail_seconds=trail_seconds, team_colors=(RED, BLUE), default_color=GREEN,
+        pitch_color=BLACK, line_color=BLACK,
+    )  # fmt: skip
+
+
+def _two_runs(*gaps: int, nan: bool = False) -> list[FrameResult]:
+    """Frames 0-4: #7 (team 0) along ``y = 20`` and #3 (no team) along
+    ``y = 50``, both 6 m a frame from ``x = 20``, listed in another order in
+    odd frames. ``gaps``: frames without #7 (``nan``: with a NaN position).
+    """
+    frames = []
+    for i in range(5):
+        x = 20.0 + 6 * i
+        people = [(7, 0, (x, 20.0)), (3, -1, (x, 50.0))]
+        if i in gaps:
+            people = [(7, 0, (np.nan, np.nan)), people[1]] if nan else people[1:]
+        frames.append(_people_at(i, *(people[::-1] if i % 2 else people)))
+    return frames
+
+
+def _at(radar: viz.PitchRadar, image: np.ndarray, x: float, y: float) -> np.ndarray:
+    """The radar pixel at pitch position ``(x, y)``, as ints."""
+    px, py = radar.to_pixels([[x, y]]).round().astype(int)[0]
+    return image[py, px].astype(int)
+
+
+def test_radar_tails_join_each_persons_earlier_positions_in_their_colour() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar(1.0)
+    image = radar.draw(now, history=history)
+    # Segment midpoints, oldest first: ages 0.35, 0.25, 0.15 and 0.05 s.
+    midpoints = (23.0, 29.0, 35.0, 41.0)
+    reds = [_at(radar, image, x, 20)[2] for x in midpoints]
+    greens = [_at(radar, image, x, 50)[1] for x in midpoints]
+    expected = np.array([0.65, 0.75, 0.85, 0.95])
+    for values in (reds, greens):
+        assert values[0] > 0 and values == sorted(values)
+        np.testing.assert_allclose(
+            np.array(values) / values[-1], expected / expected[-1], atol=0.03
+        )
+    # Each tail is its own person's colour only, keyed by tracker id.
+    assert all(_at(radar, image, x, 20)[[0, 1]].max() == 0 for x in midpoints)
+    assert all(_at(radar, image, x, 50)[[0, 2]].max() == 0 for x in midpoints)
+    assert (_at(radar, image, 32, 35) == 0).all()  # between the two tails
+
+
+@pytest.mark.parametrize("nan", [False, True], ids=["absent", "no pitch position"])
+def test_radar_tails_break_at_gaps(nan: bool) -> None:
+    *history, now = _two_runs(2, nan=nan)
+    radar = _tail_radar()
+    image = radar.draw(now, history=history)
+    assert _at(radar, image, 23, 20)[2] > 0 and _at(radar, image, 41, 20)[2] > 0
+    assert _at(radar, image, 29, 20)[2] == 0  # frames 1-2
+    assert _at(radar, image, 35, 20)[2] == 0  # frames 2-3
+    assert _at(radar, image, 29, 50)[1] > 0  # #3 was seen throughout
+
+
+def test_radar_tails_fade_to_nothing_at_their_length() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar(0.4)  # frame 0 is 0.4 s old
+    image = radar.draw(now, history=history)
+    assert _at(radar, image, 20.3, 20)[2] < 8 < _at(radar, image, 23, 20)[2]
+    shorter = _tail_radar(0.25)
+    image = shorter.draw(now, history=history)
+    assert (image == shorter.draw(now, history=history[2:])).all()
+    assert _at(shorter, image, 35, 20)[2] > 0  # 0.1-0.2 s old
+    assert _at(shorter, image, 23, 20)[2] == 0  # 0.3-0.4 s old
+
+
+def test_radar_tails_are_drawn_under_the_dots() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar()
+    image = radar.draw(now, history=history)
+    # The tail comes in from the left; the dot and its pitch-colour ring
+    # (radius 8 + 2 px) cover it.
+    centre = radar.to_pixels([[44.0, 20.0]])[0]
+    rows, columns = np.indices(image.shape[:2])
+    distance = np.hypot(columns - centre[0], rows - centre[1])
+    covered = distance <= 9.5
+    assert (image[covered] == radar.draw(now)[covered]).all()
+    x, y = centre.round().astype(int)
+    assert tuple(image[y, x]) == (0, 0, 255)  # the dot
+    assert image[y, x - 14, 2] > 0  # the tail, past the ring
+
+
+def test_radar_tails_are_off_by_default(result: PipelineResult) -> None:
+    now, history = result[-1], result.frames[:-1]
+    today = viz.PitchRadar().draw(now)
+    assert (viz.PitchRadar().draw(now, history=history) == today).all()
+    with_tails = viz.PitchRadar(trail_seconds=1.0)
+    assert (with_tails.draw(now) == today).all()
+    assert (with_tails.draw(now, history=history) != today).any()
+
+
+@pytest.mark.parametrize("seconds", [0, -1.0])
+def test_radar_tail_length_must_be_positive(seconds: float) -> None:
+    with pytest.raises(ValueError, match="trail_seconds"):
+        viz.PitchRadar(trail_seconds=seconds)
+
+
 # ------------------------------------------------------------ bird's-eye view
 def _pitch_template(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
     """Top-down pitch, BGR: a colour gradient along both axes and white lines."""
@@ -855,6 +978,34 @@ def test_a_render_with_the_ball_trail_differs_from_one_without(
     plain, trail = render("plain.mp4"), render("trail.mp4", trail_seconds=1.0)
     assert (plain[0] == trail[0]).all()  # no history yet
     assert all((p != t).any() for p, t in zip(plain[1:], trail[1:], strict=True))
+
+
+class _RadarHistorySpy(viz.PitchRadar):
+    """Records the frame indices of the ``history`` of each drawn radar."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.histories: list[list[int] | None] = []
+
+    def draw(self, frame_result=None, space_control=None, frame=None, history=None):
+        self.histories.append(None if history is None else [f.index for f in history])
+        return super().draw(frame_result, space_control, frame, history=history)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_windows_the_longer_of_the_annotator_and_radar_trails(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    annotator = _HistorySpy(trail_seconds=0.2)  # frames are 0.2 s apart
+    radar = _RadarHistorySpy(trail_seconds=0.4)
+    viz.render_video(
+        result, video, tmp_path / "tails.mp4", annotator=annotator, radar=radar,
+        birds_eye=birds_eye, progress=False,
+    )  # fmt: skip
+    longer = [[f.index for f in result.window(f.index, 0.4)] for f in result]
+    assert longer == [[], [0], [0, 2], [2, 4], [4, 6]]
+    assert radar.histories == longer
+    assert annotator.histories == ([] if birds_eye else longer)
 
 
 # --------------------------------------------------------------------- plots

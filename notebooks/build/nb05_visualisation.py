@@ -156,6 +156,17 @@ colors = np.where(event["teammate"], "#00BFFF", "#FF1493").tolist()
 tv.show(statsbomb_radar.draw_points(np.array(event["pitch_location"].tolist()), colors), width=7)
 """)
     nb.md("""
+`trail_seconds` draws a tail behind each person, so the teams' movement shows.
+Like the ball trail, `draw` takes the earlier frames as `history`. Each tail
+joins the earlier pitch positions of the same track id, in the person's
+colour (the default colour without a team), breaks where the track was not
+seen, fades to nothing at `trail_seconds` and lies under the dots.
+""")
+    nb.code("""
+tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(trail_result, history=result.window(trail_result.index, 2.0))
+tv.show(tails, titles=f"trail_seconds=2.0 at frame {trail_result.index}", width=7)
+""")
+    nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
 `width_fraction` the size and `alpha` the opacity.
 """)
@@ -176,14 +187,14 @@ annotated and with the radar overlay, to an mp4. It refuses a video whose
 frame size differs from the result's and a radar or annotator drawing another
 pitch, and warns when the frame rates differ.
 Pass your own annotator and radar, or `radar=False` for none. With a
-`trail_seconds` annotator, `render_video` passes each frame its `history`
-itself.
+`trail_seconds` annotator or radar, `render_video` passes each frame its
+`history` itself, for the longer of the two.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
     result, VIDEO, OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
-    radar=tv.viz.PitchRadar(draw_ids=True),
+    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
     progress=False,
 )

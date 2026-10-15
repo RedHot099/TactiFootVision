@@ -11,11 +11,12 @@ uv run tactifoot info
 # Inference: a run file says how to process video; run inputs are flags.
 # --set overrides one run file value for this run (the value is YAML).
 # In Python: tv.run_file.load(path, overrides).run(video, output_dir, start=..., end=...).
-# render.annotator.trail_seconds draws the ball's last second in the video.
+# render.annotator.trail_seconds draws the ball's last second in the video,
+# render.radar.trail_seconds each person's last two seconds on the radar.
 uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/run" \
     --start 250 --end 300 \
-    --set teams=null --set render.annotator.style=video_game --set render.radar=null \
-    --set render.annotator.trail_seconds=1.0
+    --set teams=null --set render.annotator.style=video_game \
+    --set render.annotator.trail_seconds=1.0 --set render.radar.trail_seconds=2.0
 ls "$OUT/run"   # result.pkl tracks.csv freeze_frames.csv annotated.mp4
 
 # Training: TrainConfig fields are flags (see `tactifoot train --help`);
