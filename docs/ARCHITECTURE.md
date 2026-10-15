@@ -40,7 +40,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` → `TeamMetrics`, `compare_with_statsbomb` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -370,10 +370,17 @@ configs/              example run files
   unmapped is wrong. `NO_TEAM` is right for someone without a true team (a
   referee) and wrong for a player. `accuracy` is per matched detection,
   `track_accuracy` the per-detection share averaged over the run's tracks
-  (`tracker_id`), each counting once. The clip must carry boxes and teams,
-  and people without a `team_id`, in the result or the clip, or a true
-  `team_id` below `NO_TEAM` (kept free for a future "unknown" marker) are a
+  (`tracker_id`), each counting once. `role_confusion` counts the matched
+  people by true and predicted role (`player`, `goalkeeper`, `referee`,
+  `other`), from `class_name`, so a goalkeeper absorbed into a team as a
+  player shows. The clip must carry boxes and teams, and people without a
+  `team_id` or `class_name`, in the result or the clip, or a true `team_id`
+  below `NO_TEAM` (kept free for a future "unknown" marker) are a
   `ValueError`.
+* `evaluate_teams_clips(pairs, iou_threshold=0.5)` maps each clip's team ids
+  on its own, then pools the matched people of several `(result, clip)`
+  pairs, as one clip holding them all with its tracks and teams kept apart;
+  `team_mapping` is `None` over several clips.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

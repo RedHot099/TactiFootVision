@@ -1,4 +1,4 @@
-"""Backend-independent evaluation: detection mAP, keypoint error, tracking, homography error, team accuracy and StatsBomb comparison."""
+"""Backend-independent evaluation: detection mAP, keypoint error, tracking, homography error, team accuracy, role confusion and StatsBomb comparison."""
 
 import inspect
 from typing import Any
@@ -19,7 +19,7 @@ from tactifoot_vision.evaluation.metrics import (
     TrackingMetrics,
 )
 from tactifoot_vision.evaluation.statsbomb import compare_with_statsbomb
-from tactifoot_vision.evaluation.teams import evaluate_teams
+from tactifoot_vision.evaluation.teams import evaluate_teams, evaluate_teams_clips
 from tactifoot_vision.evaluation.tracking import (
     evaluate_tracking,
     evaluate_tracking_clips,
@@ -68,6 +68,7 @@ __all__ = [
     "evaluate_homography_clips",
     "evaluate_keypoints",
     "evaluate_teams",
+    "evaluate_teams_clips",
     "evaluate_tracking",
     "evaluate_tracking_clips",
 ]
