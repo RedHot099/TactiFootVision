@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 
@@ -58,7 +59,8 @@ def _fixed(points: np.ndarray) -> np.ndarray:
 
 
 class PitchRadar:
-    """Renders a top-down pitch with players (coloured by team) and the ball.
+    """Renders a top-down pitch with players (coloured by team) and the ball,
+    optionally over a space-control map.
 
     ``x`` runs left to right and ``y`` top to bottom, so the far touchline of a
     broadcast view is at the top, as on screen.
@@ -82,6 +84,7 @@ class PitchRadar:
         ball_radius: int | None = None,
         draw_ids: bool = False,
         line_thickness: int | None = None,
+        space_control_alpha: float = 0.5,
     ) -> None:
         """
         Args:
@@ -91,6 +94,8 @@ class PitchRadar:
             player_radius, ball_radius, line_thickness: pixels (at least 1);
                 ``None`` scales them with ``width_px``.
             draw_ids: write each player's track id inside its dot.
+            space_control_alpha: opacity of the team colours a space-control
+                map tints the pitch with (1 = opaque).
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -100,6 +105,10 @@ class PitchRadar:
         _check_pixels("player_radius", player_radius)
         _check_pixels("ball_radius", ball_radius)
         _check_pixels("line_thickness", line_thickness)
+        if not 0 <= space_control_alpha <= 1:
+            raise ValueError(
+                f"space_control_alpha must be in [0, 1], got {space_control_alpha}"
+            )
         self.pitch = pitch or SoccerPitch()
         self.width_px = int(width_px)
         self.padding_px = int(padding_px)
@@ -123,6 +132,7 @@ class PitchRadar:
         self.ball_radius = ball_radius
         self.line_thickness = line_thickness
         self.draw_ids = draw_ids
+        self.space_control_alpha = space_control_alpha
         self._background = self._draw_background()
 
     @property
@@ -136,13 +146,23 @@ class PitchRadar:
             np.asarray(xy, dtype=float).reshape(-1, 2) * self._scale + self.padding_px
         )
 
-    def draw(self, frame_result: FrameResult | None = None) -> np.ndarray:
+    def draw(
+        self,
+        frame_result: FrameResult | None = None,
+        space_control: SpaceControl | None = None,
+    ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
         ``None`` gives the empty pitch. Objects without pitch coordinates (NaN)
-        are skipped.
+        are skipped. A ``space_control`` map (from
+        :func:`tactifoot_vision.analysis.space_control`, on this radar's pitch)
+        tints the pitch under the lines and players: team 0's colour where team
+        0 controls the space, team 1's where team 1 does, a mix in between.
         """
-        image = self._background.copy()
+        if space_control is None:
+            image = self._background.copy()
+        else:
+            image = self._draw_background(space_control)
         if frame_result is None:
             return image
         index = team_color_index(frame_result.team_ids, len(self.team_colors))
@@ -200,12 +220,14 @@ class PitchRadar:
         return out
 
     # ------------------------------------------------------------- drawing
-    def _draw_background(self) -> np.ndarray:
+    def _draw_background(self, space_control: SpaceControl | None = None) -> np.ndarray:
         image = np.full(
             (self.height_px, self.width_px, 3),
             self.pitch_color.as_bgr(),
             dtype=np.uint8,
         )
+        if space_control is not None:
+            self._tint(image, space_control)
         lines, spots = pitch_markings(self.pitch)
         color = self.line_color.as_bgr()
         polylines = [_fixed(self.to_pixels(line)) for line in lines]
@@ -219,6 +241,32 @@ class PitchRadar:
                 -1, cv2.LINE_AA, _SUBPIXEL,
             )  # fmt: skip
         return image
+
+    def _tint(self, image: np.ndarray, space_control: SpaceControl) -> None:
+        """Blend the team colours of ``space_control`` over the pitch area of ``image``."""
+        if space_control.pitch != self.pitch:
+            raise ValueError(
+                "The space control covers a "
+                f"{space_control.pitch.length:g} x {space_control.pitch.width:g} "
+                f"pitch, the radar a {self.pitch.length:g} x {self.pitch.width:g} pitch"
+            )
+        if len(self.team_colors) < 2:
+            raise ValueError("Drawing space control needs two team colours")
+        (left, top), (right, bottom) = (
+            self.to_pixels([[0, 0], [self.pitch.length, self.pitch.width]])
+            .round()
+            .astype(int)
+        )
+        control = cv2.resize(
+            space_control.control.astype(np.float32),
+            (right - left, bottom - top),
+            interpolation=cv2.INTER_LINEAR,
+        )[..., None]
+        team0, team1 = (np.array(c.as_bgr(), np.float32) for c in self.team_colors[:2])
+        colors = control * team0 + (1 - control) * team1
+        area = image[top:bottom, left:right]
+        alpha = self.space_control_alpha
+        area[:] = np.round(area * (1 - alpha) + colors * alpha).astype(np.uint8)
 
     def _draw_dots(
         self,

@@ -12,6 +12,7 @@ from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 
 import tactifoot_vision.viz as viz
+from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
@@ -240,6 +241,43 @@ def test_radar_draw_points_and_nan() -> None:
     assert (radar.draw_points(xy, colors="#FF0000") == image).all()
     with pytest.raises(ValueError, match="colours"):
         radar.draw_points(xy, colors=["#FF0000"])
+
+
+def test_radar_draws_space_control_under_the_lines_and_players(
+    result: PipelineResult,
+) -> None:
+    radar = viz.PitchRadar(width_px=400, padding_px=20)
+    # Team 0 holds the left half, team 1 the right half.
+    control = np.zeros((68, 105))
+    control[:, :52] = 1
+    grid = SpaceControl(control, PITCH)
+    empty = radar.draw()
+    image = radar.draw(space_control=grid)
+    assert image.shape == empty.shape and image.dtype == np.uint8
+    left, right = radar.to_pixels([[20, 50], [85, 50]]).round().astype(int)
+    pitch_bgr = np.array(radar.pitch_color.as_bgr())
+    for (x, y), team in ((left, 0), (right, 1)):
+        tint = image[y, x].astype(int) - pitch_bgr  # towards the team's colour
+        team_bgr = np.array(radar.team_colors[team].as_bgr()) - pitch_bgr
+        assert (np.sign(tint) == np.sign(team_bgr)).all() and np.abs(tint).sum() > 60
+    assert (image[:20] == empty[:20]).all()  # the padding stays the pitch colour
+    x, y = radar.to_pixels([[52.5, 50]]).round().astype(int)[0]
+    assert (image[y, x] > 200).all()  # the white halfway line is drawn on top
+    players = radar.draw(result[0], space_control=grid)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(players[y, x]) == sv.Color.from_hex("#00BFFF").as_bgr()
+    assert (radar.draw() == empty).all()  # the plain radar is unchanged
+
+
+def test_radar_space_control_needs_the_radar_pitch_and_two_colours() -> None:
+    grid = SpaceControl(np.full((68, 105), 0.5), SoccerPitch(120, 80))
+    with pytest.raises(ValueError, match="pitch"):
+        viz.PitchRadar().draw(space_control=grid)
+    grid = SpaceControl(np.full((68, 105), 0.5), PITCH)
+    with pytest.raises(ValueError, match="two team colours"):
+        viz.PitchRadar(team_colors=["#FF0000"]).draw(space_control=grid)
+    with pytest.raises(ValueError, match="space_control_alpha"):
+        viz.PitchRadar(space_control_alpha=1.5)
 
 
 @pytest.mark.parametrize(
