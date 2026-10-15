@@ -212,6 +212,8 @@ def test_space_control_cell_size_and_smoothing_options():
 
 
 def test_space_control_grid_checks_its_values():
+    with pytest.raises(ValueError, match="NumPy array.*np.asarray"):
+        tv.analysis.SpaceControl([[0.5, 0.5]], SoccerPitch())
     with pytest.raises(ValueError, match=r"non-empty \(rows, columns\).*\(105,\)"):
         tv.analysis.SpaceControl(np.full(105, 0.5), SoccerPitch())
     with pytest.raises(ValueError, match=r"in \[0, 1\]"):

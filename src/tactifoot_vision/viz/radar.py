@@ -105,10 +105,7 @@ class PitchRadar:
         _check_pixels("player_radius", player_radius)
         _check_pixels("ball_radius", ball_radius)
         _check_pixels("line_thickness", line_thickness)
-        if not 0 <= space_control_alpha <= 1:
-            raise ValueError(
-                f"space_control_alpha must be in [0, 1], got {space_control_alpha}"
-            )
+        _check_alpha("space_control_alpha", space_control_alpha)
         self.pitch = pitch or SoccerPitch()
         self.width_px = int(width_px)
         self.padding_px = int(padding_px)
@@ -117,6 +114,11 @@ class PitchRadar:
         self._scale = np.array(
             [draw_width / self.pitch.length, draw_height / self.pitch.width]
         )
+        self._pitch_to_image = np.array([
+            [self._scale[0], 0, self.padding_px],
+            [0, self._scale[1], self.padding_px],
+            [0, 0, 1],
+        ])  # fmt: skip
         self.pitch_color = as_color(pitch_color)
         self.line_color = as_color(line_color)
         self.team_colors = [as_color(c) for c in team_colors]
@@ -227,7 +229,20 @@ class PitchRadar:
             dtype=np.uint8,
         )
         if space_control is not None:
-            self._tint(image, space_control)
+            if space_control.pitch != self.pitch:
+                raise ValueError(
+                    "The space control covers a "
+                    f"{space_control.pitch.length:g} x {space_control.pitch.width:g} "
+                    f"pitch, the radar a {self.pitch.length:g} x {self.pitch.width:g} "
+                    "pitch; compute it on a result with the radar's pitch"
+                )
+            image = draw_space_control(
+                image,
+                space_control,
+                self._pitch_to_image,
+                self.team_colors,
+                self.space_control_alpha,
+            )
         lines, spots = pitch_markings(self.pitch)
         color = self.line_color.as_bgr()
         polylines = [_fixed(self.to_pixels(line)) for line in lines]
@@ -241,36 +256,6 @@ class PitchRadar:
                 -1, cv2.LINE_AA, _SUBPIXEL,
             )  # fmt: skip
         return image
-
-    def _tint(self, image: np.ndarray, space_control: SpaceControl) -> None:
-        """Blend the team colours of ``space_control`` over the pitch area of ``image``."""
-        if space_control.pitch != self.pitch:
-            raise ValueError(
-                "The space control covers a "
-                f"{space_control.pitch.length:g} x {space_control.pitch.width:g} "
-                f"pitch, the radar a {self.pitch.length:g} x {self.pitch.width:g} "
-                "pitch; compute it on a result with the radar's pitch"
-            )
-        if len(self.team_colors) < 2:
-            raise ValueError(
-                "Drawing space control needs two team colours; give team_colors "
-                "a colour for team 0 and one for team 1"
-            )
-        (left, top), (right, bottom) = (
-            self.to_pixels([[0, 0], [self.pitch.length, self.pitch.width]])
-            .round()
-            .astype(int)
-        )
-        control = cv2.resize(
-            space_control.control.astype(np.float32),
-            (right - left, bottom - top),
-            interpolation=cv2.INTER_LINEAR,
-        )[..., None]
-        team0, team1 = (np.array(c.as_bgr(), np.float32) for c in self.team_colors[:2])
-        colors = control * team0 + (1 - control) * team1
-        area = image[top:bottom, left:right]
-        alpha = self.space_control_alpha
-        area[:] = np.round(area * (1 - alpha) + colors * alpha).astype(np.uint8)
 
     def _draw_dots(
         self,
@@ -311,6 +296,85 @@ class PitchRadar:
                     image, labels[i], org, cv2.FONT_HERSHEY_SIMPLEX, font_scale,
                     text_color_for(color).as_bgr(), 1, cv2.LINE_AA,
                 )  # fmt: skip
+
+
+def draw_space_control(
+    image: np.ndarray,
+    space_control: SpaceControl,
+    pitch_to_image: np.ndarray,
+    team_colors: Sequence[ColorLike] = TEAM_COLORS,
+    alpha: float = 0.5,
+) -> np.ndarray:
+    """Tint the pitch in a copy of a top-down ``image`` with a space-control map.
+
+    Team 0's colour where team 0 controls the space, team 1's where team 1
+    does, a mix in between; outside the pitch the image is unchanged. Draw
+    lines and players afterwards to keep them on top (``PitchRadar.draw`` does).
+
+    Args:
+        image: BGR ``uint8`` image of the pitch seen from above: a radar or a
+            bird's-eye view of the video.
+        space_control: from :func:`tactifoot_vision.analysis.space_control`.
+        pitch_to_image: 3x3 homography from pitch coordinates (of
+            ``space_control.pitch``) to pixels of ``image``; an affine matrix
+            for a radar, a perspective one for a bird's-eye view.
+        team_colors: team 0's colour, then team 1's.
+        alpha: opacity of the tint (1 = opaque).
+    """
+    _check_alpha("alpha", alpha)
+    if len(team_colors) < 2:
+        raise ValueError(
+            "Drawing space control needs two team colours; give team_colors "
+            "a colour for team 0 and one for team 1"
+        )
+    pitch_to_image = np.asarray(pitch_to_image, dtype=float)
+    if pitch_to_image.shape != (3, 3):
+        raise ValueError(
+            f"pitch_to_image must be a 3 x 3 homography, got shape {pitch_to_image.shape}"
+        )
+    pitch, (rows, columns) = space_control.pitch, space_control.control.shape
+    cell_to_pitch = np.array([
+        [pitch.length / columns, 0, 0.5 * pitch.length / columns],
+        [0, pitch.width / rows, 0.5 * pitch.width / rows],
+        [0, 0, 1],
+    ])  # fmt: skip
+    height, width = image.shape[:2]
+    control = cv2.warpPerspective(
+        space_control.control.astype(np.float32),
+        pitch_to_image @ cell_to_pitch,
+        (width, height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,  # out to the touchlines, not faded
+    )[..., None]
+    corners = cv2.perspectiveTransform(
+        np.array(
+            [
+                [
+                    [0, 0],
+                    [pitch.length, 0],
+                    [pitch.length, pitch.width],
+                    [0, pitch.width],
+                ]
+            ],
+            float,
+        ),
+        pitch_to_image,
+    )[0]
+    on_pitch = np.zeros((height, width), dtype=np.uint8)
+    cv2.fillConvexPoly(on_pitch, _fixed(corners), 1, cv2.LINE_8, _SUBPIXEL)
+    team0, team1 = (np.array(as_color(c).as_bgr(), np.float32) for c in team_colors[:2])
+    colors = control * team0 + (1 - control) * team1
+    out = image.copy()
+    inside = on_pitch.astype(bool)
+    out[inside] = np.round(out[inside] * (1 - alpha) + colors[inside] * alpha).astype(
+        np.uint8
+    )
+    return out
+
+
+def _check_alpha(name: str, alpha: float) -> None:
+    if not 0 <= alpha <= 1:
+        raise ValueError(f"{name} must be in [0, 1], got {alpha}")
 
 
 def _check_pixels(name: str, value: float | None) -> None:

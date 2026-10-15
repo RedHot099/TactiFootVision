@@ -23,7 +23,12 @@ from tactifoot_vision.viz.plots import (
     show_augmentations,
     show_samples,
 )
-from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
+from tactifoot_vision.viz.radar import (
+    PitchRadar,
+    check_overlay,
+    draw_space_control,
+    overlay,
+)
 from tactifoot_vision.viz.video import render_video
 
 __all__ = [
@@ -32,6 +37,7 @@ __all__ = [
     "check_overlay",
     "draw_annotations",
     "draw_pitch",
+    "draw_space_control",
     "overlay",
     "plot_distance_histogram",
     "plot_heatmap",

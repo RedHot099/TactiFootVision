@@ -423,14 +423,19 @@ nothing (`PipelineResult.export` writes their tables).
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None)` → top-down
   pitch image; a `SpaceControl` on the radar's pitch tints the pitch under the
-  lines and players, from team 1's colour (`0`) to team 0's (`1`), at
-  `space_control_alpha` (0.5) opacity;
+  lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
+  opacity;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
   for a `radius` override, by `draw_points`;
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame;
   `tv.viz.check_overlay(...)` checks those settings without a frame.
+* `draw_space_control(image, space_control, pitch_to_image, team_colors=TEAM_COLORS,
+  alpha=0.5)` → a copy of a top-down image (radar or bird's-eye view) with
+  the pitch tinted from team 1's colour (control `0`) to team 0's (`1`).
+  `pitch_to_image` is the 3x3 pitch → pixel homography; off the pitch the
+  image is unchanged.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.

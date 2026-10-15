@@ -24,6 +24,11 @@ class SpaceControl:
 
     def __post_init__(self) -> None:
         control = self.control
+        if not isinstance(control, np.ndarray):
+            raise ValueError(
+                f"control must be a NumPy array, got {type(control).__name__}; "
+                "pass np.asarray(values)"
+            )
         if control.ndim != 2 or not control.size:
             raise ValueError(
                 f"control must be a non-empty (rows, columns) array, got shape "
