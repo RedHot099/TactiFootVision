@@ -54,7 +54,7 @@ def _trackeval_hota() -> Any:
             raise  # TrackEval is installed but broken: say what is missing
         raise ImportError(
             "HOTA needs TrackEval, from the eval extra: run `uv sync --extra eval` "
-            "(or `pip install 'tactifoot-vision[eval]'`), or pass hota=False"
+            "(or `pip install -e '.[eval]'` in a checkout), or pass hota=False"
         ) from error
     return HOTA()
 

@@ -315,6 +315,8 @@ def _trackeval_on_mot(tmp_path, monkeypatch, truth, predicted):
     ]
     with monkeypatch.context() as patch:
         # TrackEval still uses np.float and np.int, which numpy 1.24 removed.
+        # Lent here, not by hota._numpy_aliases, so the reference run does not
+        # depend on the code under test.
         patch.setattr(np, "float", float, raising=False)
         patch.setattr(np, "int", int, raising=False)
         results, _ = evaluator.evaluate([dataset], metrics)
@@ -384,3 +386,10 @@ def test_overall_hota_adds_up_the_detections_of_every_class():
     assert [by_class.hota, by_class.deta, by_class.assa] == pytest.approx(
         [together.hota, together.deta, together.assa]
     )
+
+
+@needs_trackeval
+def test_a_clip_without_objects_has_hota_zero():
+    metrics = evaluate_tracking(_result({0: ([], [])}), _clip({0: ([], [])}))
+    assert (metrics.hota, metrics.deta, metrics.assa) == (0.0, 0.0, 0.0)
+    assert metrics.per_class.empty
