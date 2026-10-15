@@ -454,7 +454,8 @@ nothing (`PipelineResult.export` writes their tables).
   colour (`default_color` without a team), broken at frames where the track
   is missing or has no pitch position, fading linearly to zero at
   `trail_seconds`, under the dots. `draw_visible_area` (off by default)
-  outlines `tv.pitch.visible_area` in `line_color` under the tails and dots,
+  outlines `tv.pitch.visible_area` in `visible_area_color` (gold, apart from
+  the white markings) under the tails and dots,
   cut to the image, and needs `frame_size` (default the size of `frame`);
   nothing without a homography or when part of the frame lies beyond the horizon;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch

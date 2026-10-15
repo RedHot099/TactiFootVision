@@ -1107,7 +1107,12 @@ def test_the_radar_tail_length_reaches_the_render_section(tmp_path):
 
 
 def test_the_radar_visible_area_reaches_the_render_section(tmp_path):
-    data = {"detector": DETECTOR, "render": {"radar": {"draw_visible_area": True}}}
+    radar = {"draw_visible_area": True, "visible_area_color": "#00FF00"}
+    data = {"detector": DETECTOR, "render": {"radar": radar}}
     loaded = _load(tmp_path, data)
     loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
     assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.radar.visible_area_color=nope"])
+    with pytest.raises(ValueError, match="color"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run

@@ -168,7 +168,7 @@ tv.show(tails, titles=f"trail_seconds=2.0 at frame {trail_result.index}", width=
 """)
     nb.md("""
 `draw_visible_area` outlines the frame's visible area, the part of the pitch
-the camera shows, under the players. It is `tv.pitch.visible_area`, the
+the camera shows, under the players, in `visible_area_color`. It is `tv.pitch.visible_area`, the
 polygon freeze frames export, and needs the frame size: pass
 `frame_size=result.frame_size`, or the `frame`. There is no outline without a
 homography or when part of the frame lies beyond the horizon.

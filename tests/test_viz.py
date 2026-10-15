@@ -634,11 +634,15 @@ VISIBLE = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
 
 
 def _area_radar(draw_visible_area: bool = True) -> viz.PitchRadar:
-    """Red team 0 and white 3 px lines on a black pitch."""
+    """Red team 0, white 3 px lines and a green outline on a black pitch."""
     return viz.PitchRadar(
-        draw_visible_area=draw_visible_area, team_colors=(RED, BLUE),
-        pitch_color=BLACK, line_thickness=3,
+        draw_visible_area=draw_visible_area, visible_area_color=GREEN,
+        team_colors=(RED, BLUE), pitch_color=BLACK, line_thickness=3,
     )  # fmt: skip
+
+
+def _outlined(pixel: np.ndarray) -> bool:
+    return tuple(pixel) == (0, 255, 0)
 
 
 def _visible_in(homography: np.ndarray | None, *people) -> FrameResult:
@@ -650,14 +654,14 @@ def test_radar_outlines_the_visible_area_under_the_players() -> None:
     now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))  # on the top edge
     image = radar.draw(now, frame_size=(W, H))
     for x, y in ((30, 15), (60, 30), (50, 45), (20, 30)):  # one point per edge
-        assert (_at(radar, image, x, y) == 255).all()
+        assert _outlined(_at(radar, image, x, y))
     assert (_at(radar, image, 30, 30) == 0).all()  # inside
     assert (_at(radar, image, 10, 30) == 0).all()  # outside
     assert tuple(_at(radar, image, 40, 15)) == (0, 0, 255)  # the dot on top
     # The frame gives the frame size, and the outline is drawn over it.
     frame = np.full((H, W, 3), 90, dtype=np.uint8)
     over_frame = radar.draw(now, frame=frame)
-    assert (_at(radar, over_frame, 30, 15) == 255).all()
+    assert _outlined(_at(radar, over_frame, 30, 15))
     assert (_at(radar, over_frame, 30, 30) == 90).all()
 
 
@@ -681,8 +685,8 @@ def test_radar_outlines_a_visible_area_reaching_towards_the_horizon() -> None:
     assert np.abs(visible_area(homography, (W, H))).max() > 1e9
     radar = _area_radar()
     image = radar.draw(_visible_in(homography), frame_size=(W, H))
-    assert (_at(radar, image, 30, 15) == 255).all()  # the top edge
-    assert (_at(radar, image, 20, 60) == 255).all()  # the left edge, to the touchline
+    assert _outlined(_at(radar, image, 30, 15))  # the top edge
+    assert _outlined(_at(radar, image, 20, 60))  # the left edge, to the touchline
     assert (_at(radar, image, 30, 30) == 0).all()  # inside
 
 
@@ -691,6 +695,16 @@ def test_radar_visible_area_is_off_by_default() -> None:
     today = _area_radar(False).draw(now)
     assert (_area_radar(False).draw(now, frame_size=(W, H)) == today).all()
     assert (_area_radar().draw(now, frame_size=(W, H)) != today).any()
+
+
+def test_radar_visible_area_has_its_own_colour() -> None:
+    radar = viz.PitchRadar(draw_visible_area=True, line_thickness=3)
+    image = radar.draw(_visible_in(VISIBLE), frame_size=(W, H))
+    outline = sv.Color.from_hex(viz.radar.VISIBLE_AREA_COLOR).as_bgr()
+    assert outline != radar.line_color.as_bgr()  # not the markings' white
+    assert tuple(_at(radar, image, 30, 15)) == outline
+    with pytest.raises(ValueError):
+        viz.PitchRadar(visible_area_color="nope")
 
 
 def test_radar_visible_area_needs_the_frame_size() -> None:

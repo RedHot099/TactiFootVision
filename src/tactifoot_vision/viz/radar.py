@@ -20,6 +20,7 @@ type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 TEAM_COLORS: tuple[str, ...] = ("#00BFFF", "#FF1493")
 DEFAULT_COLOR = "#FFFFFF"  # people without a team (referees, unassigned tracks)
 BALL_COLOR = "#FFFF00"
+VISIBLE_AREA_COLOR = "#FFD700"  # apart from the white markings
 PITCH_COLOR = "#22312B"
 LINE_COLOR = "#FFFFFF"
 
@@ -72,7 +73,7 @@ class PitchRadar:
     >>> tails = PitchRadar(trail_seconds=2.0).draw(
     ...     result.frame(index), history=result.window(index, 2.0)
     ... )
-    >>> seen = PitchRadar(draw_visible_area=True).draw(
+    >>> visible = PitchRadar(draw_visible_area=True).draw(
     ...     result.frame(index), frame_size=result.frame_size
     ... )
     """
@@ -94,6 +95,7 @@ class PitchRadar:
         space_control_alpha: float = 0.5,
         trail_seconds: float | None = None,
         draw_visible_area: bool = False,
+        visible_area_color: ColorLike = VISIBLE_AREA_COLOR,
     ) -> None:
         """
         Args:
@@ -110,8 +112,8 @@ class PitchRadar:
                 that age; ``None``: no tails.
             draw_visible_area: outline the frame's visible area
                 (:func:`~tactifoot_vision.pitch.visible_area`) in
-                ``line_color`` under the players; nothing without a homography
-                or when part of the frame lies beyond the horizon.
+                ``visible_area_color`` under the players; nothing without a
+                homography or when part of the frame lies beyond the horizon.
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -142,6 +144,7 @@ class PitchRadar:
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
         self.ball_color = as_color(ball_color)
+        self.visible_area_color = as_color(visible_area_color)
         if player_radius is None:
             player_radius = max(3, round(width_px / 80))
         if ball_radius is None:
@@ -345,7 +348,8 @@ class PitchRadar:
         ]
         cv2.polylines(
             image, [to_fixed(e) for e in edges if e is not None], False,
-            self.line_color.as_bgr(), self.line_thickness, cv2.LINE_AA, SUBPIXEL,
+            self.visible_area_color.as_bgr(), self.line_thickness, cv2.LINE_AA,
+            SUBPIXEL,
         )  # fmt: skip
 
     def _draw_tails(
