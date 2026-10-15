@@ -38,8 +38,13 @@ def _result(
     tracks: list[tuple[int, int, range, Path]],
     pitch: SoccerPitch | None = None,
     stride: int = 1,
+    classes: dict[int, str] | None = None,
 ) -> PipelineResult:
-    """People given as ``(tracker_id, team_id, frames, path)``, every ``stride``-th frame."""
+    """People given as ``(tracker_id, team_id, frames, path)``, every ``stride``-th frame.
+
+    ``classes`` names the class of a track (``player`` when missing).
+    """
+    classes = classes or {}
     pitch = pitch or SoccerPitch()
     end = max(frames.stop for _, _, frames, _ in tracks)
     frames = []
@@ -55,7 +60,9 @@ def _result(
             class_id=np.ones(len(rows), int),
             tracker_id=np.array([tracker_id for tracker_id, *_ in rows], int),
             data={
-                "class_name": np.array(["player"] * len(rows)),
+                "class_name": np.array(
+                    [classes.get(tracker_id, "player") for tracker_id, *_ in rows]
+                ),
                 "team_id": np.array([team for _, team, _ in rows], int),
             },
         )
@@ -155,6 +162,21 @@ def test_join_tracks_joins_tracks_without_teams_only_to_tracks_without_teams():
     assert _ids_by_original(join_tracks(result)) == {1: {1}, 2: {2}, 3: {1}}
 
 
+def test_join_tracks_without_teams_never_gives_a_referee_a_players_id():
+    """No teams: a referee appears where a player was lost, the player 2 m on."""
+    player = _walk((50, 30), (2, 0))
+    result = _result(
+        [
+            (1, NO_TEAM, range(0, 25), player),
+            (2, NO_TEAM, range(30, 60), _walk((52, 30), (0, 1))),
+            (3, NO_TEAM, range(35, 60), lambda t: (player(t)[0], 32)),
+        ],
+        classes={2: "referee"},
+    )
+
+    assert _ids_by_original(join_tracks(result)) == {1: {1}, 2: {2}, 3: {1}}
+
+
 @pytest.mark.parametrize("stride", [1, 2])
 def test_join_tracks_leaves_gaps_beyond_max_gap_apart(stride):
     """The track ends at frame 18 and the next starts at 58: a 1.6 s gap."""
@@ -199,6 +221,7 @@ def test_join_tracks_never_links_tracks_without_a_pitch_position():
 
 def test_join_tracks_keeps_the_original_ids_and_adds_no_rows():
     result = _result(CROSSING)
+    tracker_ids = [frame.detections.tracker_id.copy() for frame in result]
 
     joined = join_tracks(result)
 
@@ -208,7 +231,10 @@ def test_join_tracks_keeps_the_original_ids_and_adds_no_rows():
             after.detections.data["original_tracker_id"], before.detections.tracker_id
         )
         np.testing.assert_array_equal(after.detections.xyxy, before.detections.xyxy)
-    assert "original_tracker_id" not in result[0].detections.data  # input untouched
+    # the input is untouched
+    for frame, ids in zip(result, tracker_ids, strict=True):
+        np.testing.assert_array_equal(frame.detections.tracker_id, ids)
+        assert "original_tracker_id" not in frame.detections.data
     assert result.track_ids == [1, 2, 3, 4]
 
 

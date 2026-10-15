@@ -353,7 +353,8 @@ configs/              example run files
   (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
   player tracks: it links each track end to a later track start at most
   `max_gap` s later, within `slack + max_speed * dt` m and, with
-  `same_team`, of the same `team_id` (`NO_TEAM` joins only `NO_TEAM`),
+  `same_team`, of the same `team_id` (`NO_TEAM` joins only `NO_TEAM` of the
+  same `class_name`, so a referee never takes a player's id),
   cheapest first (distance plus 1.25 m per second of gap, one successor and
   one predecessor per track; tracks without a pitch position are not
   linked). A player track takes its earliest track's id through
