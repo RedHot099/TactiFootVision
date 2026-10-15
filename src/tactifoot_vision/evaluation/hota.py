@@ -32,7 +32,7 @@ def hota_by_class(
     """HOTA of each class over ``clips``, and overall.
 
     Each clip is ``(truth, predicted)``, ``truth[name][i]`` against
-    ``predicted[name][i]``; a class is scored in the clips that have it. As
+    ``predicted[name][i]``; a class is scored in the clips that list it. As
     TrackEval does, the clips of a class are combined first, then the classes:
     both add up the detections.
     """

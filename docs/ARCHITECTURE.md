@@ -313,8 +313,9 @@ configs/              example run files
 * `evaluate_tracking_clips(pairs, iou_threshold=0.5, hota=True)` combines
   several `(result, clip)` pairs as TrackEval combines sequences: the counts
   (for HOTA, the detections) of every clip are added up, which gives the
-  numbers of one clip holding them all with their identities kept apart. A
-  class counts in the clips that have it.
+  numbers of one clip holding them all with their identities kept apart.
+  Every clip is scored on the classes of all the clips, so predictions of a
+  class a clip has no labels of are false positives there.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

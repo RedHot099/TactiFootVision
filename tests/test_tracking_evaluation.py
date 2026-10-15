@@ -423,6 +423,22 @@ def test_to_mot_writes_one_row_per_object_with_1_based_frames(tmp_path):
     ]
 
 
+def test_to_mot_writes_an_interpolated_ball_without_confidence(tmp_path):
+    result = _result({0: ([], [BALL])})
+    result.frames[0].ball.confidence = np.array([np.nan])  # as track_ball fills it
+    result.frames[0].ball.data["interpolated"] = np.array([True])
+
+    lines = result.to_mot(tmp_path / "mot.txt").read_text().splitlines()
+
+    assert lines == ["1,1,50.00,50.00,4.00,4.00,-1,-1,-1,-1"]
+
+
+def test_to_mot_refuses_negative_track_ids(tmp_path):
+    result = _result({3: ([(-1, "player", LEFT)], [])})
+    with pytest.raises(ValueError, match="frame 3 has -1"):
+        result.to_mot(tmp_path / "mot.txt")
+
+
 def test_to_mot_needs_track_ids(tmp_path):
     result = _result({0: ([(1, "player", LEFT)], [])})
     result.frames[0].detections.tracker_id = None
@@ -489,6 +505,33 @@ def test_the_aggregate_equals_evaluating_the_concatenated_clips(hota):
 
     assert combined.num_frames == concatenated.num_frames == 14
     assert combined.id_switches == concatenated.id_switches > 1
+    assert combined.as_dict() == pytest.approx(concatenated.as_dict(), nan_ok=True)
+    pd.testing.assert_frame_equal(combined.per_class, concatenated.per_class)
+
+
+@pytest.mark.parametrize("hota", [False, pytest.param(True, marks=needs_trackeval)])
+def test_the_aggregate_scores_every_clip_on_the_classes_of_all_clips(hota):
+    # The noisy clip has no ball labels, yet its run sees balls: as in the
+    # concatenated clip, they are false positives there, not left out.
+    noisy_truth, noisy_predicted = _noisy_fixture()
+    noisy_predicted = {
+        i: (people, [BALL]) for i, (people, _) in noisy_predicted.items()
+    }
+    pairs = [
+        (_result(noisy_predicted), _clip(noisy_truth)),
+        (_result(PREDICTED), _clip(TRUTH)),
+    ]
+    after = len(noisy_truth)
+    joined = _result(noisy_predicted | _shifted(PREDICTED, after, 100))
+    for frame in joined.frames[after:]:  # the second clip's ball is another one
+        frame.ball.tracker_id = np.full(len(frame.ball), 100)
+    concatenated = evaluate_tracking(
+        joined, _clip(noisy_truth | _shifted(TRUTH, after, 100)), hota=hota
+    )
+
+    combined = evaluate_tracking_clips(pairs, hota=hota)
+
+    assert combined.per_class.loc["ball", "false_positives"] == 10 + 1
     assert combined.as_dict() == pytest.approx(concatenated.as_dict(), nan_ok=True)
     pd.testing.assert_frame_equal(combined.per_class, concatenated.per_class)
 

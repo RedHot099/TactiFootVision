@@ -18,7 +18,9 @@ from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 
 logger = logging.getLogger(__name__)
 
-_BALL_ID = 0  # track id of a ball the pipeline did not track: there is one ball
+# Track id of a ball the pipeline did not track: there is one ball. Classes are
+# scored apart here, so 0 cannot clash; to_mot has no classes and uses max + 1.
+_BALL_ID = 0
 _CONTINUING = 1000.0  # TrackEval's bonus that keeps last frame's matches
 _EPS = np.finfo(float).eps
 
@@ -100,7 +102,8 @@ def evaluate_tracking(
         hota: compute HOTA, which needs the ``eval`` extra (TrackEval); with
             ``False`` the HOTA numbers are NaN and TrackEval is not needed.
     """
-    return _evaluate([(result, clip)], iou_threshold, hota, clip.name)
+    pairs = [(result, clip)]
+    return _evaluate(pairs, iou_threshold, hota, clip.name, _class_names(clip))
 
 
 def evaluate_tracking_clips(
@@ -112,15 +115,17 @@ def evaluate_tracking_clips(
 
     As TrackEval combines sequences: the counts of every clip are added up
     (for HOTA, the detections), so the numbers are those of one clip holding
-    them all, its identities kept apart. A class counts in the clips that
-    have it; ``num_frames`` is the scored frames of all of them.
+    them all, its identities kept apart. Every clip is scored on the classes
+    of all the clips, so predictions of a class a clip has no labels of are
+    false positives there; ``num_frames`` is the scored frames of all of them.
     """
     pairs = list(pairs)
     if not pairs:
         raise ValueError(
             "evaluate_tracking_clips needs at least one (result, clip) pair"
         )
-    return _evaluate(pairs, iou_threshold, hota, f"{len(pairs)} clips")
+    class_names = sorted(set().union(*(_class_names(clip) for _, clip in pairs)))
+    return _evaluate(pairs, iou_threshold, hota, f"{len(pairs)} clips", class_names)
 
 
 def _evaluate(
@@ -128,9 +133,10 @@ def _evaluate(
     iou_threshold: float,
     hota: bool,
     label: str,
+    class_names: list[str],
 ) -> TrackingMetrics:
     """The metrics of every pair's counts added up, logged as the tracking on ``label``."""
-    objects = [_by_class_and_frame(result, clip) for result, clip in pairs]
+    objects = [_by_class_and_frame(result, clip, class_names) for result, clip in pairs]
     counts: dict[str, _Counts] = {}
     for truth, predicted in objects:
         for name in truth:
@@ -175,12 +181,16 @@ def _evaluate(
     return metrics
 
 
+def _class_names(clip: LabelledClip) -> set[str]:
+    return {name for f in clip for name in _by_class(f.detections, f.ball)}
+
+
 def _by_class_and_frame(
-    result: PipelineResult, clip: LabelledClip
+    result: PipelineResult, clip: LabelledClip, class_names: list[str]
 ) -> tuple[dict[str, list[_Objects]], dict[str, list[_Objects]]]:
     """Class name -> the true and the predicted objects of each processed frame.
 
-    The classes are the clip's; predicted classes it does not have are left out.
+    Predicted classes not in ``class_names`` are left out.
     """
     missing = {Truth.IDENTITIES, Truth.BOXES} - clip.truth
     if missing:
@@ -208,13 +218,10 @@ def _by_class_and_frame(
         truth.append(objects)
         predicted.append(_predicted(frame))
 
-    class_names = sorted(
-        {name for f in clip for name in _by_class(f.detections, f.ball)}
-    )
     ignored = sorted({name for p in predicted for name in p} - set(class_names))
     if ignored:
         logger.warning(
-            "Ignoring predicted classes that clip %s does not have: %s",
+            "Ignoring predicted classes that are not scored on clip %s: %s",
             clip.name,
             ", ".join(ignored),
         )
