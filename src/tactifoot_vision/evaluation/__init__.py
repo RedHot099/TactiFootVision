@@ -6,7 +6,10 @@ from typing import Any
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
 from tactifoot_vision.evaluation.detection import evaluate_detector
-from tactifoot_vision.evaluation.homography import evaluate_homography
+from tactifoot_vision.evaluation.homography import (
+    evaluate_homography,
+    evaluate_homography_clips,
+)
 from tactifoot_vision.evaluation.keypoints import evaluate_keypoints
 from tactifoot_vision.evaluation.metrics import (
     DetectionMetrics,
@@ -59,6 +62,7 @@ __all__ = [
     "evaluate",
     "evaluate_detector",
     "evaluate_homography",
+    "evaluate_homography_clips",
     "evaluate_keypoints",
     "evaluate_tracking",
     "evaluate_tracking_clips",

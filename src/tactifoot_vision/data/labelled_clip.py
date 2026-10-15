@@ -25,7 +25,9 @@ class LabelledFrame:
 
     ``detections`` holds the people (players, goalkeepers, referees) and
     ``ball`` the ball, both as ``sv.Detections`` with ``xyxy`` frame pixels,
-    ``tracker_id`` (the source's track ids) and ``data["class_name"]``.
+    ``tracker_id`` (the source's track ids) and ``data["class_name"]``. A
+    source with pitch positions puts them in ``data["pitch_xy"]``, ``(N, 2)``
+    ``SoccerPitch`` coordinates (NaN where unknown), as in a ``FrameResult``.
     """
 
     index: int  # the frame's FrameResult.index when the pipeline runs on the clip

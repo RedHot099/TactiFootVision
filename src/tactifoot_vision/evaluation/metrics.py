@@ -117,7 +117,12 @@ class HomographyMetrics:
     ``mean_error_m``, ``p90_error_m``, ``under_1m``, ``under_2m``,
     ``under_5m``, ``beyond_horizon``, ``jitter_m`` and ``frames`` (frames
     scored on those points). ``truth`` names the truth the errors are
-    measured against.
+    measured against: against ``pitch_positions`` the points are the
+    labelled people and ``per_points`` has one row, ``people``, which the
+    top-level numbers are on. ``intervals``, given by an aggregate over
+    several clips, is indexed by the names of :meth:`as_dict`'s numbers with
+    columns ``low`` and ``high``: their 95% interval from a bootstrap that
+    resamples clips.
     """
 
     median_error_m: float
@@ -132,6 +137,7 @@ class HomographyMetrics:
     per_points: pd.DataFrame
     truth: Truth
     num_frames: int  # processed frames with truth
+    intervals: pd.DataFrame | None = None
 
     def as_dict(self) -> dict[str, float | str]:
         return {
