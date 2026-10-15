@@ -42,7 +42,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
-| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `render_video`, `draw_annotations`, `show`, plotting helpers |
+| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
@@ -435,14 +435,18 @@ nothing (`PipelineResult.export` writes their tables).
 * `draw_space_control(image, space_control, pitch_to_image, team_colors=TEAM_COLORS,
   alpha=0.5)` → a copy of a top-down image (radar or bird's-eye view) with
   the pitch tinted from team 1's colour (control `0`) to team 0's (`1`).
-  `pitch_to_image` is the 3x3 pitch → pixel homography; off the pitch the
-  image is unchanged.
+  `pitch_to_image` is the 3x3 pitch → pixel homography (pixel centres at
+  integers); off the pitch the image is unchanged. A BGRA image keeps its
+  alpha and is tinted only where it is not transparent.
 * `warp_to_pitch(frame, homography, pitch=None, px_per_m=10.0)` → the bird's-eye
   view: the frame warped onto the whole pitch as BGRA, `105 * px_per_m` by
   `68 * px_per_m` pixels (other pitch units scaled, as on the radar), pixels
   tiling the pitch. Pitch outside the visible area, or behind the camera
   (beyond the horizon), is transparent and black; the frame centre must lie
-  on the pitch side of the horizon, as in `FrameAnnotator`.
+  on the pitch side of the horizon, as in `FrameAnnotator`. Two
+  `cv2.warpPerspective` calls (frame and frame-sized mask) and the horizon's
+  half-plane. `pitch_to_birds_eye(pitch=None, px_per_m=10.0)` is its pitch →
+  pixel homography, e.g. for `draw_space_control`.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.

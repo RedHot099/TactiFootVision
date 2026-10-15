@@ -13,7 +13,7 @@ matplotlib figures (matplotlib is imported on first use).
 """
 
 from tactifoot_vision.viz.annotate import FrameAnnotator, draw_annotations
-from tactifoot_vision.viz.birds_eye import warp_to_pitch
+from tactifoot_vision.viz.birds_eye import pitch_to_birds_eye, warp_to_pitch
 from tactifoot_vision.viz.plots import (
     draw_pitch,
     plot_distance_histogram,
@@ -41,6 +41,7 @@ __all__ = [
     "draw_pitch",
     "draw_space_control",
     "overlay",
+    "pitch_to_birds_eye",
     "plot_distance_histogram",
     "plot_heatmap",
     "plot_metrics",

@@ -5,7 +5,32 @@ import numpy as np
 
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pitch.pitch import SoccerPitch
-from tactifoot_vision.viz.annotate import project_to_frame
+
+# Homographies take continuous frame coordinates (pixel ``i`` covers
+# ``[i, i + 1)``); cv2 puts pixel centres at integers.
+_TO_PIXEL_CENTRES = np.array([[1, 0, -0.5], [0, 1, -0.5], [0, 0, 1]])
+
+
+def pitch_to_birds_eye(
+    pitch: SoccerPitch | None = None, px_per_m: float = 10.0
+) -> np.ndarray:
+    """3x3 pitch -> pixel homography of :func:`warp_to_pitch`'s image.
+
+    Pass it as ``pitch_to_image`` to draw on that image, e.g. with
+    :func:`~tactifoot_vision.viz.draw_space_control`. Pixel centres are at
+    integer coordinates (cv2's convention), so the pitch corner ``(0, 0)`` is
+    the corner of pixel ``(0, 0)``, at ``(-0.5, -0.5)``.
+    """
+    pitch = pitch or SoccerPitch()
+    sx, sy = _canvas_size(pitch, px_per_m) / [pitch.length, pitch.width]
+    return _TO_PIXEL_CENTRES @ np.diag([sx, sy, 1.0])
+
+
+def _canvas_size(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
+    """``(width, height)`` of the image: the pitch at ``px_per_m`` per metre."""
+    if px_per_m <= 0:
+        raise ValueError(f"px_per_m must be > 0, got {px_per_m}")
+    return np.round(metres_per_unit(pitch) * [pitch.length, pitch.width] * px_per_m)
 
 
 def warp_to_pitch(
@@ -18,9 +43,8 @@ def warp_to_pitch(
 
     The image covers the whole pitch, ``105 * px_per_m`` by ``68 * px_per_m``
     pixels (a pitch in other units is a 105 x 68 m pitch, as the radar draws
-    it), with ``x`` to the right and ``y`` down. The pixels tile the pitch:
-    pixel ``(column, row)`` shows the pitch at ``((column + 0.5) / sx,
-    (row + 0.5) / sy)``, where ``sx, sy`` are pixels per pitch unit.
+    it), with ``x`` to the right and ``y`` down. The pixels tile the pitch;
+    :func:`pitch_to_birds_eye` gives the pitch -> pixel homography.
 
     Where the frame does not show the pitch (outside the frame, or behind the
     camera beyond the horizon) the image is transparent and black, so nothing
@@ -33,8 +57,6 @@ def warp_to_pitch(
         pitch: pitch geometry and units of ``homography``.
         px_per_m: pixels per metre.
     """
-    if px_per_m <= 0:
-        raise ValueError(f"px_per_m must be > 0, got {px_per_m}")
     homography = np.asarray(homography, dtype=float)
     if homography.shape != (3, 3):
         raise ValueError(
@@ -46,36 +68,32 @@ def warp_to_pitch(
             f"{frame.dtype} of shape {frame.shape}"
         )
     pitch = pitch or SoccerPitch()
-    width, height = (
-        round(size * px_per_m)
-        for size in metres_per_unit(pitch) * [pitch.length, pitch.width]
-    )
-    columns, rows = np.meshgrid(np.arange(width), np.arange(height))
-    points = np.column_stack([
-        (columns.ravel() + 0.5) * pitch.length / width,
-        (rows.ravel() + 0.5) * pitch.width / height,
-    ])  # fmt: skip
+    frame_to_image = pitch_to_birds_eye(pitch, px_per_m) @ homography
+    size = tuple(int(n) for n in _canvas_size(pitch, px_per_m))
+    nothing = np.zeros((size[1], size[0], 4), dtype=np.uint8)
     frame_h, frame_w = frame.shape[:2]
-    xy, in_front = project_to_frame(points, homography, (frame_w, frame_h))
-    # The frame outline, as in the visible area: ``xy`` is continuous, with
-    # pixel ``i`` covering ``[i, i + 1)``, so cv2 samples at ``xy - 0.5``.
-    visible = (
-        in_front
-        & (xy[:, 0] >= 0)
-        & (xy[:, 0] <= frame_w)
-        & (xy[:, 1] >= 0)
-        & (xy[:, 1] <= frame_h)
-    )
-    # Other rows of ``xy`` are meaningless (beyond the horizon): sample
-    # anywhere and blank them below.
-    maps = np.where(visible[:, None], xy - 0.5, 0).astype(np.float32)
-    bgr = cv2.remap(
-        frame,
-        maps.reshape(height, width, 2),
-        None,
-        cv2.INTER_LINEAR,
+    centre = frame_to_image @ [frame_w / 2, frame_h / 2, 1]
+    try:
+        image_to_frame = _TO_PIXEL_CENTRES @ np.linalg.inv(frame_to_image)
+    except np.linalg.LinAlgError:  # a degenerate fit shows nothing
+        return nothing
+    if not np.isfinite(image_to_frame).all() or abs(centre[2]) < 1e-12:
+        return nothing
+    # In front of the camera: the image points whose ``w`` in the frame has
+    # the sign of the frame centre's, a half-plane bounded by the horizon.
+    # Points behind the camera would otherwise mirror into the frame.
+    side = np.sign(image_to_frame[2] @ (centre / centre[2]))
+    a, b, c = image_to_frame[2] * side
+    in_front = a * np.arange(size[0]) + b * np.arange(size[1])[:, None] + c > 1e-9
+    flags = cv2.WARP_INVERSE_MAP
+    bgr = cv2.warpPerspective(
+        frame, image_to_frame, size, flags=flags | cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REPLICATE,  # the half pixel at the frame edges
-    )
-    visible = visible.reshape(height, width)
-    bgr[~visible] = 0
-    return np.dstack([bgr, np.where(visible, 255, 0).astype(np.uint8)])
+    )  # fmt: skip
+    in_frame = cv2.warpPerspective(
+        np.full((frame_h, frame_w), 255, dtype=np.uint8), image_to_frame, size,
+        flags=flags | cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )  # fmt: skip
+    alpha = in_frame & (in_front.astype(np.uint8) * 255)
+    return cv2.merge([*cv2.split(cv2.bitwise_and(bgr, bgr, mask=alpha)), alpha])

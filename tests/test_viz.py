@@ -371,9 +371,28 @@ def _pitch_template(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
 
 def _canvas_to_pitch(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
     """Bird's-eye pixel (column, row) -> pitch: pixels tile the pitch."""
-    sx = round(105 * px_per_m) / pitch.length
-    sy = round(68 * px_per_m) / pitch.width
+    sx, sy = np.round(np.array([105, 68]) * px_per_m) / [pitch.length, pitch.width]
     return np.array([[1 / sx, 0, 0.5 / sx], [0, 1 / sy, 0.5 / sy], [0, 0, 1]])
+
+
+@pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
+def test_pitch_to_birds_eye_is_the_warp_canvas(pitch: SoccerPitch) -> None:
+    to_image = viz.pitch_to_birds_eye(pitch, px_per_m=4)
+    np.testing.assert_allclose(to_image, np.linalg.inv(_canvas_to_pitch(pitch, 4)))
+
+
+def test_draw_space_control_on_a_birds_eye_view() -> None:
+    frame = np.full((H, W, 3), 200, dtype=np.uint8)
+    view = viz.warp_to_pitch(frame, HOMOGRAPHY, PITCH, px_per_m=2)
+    out = viz.draw_space_control(
+        view, _halves(), viz.pitch_to_birds_eye(PITCH, px_per_m=2),
+        ("#FF0000", "#0000FF"), alpha=0.5,
+    )  # fmt: skip
+    assert out.shape == view.shape and (out[..., 3] == view[..., 3]).all()
+    assert tuple(out[68, 80]) == (100, 100, 228, 255)  # pitch (40, 34): team 0, red
+    assert tuple(out[68, 130]) == (228, 100, 100, 255)  # pitch (65, 34): team 1
+    hidden = view[..., 3] == 0
+    assert (out[hidden] == 0).all()  # nothing tinted where the frame shows nothing
 
 
 @pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
@@ -442,7 +461,7 @@ def test_warp_to_pitch_does_not_smear_points_behind_the_camera() -> None:
     assert (naive[:, :110] > 0).mean() > 0.5
     # ... warp_to_pitch leaves it transparent.
     out = viz.warp_to_pitch(frame, np.linalg.inv(to_frame), PITCH, px_per_m=2)
-    assert (out[:, :120] == 0).all()
+    assert (out[:, :120] == 0).all()  # column 120: the camera's x = 60 m at 2 px/m
     assert (out[:, 200:, 3] == 255).all()  # x > 100 m: in front, in view
 
 
