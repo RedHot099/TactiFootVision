@@ -433,6 +433,10 @@ def test_exported_tables_name_the_teams_when_given(tmp_path):
         assert rows["team_name"].tolist() == ["Away", "", ""]
     unnamed = _result().export(tmp_path / "unnamed")
     assert pd.read_csv(unnamed / "tracks.csv")["team_name"].isna().all()
+    # A tuple or a NumPy array of names works too.
+    names = np.array(["Home", "Away"])
+    assert _result().to_dataframe(names)["team_name"][0] == "Away"
+    assert _result().to_freeze_frames(team_names=("H", "A"))["team_name"][0] == "A"
 
 
 @pytest.mark.parametrize(
@@ -441,6 +445,7 @@ def test_exported_tables_name_the_teams_when_given(tmp_path):
         (["Home"], "no name for team 1"),
         ("Home", "list of names"),
         (["Home", ""], "empty"),
+        ([1860, "Bayern"], 'quote names such as "1860"'),  # YAML [1860, Bayern]
         (["Home", "Home"], "twice"),
     ],
 )

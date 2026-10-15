@@ -76,3 +76,9 @@ def test_attack_direction_needs_two_teams_with_positions():
     )
     with pytest.raises(ValueError, match="two teams.*teams 0, 1, 2"):
         tv.analysis.attack_direction(three_teams)
+
+
+def test_attack_direction_refuses_teams_at_the_same_mean_x():
+    level = _result([[("player", 0, 40.0), ("player", 1, 40.0)]])
+    with pytest.raises(ValueError, match="same mean pitch x"):
+        tv.analysis.attack_direction(level)

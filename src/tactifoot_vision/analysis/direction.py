@@ -12,13 +12,14 @@ def attack_direction(result: PipelineResult) -> dict[int, int]:
     the goal at ``x = 0``. A run covers one period (its ``period`` run input),
     so call this on each period's result: the directions flip at half-time.
 
-    Each team's mean pitch ``x`` over every frame (players and goalkeepers
-    with a team and a pitch position) says where it stands; the team nearer
+    Each team's mean pitch ``x`` over every frame (every person with a team
+    and a pitch position: players and goalkeepers) says where it stands; the team nearer
     ``x = 0`` defends that goal and attacks the other one. The teams are
     compared with each other, not with the halfway line, so a camera that
     stays in one half does not turn both teams the same way.
 
-    Raises ``ValueError`` unless exactly two teams have a pitch position.
+    Raises ``ValueError`` unless exactly two teams have a pitch position, or
+    when both teams have the same mean ``x``.
     """
     xs: dict[int, list[np.ndarray]] = {}
     for frame in result:
@@ -36,4 +37,9 @@ def attack_direction(result: PipelineResult) -> dict[int, int]:
         )
     means = {team: float(np.concatenate(x).mean()) for team, x in xs.items()}
     defends_x0, defends_length = sorted(means, key=means.__getitem__)
+    if means[defends_x0] == means[defends_length]:
+        raise ValueError(
+            f"Teams {defends_x0} and {defends_length} stand at the same mean pitch "
+            f"x ({means[defends_x0]:.2f}); the attack direction is undecided"
+        )
     return {defends_x0: 1, defends_length: -1}

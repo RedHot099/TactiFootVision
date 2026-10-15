@@ -229,16 +229,18 @@ class PipelineResult:
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_TRACK_COLUMNS)
 
-    def to_csv(self, path: str | Path) -> Path:
+    def to_csv(self, path: str | Path, team_names: Sequence[str] | None = None) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.to_dataframe().to_csv(path, index=False)
+        self.to_dataframe(team_names).to_csv(path, index=False)
         return path
 
-    def to_parquet(self, path: str | Path) -> Path:
+    def to_parquet(
+        self, path: str | Path, team_names: Sequence[str] | None = None
+    ) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.to_dataframe().to_parquet(path, index=False)
+        self.to_dataframe(team_names).to_parquet(path, index=False)
         return path
 
     def to_freeze_frames(
@@ -321,7 +323,9 @@ class PipelineResult:
         """``team_names`` as a list, checked to name every team of the result."""
         if team_names is None:
             return None
-        if isinstance(team_names, str) or not isinstance(team_names, Sequence):
+        if isinstance(team_names, str) or not isinstance(
+            team_names, Sequence | np.ndarray
+        ):
             raise ValueError(
                 "team_names must be a list of names, one per team id from 0, "
                 f"got {team_names!r}"
@@ -329,7 +333,11 @@ class PipelineResult:
         names = list(team_names)
         for name in names:
             if not isinstance(name, str) or not name:
-                raise ValueError(f"team_names holds an empty or non-text name: {names}")
+                # YAML reads [1860, Bayern] or [Yes, No] as numbers and booleans.
+                raise ValueError(
+                    f"team_names holds an empty or non-text name: {names}; "
+                    'quote names such as "1860" or "Yes" in YAML'
+                )
             if names.count(name) > 1:
                 raise ValueError(f"team_names holds {name!r} twice: {names}")
         teams = {int(t) for f in self.frames for t in f.team_ids if t != NO_TEAM}
@@ -347,12 +355,11 @@ class PipelineResult:
         *,
         period: int = 1,
         period_start: float | None = None,
-        team_names: list[str] | None = None,
+        team_names: Sequence[str] | None = None,
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
-        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`)
-        and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period`` and
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_csv`) and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period`` and
         ``period_start``; ``None`` is the period's kick-off). ``team_names``
         (one per team id from 0, e.g. ``["Home", "Away"]``) fill the tables'
         ``team_name`` column; they are checked before anything is written.
@@ -364,7 +371,7 @@ class PipelineResult:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
-        self.to_dataframe(team_names).to_csv(out_dir / "tracks.csv", index=False)
+        self.to_csv(out_dir / "tracks.csv", team_names)
         self.to_freeze_frames(period, period_start, team_names).to_csv(
             out_dir / "freeze_frames.csv", index=False
         )
