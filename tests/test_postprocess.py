@@ -44,11 +44,31 @@ def _result(*frames: FrameResult) -> PipelineResult:
     return PipelineResult(list(frames), 25.0, (200, 100), ["ball", "player"])
 
 
-@POSTPROCESSES.register("test_offset_ids")
-def offset_ids(result: PipelineResult, offset: int = 100, scale: int = 1):
-    """Toy post-process: every track id becomes ``id * scale + offset``."""
-    mapping = {i: i * scale + offset for i in result.track_ids}
-    return remap_track_ids(result, mapping)
+@pytest.fixture
+def registry(monkeypatch):
+    """``POSTPROCESSES``, with whatever a test registers removed afterwards."""
+    monkeypatch.setattr(POSTPROCESSES, "_factories", dict(POSTPROCESSES._factories))
+    return POSTPROCESSES
+
+
+@pytest.fixture
+def offset_ids(registry):
+    @registry.register("test_offset_ids")
+    def offset_ids(result: PipelineResult, offset: int = 100, scale: int = 1):
+        """Toy post-process: every track id becomes ``id * scale + offset``."""
+        mapping = {i: i * scale + offset for i in result.track_ids}
+        return remap_track_ids(result, mapping)
+
+    return offset_ids
+
+
+@pytest.fixture
+def returns_frames(registry):
+    @registry.register("test_returns_frames")
+    def returns_frames(result: PipelineResult):
+        return result.frames
+
+    return returns_frames
 
 
 def _ids(result: PipelineResult) -> list[list[int]]:
@@ -60,7 +80,9 @@ def _ids(result: PipelineResult) -> list[list[int]]:
 
 
 # ------------------------------------------------------------------ contract
-def test_a_post_process_returns_a_changed_copy_and_leaves_the_input_alone():
+def test_a_post_process_returns_a_changed_copy_and_leaves_the_input_alone(
+    offset_ids,
+):
     before = _result(_frame(0), _frame(1, (2,)))
     snapshot = copy.deepcopy(before)
 
@@ -73,7 +95,9 @@ def test_a_post_process_returns_a_changed_copy_and_leaves_the_input_alone():
     assert after is not before
 
 
-def test_the_registry_hands_out_the_decorated_function_with_its_signature():
+def test_the_registry_hands_out_the_decorated_function_with_its_signature(
+    offset_ids,
+):
     assert POSTPROCESSES.get("test_offset_ids") is offset_ids
     assert "test_offset_ids" in POSTPROCESSES.names()
     assert list(inspect.signature(offset_ids).parameters) == [
@@ -83,7 +107,9 @@ def test_the_registry_hands_out_the_decorated_function_with_its_signature():
     ]
 
 
-def test_the_result_records_each_post_process_with_its_options_and_defaults():
+def test_the_result_records_each_post_process_with_its_options_and_defaults(
+    offset_ids,
+):
     result = _result(_frame(0))
 
     once = offset_ids(result, offset=10)
@@ -100,22 +126,17 @@ def test_the_result_records_each_post_process_with_its_options_and_defaults():
     assert _ids(twice) == [[122, 124]]
 
 
-def test_a_post_process_refuses_an_unknown_option():
+def test_a_post_process_refuses_an_unknown_option(offset_ids):
     with pytest.raises(TypeError, match="max_gap"):
         offset_ids(_result(_frame(0)), max_gap=3)
 
 
-@POSTPROCESSES.register("test_returns_frames")
-def returns_frames(result: PipelineResult):
-    return result.frames
-
-
-def test_a_post_process_must_return_a_result():
+def test_a_post_process_must_return_a_result(returns_frames):
     with pytest.raises(TypeError, match="'test_returns_frames' returned list"):
         returns_frames(_result(_frame(0)))
 
 
-def test_the_record_survives_save_load_and_export(tmp_path):
+def test_the_record_survives_save_load_and_export(offset_ids, tmp_path):
     result = offset_ids(_result(_frame(0)), offset=5)
     expected = [AppliedPostProcess("test_offset_ids", {"offset": 5, "scale": 1})]
 
@@ -168,3 +189,7 @@ def test_remap_track_ids_keeps_the_original_ids():
     assert remapped[2].detections.tracker_id is None
     assert _ids(result) == [[1, 2], [2, 3]]
     assert "original_tracker_id" not in result[0].detections.data
+
+
+def test_toy_post_processes_leave_the_registry_as_they_found_it():
+    assert not [name for name in POSTPROCESSES.names() if name.startswith("test_")]

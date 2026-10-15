@@ -144,7 +144,7 @@ def _data(
     return np.asarray(value) if value is not None else np.full(shape, fill)
 
 
-@dataclass(frozen=True)
+@dataclass
 class AppliedPostProcess:
     """One post-process a result went through: its registered name and every option."""
 

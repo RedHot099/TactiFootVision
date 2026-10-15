@@ -12,7 +12,8 @@ the parts it leaves unchanged). Register it by name::
 
 Registering wraps the function, keeping its signature, so that every call
 appends an :class:`AppliedPostProcess` (the name and every option, defaults
-included) to the returned result's ``postprocesses``. A post-process that
+included) to the returned result's ``postprocesses``. When a registered
+post-process calls another, only the outer call is recorded. A post-process that
 moves positions or changes identities keeps the result consistent with
 :func:`reproject` and :func:`remap_track_ids`.
 """
