@@ -365,7 +365,7 @@ Backend options sit flat next to `type`:
 detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
-postprocess: [{type: join_tracks, max_gap: 40}]
+postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
 ```
 
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
@@ -396,13 +396,14 @@ postprocess: [{type: join_tracks, max_gap: 40}]
   `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
 * **List overrides**: a number in the key indexes a list, and the index one
-  past the end appends. With `postprocess: [{type: join_tracks}]`,
-  `postprocess.0.max_gap=30` edits the entry, `postprocess.1.type=track_ball`
-  (or `postprocess.1={type: track_ball}`) appends one, `postprocess.0={type: ...}`
-  replaces it, and `postprocess=[]` (or `null`) drops them all for this run.
-  A missing or `null` list is created by `postprocess.0...`. Any other index
-  is an error, and dropping one entry means replacing the whole list
-  (`postprocess=[{type: join_tracks}]`).
+  past the end appends. (`join_tracks` and `track_ball` in these examples come
+  with later features; no post-process is registered yet.) With `postprocess:
+  [{type: join_tracks}]`, `postprocess.0.max_gap=30` edits the entry,
+  `postprocess.1.type=track_ball` (or `postprocess.1={type: track_ball}`)
+  appends one, `postprocess.0={type: ...}` replaces it, and `postprocess=[]`
+  (or `null`) drops them all for this run. A missing or `null` list is created
+  by `postprocess.0...`. Any other index is an error, and dropping one entry
+  means replacing the whole list (`postprocess=[{type: join_tracks}]`).
 
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D

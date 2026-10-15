@@ -8,7 +8,7 @@ that callable's keyword arguments::
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
-    postprocess: [{type: join_tracks, max_gap: 40}]
+    postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
 
 ==============  ==========================================================
 ``detector``    ``tv.models.load_model(type, **rest)`` (required)
@@ -20,13 +20,15 @@ that callable's keyword arguments::
 ``pipeline``    the remaining ``Pipeline`` keyword arguments
 ``render``      ``annotator`` (``FrameAnnotator``), ``radar`` (``PitchRadar``;
                 ``null``: none) and ``render_video`` keyword arguments
-``postprocess`` a list; each entry is ``POSTPROCESSES.get(type)(result, **rest)``,
+``postprocess`` a list; each entry is ``POSTPROCESSES.create(type, result, **rest)``,
                 applied in order (ADR 0002); absent, ``null`` or ``[]``: none
 ==============  ==========================================================
 
 Keys are checked against the signatures when the file is loaded; values are
 checked by the constructors, which :meth:`RunFile.run` builds (render objects
-included) before the first frame. A key left out keeps the package default, so
+included) before the first frame. The exception is ``postprocess`` options:
+the post-processes check them after the pipeline, and when one fails the run
+folder keeps the pipeline's result. A key left out keeps the package default, so
 this module holds no defaults of its own. String values starting with ``./`` or
 ``../`` are paths relative to the file.
 """
@@ -201,7 +203,7 @@ class RunFile:
         )
         export_options = {k: v for k, v in run_inputs.items() if k in export_inputs}
         out = result.export(output_dir, **export_options)
-        if postprocesses := self.sections.get("postprocess"):
+        if postprocesses := self._sections.get("postprocess"):
             for entry in postprocesses:
                 options = dict(entry)
                 result = POSTPROCESSES.create(options.pop("type"), result, **options)
