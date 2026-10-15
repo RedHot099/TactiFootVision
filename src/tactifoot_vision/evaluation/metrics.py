@@ -52,9 +52,11 @@ class KeypointMetrics:
 class TrackingMetrics:
     """CLEAR MOT and identity metrics of a tracking run on one labelled clip.
 
-    ``mota`` is ``1 - (false_negatives + false_positives + id_switches) /
-    true boxes`` and ``idf1`` the F1 score of the boxes matched to the true
-    identity of their track. The overall numbers add up the counts of every
+    ``mota`` is ``(matched boxes - false_positives - id_switches) /
+    max(1, true boxes)`` as in TrackEval: ``1 - (false_negatives +
+    false_positives + id_switches) / true boxes``, and ``-false_positives``
+    for a class without true boxes in the scored frames. ``idf1`` is the F1
+    score of the boxes matched to the true identity of their track. The overall numbers add up the counts of every
     class. ``per_class`` is indexed by class name with columns ``idf1``,
     ``mota``, ``id_switches``, ``false_positives``, ``false_negatives`` and
     ``instances`` (true boxes in the scored frames).

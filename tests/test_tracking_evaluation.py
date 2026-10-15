@@ -200,3 +200,12 @@ def test_a_track_id_twice_in_one_frame_is_an_error():
     result = _result({0: ([(1, "player", LEFT), (1, "player", RIGHT)], [])})
     with pytest.raises(ValueError, match="track id 1 twice in frame 0"):
         evaluate_tracking(result, _clip(TRUTH))
+
+
+def test_a_true_track_id_twice_in_one_frame_is_an_error():
+    truth = dict(TRUTH)
+    truth[2] = ([(1, "player", LEFT), (1, "player", RIGHT)], TRUTH[2][1])
+    with pytest.raises(
+        ValueError, match="clip fixture has track id 1 twice in frame 2"
+    ):
+        evaluate_tracking(_result(PREDICTED), _clip(truth))

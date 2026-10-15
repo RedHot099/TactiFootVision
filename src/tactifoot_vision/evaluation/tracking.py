@@ -105,7 +105,15 @@ def evaluate_tracking(
                 f"Processed frame {frame.index} is not in labelled clip {clip.name}; "
                 "run the pipeline on the clip's video, within its frames"
             ) from None
-        truth.append(_by_class(labelled.detections, labelled.ball))
+        objects = _by_class(labelled.detections, labelled.ball)
+        for name, (ids, _) in objects.items():
+            duplicate = _first_duplicate(ids)
+            if duplicate is not None:
+                raise ValueError(
+                    f"Labelled clip {clip.name} has track id {duplicate} twice in "
+                    f"frame {frame.index} ({name}); give each object its own id"
+                )
+        truth.append(objects)
         predicted.append(_predicted(frame))
 
     class_names = sorted(
@@ -160,16 +168,22 @@ def _predicted(frame: FrameResult) -> dict[str, _Objects]:
             "evaluate_tracking needs the people's track ids; the result "
             "was made without a tracker"
         )
-    duplicates = [i for i, n in Counter(people.tracker_id).items() if n > 1]
-    if duplicates:
+    duplicate = _first_duplicate(people.tracker_id)
+    if duplicate is not None:
         raise ValueError(
-            f"The result has track id {duplicates[0]} twice in frame "
+            f"The result has track id {duplicate} twice in frame "
             f"{frame.index}; a remap must not join tracks that overlap in time"
         )
     ball = frame.ball
     if ball.tracker_id is None:
         ball = _with_ids(ball, np.full(len(ball), _BALL_ID))
     return _by_class(people, ball)
+
+
+def _first_duplicate(ids: np.ndarray | None) -> int | None:
+    """A track id that occurs more than once in ``ids``, if any (TrackEval rejects them)."""
+    repeated = [i for i, n in Counter(ids).items() if n > 1]
+    return int(repeated[0]) if repeated else None
 
 
 def _with_ids(detections: sv.Detections, ids: np.ndarray) -> sv.Detections:
