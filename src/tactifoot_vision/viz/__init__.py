@@ -6,6 +6,7 @@
     image = tv.viz.overlay(image, tv.viz.PitchRadar().draw(result[0]))
     top_down = tv.viz.warp_to_pitch(frame, result[0].homography, result.pitch)
     tv.viz.render_video(result, "match.mp4", "annotated.mp4")
+    tv.viz.render_video(result, "match.mp4", "top.mp4", birds_eye=True)
     tv.viz.plot_heatmap(result, team=0)
 
 OpenCV drawing returns BGR ``uint8`` images; the plotting helpers return

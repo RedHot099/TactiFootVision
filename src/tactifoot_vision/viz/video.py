@@ -29,6 +29,7 @@ def render_video(
     overlay_padding: int = 10,
     fps: float | None = None,
     progress: bool = True,
+    birds_eye: bool = False,
 ) -> Path:
     """Re-read ``source`` and write the frames in ``result`` annotated to an mp4.
 
@@ -49,6 +50,11 @@ def render_video(
             see :func:`overlay`.
         fps: output frame rate; default derived from the source and the stride.
         progress: show a progress bar.
+        birds_eye: write the bird's-eye video instead: each frame is the radar
+            drawn on the frame warped onto the pitch (``radar.draw(frame_result,
+            frame=frame)``), at the radar's size rounded up to even numbers
+            of pixels (the encoder needs them). The annotator and the overlay
+            settings are not used; ``radar=False`` is an error.
 
     Returns:
         The written path. Settings are checked before ``output`` is opened, an
@@ -70,6 +76,8 @@ def render_video(
         overlay_alpha=overlay_alpha,
         overlay_padding=overlay_padding,
         fps=fps,
+        radar=radar,
+        birds_eye=birds_eye,
     )
     reader = VideoReader(source)
     if reader.size != tuple(result.frame_size):
@@ -104,9 +112,10 @@ def render_video(
             )
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(
-        str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, reader.size
-    )
+    size = reader.size
+    if birds_eye and radar:  # even, or the encoder drops the last row or column
+        size = (radar.size[0] + radar.size[0] % 2, radar.size[1] + radar.size[1] % 2)
+    writer = cv2.VideoWriter(str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
     if not writer.isOpened():
         raise RuntimeError(f"OpenCV cannot write {output}")
 
@@ -130,8 +139,15 @@ def render_video(
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
-            image = annotator.annotate(frame, frame_result)
-            if radar:
+            if birds_eye and radar:
+                image = radar.draw(frame_result, frame=frame)
+                image = cv2.copyMakeBorder(
+                    image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
+                    cv2.BORDER_REPLICATE,
+                )  # fmt: skip
+            else:
+                image = annotator.annotate(frame, frame_result)
+            if radar and not birds_eye:
                 image = overlay(
                     image,
                     radar.draw(frame_result),
@@ -169,8 +185,8 @@ def check_render_options(**options: Any) -> None:
     """Raise ``ValueError`` for a :func:`render_video` setting it would reject.
 
     Takes any :func:`render_video` keyword arguments (a name it does not take
-    is a ``ValueError``) and checks the values it knows: the overlay settings
-    and ``fps``. The others pass unchecked, so a new ``render_video``
+    is a ``ValueError``) and checks the values it knows: the overlay settings,
+    ``fps``, and ``birds_eye`` with ``radar=False``. The others pass unchecked, so a new ``render_video``
     parameter needs no change here. A run file uses this to fail before the
     first frame instead of after the whole run.
     """
@@ -189,6 +205,11 @@ def check_render_options(**options: Any) -> None:
     fps = options.get("fps")
     if fps is not None and fps <= 0:
         raise ValueError(f"fps must be > 0, got {fps}")
+    if options.get("birds_eye") and options.get("radar") is False:
+        raise ValueError(
+            "birds_eye=True draws the radar on the warped frame; "
+            "give it a radar or leave radar unset"
+        )
 
 
 def _same_file(output: Path, source: Path) -> bool:

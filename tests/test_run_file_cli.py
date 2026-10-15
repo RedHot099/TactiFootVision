@@ -689,6 +689,7 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
         {"overlay_position": "bottom-middle"},
         {"overlay_alpha": 2},
         {"fps": 0},
+        {"radar": None, "birds_eye": True},
     ],
 )
 def test_run_file_run_checks_render_values_before_the_first_frame(

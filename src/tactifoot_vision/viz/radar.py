@@ -9,6 +9,7 @@ import supervision as sv
 from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
+from tactifoot_vision.viz.birds_eye import warp_frame
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 """A hex string (``"#FF1493"``), an ``sv.Color`` or a BGR tuple or list (YAML gives lists)."""
@@ -60,7 +61,7 @@ def _fixed(points: np.ndarray) -> np.ndarray:
 
 class PitchRadar:
     """Renders a top-down pitch with players (coloured by team) and the ball,
-    optionally over a space-control map.
+    optionally over the video frame warped onto the pitch and a space-control map.
 
     ``x`` runs left to right and ``y`` top to bottom, so the far touchline of a
     broadcast view is at the top, as on screen.
@@ -152,6 +153,7 @@ class PitchRadar:
         self,
         frame_result: FrameResult | None = None,
         space_control: SpaceControl | None = None,
+        frame: np.ndarray | None = None,
     ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
@@ -160,11 +162,25 @@ class PitchRadar:
         :func:`tactifoot_vision.analysis.space_control`, on this radar's pitch)
         tints the pitch under the lines and players: team 0's colour where team
         0 controls the space, team 1's where team 1 does, a mix in between.
+
+        ``frame``, the BGR video frame of ``frame_result``, is the background:
+        warped onto the pitch through ``frame_result.homography`` (the
+        bird's-eye view of :func:`~tactifoot_vision.viz.warp_to_pitch`, drawn
+        at the radar's scale), the pitch colour where the frame shows nothing
+        or there is no homography.
         """
-        if space_control is None:
+        if frame is not None and frame_result is None:
+            raise ValueError(
+                "A frame needs its frame_result: the radar warps the frame "
+                "with frame_result.homography"
+            )
+        homography = (
+            None if frame is None or frame_result is None else frame_result.homography
+        )
+        if space_control is None and homography is None:
             image = self._background.copy()
         else:
-            image = self._draw_background(space_control)
+            image = self._draw_background(space_control, frame, homography)
         if frame_result is None:
             return image
         index = team_color_index(frame_result.team_ids, len(self.team_colors))
@@ -222,12 +238,23 @@ class PitchRadar:
         return out
 
     # ------------------------------------------------------------- drawing
-    def _draw_background(self, space_control: SpaceControl | None = None) -> np.ndarray:
+    def _draw_background(
+        self,
+        space_control: SpaceControl | None = None,
+        frame: np.ndarray | None = None,
+        homography: np.ndarray | None = None,
+    ) -> np.ndarray:
         image = np.full(
             (self.height_px, self.width_px, 3),
             self.pitch_color.as_bgr(),
             dtype=np.uint8,
         )
+        if frame is not None and homography is not None:
+            # Warped straight into this canvas, so the frame and the dots share
+            # the radar's pitch -> pixel mapping.
+            view = warp_frame(frame, self._pitch_to_image @ homography, self.size)
+            seen = view[..., 3] > 0
+            image[seen] = view[seen, :3]
         if space_control is not None:
             if space_control.pitch != self.pitch:
                 raise ValueError(

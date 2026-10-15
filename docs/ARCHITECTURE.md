@@ -422,10 +422,14 @@ nothing (`PipelineResult.export` writes their tables).
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
-* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None)` → top-down
-  pitch image; a `SpaceControl` on the radar's pitch tints the pitch under the
+* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None)`
+  → top-down pitch image; a `SpaceControl` on the radar's pitch tints the pitch under the
   lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
-  opacity;
+  opacity; a `frame` (the video frame of `frame_result`) is the background,
+  warped through `frame_result.homography` straight into the radar's canvas
+  (the bird's-eye view at the radar's scale, no resampled `warp_to_pitch`
+  image), the pitch colour where the frame shows nothing or there is no
+  homography;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
@@ -452,15 +456,19 @@ nothing (`PipelineResult.export` writes their tables).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
 * `render_video(result, source, output, annotator=None, radar=None,
   overlay_position="bottom-center", overlay_width_fraction=0.25,
-  overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True)` → output
-  path; `source=None` uses `result.video_path`. Checks its settings and
+  overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
+  birds_eye=False)` → output path; `source=None` uses `result.video_path`.
+  `birds_eye=True` writes the bird's-eye video: each frame is
+  `radar.draw(frame_result, frame=frame)`, padded to even pixel sizes for the
+  encoder; the annotator and overlay settings are not used, and `radar=False`
+  is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
   link) before opening anything, checks that the source video (header and
   decoded frame size) and the drawing pitch match the result, raises
   `RuntimeError` when the source lacks a result frame, and deletes the
   partial output when rendering fails. `viz.video.check_render_options(**options)`
-  takes any `render_video` keyword arguments and checks the overlay settings
-  and `fps` among them, so a new `render_video` parameter reaches run files
+  takes any `render_video` keyword arguments and checks the overlay settings,
+  `fps` and `birds_eye` without a radar among them, so a new `render_video` parameter reaches run files
   without edits.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,

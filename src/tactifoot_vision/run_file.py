@@ -256,7 +256,6 @@ class RunFile:
         kwargs = {
             k: v for k, v in self.sections.get("render", {}).items() if k not in exclude
         }
-        check_render_options(**kwargs)
         if "annotator" in kwargs:
             kwargs["annotator"] = FrameAnnotator(pitch=pitch, **kwargs["annotator"])
         if "radar" in kwargs:
@@ -264,6 +263,7 @@ class RunFile:
             kwargs["radar"] = (
                 False if radar is None else PitchRadar(pitch=pitch, **radar)
             )
+        check_render_options(**kwargs)
         return kwargs
 
     def __repr__(self) -> str:

@@ -62,14 +62,25 @@ def warp_to_pitch(
         raise ValueError(
             f"homography must be a 3 x 3 matrix, got shape {homography.shape}"
         )
+    pitch = pitch or SoccerPitch()
+    size = tuple(int(n) for n in _canvas_size(pitch, px_per_m))
+    return warp_frame(frame, pitch_to_birds_eye(pitch, px_per_m) @ homography, size)
+
+
+def warp_frame(
+    frame: np.ndarray, frame_to_image: np.ndarray, size: tuple[int, int]
+) -> np.ndarray:
+    """``frame`` warped into a ``(width, height)`` top-down image, as BGRA ``uint8``.
+
+    :func:`warp_to_pitch` without its canvas: ``frame_to_image`` maps frame
+    coordinates (pixel ``i`` covers ``[i, i + 1)``) to image pixels (centres at
+    integers). The radar warps into its own canvas with it.
+    """
     if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
         raise ValueError(
             "frame must be a BGR uint8 image (height x width x 3), got "
             f"{frame.dtype} of shape {frame.shape}"
         )
-    pitch = pitch or SoccerPitch()
-    frame_to_image = pitch_to_birds_eye(pitch, px_per_m) @ homography
-    size = tuple(int(n) for n in _canvas_size(pitch, px_per_m))
     nothing = np.zeros((size[1], size[0], 4), dtype=np.uint8)
     frame_h, frame_w = frame.shape[:2]
     centre = frame_to_image @ [frame_w / 2, frame_h / 2, 1]
