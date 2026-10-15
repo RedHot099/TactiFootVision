@@ -223,6 +223,144 @@ def test_draw_annotations_hides_unlabelled_keypoints() -> None:
     assert (image[50, 50] != frame[50, 50]).any()
 
 
+# ---------------------------------------------------------------- ball trail
+RED = "#FF0000"
+BACKGROUND_RED = 40  # the red channel of _frame()
+
+
+def _pan(dx: float) -> np.ndarray:
+    """``HOMOGRAPHY`` for a camera panned so that the pitch moves ``dx`` pixels left."""
+    return HOMOGRAPHY @ np.array([[1.0, 0, dx], [0, 1, 0], [0, 0, 1]])
+
+
+def _ball_at(
+    index: int,
+    pixel: tuple[float, float] | None,
+    homography: np.ndarray | None = HOMOGRAPHY,
+    pitch_xy: np.ndarray | None = None,
+    interpolated: bool = False,
+) -> FrameResult:
+    """A frame with only a ball at ``pixel`` (``None``: no ball) under ``homography``."""
+    ball = sv.Detections.empty()
+    if pixel is not None:
+        x, y = pixel
+        ball = sv.Detections(
+            xyxy=np.array([[x - 3, y - 3, x + 3, y + 3]], dtype=np.float32),
+            confidence=np.array([0.8], dtype=np.float32),
+            class_id=np.array([0]),
+        )
+        ball.data["class_name"] = np.array(["ball"])
+        ball.data["pitch_xy"] = (
+            frame_to_pitch(np.array([pixel], dtype=float), homography)
+            if pitch_xy is None
+            else pitch_xy
+        )
+        ball.data["interpolated"] = np.array([interpolated])
+    return FrameResult(
+        index, index / FPS, sv.Detections.empty(), ball, None, homography,
+        ball_candidates=ball,
+    )  # fmt: skip
+
+
+def _trail_annotator(trail_seconds: float | None = 1.0) -> viz.FrameAnnotator:
+    """Draws the ball trail only."""
+    return viz.FrameAnnotator(
+        trail_seconds=trail_seconds, ball_color=RED, draw_boxes=False,
+        draw_labels=False, draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+
+
+def _redness(image: np.ndarray, x: int, y: int) -> int:
+    return int(image[y, x, 2]) - BACKGROUND_RED
+
+
+def _straight_run(*gaps: FrameResult) -> list[FrameResult]:
+    """Frames 0-4 with the ball moving right along ``y = 120``, 40 px a frame.
+
+    ``gaps`` replace the frames with their index.
+    """
+    frames = [_ball_at(i, (40.0 + 40 * i, 120.0)) for i in range(5)]
+    for gap in gaps:
+        frames[gap.index] = gap
+    return frames
+
+
+def test_the_ball_trail_passes_through_the_earlier_positions_and_fades() -> None:
+    *history, now = _straight_run()
+    image = _trail_annotator(1.0).annotate(_frame(), now, history=history)
+    # Segment midpoints, oldest first; opacity is 1 - age / trail_seconds at the
+    # segment's mean age: 0.35, 0.25, 0.15 and 0.05 s.
+    reds = [_redness(image, x, 120) for x in (60, 100, 140, 180)]
+    assert reds[0] > 0 and reds == sorted(reds)
+    expected = [0.65, 0.75, 0.85, 0.95]
+    np.testing.assert_allclose(
+        np.array(reds) / reds[-1], np.array(expected) / expected[-1], atol=0.03
+    )
+    assert tuple(image[120, 230]) == tuple(_frame()[120, 230])  # past the ball
+    assert tuple(image[60, 100]) == tuple(_frame()[60, 100])  # off the line
+
+
+def test_the_ball_trail_stays_on_the_pitch_when_the_camera_pans() -> None:
+    # The ball moved down at x = 100 while the camera panned 60 px right, so
+    # the earlier positions are now at x = 40.
+    history = [_ball_at(0, (100.0, 60.0)), _ball_at(1, (100.0, 100.0))]
+    now = _ball_at(2, (40.0, 140.0), homography=_pan(60.0))
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert _redness(image, 40, 80) > 100 and _redness(image, 40, 120) > 100
+    assert tuple(image[80, 100]) == tuple(_frame()[80, 100])
+
+
+@pytest.mark.parametrize(
+    ("gap", "drawn"),
+    [
+        (_ball_at(2, None), False),  # no ball
+        (_ball_at(2, (120.0, 120.0), pitch_xy=np.full((1, 2), np.nan)), False),
+        (_ball_at(2, (120.0, 120.0), interpolated=True), True),  # like any other
+    ],
+    ids=["no ball", "no pitch position", "interpolated"],
+)
+def test_the_ball_trail_breaks_where_there_is_no_ball_position(
+    gap: FrameResult, drawn: bool
+) -> None:
+    *history, now = _straight_run(gap)
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert _redness(image, 60, 120) > 0 and _redness(image, 180, 120) > 0
+    assert (_redness(image, 100, 120) > 0) == drawn  # frames 1-2
+    assert (_redness(image, 140, 120) > 0) == drawn  # frames 2-3
+
+
+def test_no_ball_trail_without_a_homography_in_the_current_frame() -> None:
+    *history, now = _straight_run()
+    now = dataclasses.replace(now, homography=None)
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert (image == _frame()).all()
+
+
+def test_the_ball_trail_ignores_history_older_than_its_length() -> None:
+    *history, now = _straight_run()
+    annotator = _trail_annotator(0.25)
+    image = annotator.annotate(_frame(), now, history=history)
+    assert (image == annotator.annotate(_frame(), now, history=history[2:])).all()
+    assert _redness(image, 140, 120) > 0  # 0.1-0.2 s old
+    assert tuple(image[120, 60]) == tuple(_frame()[120, 60])  # 0.3-0.4 s old
+
+
+def test_the_ball_trail_is_off_by_default(result: PipelineResult) -> None:
+    frame, now = _frame(), result[-1]
+    today = viz.FrameAnnotator().annotate(frame, now)
+    history = result.frames[:-1]
+    assert (viz.FrameAnnotator().annotate(frame, now, history=history) == today).all()
+    with_trail = viz.FrameAnnotator(trail_seconds=1.0)
+    assert (with_trail.annotate(frame, now) == today).all()
+    assert (with_trail.annotate(frame, now, history=history) != today).any()
+
+
+@pytest.mark.parametrize("seconds", [0, -1.0])
+def test_the_ball_trail_length_must_be_positive(seconds: float) -> None:
+    with pytest.raises(ValueError, match="trail_seconds"):
+        viz.FrameAnnotator(trail_seconds=seconds)
+
+
 # --------------------------------------------------------------------- radar
 def test_radar_draws_players_and_ball(result: PipelineResult) -> None:
     radar = viz.PitchRadar(width_px=400, padding_px=20)
@@ -665,6 +803,54 @@ def test_a_birds_eye_video_needs_the_radar(
     viz.video.check_render_options(birds_eye=True)
 
 
+class _HistorySpy(viz.FrameAnnotator):
+    """Records the frame indices of the ``history`` of each drawn frame."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.histories: list[list[int] | None] = []
+
+    def annotate(self, frame, frame_result, history=None):
+        self.histories.append(None if history is None else [f.index for f in history])
+        return super().annotate(frame, frame_result, history=history)
+
+
+def test_render_video_passes_the_trail_window_as_history(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    spy = _HistorySpy(trail_seconds=0.4)  # frames are 0.2 s apart
+    viz.render_video(
+        result, video, tmp_path / "trail.mp4", annotator=spy, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert spy.histories == [[], [0], [0, 2], [2, 4], [4, 6]]
+    assert spy.histories == [
+        [f.index for f in result.window(f.index, 0.4)] for f in result
+    ]
+    without = _HistorySpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", annotator=without, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert without.histories == [None] * 5
+
+
+def test_a_render_with_the_ball_trail_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        annotator = viz.FrameAnnotator(draw_boxes=False, **options)
+        output = viz.render_video(
+            result, video, tmp_path / name, annotator=annotator, radar=False,
+            progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, trail = render("plain.mp4"), render("trail.mp4", trail_seconds=1.0)
+    assert (plain[0] == trail[0]).all()  # no history yet
+    assert all((p != t).any() for p, t in zip(plain[1:], trail[1:], strict=True))
+
+
 # --------------------------------------------------------------------- plots
 def _dataset(tmp_path: Path) -> Dataset:
     samples = []
@@ -986,11 +1172,11 @@ class _FailingAnnotator(viz.FrameAnnotator):
         super().__init__()
         self.calls, self.fail_at = 0, fail_at
 
-    def annotate(self, frame, frame_result):
+    def annotate(self, frame, frame_result, history=None):
         self.calls += 1
         if self.calls == self.fail_at:
             raise RuntimeError("boom")
-        return super().annotate(frame, frame_result)
+        return super().annotate(frame, frame_result, history=history)
 
 
 def test_render_video_deletes_a_partial_output(

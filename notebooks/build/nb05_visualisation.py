@@ -90,6 +90,24 @@ custom = tv.viz.FrameAnnotator(
 tv.show(custom.annotate(frame, frame_result), width=11)
 """)
     nb.md("""
+`trail_seconds` draws the ball's recent path. Drawing keeps no memory between
+frames, so `annotate` takes the earlier frames as `history`, oldest first, and
+`result.window(index, seconds)` gives them (ADR 0003). Each earlier ball
+position is projected through the current frame's homography, so the trail
+stays on the grass when the camera pans. It breaks where the ball was not
+seen, fades to nothing at `trail_seconds`, and is not drawn on a frame
+without a homography. Positions that `track_ball` filled in draw like any
+other. Here: the frame with the most ball positions in the second before it.
+""")
+    nb.code("""
+TRAIL = 1.0
+trail_result = max(result, key=lambda f: sum(len(h.ball) > 0 for h in result.window(f.index, TRAIL)))
+trail_frame = video.read(trail_result.index)
+trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL).annotate(
+    trail_frame, trail_result, history=result.window(trail_result.index, TRAIL))
+tv.show(trail, titles=f"trail_seconds={TRAIL} at frame {trail_result.index}", width=11)
+""")
+    nb.md("""
 `draw_masks=True` draws segmentation masks, which only a mask tracker (SAM2)
 produces and only `Pipeline(keep_masks=True)` keeps. With a box tracker there
 are no masks; the annotator then warns once and draws the rest.
@@ -157,12 +175,14 @@ tv.show([
 annotated and with the radar overlay, to an mp4. It refuses a video whose
 frame size differs from the result's and a radar or annotator drawing another
 pitch, and warns when the frame rates differ.
-Pass your own annotator and radar, or `radar=False` for none.
+Pass your own annotator and radar, or `radar=False` for none. With a
+`trail_seconds` annotator, `render_video` passes each frame its `history`
+itself.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
     result, VIDEO, OUT / "annotated.mp4",
-    annotator=tv.viz.FrameAnnotator(style="video_game"),
+    annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
     radar=tv.viz.PitchRadar(draw_ids=True),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
     progress=False,
