@@ -76,13 +76,14 @@ def test_markings_are_drawn_where_the_calibration_puts_them(tmp_path, pitch):
 
     (image,) = _frames(clip)
     # The halfway line's ends and the centre circle's crossings with it.
-    on_lines = np.round(pitch_to_frame(pitch.vertices[13:17], camera)).astype(int)
+    # Frame pixel i covers [i, i + 1).
+    on_lines = np.floor(pitch_to_frame(pitch.vertices[13:17], camera)).astype(int)
     for x, y in on_lines:
         x, y = min(x, FRAME[0] - 1), min(y, FRAME[1] - 1)
         assert image[y, x].min() > 150, (x, y, image[y, x])
     # Grass between the circle and the penalty box: green, not line.
     grass = pitch_to_frame([[pitch.length * 0.33, pitch.width * 0.5]], camera)
-    x, y = np.round(grass[0]).astype(int)
+    x, y = np.floor(grass[0]).astype(int)
     blue, green, red = image[y, x].astype(int)
     assert green > red + 30 and green > blue + 30 and green < 200
 
@@ -127,7 +128,8 @@ def test_homography_estimator_on_its_keypoints_has_a_small_error(tmp_path):
 
     homographies = []
     for frame in clip:
-        # The landmarks the frame shows, at their pixels with 1 px of noise.
+        # No keypoint model runs here: the landmarks the frame shows, at the
+        # pixels the calibration puts them, with 1 px of noise.
         xy = pitch_to_frame(pitch.vertices, frame.homography)
         shown = ((xy >= 0) & (xy <= FRAME)).all(axis=1)
         xy = xy + rng.normal(0, 1, xy.shape)
@@ -175,6 +177,7 @@ def test_occluders_hide_part_of_the_pitch(tmp_path):
         ([], {}, "at least one homography"),
         ([np.eye(2)], {}, "3x3"),
         ([np.zeros((3, 3))], {}, "invertible"),
+        ([[[1, 0, 0], [0, 1, 0], [1, 0, -160]]], {}, "horizon"),
         ([np.eye(3)], {"frame_size": (321, 180)}, "even"),
         ([np.eye(3)], {"noise": -1}, "noise"),
         ([np.eye(3)], {"occluders": -1}, "occluders"),

@@ -65,8 +65,8 @@ def synthetic_pitch_clip(
     path = Path(path)
     pitch = pitch or SoccerPitch()
     homographies = [np.array(h, dtype=float) for h in homographies]
-    _check(homographies, frame_size, fps, line_width, noise, occluders)
-    texture, pitch_to_texture = _texture(pitch, line_width)
+    _check_arguments(homographies, frame_size, fps, line_width, noise, occluders)
+    texture, pitch_to_texture = _pitch_texture(pitch, line_width)
     rng = np.random.default_rng(seed)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,12 +78,12 @@ def synthetic_pitch_clip(
         raise RuntimeError(f"OpenCV cannot write {path}")
     try:
         for homography in homographies:
-            image = _render(texture, pitch_to_texture @ homography, frame_size)
+            image = _render_frame(texture, pitch_to_texture @ homography, frame_size)
             for _ in range(occluders):
                 _draw_occluder(image, rng)
             if noise:
                 image = np.clip(image + rng.normal(0, noise, image.shape), 0, 255)
-            writer.write(image.astype(np.uint8))
+            writer.write(np.round(image).astype(np.uint8))
     finally:
         writer.release()
 
@@ -104,7 +104,7 @@ def synthetic_pitch_clip(
     return clip
 
 
-def _check(
+def _check_arguments(
     homographies: list[np.ndarray],
     frame_size: tuple[int, int],
     fps: float,
@@ -122,6 +122,13 @@ def _check(
         if np.linalg.matrix_rank(h) < 3:
             raise ValueError(f"Homography {index} is not invertible")
     width, height = frame_size
+    for index, h in enumerate(homographies):
+        # The frame centre tells which side of the horizon is the pitch.
+        if abs(h[2] @ [width / 2, height / 2, 1]) < 1e-12 * np.abs(h).max():
+            raise ValueError(
+                f"Homography {index} puts the frame centre on the horizon; "
+                "the frame centre must show the pitch"
+            )
     if width <= 0 or height <= 0 or width % 2 or height % 2:
         raise ValueError(
             f"frame_size must be positive and even (the encoder drops an odd "
@@ -137,13 +144,16 @@ def _check(
         raise ValueError(f"occluders must be >= 0, got {occluders}")
 
 
-def _texture(pitch: SoccerPitch, line_width: float) -> tuple[np.ndarray, np.ndarray]:
+def _pitch_texture(
+    pitch: SoccerPitch, line_width: float
+) -> tuple[np.ndarray, np.ndarray]:
     """Top-down image of the pitch on grass, and its pitch -> texture pixel homography.
 
     Texture pixels have their centres at integer coordinates (cv2's convention)
     and are square in metres, so lines keep ``line_width`` on any pitch units.
     """
-    # At least 3 pixels per line width so the warp does not lose thin lines.
+    # At least 3 pixels per line width so the warp does not lose thin lines,
+    # up to 40 px/m: a line narrower than 7.5 cm is drawn about 1-3 px wide.
     px_per_m = min(40.0, max(10.0, 3 / line_width))
     margin = _MARGIN_M * px_per_m
     scale = px_per_m * np.array([105 / pitch.length, 68 / pitch.width])
@@ -180,7 +190,7 @@ def _texture(pitch: SoccerPitch, line_width: float) -> tuple[np.ndarray, np.ndar
     return texture, pitch_to_texture
 
 
-def _render(
+def _render_frame(
     texture: np.ndarray, frame_to_texture: np.ndarray, frame_size: tuple[int, int]
 ) -> np.ndarray:
     """The frame of ``frame_size`` that shows ``texture`` through ``frame_to_texture``, as float BGR."""
