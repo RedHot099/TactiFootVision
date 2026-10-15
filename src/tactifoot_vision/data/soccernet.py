@@ -100,6 +100,9 @@ def _tracklet_classes(path: Path) -> dict[int, str | None]:
     for key, value in _read_ini(path).items():
         if not key.startswith("trackletid_"):
             continue
+        number = key.removeprefix("trackletid_")
+        if not number.isdigit():
+            raise ValueError(f"{path}: {key} does not end in a track id")
         label = value.split(";")[0].strip()
         word = label.split()[0].lower() if label else ""
         if word not in _TRACKLET_CLASSES:
@@ -107,7 +110,7 @@ def _tracklet_classes(path: Path) -> dict[int, str | None]:
                 f"{path}: {key} has the unknown class {label!r}; known: "
                 f"{', '.join(_TRACKLET_CLASSES)}"
             )
-        classes[int(key.removeprefix("trackletid_"))] = _TRACKLET_CLASSES[word]
+        classes[int(number)] = _TRACKLET_CLASSES[word]
     return classes
 
 

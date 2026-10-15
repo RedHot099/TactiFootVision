@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class VideoReader:
-    """Frame access for a video file.
+    """Frame access for a video file or an image sequence.
+
+    An image sequence is an OpenCV pattern such as ``img1/%06d.jpg``; its
+    first image is frame 0.
 
     >>> video = VideoReader("match.mp4")
     >>> for index, frame in video.frames(start=100, end=200, stride=5): ...
@@ -19,7 +22,7 @@ class VideoReader:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        if not self.path.is_file():
+        if not self.path.is_file() and "%" not in self.path.name:
             raise FileNotFoundError(f"Video not found: {self.path}")
         capture = self._open()
         try:

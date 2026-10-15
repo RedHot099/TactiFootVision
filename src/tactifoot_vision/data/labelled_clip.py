@@ -84,7 +84,7 @@ def load_labelled_clip(path: str | Path) -> LabelledClip:
     never copied or re-encoded. A folder in no known layout, or one missing a
     file of its layout, is a ``ValueError`` naming the path and the layout.
     """
-    from tactifoot_vision.data import soccernet
+    from tactifoot_vision.data import soccernet  # it imports this module
 
     path = Path(path)
     if path.is_dir() and any((path / name).is_file() for name in _TRACKING_FILES):

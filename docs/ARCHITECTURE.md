@@ -160,7 +160,8 @@ configs/              example run files
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
-* `VideoReader(path)`: `fps`, `width`, `height`, `frame_count`, `duration`,
+* `VideoReader(path)` (a video file, or an OpenCV image-sequence pattern
+  such as `img1/%06d.jpg` whose first image is frame 0): `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
   `stride >= 1`); `read` refuses negative indices.
@@ -197,7 +198,8 @@ configs/              example run files
     boxes with track ids, classes from the `gameinfo.ini` tracklet labels
     (`other` tracklets are left out). MOT frame `n` is `img1/<n:06d>.jpg`,
     frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
-    `img1/%06d.jpg`. Truth: identities, boxes, ball.
+    `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Truth:
+    identities, boxes, ball.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pytest
 
-from tactifoot_vision.data import LabelledClip, Truth, load_labelled_clip
+from tactifoot_vision.data import LabelledClip, Truth, VideoReader, load_labelled_clip
 
 SEQINFO = """[Sequence]
 name=SNMOT-060
@@ -78,13 +78,10 @@ def test_soccernet_tracking_frames_align_with_the_video_frame_index(tmp_path):
     assert [frame.index for frame in clip] == [0, 1, 2]
     assert len(clip) == 3
     assert len(clip.frame(1).detections) == len(clip.frame(1).ball) == 0
-    capture = cv2.VideoCapture(str(clip.video_path))
+    video = VideoReader(clip.video_path)  # what Pipeline.run reads
+    assert video.frame_count == len(clip)
     for frame in clip:
-        capture.set(cv2.CAP_PROP_POS_FRAMES, frame.index)
-        ok, image = capture.read()
-        assert ok
-        assert abs(image.mean() - 60 * (frame.index + 1)) < 2
-    capture.release()
+        assert abs(video.read(frame.index).mean() - 60 * (frame.index + 1)) < 2
 
 
 def test_reading_a_frame_that_is_not_in_the_clip_fails(tmp_path):
@@ -147,6 +144,13 @@ def test_a_box_of_a_tracklet_missing_from_gameinfo_fails(tmp_path):
     folder = _sequence(tmp_path, gt=GT + "2,9,1,1,5,5,1,-1,-1,-1\n")
 
     with pytest.raises(ValueError, match=r"track 9\b.*gameinfo\.ini"):
+        load_labelled_clip(folder)
+
+
+def test_a_tracklet_key_without_a_track_id_fails(tmp_path):
+    folder = _sequence(tmp_path, gameinfo=GAMEINFO + "trackletID_x= ball;2\n")
+
+    with pytest.raises(ValueError, match=r"gameinfo\.ini: trackletid_x"):
         load_labelled_clip(folder)
 
 
