@@ -153,3 +153,37 @@ class HomographyMetrics:
             "jitter_m": self.jitter_m,
             "truth": self.truth.value,
         }
+
+
+@dataclass
+class TeamMetrics:
+    """Team accuracy of a run's ``team_id`` against a labelled clip's teams.
+
+    Only people the run detected are scored: each true person is matched to
+    a detected one by IoU in each processed frame, whatever their classes,
+    and ``recall`` is the share of true people matched. A run's team ids are
+    arbitrary, so ``team_mapping`` (run team id -> true team id) is the
+    one-to-one assignment that agrees on the most matched people; a run team
+    id it leaves out is wrong wherever it is given. A matched person is right
+    when their mapped team is their true team, and ``NO_TEAM`` is right only
+    for someone without one, such as a referee. ``accuracy`` is the share of
+    matched detections that are right; ``track_accuracy`` the same share per
+    run track (``tracker_id``), averaged over the tracks with a matched
+    detection so that each counts once. Both are NaN without a match.
+    """
+
+    accuracy: float
+    track_accuracy: float
+    recall: float
+    team_mapping: dict[int, int]
+    correct: int  # matched detections with the right team
+    matched: int  # true people matched to a detection
+    instances: int  # true people in the scored frames
+    num_frames: int  # frames scored: the processed frames
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "accuracy": self.accuracy,
+            "track_accuracy": self.track_accuracy,
+            "recall": self.recall,
+        }
