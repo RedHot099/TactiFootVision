@@ -13,7 +13,10 @@ from tactifoot_vision.evaluation.metrics import (
     TrackingMetrics,
 )
 from tactifoot_vision.evaluation.statsbomb import compare_with_statsbomb
-from tactifoot_vision.evaluation.tracking import evaluate_tracking
+from tactifoot_vision.evaluation.tracking import (
+    evaluate_tracking,
+    evaluate_tracking_clips,
+)
 from tactifoot_vision.models.base import Model
 
 
@@ -54,4 +57,5 @@ __all__ = [
     "evaluate_detector",
     "evaluate_keypoints",
     "evaluate_tracking",
+    "evaluate_tracking_clips",
 ]

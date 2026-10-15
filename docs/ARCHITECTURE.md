@@ -40,7 +40,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking` → `TrackingMetrics`, `compare_with_statsbomb` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -310,6 +310,11 @@ configs/              example run files
   The overall HOTA adds up the detections of every class, like TrackEval's
   detection-averaged combination. A test checks the native IDF1 and MOTA
   against TrackEval; it is skipped without the extra.
+* `evaluate_tracking_clips(pairs, iou_threshold=0.5, hota=True)` combines
+  several `(result, clip)` pairs as TrackEval combines sequences: the counts
+  (for HOTA, the detections) of every clip are added up, which gives the
+  numbers of one clip holding them all with their identities kept apart. A
+  class counts in the clips that have it.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
@@ -336,7 +341,9 @@ configs/              example run files
   `"1860"` in YAML) or a repeated one is a `ValueError`; `export` checks
   the names and the period once, before anything is written.
   `to_dataframe(team_names=None)`, `to_csv(path, team_names=None)`,
-  `to_parquet(path, team_names=None)` and
+  `to_parquet(path, team_names=None)`, `to_mot(path)` (MOT text, as
+  MOTChallenge and SoccerNet Tracking read it: 1-based frames, no class
+  column, an untracked ball as one track after the people's largest id) and
   `to_freeze_frames(period, period_start=None, team_names=None)`:
   `period_start=None` is the
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /

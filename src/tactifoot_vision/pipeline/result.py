@@ -274,6 +274,41 @@ class PipelineResult:
         self.to_dataframe(team_names).to_parquet(path, index=False)
         return path
 
+    def to_mot(self, path: str | Path) -> Path:
+        """Write the people and the ball as MOT text, the format of MOTChallenge and SoccerNet Tracking.
+
+        One row per object per frame: ``frame, track id, x, y, w, h,
+        confidence, -1, -1, -1``, with 1-based frames (video frame ``i`` is
+        MOT frame ``i + 1``) and confidence -1 when there is none. MOT text
+        has no class column. The ball keeps its own track ids; an untracked
+        ball is one track with the id after the people's largest.
+        """
+        ball_id = max(self.track_ids, default=0) + 1
+        lines = []
+        for f in self.frames:
+            people, ball = f.detections, f.ball
+            if len(people) and people.tracker_id is None:
+                raise ValueError(
+                    "to_mot needs the people's track ids; the result was made "
+                    "without a tracker"
+                )
+            ball_ids = ball.tracker_id
+            if ball_ids is None:
+                ball_ids = np.full(len(ball), ball_id)
+            for detections, ids in ((people, people.tracker_id), (ball, ball_ids)):
+                for i in range(len(detections)):
+                    x1, y1, x2, y2 = (float(v) for v in detections.xyxy[i])
+                    score = _float(detections.confidence, i)
+                    confidence = "-1" if score is None else f"{score:.2f}"
+                    lines.append(
+                        f"{f.index + 1},{int(ids[i])},{x1:.2f},{y1:.2f},"
+                        f"{x2 - x1:.2f},{y2 - y1:.2f},{confidence},-1,-1,-1"
+                    )
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(line + "\n" for line in lines))
+        return path
+
     def to_freeze_frames(
         self,
         period: int = 1,
