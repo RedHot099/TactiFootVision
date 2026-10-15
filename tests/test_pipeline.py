@@ -8,7 +8,9 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.evaluation import evaluate_tracking
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult, track_ball
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
@@ -585,6 +587,42 @@ def test_track_ball_drops_the_teleport_and_fills_it_at_any_stride(video, stride)
         assert frame.ball.get_anchors_coordinates(sv.Position.CENTER)[0, 0] == (
             pytest.approx(bx, abs=2)
         )
+
+
+def _labelled_clip(video: Path) -> LabelledClip:
+    """The synthetic clip's truth: every object of every frame, one id each."""
+    frames = []
+    for t in range(FRAMES):
+        objects = [(i + 1, COLORS[c], box) for i, (c, box) in enumerate(_scene(t))]
+        people = [o for o in objects if o[1] != "ball"]
+        ball = [o for o in objects if o[1] == "ball"]
+        frames.append(
+            LabelledFrame(
+                t,
+                *(
+                    sv.Detections(
+                        xyxy=np.array([b for _, _, b in rows], float).reshape(-1, 4),
+                        tracker_id=np.array([i for i, _, _ in rows], int),
+                        data={"class_name": np.array([n for _, n, _ in rows])},
+                    )
+                    for rows in (people, ball)
+                ),
+            )
+        )
+    return LabelledClip(
+        "synthetic", video, FPS, WIDTH, HEIGHT, tuple(frames),
+        frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL}),
+    )  # fmt: skip
+
+
+def test_a_strided_run_is_scored_on_its_processed_frames_only(video):
+    result = _pipeline().run(video, stride=2, progress=False)
+    metrics = evaluate_tracking(result, _labelled_clip(video))
+    # The odd frames hold truth but were skipped: no misses there.
+    assert metrics.num_frames == FRAMES // 2
+    assert metrics.per_class.loc["player", "instances"] == 6 * FRAMES // 2
+    assert (metrics.false_negatives, metrics.false_positives) == (0, 0)
+    assert (metrics.mota, metrics.idf1, metrics.id_switches) == (1.0, 1.0, 0)
 
 
 def test_too_few_player_crops_leave_an_unfitted_classifier_alone(video, caplog):

@@ -3,15 +3,16 @@
 import logging
 from collections import Counter
 from dataclasses import dataclass, fields
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
-from tactifoot_vision.data.labelled_clip import LabelledClip
+from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
 from tactifoot_vision.evaluation.metrics import TrackingMetrics
-from tactifoot_vision.pipeline.result import PipelineResult
+from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,19 @@ _BALL_ID = 0  # track id of a ball the pipeline did not track: there is one ball
 _CONTINUING = 1000.0  # TrackEval's bonus that keeps last frame's matches
 _EPS = np.finfo(float).eps
 
-# One frame of one class: track ids and xyxy boxes.
-_Objects = tuple[np.ndarray, np.ndarray]
+_COLUMNS = [
+    "idf1", "mota", "id_switches", "false_positives", "false_negatives", "instances",
+]  # fmt: skip
+
+
+class _Objects(NamedTuple):
+    """The objects of one class in one frame."""
+
+    ids: np.ndarray  # track ids
+    xyxy: np.ndarray
+
+
+_EMPTY = _Objects(np.zeros(0, int), np.zeros((0, 4)))
 
 
 @dataclass
@@ -48,9 +60,9 @@ class _Counts:
 
     @property
     def mota(self) -> float:
-        # As TrackEval: no true boxes count as one, so MOTA stays finite.
-        errors = self.false_negatives + self.false_positives + self.id_switches
-        return 1.0 - errors / max(1, self.instances)
+        # As TrackEval: without true boxes it is -false_positives, not NaN.
+        correct = self.matched - self.false_positives - self.id_switches
+        return correct / max(1, self.instances)
 
     @property
     def idf1(self) -> float:
@@ -72,31 +84,29 @@ def evaluate_tracking(
     box when their IoU is at least ``iou_threshold``, frame by frame with
     Hungarian matching on IoU that keeps last frame's matches (CLEAR MOT),
     and over the whole run with a one-to-one pairing of identities (IDF1).
+
+    Args:
+        result: a tracked run on the clip's video, with its frame indices.
+        clip: the truth; it must carry identities and boxes.
+        iou_threshold: the least IoU at which a box matches a true box.
     """
+    missing = {Truth.IDENTITIES, Truth.BOXES} - clip.truth
+    if missing:
+        raise ValueError(
+            f"Labelled clip {clip.name} has no {' or '.join(sorted(missing))}; "
+            "evaluate_tracking needs a clip with identities and boxes"
+        )
     truth, predicted = [], []
     for frame in result.frames:
         try:
             labelled = clip.frame(frame.index)
         except IndexError:
             raise ValueError(
-                f"Processed frame {frame.index} is not in labelled clip {clip.name}"
+                f"Processed frame {frame.index} is not in labelled clip {clip.name}; "
+                "run the pipeline on the clip's video, within its frames"
             ) from None
         truth.append(_by_class(labelled.detections, labelled.ball))
-        people = frame.detections
-        if len(people) and people.tracker_id is None:
-            raise ValueError(
-                "evaluate_tracking needs the people's track ids; the result "
-                "was made without a tracker"
-            )
-        duplicates = [i for i, n in Counter(people.tracker_id).items() if n > 1]
-        if duplicates:
-            raise ValueError(
-                f"The result has track id {duplicates[0]} twice in frame {frame.index}"
-            )
-        ball = frame.ball
-        if ball.tracker_id is None:
-            ball = _with_ids(ball, np.full(len(ball), _BALL_ID))
-        predicted.append(_by_class(people, ball))
+        predicted.append(_predicted(frame))
 
     class_names = sorted(
         {name for f in clip for name in _by_class(f.detections, f.ball)}
@@ -110,36 +120,18 @@ def evaluate_tracking(
         )
     counts = {
         name: _count(
-            [t.get(name, _NONE) for t in truth],
-            [p.get(name, _NONE) for p in predicted],
+            [t.get(name, _EMPTY) for t in truth],
+            [p.get(name, _EMPTY) for p in predicted],
             iou_threshold,
         )
         for name in class_names
     }
     total = sum(counts.values(), _Counts())
     per_class = pd.DataFrame(
-        [
-            {
-                "class_name": name,
-                "idf1": c.idf1,
-                "mota": c.mota,
-                "id_switches": c.id_switches,
-                "false_positives": c.false_positives,
-                "false_negatives": c.false_negatives,
-                "instances": c.instances,
-            }
-            for name, c in counts.items()
-        ],
-        columns=[
-            "class_name",
-            "idf1",
-            "mota",
-            "id_switches",
-            "false_positives",
-            "false_negatives",
-            "instances",
-        ],  # fmt: skip
-    ).set_index("class_name")
+        [[getattr(c, column) for column in _COLUMNS] for c in counts.values()],
+        index=pd.Index(list(counts), name="class_name"),
+        columns=_COLUMNS,
+    )
     metrics = TrackingMetrics(
         idf1=total.idf1,
         mota=total.mota,
@@ -160,7 +152,24 @@ def evaluate_tracking(
     return metrics
 
 
-_NONE: _Objects = (np.zeros(0, int), np.zeros((0, 4)))
+def _predicted(frame: FrameResult) -> dict[str, _Objects]:
+    """The frame's people and ball by class, an untracked ball given ``_BALL_ID``."""
+    people = frame.detections
+    if len(people) and people.tracker_id is None:
+        raise ValueError(
+            "evaluate_tracking needs the people's track ids; the result "
+            "was made without a tracker"
+        )
+    duplicates = [i for i, n in Counter(people.tracker_id).items() if n > 1]
+    if duplicates:
+        raise ValueError(
+            f"The result has track id {duplicates[0]} twice in frame "
+            f"{frame.index}; a remap must not join tracks that overlap in time"
+        )
+    ball = frame.ball
+    if ball.tracker_id is None:
+        ball = _with_ids(ball, np.full(len(ball), _BALL_ID))
+    return _by_class(people, ball)
 
 
 def _with_ids(detections: sv.Detections, ids: np.ndarray) -> sv.Detections:
@@ -170,7 +179,7 @@ def _with_ids(detections: sv.Detections, ids: np.ndarray) -> sv.Detections:
 
 
 def _by_class(*groups: sv.Detections) -> dict[str, _Objects]:
-    """Class name -> (track ids, boxes) of the detections in ``groups``."""
+    """Class name -> objects of the detections in ``groups``."""
     objects: dict[str, _Objects] = {}
     for detections in groups:
         if len(detections) == 0:
@@ -178,10 +187,10 @@ def _by_class(*groups: sv.Detections) -> dict[str, _Objects]:
         names = np.asarray(detections.data["class_name"]).astype(str)
         for name in np.unique(names):
             here = names == name
-            ids, boxes = objects.get(name, _NONE)
-            objects[name] = (
+            ids, xyxy = objects.get(name, _EMPTY)
+            objects[name] = _Objects(
                 np.concatenate([ids, np.asarray(detections.tracker_id)[here]]),
-                np.concatenate([boxes, np.asarray(detections.xyxy)[here]]),
+                np.concatenate([xyxy, np.asarray(detections.xyxy)[here]]),
             )
     return objects
 
@@ -199,8 +208,7 @@ def _count(
         counts.instances += len(true_ids)
         counts.predicted += len(ids)
         if not true_ids or not ids:
-            last_frame_match = {}
-            continue
+            continue  # as TrackEval: last frame's matches carry over
         iou = sv.box_iou_batch(true_xyxy, xyxy)
         for row, col in zip(*np.nonzero(iou >= iou_threshold), strict=True):
             overlaps[true_ids[row], ids[col]] += 1

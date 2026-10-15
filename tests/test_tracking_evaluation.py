@@ -27,7 +27,7 @@ def _detections(rows, tracked=True):
     )
 
 
-def _clip(frames):
+def _clip(frames, truth=frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL})):
     """A labelled clip from ``{index: (people rows, ball rows)}``, every index labelled."""
     return LabelledClip(
         name="fixture",
@@ -39,7 +39,7 @@ def _clip(frames):
             LabelledFrame(index, _detections(people), _detections(ball))
             for index, (people, ball) in sorted(frames.items())
         ),
-        truth=frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL}),
+        truth=truth,
     )
 
 
@@ -132,6 +132,37 @@ def test_a_track_lost_and_found_again_with_its_id_is_no_switch():
     metrics = evaluate_tracking(_result(predicted), _clip(truth))
     assert metrics.id_switches == 0
     assert metrics.false_negatives == 1
+
+
+def test_a_match_is_kept_over_a_frame_without_predictions():
+    # Track 11 matches player 1, loses it for a frame, then a better-fitting
+    # track 12 appears beside it: as in TrackEval, 11 keeps the match.
+    truth = {i: ([(1, "player", LEFT)], []) for i in range(3)}
+    predicted = {
+        0: ([(11, "player", LEFT)], []),
+        1: ([], []),
+        2: ([(11, "player", (0, 0, 10, 8)), (12, "player", LEFT)], []),
+    }
+    metrics = evaluate_tracking(_result(predicted), _clip(truth))
+    assert metrics.id_switches == 0
+    assert (metrics.false_negatives, metrics.false_positives) == (1, 1)
+
+
+def test_a_class_without_truth_in_the_scored_frames_has_mota_minus_false_positives():
+    truth = dict(TRUTH)
+    truth[3] = (TRUTH[3][0] + [(9, "referee", FAR)], TRUTH[3][1])
+    predicted = {0: ([(41, "referee", FAR)], [])}
+    referee = evaluate_tracking(_result(predicted), _clip(truth)).per_class.loc[
+        "referee"
+    ]
+    assert (referee["instances"], referee["false_positives"]) == (0, 1)
+    assert referee["mota"] == -1.0  # TrackEval's (TP - FP - IDSW) / max(1, GT)
+
+
+def test_a_clip_without_identities_is_an_error():
+    clip = _clip(TRUTH, truth=frozenset({Truth.BOXES}))
+    with pytest.raises(ValueError, match="fixture.*identities"):
+        evaluate_tracking(_result(PREDICTED), clip)
 
 
 def test_a_strided_run_is_scored_on_its_processed_frames_only():
