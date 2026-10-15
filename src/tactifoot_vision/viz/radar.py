@@ -8,6 +8,7 @@ import supervision as sv
 
 from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
+from tactifoot_vision.pitch.homography import visible_area
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.birds_eye import _warp_frame
 from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
@@ -62,13 +63,17 @@ class PitchRadar:
     ``x`` runs left to right and ``y`` top to bottom, so the far touchline of a
     broadcast view is at the top, as on screen. With ``trail_seconds``, each
     person's movement over that many seconds is drawn as a tail from the
-    ``history`` passed to :meth:`draw` (ADR 0003).
+    ``history`` passed to :meth:`draw` (ADR 0003). With ``draw_visible_area``,
+    the part of the pitch the frame shows is outlined.
 
     >>> radar = PitchRadar()
     >>> image = radar.draw(result[0])          # BGR uint8
     >>> frame = overlay(frame, image)          # paste onto the video frame
     >>> tails = PitchRadar(trail_seconds=2.0).draw(
     ...     result.frame(index), history=result.window(index, 2.0)
+    ... )
+    >>> seen = PitchRadar(draw_visible_area=True).draw(
+    ...     result.frame(index), frame_size=result.frame_size
     ... )
     """
 
@@ -88,6 +93,7 @@ class PitchRadar:
         line_thickness: int | None = None,
         space_control_alpha: float = 0.5,
         trail_seconds: float | None = None,
+        draw_visible_area: bool = False,
     ) -> None:
         """
         Args:
@@ -102,6 +108,10 @@ class PitchRadar:
             trail_seconds: draw each person's path over the last this many
                 seconds under the dots, in their colour fading to nothing at
                 that age; ``None``: no tails.
+            draw_visible_area: outline the frame's visible area
+                (:func:`~tactifoot_vision.pitch.visible_area`) in
+                ``line_color`` under the players; nothing without a homography
+                or when part of the frame lies beyond the horizon.
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -144,6 +154,7 @@ class PitchRadar:
         self.draw_ids = draw_ids
         self.space_control_alpha = space_control_alpha
         self.trail_seconds = trail_seconds
+        self.draw_visible_area = draw_visible_area
         self._background = self._draw_background()
 
     @property
@@ -163,6 +174,7 @@ class PitchRadar:
         space_control: SpaceControl | None = None,
         frame: np.ndarray | None = None,
         history: Sequence[FrameResult] | None = None,
+        frame_size: tuple[int, int] | None = None,
     ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
@@ -181,6 +193,10 @@ class PitchRadar:
         ``history``: the results of the frames before ``frame_result``, oldest
         first, e.g. ``result.window(index, trail_seconds)``; only the motion
         tails use it, and they ignore frames older than ``trail_seconds``.
+
+        ``frame_size``: ``(width, height)`` of the video frame, e.g.
+        ``result.frame_size``, which the visible area needs; default the size
+        of ``frame``.
         """
         if frame is not None and frame_result is None:
             raise ValueError(
@@ -196,6 +212,15 @@ class PitchRadar:
             image = self._draw_background(space_control, frame, homography)
         if frame_result is None:
             return image
+        if self.draw_visible_area:
+            if frame_size is None and frame is not None:
+                frame_size = (frame.shape[1], frame.shape[0])
+            if frame_size is None:
+                raise ValueError(
+                    "draw_visible_area needs the frame size: pass "
+                    "frame_size=result.frame_size, or the frame"
+                )
+            self._draw_visible_area(image, frame_result.homography, frame_size)
         index = team_color_index(frame_result.team_ids, len(self.team_colors))
         palette = [*self.team_colors, self.default_color]
         tracker_id = frame_result.detections.tracker_id
@@ -300,6 +325,29 @@ class PitchRadar:
             )  # fmt: skip
         return image
 
+    def _draw_visible_area(
+        self,
+        image: np.ndarray,
+        homography: np.ndarray | None,
+        frame_size: tuple[int, int],
+    ) -> None:
+        """The visible area's outline, cut to the image: near the horizon its
+        corners lie too far away for cv2's fixed-point coordinates."""
+        area = None if homography is None else visible_area(homography, frame_size)
+        if area is None:
+            return
+        corners = self.to_pixels(area)
+        margin = self.line_thickness + 2  # cut ends stay off the image
+        low, high = np.array([-margin, -margin]), np.add(self.size, margin)
+        edges = [
+            _clip_segment(a, b, low, high)
+            for a, b in zip(corners, np.roll(corners, -1, axis=0), strict=True)
+        ]
+        cv2.polylines(
+            image, [to_fixed(e) for e in edges if e is not None], False,
+            self.line_color.as_bgr(), self.line_thickness, cv2.LINE_AA, SUBPIXEL,
+        )  # fmt: skip
+
     def _draw_tails(
         self,
         image: np.ndarray,
@@ -371,6 +419,24 @@ def _positions_by_track(frame_result: FrameResult) -> dict[int, np.ndarray]:
     if tracker_id is None:
         return {}
     return dict(zip((int(t) for t in tracker_id), frame_result.pitch_xy, strict=True))
+
+
+def _clip_segment(
+    a: np.ndarray, b: np.ndarray, low: np.ndarray, high: np.ndarray
+) -> np.ndarray | None:
+    """The ``(2, 2)`` part of segment ``a``-``b`` inside the box ``[low, high]``
+    (Liang-Barsky), or ``None`` when it misses the box."""
+    d = b - a
+    start, end = 0.0, 1.0
+    for p, q in zip((*-d, *d), (*(a - low), *(high - a)), strict=True):
+        if p == 0:
+            if q < 0:  # parallel to this side and outside it
+                return None
+        elif p < 0:
+            start = max(start, q / p)
+        else:
+            end = min(end, q / p)
+    return None if start > end else np.array([a + start * d, a + end * d])
 
 
 def draw_space_control(
