@@ -124,7 +124,7 @@ configs/              example run files
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
-* `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
+* `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, frame windows, save/load)
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`
 * `pipeline/tracks.py`: `join_tracks`
@@ -339,6 +339,11 @@ configs/              example run files
   with an `interpolated` flag.
   `PipelineResult.load` refuses a result saved before frames kept their
   ball candidates.
+  `PipelineResult.window(index, seconds)` returns the results of the
+  frames before video frame `index` whose `timestamp` is at most `seconds`
+  earlier, oldest first: the `history` a drawing takes (ADR 0003). A
+  stride changes how many frames it holds, not the time it covers; an
+  `index` the result does not hold is a `KeyError`.
 * Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
   registered with `@POSTPROCESSES.register("name")`. They return a new
   result and never change their input. Registering keeps the function's

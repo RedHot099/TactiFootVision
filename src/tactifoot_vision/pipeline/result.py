@@ -1,5 +1,6 @@
 """What the inference pipeline produces: per-frame tracks, teams and pitch positions."""
 
+import bisect
 import json
 import math
 import pickle
@@ -191,6 +192,25 @@ class PipelineResult:
             if result.index == video_index:
                 return result
         raise KeyError(f"Frame {video_index} was not processed")
+
+    def window(self, index: int, seconds: float) -> list[FrameResult]:
+        """The results of the frames before video frame ``index``, oldest first.
+
+        A frame belongs to the window when its ``timestamp`` is at most
+        ``seconds`` before that of ``index``; the frame itself does not. The
+        window covers the same time whatever the stride, and is shorter, or
+        empty, at the start of the result. This is the ``history`` a trail
+        drawing takes (ADR 0003). Frames are in video order, as
+        :meth:`Pipeline.run` makes them.
+        """
+        position = bisect.bisect_left(self.frames, index, key=lambda f: f.index)
+        if position == len(self.frames) or self.frames[position].index != index:
+            raise KeyError(f"Frame {index} was not processed")
+        now = self.frames[position].timestamp
+        start = position
+        while start > 0 and now - self.frames[start - 1].timestamp <= seconds:
+            start -= 1
+        return self.frames[start:position]
 
     @property
     def track_ids(self) -> list[int]:

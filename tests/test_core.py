@@ -213,6 +213,46 @@ def test_result_tables(tmp_path):
     assert frames["type"].tolist() == ["player", "goalkeeper", "ball"]
 
 
+def _timed_result(indices, fps=4.0):
+    """An empty result of the video frames ``indices``, each at ``index / fps``."""
+    frames = [
+        FrameResult(
+            i,
+            i / fps,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
+        for i in indices
+    ]
+    return PipelineResult(frames, fps, (100, 50), ["ball"])
+
+
+def test_window_holds_the_earlier_frames_within_the_seconds_oldest_first():
+    result = _timed_result(range(10))  # a frame every 0.25 s
+    assert [f.index for f in result.window(8, 1.0)] == [4, 5, 6, 7]
+    assert [f.index for f in result.window(8, 0.6)] == [6, 7]
+    assert result.window(8, 0.0) == []
+
+
+def test_window_with_a_stride_covers_the_same_seconds_with_fewer_frames():
+    result = _timed_result(range(0, 20, 2))  # stride 2: a frame every 0.5 s
+    assert [f.index for f in result.window(12, 1.0)] == [8, 10]
+    assert [f.index for f in result.window(12, 1.2)] == [8, 10]
+
+
+def test_window_at_the_start_of_the_result_is_shorter_or_empty():
+    result = _timed_result(range(10, 20))
+    assert [f.index for f in result.window(11, 1.0)] == [10]
+    assert result.window(10, 1.0) == []
+
+
+def test_window_of_a_frame_not_in_the_result_says_so():
+    result = _timed_result(range(0, 20, 2))
+    with pytest.raises(KeyError, match="Frame 3 was not processed"):
+        result.window(3, 1.0)
+
+
 def test_freeze_frames_of_the_second_half_roll_over_the_minute():
     frames = [
         FrameResult(
