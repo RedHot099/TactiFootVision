@@ -1,5 +1,6 @@
 """Space control: for each point of the pitch, which team would reach it first."""
 
+import logging
 from dataclasses import dataclass, fields
 
 import numpy as np
@@ -8,6 +9,8 @@ from tactifoot_vision.analysis.velocity import velocities
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
+
+logger = logging.getLogger(__name__)
 
 # Pitch control's integration over time
 _DT = 0.04  # seconds a step
@@ -88,8 +91,8 @@ def space_control(
     is their time to intercept. They reach the cell by time ``T`` with the
     probability ``1 / (1 + exp(-pi / sqrt(3) / intercept_sigma * (T - tti)))``
     and, once there, take control at ``control_rate`` per second while the
-    cell is free. The control is team 0's share of the cell once it is
-    almost surely taken. With no ball, every cell is contested as if the ball
+    cell is free. The control is team 0's share of the cell once 99 % of it
+    is taken (or after 20 s, with a warning). With no ball, every cell is contested as if the ball
     were there from the start, whatever the travel time of a pass; all
     players, goalkeepers too, share one reaction time, one top speed and one
     control rate, reach top speed at once and turn without slowing. The defaults are
@@ -125,7 +128,7 @@ def space_control(
     every = range(len(result.frames))
     selected = every[frames] if frames is not None else every
     selected = [selected] if isinstance(selected, int) else selected
-    speeds = (
+    frame_velocities = (
         velocities(result, rule.velocity_window)
         if isinstance(rule, _PitchControl)
         else None
@@ -148,7 +151,9 @@ def space_control(
         frame = result.frames[position]
         team_ids, xy = frame.team_ids, frame.pitch_xy * scale
         velocity = (
-            np.nan_to_num(speeds[position]) if speeds is not None else np.zeros_like(xy)
+            np.nan_to_num(frame_velocities[position])
+            if frame_velocities is not None
+            else np.zeros_like(xy)
         )
         positioned = np.isfinite(xy).all(axis=1)
         teams = [positioned & (team_ids == team) for team in (0, 1)]
@@ -194,11 +199,13 @@ class _PitchControl:
 
     def __post_init__(self) -> None:
         for name in ("reaction_time", "intercept_sigma"):
-            if not getattr(self, name) >= 0:
-                raise ValueError(f"{name} must be >= 0, got {getattr(self, name)}")
+            value = getattr(self, name)
+            if not (np.isfinite(value) and value >= 0):
+                raise ValueError(f"{name} must be a finite number >= 0, got {value}")
         for name in ("max_speed", "control_rate", "velocity_window"):
-            if not getattr(self, name) > 0:
-                raise ValueError(f"{name} must be > 0, got {getattr(self, name)}")
+            value = getattr(self, name)
+            if not (np.isfinite(value) and value > 0):
+                raise ValueError(f"{name} must be a finite number > 0, got {value}")
 
     def control(self, cells: np.ndarray, teams: list[Team]) -> np.ndarray:
         """Team 0's control of each cell (``cells``: (rows, columns, 2) metres)."""
@@ -229,6 +236,13 @@ class _PitchControl:
                 rates, rate, out=np.full_like(rates, 0.5), where=rate > 0
             )
             free -= gained
+        if free.max() >= _UNCONTROLLED:
+            logger.warning(
+                "Pitch control stopped after %g s with up to %.0f%% of a cell "
+                "free; the control is the teams' share of what was taken "
+                "(control_rate=%g is low)",
+                _MAX_STEPS * _DT, 100 * free.max(), self.control_rate,
+            )  # fmt: skip
         both = taken[0] + taken[1]
         control = np.divide(taken[0], both, out=np.full_like(both, 0.5), where=both > 0)
         return control.reshape(shape)

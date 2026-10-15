@@ -310,6 +310,12 @@ def test_velocities_follow_track_ids_not_rows():
         assert np.isnan(velocity[2]).all()  # one sample, no position, untracked
 
 
+def test_velocities_refuse_a_tracker_id_twice_in_a_frame():
+    result = _moving(np.zeros((2, 2, 2)), np.arange(2), ids=[[4, 5], [4, 4]])
+    with pytest.raises(ValueError, match="Frame 1 has a tracker id twice"):
+        tv.analysis.velocities(result)
+
+
 def test_velocities_need_a_tracker():
     result = _moving(np.zeros((2, 1, 2)), np.arange(2))
     for frame in result.frames:
@@ -337,7 +343,10 @@ def test_pitch_control_gives_the_same_grid_as_nearest_player():
         assert np.isfinite(pitch.control).all()
         assert pitch.control.min() >= 0 and pitch.control.max() <= 1
         assert pitch.control.min() < 0.1 and pitch.control.max() > 0.9
-    assert tv.analysis.space_control(result, model="nearest_player").control.shape
+    np.testing.assert_array_equal(
+        tv.analysis.space_control(result, model="nearest_player").control,
+        tv.analysis.space_control(result).control,
+    )
 
 
 def test_pitch_control_the_closer_player_wins_a_contested_point():
@@ -366,7 +375,8 @@ def test_pitch_control_the_faster_player_wins_a_contested_point():
         np.stack([np.tile([40.0, 34.0], (25, 1)), standing], 1), indices, [0, 1]
     )
     shared = tv.analysis.space_control(still, frames=-1, model="pitch_control")
-    np.testing.assert_allclose(shared.control[row, column - 1], 1 - shared.control[row, column])  # fmt: skip
+    shared = shared.control[row]
+    np.testing.assert_allclose(shared[column - 1], 1 - shared[column])
     # A faster top speed lets the same lead count for less time.
     quick = tv.analysis.space_control(
         result, frames=-1, model="pitch_control", max_speed=8.0
@@ -388,12 +398,29 @@ def test_space_control_model_options():
         ValueError, match="'nearest_player' takes smoothing; got max_speed"
     ):
         tv.analysis.space_control(result, max_speed=5)
-    for option in ("reaction_time", "intercept_sigma"):
-        with pytest.raises(ValueError, match=f"{option} must be >= 0"):
-            tv.analysis.space_control(result, model="pitch_control", **{option: -1})
-    for option in ("max_speed", "control_rate", "velocity_window"):
-        with pytest.raises(ValueError, match=f"{option} must be > 0"):
-            tv.analysis.space_control(result, model="pitch_control", **{option: 0})
+    bounds = [(option, ">= 0", -1) for option in ("reaction_time", "intercept_sigma")]
+    bounds += [
+        (option, "> 0", 0)
+        for option in ("max_speed", "control_rate", "velocity_window")
+    ]
+    for option, bound, low in bounds:
+        for value in (low, np.inf, np.nan):
+            with pytest.raises(
+                ValueError, match=f"{option} must be a finite number {bound}"
+            ):
+                tv.analysis.space_control(
+                    result, model="pitch_control", **{option: value}
+                )
+
+
+def test_pitch_control_warns_when_cells_are_still_free_after_20_s(caplog):
+    result = _placed([[(0, 30.0, 34.0), (1, 75.0, 34.0)]])
+    slow = tv.analysis.space_control(result, model="pitch_control", control_rate=0.01)
+    assert "stopped after 20 s" in caplog.text and "control_rate=0.01" in caplog.text
+    assert slow.control[34, 0] > 0.5 and slow.control[34, -1] < 0.5
+    caplog.clear()
+    tv.analysis.space_control(result, model="pitch_control")
+    assert not caplog.text
 
 
 def test_space_control_documents_each_model_option_and_default():

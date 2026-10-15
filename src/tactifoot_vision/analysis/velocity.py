@@ -24,16 +24,23 @@ def velocities(result: PipelineResult, window: float = 0.5) -> list[np.ndarray]:
     across a different id. Times are the frames' ``timestamp``, so any frame
     stride gives the same velocities, and pitch units are scaled to a
     105 x 68 m pitch. People without a tracker id or a pitch position, and
-    those whose window holds one frame only, have none.
+    those whose window holds one frame only, have none. A tracker id twice
+    in one frame is a ``ValueError``.
     """
     if not np.isfinite(window) or window <= 0:
         raise ValueError(f"window must be a finite number > 0, got {window}")
-    speeds = [np.full((len(f.detections), 2), np.nan) for f in result.frames]
+    per_frame = [np.full((len(f.detections), 2), np.nan) for f in result.frames]
     samples: dict[int, list[tuple[float, int, int]]] = defaultdict(list)
     for position, frame in enumerate(result.frames):
         ids = frame.detections.tracker_id
         if ids is None:
             continue
+        tracked = ids[ids != UNTRACKED]
+        if len(np.unique(tracked)) < len(tracked):
+            raise ValueError(
+                f"Frame {frame.index} has a tracker id twice; velocities follow "
+                "one person per id"
+            )
         positioned = np.isfinite(frame.pitch_xy).all(axis=1)
         for row in np.flatnonzero(positioned & (ids != UNTRACKED)):
             samples[int(ids[row])].append((frame.timestamp, position, int(row)))
@@ -45,8 +52,8 @@ def velocities(result: PipelineResult, window: float = 0.5) -> list[np.ndarray]:
         for (_, position, row), velocity in zip(
             track, _slopes(times, xy, window / 2), strict=True
         ):
-            speeds[position][row] = velocity
-    return speeds
+            per_frame[position][row] = velocity
+    return per_frame
 
 
 def _slopes(times: np.ndarray, xy: np.ndarray, half: float) -> np.ndarray:

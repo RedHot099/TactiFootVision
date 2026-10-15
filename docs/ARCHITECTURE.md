@@ -623,7 +623,8 @@ nothing (`PipelineResult.export` writes their tables).
   `tracker_id` (a player track after `join_tracks`) within `window` s
   centred on the frame, from the frames' timestamps, so any stride gives the
   same velocities. No tracker id, no pitch position or a single frame in the
-  window means no velocity.
+  window means no velocity; a tracker id twice in one frame is a
+  `ValueError`.
 * `space_control(result, frames=None, cell_size=1.0, model="nearest_player",
   **options)` → `SpaceControl(control, pitch)`: team 0's control against
   team 1 per cell, in `[0, 1]` (`0.5`: shared). Everyone with a team and a
@@ -647,7 +648,8 @@ nothing (`PipelineResult.export` writes their tables).
     probability of spread `intercept_sigma` (0.45 s) around that time to
     intercept, and take a free cell at `control_rate` (4.3 per s). The
     control is team 0's share once 99 % of the cell is taken, integrated in
-    0.04 s steps from shortly before the cell's first arrival. Everyone
+    0.04 s steps from shortly before the cell's first arrival (at most 20 s,
+    with a warning, for a very low `control_rate`). Options are finite. Everyone
     shares the parameters (goalkeepers too); a cell is contested as if the
     ball were already there. The defaults are Spearman's, not tuned here.
     About 0.1 s a frame on 1 m cells with 22 players.
