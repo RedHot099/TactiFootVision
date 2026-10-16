@@ -68,8 +68,16 @@ _PIPELINE_PARTS = (
     "pitch",
     "homography",
 )
-# render_video arguments the run file does not set.
-_RENDER_ARGUMENTS = ("result", "source", "output", "annotator", "radar", "progress")
+# render_video arguments the run file does not set (a run computes no ball carriers).
+_RENDER_ARGUMENTS = (
+    "result",
+    "source",
+    "output",
+    "annotator",
+    "radar",
+    "progress",
+    "ball_carriers",
+)
 _NULLABLE = {"keypoints", "tracker", "teams", "postprocess"}
 
 

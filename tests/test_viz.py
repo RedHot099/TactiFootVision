@@ -372,6 +372,85 @@ def test_the_ball_trail_length_must_be_positive(seconds: float) -> None:
         viz.FrameAnnotator(trail_seconds=seconds)
 
 
+# --------------------------------------------------------- ball-carrier ring
+def _ring_annotator(**options) -> viz.FrameAnnotator:
+    """Draws the ball-carrier ring only."""
+    return viz.FrameAnnotator(
+        ball_color=RED, draw_boxes=False, draw_labels=False, draw_keypoints=False,
+        draw_pitch_lines=False, **options,
+    )  # fmt: skip
+
+
+def _ringed(image: np.ndarray, frame_result: FrameResult, tracker_id: int) -> bool:
+    """Whether ``ball_color`` lies right below the feet of ``tracker_id``."""
+    people = frame_result.detections
+    x1, _, x2, y2 = people.xyxy[list(people.tracker_id).index(tracker_id)]
+    x, y = round((x1 + x2) / 2), round(y2)
+    below = image[y + 1 : y + 12, x]
+    return bool(((below[:, 2] > 200) & (below[:, :2] < 60).all(axis=1)).any())
+
+
+@pytest.mark.parametrize("style", ["standard", "video_game"])
+def test_the_ball_carrier_gets_a_ring(result: PipelineResult, style: str) -> None:
+    now = result[0]
+    image = _ring_annotator(style=style).annotate(_frame(), now, ball_carrier=2)
+    assert _ringed(image, now, 2)
+    assert not any(_ringed(image, now, t) for t in (1, 3, 4))
+    assert not _ringed(_ring_annotator(style=style).annotate(_frame(), now), now, 2)
+    # Everything but the ring, around the carrier's feet, is drawn as without it.
+    full = viz.FrameAnnotator(style=style, ball_color=RED)
+    ringed = full.annotate(_frame(), now, ball_carrier=2)
+    changed = (ringed != full.annotate(_frame(), now)).any(axis=2)
+    ys, xs = np.nonzero(changed)
+    carrier = list(now.detections.tracker_id).index(2)
+    x1, y1, x2, y2 = now.detections.xyxy[carrier]
+    assert len(xs) and xs.min() >= x1 - 2 * (y2 - y1) and xs.max() <= x2 + 2 * (y2 - y1)
+    assert ys.min() >= y1 and ys.max() <= y2 + (y2 - y1)
+
+
+def test_the_ball_carrier_ring_lies_under_the_boxes(result: PipelineResult) -> None:
+    now = result[0]
+    x1, y1, _, y2 = now.detections.xyxy[list(now.detections.tracker_id).index(2)]
+    ring = _ring_annotator().annotate(_frame(), now, ball_carrier=2)
+    boxed = viz.FrameAnnotator(
+        ball_color=RED, team_colors=("#0000FF", "#00FF00"), draw_labels=False,
+        draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+    image = boxed.annotate(_frame(), now, ball_carrier=2)
+    # The ring crosses the box's left edge; there the edge (team 1, green) is on top.
+    column = slice(round(y1), round(y2))
+    crossing = ring[column, round(x1), 2] > 200
+    assert crossing.any()
+    assert (image[column, round(x1)][crossing] == (0, 255, 0)).all()
+
+
+def test_the_ball_carrier_ring_lies_over_the_masks(result: PipelineResult) -> None:
+    now = dataclasses.replace(result[0])
+    now.masks = ObjectMasks.from_dense(np.ones((len(now.detections), H, W), bool))
+    image = _ring_annotator(draw_masks=True).annotate(_frame(), now, ball_carrier=2)
+    assert _ringed(image, now, 2)
+
+
+@pytest.mark.parametrize("carrier", [None, 99], ids=["None", "unknown id"])
+def test_no_ball_carrier_ring_for_none_or_an_unknown_id(
+    result: PipelineResult, carrier: int | None
+) -> None:
+    annotator = viz.FrameAnnotator()
+    today = annotator.annotate(_frame(), result[0])
+    image = annotator.annotate(_frame(), result[0], ball_carrier=carrier)
+    assert (image == today).all()
+
+
+def test_no_ball_carrier_ring_in_a_frame_without_tracker_ids(
+    result: PipelineResult,
+) -> None:
+    untracked = dataclasses.replace(result[0].detections, tracker_id=None)
+    now = dataclasses.replace(result[0], detections=untracked)
+    annotator = viz.FrameAnnotator()
+    image = annotator.annotate(_frame(), now, ball_carrier=1)
+    assert (image == annotator.annotate(_frame(), now)).all()
+
+
 # --------------------------------------------------------------------- radar
 def test_radar_draws_players_and_ball(result: PipelineResult) -> None:
     radar = viz.PitchRadar(width_px=400, padding_px=20)
@@ -1044,9 +1123,9 @@ class _HistorySpy(viz.FrameAnnotator):
         super().__init__(**kwargs)
         self.histories: list[list[int] | None] = []
 
-    def annotate(self, frame, frame_result, history=None):
+    def annotate(self, frame, frame_result, history=None, **kwargs):
         self.histories.append(None if history is None else [f.index for f in history])
-        return super().annotate(frame, frame_result, history=history)
+        return super().annotate(frame, frame_result, history=history, **kwargs)
 
 
 def test_render_video_passes_the_trail_window_as_history(
@@ -1127,6 +1206,69 @@ def test_a_render_with_the_visible_area_differs_from_one_without(
 
     plain, outlined = render("plain.mp4"), render("area.mp4", draw_visible_area=True)
     assert all((p != o).any() for p, o in zip(plain, outlined, strict=True))
+
+
+class _CarrierSpy(viz.FrameAnnotator):
+    """Records the ``ball_carrier`` of each drawn frame."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.carriers: list[int | None] = []
+
+    def annotate(self, frame, frame_result, history=None, ball_carrier=None):
+        self.carriers.append(ball_carrier)
+        return super().annotate(
+            frame, frame_result, history=history, ball_carrier=ball_carrier
+        )
+
+
+def test_render_video_passes_each_frames_ball_carrier(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    carriers = [1, None, 2, 2, None]  # one per frame of result.frames
+    spy = _CarrierSpy()
+    viz.render_video(
+        result, video, tmp_path / "ring.mp4", annotator=spy, radar=False,
+        progress=False, ball_carriers=carriers,
+    )  # fmt: skip
+    assert spy.carriers == carriers
+    without = _CarrierSpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", annotator=without, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert without.carriers == [None] * 5
+
+
+def test_a_render_rings_the_carrier_only_in_frames_with_one(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=False, progress=False, **options
+        )
+        return _read_all(output)[0]
+
+    plain = render("plain.mp4")
+    ringed = render("ring.mp4", ball_carriers=[1, None, 2, None, 99])
+    # The encoder leaves a faint residue of a ring in the next frames.
+    differs = [
+        np.abs(p.astype(int) - r).max() > 100
+        for p, r in zip(plain, ringed, strict=True)
+    ]
+    assert differs == [True, False, True, False, False]
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_needs_one_ball_carrier_per_frame(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    with pytest.raises(ValueError, match="ball_carriers"):
+        viz.render_video(
+            result, video, tmp_path / "ring.mp4", progress=False,
+            birds_eye=birds_eye, ball_carriers=[1, 2],
+        )  # fmt: skip
+    assert not (tmp_path / "ring.mp4").exists()
 
 
 # --------------------------------------------------------------------- plots
@@ -1450,11 +1592,11 @@ class _FailingAnnotator(viz.FrameAnnotator):
         super().__init__()
         self.calls, self.fail_at = 0, fail_at
 
-    def annotate(self, frame, frame_result, history=None):
+    def annotate(self, frame, frame_result, history=None, **kwargs):
         self.calls += 1
         if self.calls == self.fail_at:
             raise RuntimeError("boom")
-        return super().annotate(frame, frame_result, history=history)
+        return super().annotate(frame, frame_result, history=history, **kwargs)
 
 
 def test_render_video_deletes_a_partial_output(

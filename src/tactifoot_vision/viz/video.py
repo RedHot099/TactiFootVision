@@ -2,6 +2,7 @@
 
 import inspect
 import logging
+from collections.abc import Sequence
 from math import gcd
 from pathlib import Path
 from typing import Any, Literal
@@ -30,6 +31,7 @@ def render_video(
     fps: float | None = None,
     progress: bool = True,
     birds_eye: bool = False,
+    ball_carriers: Sequence[int | None] | None = None,
 ) -> Path:
     """Re-read ``source`` and write the frames in ``result`` annotated to an mp4.
 
@@ -58,6 +60,12 @@ def render_video(
             frame=frame, history=history)``), at the radar's size rounded up
             to even numbers of pixels (the encoder needs them). The annotator
             and the overlay settings are not used; ``radar=False`` is an error.
+        ball_carriers: one ``tracker_id`` or ``None`` per frame of
+            ``result.frames``, as :func:`tv.analysis.ball_carriers
+            <tactifoot_vision.analysis.ball_carriers>` returns; each frame's
+            goes to ``annotator.annotate(..., ball_carrier=...)``, which rings
+            that person. Not drawn with ``birds_eye``, but its length is
+            still checked.
 
     Returns:
         The written path. Settings are checked before ``output`` is opened, an
@@ -82,6 +90,11 @@ def render_video(
         radar=radar,
         birds_eye=birds_eye,
     )
+    if ball_carriers is not None and len(ball_carriers) != len(result.frames):
+        raise ValueError(
+            f"ball_carriers has {len(ball_carriers)} entries but the result has "
+            f"{len(result.frames)} frames; pass one per frame of result.frames"
+        )
     reader = VideoReader(source)
     if reader.size != tuple(result.frame_size):
         raise ValueError(
@@ -96,6 +109,11 @@ def render_video(
             result.fps,
         )
     by_index = {f.index: f for f in result.frames}
+    carriers = (
+        dict.fromkeys(by_index)
+        if ball_carriers is None
+        else {f.index: c for f, c in zip(result.frames, ball_carriers, strict=True)}
+    )
     indices = sorted(by_index)
     step = _stride(indices)
     if len(set(np.diff(indices))) > 1:
@@ -152,7 +170,9 @@ def render_video(
                     cv2.BORDER_REPLICATE,
                 )  # fmt: skip
             else:
-                image = annotator.annotate(frame, frame_result, history=history)
+                image = annotator.annotate(
+                    frame, frame_result, history=history, ball_carrier=carriers[index]
+                )
                 if radar:
                     image = overlay(
                         image,

@@ -1170,3 +1170,10 @@ def test_the_radar_visible_area_reaches_the_render_section(tmp_path):
     with pytest.raises(ValueError, match="color"):
         bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
     assert not (tmp_path / "bad").exists()  # refused before the run
+
+
+def test_ball_carriers_are_not_reachable_from_the_render_section(tmp_path):
+    # A run does not compute carriers, so a run file cannot pass them.
+    data = {"detector": DETECTOR, "render": {"ball_carriers": [1, None]}}
+    with pytest.raises(ValueError, match="Unknown key 'ball_carriers'"):
+        _load(tmp_path, data)

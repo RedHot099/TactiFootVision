@@ -626,7 +626,7 @@ nothing (`PipelineResult.export` writes their tables).
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
 * `ball_carriers(result, max_distance=0.7, hysteresis=0.12, max_gap=1.0)` → one `tracker_id`
-  or `None` per frame (the shape `render_video` is to take). In a frame with
+  or `None` per frame (the shape `render_video`'s `ball_carriers` takes). In a frame with
   a ball (filled in by `track_ball` too), the candidate is the person with a
   team and a tracker id (players and goalkeepers; referees and staff have
   `NO_TEAM` after `assign_roles`) whose box foot is nearest the ball's
@@ -704,7 +704,8 @@ nothing (`PipelineResult.export` writes their tables).
 
 ### Results visualisation (`tv.viz`)
 
-* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result, history=None)`.
+* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result, history=None,
+  ball_carrier=None)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
   `trail_seconds` (off by default) draws the ball trail from `history`, the
   results before the frame, oldest first (ADR 0003): each earlier ball
@@ -712,6 +713,9 @@ nothing (`PipelineResult.export` writes their tables).
   homography (none without one; no pixel fallback), broken at frames without
   a ball position (filled-in `interpolated` ones draw like any other), in
   `ball_color` with opacity falling linearly to zero at `trail_seconds`.
+  `ball_carrier` (a `tracker_id`) rings that person at their feet in
+  `ball_color`, over any mask and under the boxes; `None` or an id nobody in the frame has
+  draws nothing. No label and no panel.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
   frame_size=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
@@ -757,10 +761,14 @@ nothing (`PipelineResult.export` writes their tables).
 * `render_video(result, source, output, annotator=None, radar=None,
   overlay_position="bottom-center", overlay_width_fraction=0.25,
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
-  birds_eye=False)` → output path; `source=None` uses `result.video_path`.
+  birds_eye=False, ball_carriers=None)` → output path; `source=None` uses `result.video_path`.
   The annotator and the radar get `history=result.window(index, seconds)` for
   the longest `trail_seconds` among them, `None` without a trail; the overlay
-  radar gets `frame_size=result.frame_size`.
+  radar gets `frame_size=result.frame_size`. `ball_carriers`, one
+  `tracker_id` or `None` per frame of `result.frames` as
+  `tv.analysis.ball_carriers` returns them (another length is a
+  `ValueError`, with `birds_eye` too), gives the annotator each frame's
+  `ball_carrier`. Run files cannot set it: a run computes no carriers.
   `birds_eye=True` writes the bird's-eye video: each frame is
   `radar.draw(frame_result, frame=frame, history=history)`, padded to even pixel sizes for the
   encoder; the annotator and overlay settings are not used, and `radar=False`
