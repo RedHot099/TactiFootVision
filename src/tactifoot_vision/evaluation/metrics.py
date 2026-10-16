@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from tactifoot_vision.data.labelled_clip import Truth
+
 
 @dataclass
 class DetectionMetrics:
@@ -88,4 +90,59 @@ class TrackingMetrics:
             "id_switches": self.id_switches,
             "false_positives": self.false_positives,
             "false_negatives": self.false_negatives,
+        }
+
+
+@dataclass
+class HomographyMetrics:
+    """Pitch position error of a run's frame -> pitch homographies, in metres.
+
+    Each scored frame's error is the mean distance, on the pitch, between
+    pitch points in view and where the run's homography puts the pixels that
+    show them; a point the homography puts beyond its horizon makes it an
+    infinite error. The points are the pitch's landmarks and a fixed grid over
+    the pitch, so errors far from the landmarks are not hidden. The scored
+    frames are those with a homography that show at least one point.
+    ``median_error_m``, ``p90_error_m``, ``under_1m``, ``under_2m`` and
+    ``under_5m`` (the share of scored frames whose error is below that) are
+    over all of them, infinite errors included; ``mean_error_m`` is over
+    those with a finite error, so runs still compare, and ``beyond_horizon``
+    is the share with an infinite one. ``availability`` is the share of the
+    frames with truth that have a homography, whether or not it shows a point:
+    a missing homography lowers it and is not an error. ``jitter_m`` is the
+    mean change of the error at each point from one processed frame to the
+    next, so it is per processed step: with a ``stride`` the steps are
+    longer. The top-level numbers are on the grid; ``per_points`` is indexed
+    by ``landmarks`` and ``grid`` with columns ``median_error_m``,
+    ``mean_error_m``, ``p90_error_m``, ``under_1m``, ``under_2m``,
+    ``under_5m``, ``beyond_horizon``, ``jitter_m`` and ``frames`` (frames
+    scored on those points). ``truth`` names the truth the errors are
+    measured against.
+    """
+
+    median_error_m: float
+    mean_error_m: float
+    p90_error_m: float
+    under_1m: float
+    under_2m: float
+    under_5m: float
+    beyond_horizon: float  # share of scored frames with a point beyond the horizon
+    availability: float  # share of the frames with truth that have a homography
+    jitter_m: float
+    per_points: pd.DataFrame
+    truth: Truth
+    num_frames: int  # processed frames with truth
+
+    def as_dict(self) -> dict[str, float | str]:
+        return {
+            "median_error_m": self.median_error_m,
+            "mean_error_m": self.mean_error_m,
+            "p90_error_m": self.p90_error_m,
+            "under_1m": self.under_1m,
+            "under_2m": self.under_2m,
+            "under_5m": self.under_5m,
+            "beyond_horizon": self.beyond_horizon,
+            "availability": self.availability,
+            "jitter_m": self.jitter_m,
+            "truth": self.truth.value,
         }
