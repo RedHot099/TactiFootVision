@@ -582,6 +582,8 @@ def test_flicker_shorter_than_the_hysteresis_creates_no_pass():
     assert _letters(carriers) == "..AAAAAAAAAAAAAAAA"
     assert tv.analysis.passes(result, carriers).empty
     assert tv.analysis.pass_counts(result, carriers) == {0: 0, 1: 0}
+    # A loose frame between B's frames starts B's count again.
+    assert _letters(tv.analysis.ball_carriers(_play("AAAB.B.B"))) == "..AAAAAA"
 
 
 def test_the_hysteresis_and_distance_are_options():
@@ -688,3 +690,20 @@ def test_export_writes_the_carrier_and_pass_tables(tmp_path):
     assert pd.read_csv(unnamed / "passes.csv").columns.tolist() == [
         "team_id", "team_name", "from_track_id", "to_track_id", "from_frame", "to_frame"
     ]  # fmt: skip
+
+
+def test_a_person_without_a_box_never_takes_the_ball():
+    result = _play("AAAA")
+    for frame in result:
+        frame.detections.xyxy[1] = np.nan  # B
+    assert _letters(tv.analysis.ball_carriers(result)) == "..AA"
+    loose = _play("....")
+    for frame in loose:
+        frame.detections.xyxy[1] = np.nan
+    assert set(tv.analysis.ball_carriers(loose)) == {None}
+
+
+@pytest.mark.parametrize("carrier", [42, 9])  # not in the result; the referee
+def test_carriers_must_be_people_who_can_carry_the_ball(carrier):
+    with pytest.raises(ValueError, match=f"{carrier}.*ball_carriers"):
+        tv.analysis.passes(_play("AAA"), [None, 1, carrier])

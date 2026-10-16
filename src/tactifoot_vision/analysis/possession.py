@@ -5,7 +5,6 @@ from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
-import supervision as sv
 
 from tactifoot_vision.pipeline.result import (
     BALL_ANCHOR,
@@ -17,7 +16,6 @@ from tactifoot_vision.pipeline.result import (
 )
 
 _PASS_COLUMNS = ["team_id", "from_track_id", "to_track_id", "from_frame", "to_frame"]
-_LOOSE = None  # the confirmed state of a ball nobody carries
 
 
 def ball_carriers(
@@ -39,9 +37,11 @@ def ball_carriers(
 
     The carrier changes, to another person or to nobody, once a candidate
     other than the carrier has been seen in ``hysteresis`` (3) frames with a
-    ball in a row, so a shorter flicker changes nothing. The count is in
-    processed frames, whatever the stride; a frame without a ball neither
-    confirms nor breaks it, so the carrier is held while the ball is unseen.
+    ball in a row, so a shorter flicker changes nothing: another candidate,
+    the carrier or a loose ball, in between starts the count again. The
+    count is in processed frames, whatever the stride; a frame without a
+    ball neither confirms nor breaks it, so the carrier is held while the
+    ball is unseen.
     """
     if not np.isfinite(max_distance) or max_distance <= 0:
         raise ValueError(
@@ -54,17 +54,21 @@ def ball_carriers(
     if hysteresis < 1:
         raise ValueError(f"hysteresis must be >= 1, got {hysteresis}")
     carriers: list[int | None] = []
-    current, pending, count = _LOOSE, _LOOSE, 0
+    current: int | None = None
+    # The candidate challenging the carrier and the frames in a row it has
+    # been seen; no challenger while count is 0 (None is a loose ball).
+    challenger: int | None = None
+    count = 0
     for frame in result:
         if len(frame.ball):
             candidate = _nearest(frame, max_distance)
             if candidate == current:
-                pending, count = _LOOSE, 0
+                count = 0
             else:
-                count = count + 1 if candidate == pending and count else 1
-                pending = candidate
+                count = count + 1 if count and candidate == challenger else 1
+                challenger = candidate
                 if count >= hysteresis:
-                    current, pending, count = candidate, _LOOSE, 0
+                    current, count = candidate, 0
         carriers.append(current)
     return carriers
 
@@ -155,28 +159,23 @@ def carrier_table(
 
 def _nearest(frame: FrameResult, max_distance: float) -> int | None:
     """The tracker id of the frame's carrier candidate, ``None`` for a loose ball."""
-    people = _eligible(frame.detections)
-    if not people.any():
-        return None
-    detections = frame.detections[people]
+    detections = frame.detections[_eligible(frame)]
     feet = detections.get_anchors_coordinates(PERSON_ANCHOR)
     ball = frame.ball.get_anchors_coordinates(BALL_ANCHOR)[0]
     heights = np.maximum(detections.xyxy[:, 3] - detections.xyxy[:, 1], 1.0)
     distances = np.hypot(*(feet - ball).T) / heights
-    nearest = int(np.argmin(distances))
-    if distances[nearest] >= max_distance:
+    close = np.flatnonzero(distances < max_distance)  # NaN boxes are never close
+    if not len(close):
         return None
-    return int(detections.tracker_id[nearest])
+    return int(detections.tracker_id[close[np.argmin(distances[close])]])
 
 
-def _eligible(detections: sv.Detections) -> np.ndarray:
-    """Which people can carry the ball: those with a team and a tracker id."""
-    if detections.tracker_id is None:
-        return np.zeros(len(detections), dtype=bool)
-    team_ids = np.asarray(
-        detections.data.get("team_id", np.full(len(detections), NO_TEAM))
-    )
-    return (team_ids != NO_TEAM) & (detections.tracker_id != UNTRACKED)
+def _eligible(frame: FrameResult) -> np.ndarray:
+    """Which of the frame's people can carry the ball: those with a team and a tracker id."""
+    ids = frame.detections.tracker_id
+    if ids is None:
+        return np.zeros(len(frame.detections), dtype=bool)
+    return (frame.team_ids != NO_TEAM) & (ids != UNTRACKED)
 
 
 def _carrier_teams(
@@ -190,13 +189,17 @@ def _carrier_teams(
         )
     votes: dict[int, Counter] = defaultdict(Counter)
     for frame in result:
-        people = _eligible(frame.detections)
-        ids = frame.detections.tracker_id
-        for track, team in zip(
-            ids[people] if ids is not None else [], frame.team_ids[people], strict=True
-        ):
-            votes[int(track)][int(team)] += 1
+        people = _eligible(frame)
+        if people.any():
+            ids, team_ids = frame.detections.tracker_id[people], frame.team_ids[people]
+            for track, team in zip(ids, team_ids, strict=True):
+                votes[int(track)][int(team)] += 1
     teams = {track: vote.most_common(1)[0][0] for track, vote in votes.items()}
+    if unknown := sorted({c for c in carriers if c is not None and c not in teams}):
+        raise ValueError(
+            f"Carrier {unknown[0]} is nobody of the result with a team and a "
+            "tracker id; pass ball_carriers(result)"
+        )
     return [None if c is None else teams[c] for c in carriers]
 
 

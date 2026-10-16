@@ -628,9 +628,12 @@ nothing (`PipelineResult.export` writes their tables).
   the ball is loose. The image is used because the ball's height is
   unknown. The carrier changes, to another person or to nobody, once a
   candidate other than the carrier has been seen in `hysteresis` frames with
-  a ball in a row (processed frames, whatever the stride); a frame without a
-  ball neither confirms nor breaks it, so the carrier is held while the
-  ball is unseen.
+  a ball in a row (processed frames, whatever the stride; another candidate
+  in between starts the count again); a frame without a ball neither
+  confirms nor breaks it, so the carrier is held while the ball is unseen.
+  A person without a finite box is never the carrier; carriers that are
+  nobody of the result with a team and a tracker id are a `ValueError` in
+  the functions below.
 * `possession(result, carriers, frames=None)` → `{team_id: share}`: each
   team's share of the frames with a carrier (every team of the result; they
   add up to 1), over every frame, a position or a slice of `result.frames`
