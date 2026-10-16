@@ -44,8 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         help="run the pipeline on a video",
         description="Run a run file on a video and write the run folder "
         "(RunFile.run). --start, --end and --stride go to Pipeline.run, --period, "
-        "--period-start and --team-names to PipelineResult.export; an option "
-        "left out keeps the package default.",
+        "--period-start, --team-names and --carrier-* to PipelineResult.export; "
+        "an option left out keeps the package default.",
         argument_default=_SUPPRESS,
     )
     run.add_argument("run_file", type=Path, help="run file (YAML)")

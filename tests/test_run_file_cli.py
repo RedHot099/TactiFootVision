@@ -517,6 +517,32 @@ def test_cli_run_names_the_teams(tmp_path, fake_siglip, monkeypatch):
         assert (players["team_name"] == names).all()
 
 
+def test_carrier_options_reach_the_run_folder_tables(tmp_path, monkeypatch):
+    from tactifoot_vision.analysis import carriers
+
+    calls = []
+
+    def spy(result, **options):
+        calls.append(options)
+        return [None] * len(result)
+
+    monkeypatch.setattr(carriers, "ball_carriers", spy)
+    loaded = _load(tmp_path, {"detector": DETECTOR})
+    video = _video(tmp_path / "clip.mp4")
+    loaded.run(video, tmp_path / "plain", render=False, progress=False)
+    loaded.run(
+        video, tmp_path / "set", render=False, progress=False, carrier_hysteresis=0.5
+    )
+    assert calls == [{}, {"hysteresis": 0.5}]
+    calls.clear()
+    config = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    args = ["run", str(config), "--video", str(video), "--no-video"]
+    args += ["--output-dir", str(tmp_path / "cli")]
+    flags = ["--carrier-max-distance", "0.5", "--carrier-hysteresis", "0.2"]
+    assert main([*args, *flags, "--carrier-max-gap", "2"]) == 0
+    assert calls == [{"max_distance": 0.5, "hysteresis": 0.2, "max_gap": 2.0}]
+
+
 def test_cli_reports_errors_without_a_traceback(tmp_path, capsys):
     config = _write(tmp_path / "run.yaml", {"detector": {**DETECTOR, "bogus": 1}})
     video = _video(tmp_path / "clip.mp4")
@@ -558,7 +584,7 @@ def test_every_run_parameter_has_a_flag(capsys):
     export = inspect.signature(PipelineResult.export).parameters
     names = [n for n in run if n not in ("self", "video", "progress")]
     names += [n for n in export if n not in ("self", "out_dir")]
-    assert len(names) == 6
+    assert len(names) == 9
     for name in names:
         assert f"--{name.replace('_', '-')}" in out
 

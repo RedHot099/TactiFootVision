@@ -1,5 +1,6 @@
 """Ball carrier, possession and passes: who has the ball, frame by frame."""
 
+import math
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
@@ -15,11 +16,15 @@ from tactifoot_vision.pipeline.result import (
     PipelineResult,
 )
 
+_EPS = 1e-6  # timestamps are index / fps, so equal spans may differ in the last bit
 _PASS_COLUMNS = ["team_id", "from_track_id", "to_track_id", "from_frame", "to_frame"]
 
 
 def ball_carriers(
-    result: PipelineResult, max_distance: float = 0.7, hysteresis: int = 3
+    result: PipelineResult,
+    max_distance: float = 0.7,
+    hysteresis: float = 0.12,
+    max_gap: float = 1.0,
 ) -> list[int | None]:
     """The ball carrier of each frame of ``result.frames``: a ``tracker_id`` or ``None``.
 
@@ -36,39 +41,50 @@ def ball_carriers(
     track.
 
     The carrier changes, to another person or to nobody, once a candidate
-    other than the carrier has been seen in ``hysteresis`` (3) frames with a
-    ball in a row, so a shorter flicker changes nothing: another candidate,
-    the carrier or a loose ball, in between starts the count again. The
-    count is in processed frames, whatever the stride; a frame without a
-    ball neither confirms nor breaks it, so the carrier is held while the
-    ball is unseen.
+    other than the carrier has been seen for ``hysteresis`` seconds (0.12:
+    three frames at 25 fps) in frames with a ball in a row, each frame
+    counting one of the result's median time steps, so any stride waits the
+    same time and a coarse one at least one frame. A shorter flicker changes
+    nothing: another candidate, the carrier or a loose ball, in between
+    starts the count again. A frame without a ball neither confirms nor
+    breaks it, so the carrier is held while the ball is unseen, for up to
+    ``max_gap`` seconds (1.0) after the ball was last seen; then nobody
+    carries it and the count starts again (``np.inf`` holds it for good).
     """
     if not np.isfinite(max_distance) or max_distance <= 0:
         raise ValueError(
             f"max_distance must be a finite number > 0, got {max_distance}"
         )
-    if isinstance(hysteresis, bool) or not isinstance(hysteresis, int | np.integer):
+    if not np.isfinite(hysteresis) or hysteresis < 0:
         raise ValueError(
-            f"hysteresis must be a whole number of frames, got {hysteresis}"
+            f"hysteresis must be a finite number of seconds >= 0, got {hysteresis}"
         )
-    if hysteresis < 1:
-        raise ValueError(f"hysteresis must be >= 1, got {hysteresis}")
+    if not max_gap > 0:
+        raise ValueError(f"max_gap must be > 0 seconds, got {max_gap}")
+    times = [frame.timestamp for frame in result]
+    step = float(np.median(np.diff(times))) if len(times) > 1 else 0.0
+    step = step if step > 0 else 1 / result.fps
+    frames_needed = max(1, math.ceil(hysteresis / step - _EPS))
     carriers: list[int | None] = []
     current: int | None = None
     # The candidate challenging the carrier and the frames in a row it has
     # been seen; no challenger while count is 0 (None is a loose ball).
     challenger: int | None = None
     count = 0
+    last_seen = -math.inf  # timestamp of the last frame with a ball
     for frame in result:
         if len(frame.ball):
+            last_seen = frame.timestamp
             candidate = _nearest(frame, max_distance)
             if candidate == current:
                 count = 0
             else:
                 count = count + 1 if count and candidate == challenger else 1
                 challenger = candidate
-                if count >= hysteresis:
+                if count >= frames_needed:
                     current, count = candidate, 0
+        elif frame.timestamp - last_seen >= max_gap - _EPS:
+            current, count = None, 0
         carriers.append(current)
     return carriers
 
@@ -114,7 +130,13 @@ def passes(result: PipelineResult, carriers: Sequence[int | None]) -> pd.DataFra
     the carrier (out of the picture, or for fewer frames than the
     hysteresis) is missed. A carrier of the other team in between breaks it.
     """
-    teams = _carrier_teams(result, carriers)
+    return _passes(result, carriers, _carrier_teams(result, carriers))
+
+
+def _passes(
+    result: PipelineResult, carriers: Sequence[int | None], teams: list[int | None]
+) -> pd.DataFrame:
+    """:func:`passes` with the carriers' ``teams`` already found."""
     rows = []
     last = None  # position of the previous carrier's last frame
     for position, carrier in enumerate(carriers):
@@ -148,7 +170,13 @@ def carrier_table(
     ``carriers`` are :func:`ball_carriers` of ``result``; ``track_id`` and
     ``team_id`` are empty (``pd.NA``) in a frame without a carrier.
     """
-    teams = _carrier_teams(result, carriers)
+    return _carrier_table(result, carriers, _carrier_teams(result, carriers))
+
+
+def _carrier_table(
+    result: PipelineResult, carriers: Sequence[int | None], teams: list[int | None]
+) -> pd.DataFrame:
+    """:func:`carrier_table` with the carriers' ``teams`` already found."""
     return pd.DataFrame({
         "frame": [frame.index for frame in result],
         "time": [frame.timestamp for frame in result],
@@ -157,10 +185,24 @@ def carrier_table(
     })  # fmt: skip
 
 
+def _run_folder_tables(
+    result: PipelineResult, **options: float
+) -> dict[str, pd.DataFrame]:
+    """``carriers.csv`` and ``passes.csv`` of the run folder, from ``ball_carriers(result, **options)``."""
+    carriers = ball_carriers(result, **options)
+    teams = _carrier_teams(result, carriers)
+    return {
+        "carriers.csv": _carrier_table(result, carriers, teams),
+        "passes.csv": _passes(result, carriers, teams),
+    }
+
+
 def _nearest(frame: FrameResult, max_distance: float) -> int | None:
     """The tracker id of the frame's carrier candidate, ``None`` for a loose ball."""
     detections = frame.detections[_eligible(frame)]
     feet = detections.get_anchors_coordinates(PERSON_ANCHOR)
+    # ``ball`` holds at most one detection: the pipeline's best candidate or
+    # track_ball's choice.
     ball = frame.ball.get_anchors_coordinates(BALL_ANCHOR)[0]
     heights = np.maximum(detections.xyxy[:, 3] - detections.xyxy[:, 1], 1.0)
     distances = np.hypot(*(feet - ball).T) / heights

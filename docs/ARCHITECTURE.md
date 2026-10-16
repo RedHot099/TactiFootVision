@@ -83,7 +83,7 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
                       homographies.py (smooth_homographies)
-  analysis/           direction.py (attack_direction), possession.py (ball_carriers,
+  analysis/           direction.py (attack_direction), carriers.py (ball_carriers,
                       possession, passes, pass_counts, carrier_table),
                       velocity.py (velocities), space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
@@ -141,7 +141,7 @@ configs/              example run files
 * `pipeline/tracks.py`: `join_tracks`
 * `pipeline/roles.py`: `assign_roles`
 * `analysis/direction.py`: `attack_direction`
-* `analysis/possession.py`: `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`
+* `analysis/carriers.py`: `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`
 * `analysis/velocity.py`: `velocities`
 * `analysis/space.py`: `SpaceControl`, `space_control`
 
@@ -438,18 +438,24 @@ configs/              example run files
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
-  `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None)`
+  `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None,
+  carrier_max_distance=None, carrier_hysteresis=None, carrier_max_gap=None)`
   writes the run folder's data files (`result.pkl`, `tracks.csv`,
   `freeze_frames.csv`, `carriers.csv`, `passes.csv`, with headers even for
   an empty result). It is the only writer of the run folder: the analysis
   tables (`carriers.csv`, `passes.csv`) join it through `export`, which
-  computes them with `tv.analysis` and its defaults. `team_names`
+  computes them with `tv.analysis.ball_carriers`. The `carrier_*` options
+  are its `max_distance`, `hysteresis` and `max_gap`, passed on only when
+  given, so the defaults stay in `tv.analysis` and `tactifoot run` gets
+  `--carrier-*` flags. The tables need team ids: without a team classifier
+  (`teams: null`) they hold no carrier. `team_names`
   (one per team id from 0, e.g. `["Home", "Away"]`) fill the tables'
   `team_name` column (empty without names or a team): each object's own
   team, unlike the event team's `team_name` of `load_statsbomb`. A name
   missing for a team of the result, an empty or non-text name (quote
   `"1860"` in YAML) or a repeated one is a `ValueError`; `export` checks
-  the names and the period once, before anything is written.
+  the names, the period and the carrier options once, before anything is
+  written.
   `to_dataframe(team_names=None)`, `to_csv(path, team_names=None)`,
   `to_parquet(path, team_names=None)`, `to_mot(path)` (MOT text, as
   MOTChallenge and SoccerNet Tracking read it: 1-based frames, no class
@@ -619,7 +625,7 @@ nothing (`PipelineResult.export` writes their tables).
   directions. Anything but two teams with pitch positions, or two means
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
-* `ball_carriers(result, max_distance=0.7, hysteresis=3)` → one `tracker_id`
+* `ball_carriers(result, max_distance=0.7, hysteresis=0.12, max_gap=1.0)` → one `tracker_id`
   or `None` per frame (the shape `render_video` is to take). In a frame with
   a ball (filled in by `track_ball` too), the candidate is the person with a
   team and a tracker id (players and goalkeepers; referees and staff have
@@ -627,10 +633,14 @@ nothing (`PipelineResult.export` writes their tables).
   centre in image pixels over their box height, under `max_distance`; else
   the ball is loose. The image is used because the ball's height is
   unknown. The carrier changes, to another person or to nobody, once a
-  candidate other than the carrier has been seen in `hysteresis` frames with
-  a ball in a row (processed frames, whatever the stride; another candidate
-  in between starts the count again); a frame without a ball neither
-  confirms nor breaks it, so the carrier is held while the ball is unseen.
+  candidate other than the carrier has been seen for `hysteresis` seconds
+  in frames with a ball in a row (0.12 s: three frames at 25 fps; each frame
+  counts one median time step, so any stride waits the same time and a
+  coarse one at least one frame; another candidate in between starts the
+  count again). The spec's "3-frame hysteresis" is this, in seconds like
+  every other duration option. A frame without a ball neither confirms nor
+  breaks it, so the carrier is held while the ball is unseen, for up to
+  `max_gap` s (1.0) after the ball was last seen; then nobody carries it.
   A person without a finite box is never the carrier; carriers that are
   nobody of the result with a team and a tracker id are a `ValueError` in
   the functions below.
@@ -837,7 +847,8 @@ postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
           [--start N] [--end N] [--stride N] [--period N] [--period-start S]
-          [--team-names "[HOME, AWAY]"] [--no-video] [--set KEY=VALUE ...]
+          [--team-names "[HOME, AWAY]"] [--carrier-max-distance R]
+          [--carrier-hysteresis S] [--carrier-max-gap S] [--no-video] [--set KEY=VALUE ...]
 tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
           [--set KEY=VALUE ...]
 tactifoot evaluate MODEL --weights W --data D [--split S] [--set KEY=VALUE ...]

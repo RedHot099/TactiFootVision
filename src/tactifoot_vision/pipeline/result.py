@@ -439,6 +439,9 @@ class PipelineResult:
         period: int = 1,
         period_start: float | None = None,
         team_names: Sequence[str] | None = None,
+        carrier_max_distance: float | None = None,
+        carrier_hysteresis: float | None = None,
+        carrier_max_gap: float | None = None,
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
@@ -448,22 +451,33 @@ class PipelineResult:
         analysis tables ``carriers.csv`` and ``passes.csv``
         (:func:`~tactifoot_vision.analysis.carrier_table` and
         :func:`~tactifoot_vision.analysis.passes` of the
-        :func:`~tactifoot_vision.analysis.ball_carriers` with their defaults).
-        ``team_names`` (one per team id from 0, e.g. ``["Home", "Away"]``)
-        fill the tables' ``team_name`` column. ``period`` and ``team_names``
-        are checked before anything is written. Render the annotated video
+        :func:`~tactifoot_vision.analysis.ball_carriers`; they need team ids,
+        so they hold no carrier without a team classifier).
+        ``carrier_max_distance``, ``carrier_hysteresis`` and
+        ``carrier_max_gap`` are ``ball_carriers``' ``max_distance``,
+        ``hysteresis`` and ``max_gap``, passed on only when given (``None``
+        keeps its default). ``team_names`` (one per team id from 0, e.g.
+        ``["Home", "Away"]``) fill the tables' ``team_name`` column.
+        ``period``, ``team_names`` and the carrier options are checked before
+        anything is written. Render the annotated video
         with :func:`tactifoot_vision.viz.render_video`, or write the whole run
         folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
         """
-        from tactifoot_vision import analysis  # it imports this module
+        # tv.analysis imports this module
+        from tactifoot_vision.analysis.carriers import _run_folder_tables
 
         start = _period_start(period, period_start)
         names = self._check_team_names(team_names)
-        carriers = analysis.ball_carriers(self)
-        analysis_tables = {
-            "carriers.csv": analysis.carrier_table(self, carriers),
-            "passes.csv": analysis.passes(self, carriers),
+        carrier_options = {
+            option: value
+            for option, value in (
+                ("max_distance", carrier_max_distance),
+                ("hysteresis", carrier_hysteresis),
+                ("max_gap", carrier_max_gap),
+            )
+            if value is not None
         }
+        analysis_tables = _run_folder_tables(self, **carrier_options)
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
