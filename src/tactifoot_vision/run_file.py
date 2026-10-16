@@ -247,8 +247,9 @@ class RunFile:
         """``render_video`` keyword arguments from the ``render`` section, checked.
 
         Builds the annotator and the radar (their constructors check the
-        values) and checks the overlay settings, so a bad value fails before
-        any frame is processed. Keys in ``exclude`` are left out.
+        values), then checks the other settings with the radar built (a
+        ``null`` radar is ``False``), so a bad value fails before any frame is
+        processed. Keys in ``exclude`` are left out.
         """
         from tactifoot_vision.viz import FrameAnnotator, PitchRadar
         from tactifoot_vision.viz.video import check_render_options
@@ -256,7 +257,6 @@ class RunFile:
         kwargs = {
             k: v for k, v in self.sections.get("render", {}).items() if k not in exclude
         }
-        check_render_options(**kwargs)
         if "annotator" in kwargs:
             kwargs["annotator"] = FrameAnnotator(pitch=pitch, **kwargs["annotator"])
         if "radar" in kwargs:
@@ -264,6 +264,7 @@ class RunFile:
             kwargs["radar"] = (
                 False if radar is None else PitchRadar(pitch=pitch, **radar)
             )
+        check_render_options(**kwargs)
         return kwargs
 
     def __repr__(self) -> str:

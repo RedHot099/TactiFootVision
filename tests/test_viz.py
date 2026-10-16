@@ -1,4 +1,5 @@
 import ast
+import dataclasses
 import os
 from pathlib import Path
 
@@ -477,6 +478,63 @@ def test_warp_to_pitch_checks_its_inputs() -> None:
         viz.warp_to_pitch(frame.astype(np.float32), HOMOGRAPHY)
 
 
+def _gradient_frame() -> np.ndarray:
+    """Frame whose blue and green levels are 0.75 x its column and row."""
+    columns, rows = np.meshgrid(np.arange(W), np.arange(H))
+    return np.dstack([np.round(0.75 * columns), np.round(0.75 * rows),
+                      np.full_like(columns, 128)]).astype(np.uint8)  # fmt: skip
+
+
+def test_radar_draws_the_dots_on_the_warped_frame(result: PipelineResult) -> None:
+    # A small radar (about 2 px per metre), so a half-pixel shift moves the
+    # sampled frame point by about 2 frame pixels.
+    radar = viz.PitchRadar(width_px=260, padding_px=24)
+    empty = radar.draw()
+    background = radar.draw(dataclasses.replace(result[0], detections=sv.Detections.empty(),
+                            ball=sv.Detections.empty()), frame=_gradient_frame())  # fmt: skip
+    assert background.shape == empty.shape and background.dtype == np.uint8
+    # Each radar pixel shows the frame at its pitch point: no half-pixel offset.
+    columns, rows = np.meshgrid(np.arange(radar.width_px), np.arange(radar.height_px))
+    centres = np.column_stack([columns.ravel(), rows.ravel()]).astype(float)
+    origin, scale = (
+        radar.to_pixels([[0, 0]]),
+        radar.to_pixels([[1, 1]]) - radar.to_pixels([[0, 0]]),
+    )
+    in_frame = pitch_to_frame((centres - origin) / scale, HOMOGRAPHY)
+    expected = 0.75 * (in_frame - 0.5)  # pixel c holds 0.75 c at its centre c + 0.5
+    lines = cv2.dilate(
+        (empty != empty[0, 0]).any(axis=2).astype(np.uint8), np.ones((5, 5))
+    )
+    seen = ((in_frame > 1) & (in_frame < [W - 1, H - 1])).all(axis=1).reshape(
+        lines.shape
+    ) & (lines == 0)
+    assert seen.sum() > 5000
+    error = background[..., :2].reshape(-1, 2)[seen.ravel()] - expected[seen.ravel()]
+    assert np.abs(error).max() < 1.5
+    assert np.abs(error).mean() < 0.5  # about 0.8 with a half-pixel shift
+    # The pitch the frame does not show keeps the plain radar's colour.
+    x, y = radar.to_pixels([[5, 5]]).round().astype(int)[0]
+    assert (background[y, x] == empty[y, x]).all()
+    # Players and the ball are drawn on top, in their team colours.
+    image = radar.draw(result[0], frame=_gradient_frame())
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(image[y, x]) == sv.Color.from_hex("#00BFFF").as_bgr()
+    x, y = radar.to_pixels(result[0].ball_xy)[0].round().astype(int)
+    assert tuple(image[y, x]) == sv.Color.from_hex(viz.radar.BALL_COLOR).as_bgr()
+    assert (radar.draw() == empty).all()  # drawing keeps no state
+
+
+def test_radar_background_needs_a_homography(result: PipelineResult) -> None:
+    radar = viz.PitchRadar(width_px=260)
+    frame = _gradient_frame()
+    with pytest.raises(ValueError, match="frame_result"):
+        radar.draw(frame=frame)
+    unfitted = dataclasses.replace(result[0], homography=None)
+    assert (radar.draw(unfitted, frame=frame) == radar.draw(unfitted)).all()
+    with pytest.raises(ValueError, match="BGR uint8"):
+        radar.draw(result[0], frame=frame[..., 0])
+
+
 # --------------------------------------------------------------------- video
 def test_render_video_writes_processed_frames(
     result: PipelineResult, video: Path, tmp_path: Path
@@ -547,6 +605,64 @@ def test_render_video_checks_the_source_and_the_pitch(
         )  # fmt: skip
     result.video_path = video
     assert viz.render_video(result, None, tmp_path / "c.mp4", progress=False).is_file()
+
+
+def test_render_video_writes_a_birds_eye_video(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    radar = viz.PitchRadar(width_px=260)
+    output = viz.render_video(
+        result, video, tmp_path / "top.mp4", radar=radar, birds_eye=True,
+        progress=False,
+    )  # fmt: skip
+    frames, fps = _read_all(output)
+    assert len(frames) == 5 and fps == pytest.approx(FPS / 2)
+    assert radar.size == (260, 185)  # an odd height, rounded up to even
+    assert frames[0].shape == (186, 260, 3)
+    # The source frames, about (40, 120, 40) after encoding, fill the visible area.
+    x, y = radar.to_pixels([[40, 20]]).round().astype(int)[0]
+    for frame in frames:
+        np.testing.assert_allclose(frame[y, x], (40, 124, 40), atol=12)
+    x, y = radar.to_pixels([[5, 5]]).round().astype(int)[0]  # outside the view
+    np.testing.assert_allclose(frames[0][y, x], radar.draw()[y, x], atol=12)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    np.testing.assert_allclose(frames[0][y, x], (255, 191, 0), atol=40)  # team 0
+    # The annotator is not drawn, so its pitch is not checked.
+    other = viz.FrameAnnotator(pitch=SoccerPitch(120, 80))
+    viz.render_video(
+        result, video, tmp_path / "top2.mp4", annotator=other, radar=radar,
+        birds_eye=True, progress=False,
+    )  # fmt: skip
+
+
+def test_a_birds_eye_video_pads_an_odd_width(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    radar = viz.PitchRadar(width_px=261)
+    assert radar.size == (261, 186)  # an odd width, an even height
+    output = viz.render_video(
+        result, video, tmp_path / "top.mp4", radar=radar, birds_eye=True,
+        progress=False,
+    )  # fmt: skip
+    frames, _ = _read_all(output)
+    assert len(frames) == 5 and frames[0].shape == (186, 262, 3)
+    # The added column repeats the radar's last one.
+    expected = radar.draw(result[0], frame=_frame())
+    np.testing.assert_allclose(frames[0][:, -1], expected[:, -1], atol=40)
+
+
+def test_a_birds_eye_video_needs_the_radar(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="birds_eye"):
+        viz.render_video(
+            result, video, tmp_path / "top.mp4", radar=False, birds_eye=True,
+            progress=False,
+        )  # fmt: skip
+    assert not (tmp_path / "top.mp4").exists()
+    with pytest.raises(ValueError, match="birds_eye"):
+        viz.video.check_render_options(radar=False, birds_eye=True)
+    viz.video.check_render_options(birds_eye=True)
 
 
 # --------------------------------------------------------------------- plots

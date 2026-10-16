@@ -689,6 +689,7 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
         {"overlay_position": "bottom-middle"},
         {"overlay_alpha": 2},
         {"fps": 0},
+        {"radar": None, "birds_eye": True},
     ],
 )
 def test_run_file_run_checks_render_values_before_the_first_frame(
@@ -851,6 +852,22 @@ def test_run_file_render_video_lets_per_call_options_win(tmp_path, capsys):
     )
     with pytest.raises(ValueError, match="width_px"):
         bad_radar.render_video(result, video, tmp_path / "d.mp4", progress=False)
+
+
+def test_run_file_renders_a_birds_eye_video(tmp_path):
+    loaded = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "render": {"birds_eye": True, "radar": {"width_px": 200}},
+        },
+    )
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    capture = cv2.VideoCapture(str(tmp_path / "out" / "annotated.mp4"))
+    ok, frame = capture.read()
+    capture.release()
+    width, height = tv.viz.PitchRadar(width_px=200).size
+    assert ok and frame.shape == (height + height % 2, width + width % 2, 3)
 
 
 # ------------------------------------------------------- review round 3 (Fable)
