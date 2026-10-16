@@ -736,7 +736,8 @@ nothing (`PipelineResult.export` writes their tables).
   nothing without a homography or when part of the frame lies beyond the horizon.
   `velocity_seconds` (off by default) draws each person's velocity from
   `velocities`, the frame's `(N, 2)` m/s array of `tv.analysis.velocities`
-  (row for row with `detections`; another shape is a `ValueError`), as an
+  (row for row with `detections`; with arrows on, another shape is a
+  `ValueError`), as an
   arrow in the dot's colour from the dot to where the velocity takes them in
   `velocity_seconds`, converted to the radar's pitch units, under the dots;
   none for a NaN row or without `velocities`. Drawing stays stateless: the
@@ -776,14 +777,14 @@ nothing (`PipelineResult.export` writes their tables).
   radar gets `frame_size=result.frame_size`. A radar with `velocity_seconds`
   gets each frame's `velocities` from `tv.analysis.velocities(result)` (its
   defaults), computed once before `output` is opened, so
-  `render.radar.velocity_seconds` in a run file draws the arrows. `ball_carriers`, one
-  `tracker_id` or `None` per frame of `result.frames` as
+  `render.radar.velocity_seconds` in a run file draws the arrows.
+  `ball_carriers`, one `tracker_id` or `None` per frame of `result.frames` as
   `tv.analysis.ball_carriers` returns them (another length is a
   `ValueError`, with `birds_eye` too), gives the annotator each frame's
   `ball_carrier`. Run files cannot set it: a run computes no carriers.
   `birds_eye=True` writes the bird's-eye video: each frame is
-  `radar.draw(frame_result, frame=frame, history=history, velocities=...)`, padded to even pixel sizes for the
-  encoder; the annotator and overlay settings are not used, and `radar=False`
+  `radar.draw(frame_result, frame=frame, history=history, velocities=...)`,
+  padded to even pixel sizes for the encoder; the annotator and overlay settings are not used, and `radar=False`
   is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
   link) before opening anything, checks that the source video (header and

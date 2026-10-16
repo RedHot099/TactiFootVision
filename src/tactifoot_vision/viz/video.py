@@ -139,10 +139,10 @@ def render_video(
                 f"{result.pitch}; pass pitch=result.pitch"
             )
     trail_seconds = _longest_trail(annotator, radar)
-    moving = (
+    velocities_by_index = (
         {f.index: v for f, v in zip(result.frames, velocities(result), strict=True)}
         if radar and radar.velocity_seconds
-        else dict.fromkeys(indices)
+        else dict.fromkeys(by_index)
     )
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ def render_video(
             if birds_eye:  # check_render_options: there is a radar
                 image = radar.draw(
                     frame_result, frame=frame, history=history,
-                    velocities=moving[index],
+                    velocities=velocities_by_index[index],
                 )  # fmt: skip
                 image = cv2.copyMakeBorder(
                     image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
@@ -192,7 +192,7 @@ def render_video(
                             frame_result,
                             history=history,
                             frame_size=result.frame_size,
-                            velocities=moving[index],
+                            velocities=velocities_by_index[index],
                         ),
                         position=overlay_position,
                         width_fraction=overlay_width_fraction,

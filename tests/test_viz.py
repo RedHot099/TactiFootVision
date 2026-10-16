@@ -767,6 +767,19 @@ def test_radar_draws_no_arrow_for_people_without_a_velocity() -> None:
     assert (radar.draw(now) == _arrow_radar(None).draw(now)).all()  # no velocities
 
 
+def test_radar_velocity_arrows_are_drawn_under_the_dots() -> None:
+    radar, now = _arrow_radar(), _two_people()
+    image = radar.draw(now, velocities=np.array([[6.0, 0], [np.nan] * 2]))
+    # The arrow leaves the dot to the right; the dot and its pitch-colour
+    # ring (radius 8 + 2 px) cover its start.
+    centre = radar.to_pixels([[30.0, 20.0]])[0]
+    rows, columns = np.indices(image.shape[:2])
+    covered = np.hypot(columns - centre[0], rows - centre[1]) <= 9.5
+    assert (image[covered] == radar.draw(now)[covered]).all()
+    x, y = centre.round().astype(int)
+    assert image[y, x + 14, 2] > 0  # the arrow, past the ring
+
+
 def test_radar_velocity_arrows_are_off_by_default(result: PipelineResult) -> None:
     now = result[2]
     velocities = np.full((len(now.detections), 2), 5.0)
@@ -815,7 +828,7 @@ def test_render_video_passes_each_frames_velocities(
         result, video, tmp_path / "plain.mp4", radar=without, birds_eye=birds_eye,
         progress=False,
     )  # fmt: skip
-    assert without.velocities == [None] * 5
+    assert without.velocities == [None] * len(result.frames)
 
 
 @pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
