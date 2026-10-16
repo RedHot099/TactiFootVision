@@ -767,8 +767,8 @@ nothing (`PipelineResult.export` writes their tables).
   radar gets `frame_size=result.frame_size`. `ball_carriers`, one
   `tracker_id` or `None` per frame of `result.frames` as
   `tv.analysis.ball_carriers` returns them (another length is a
-  `ValueError`), gives the annotator each frame's `ball_carrier`. Run files
-  cannot set it: a run computes no carriers.
+  `ValueError`, with `birds_eye` too), gives the annotator each frame's
+  `ball_carrier`. Run files cannot set it: a run computes no carriers.
   `birds_eye=True` writes the bird's-eye video: each frame is
   `radar.draw(frame_result, frame=frame, history=history)`, padded to even pixel sizes for the
   encoder; the annotator and overlay settings are not used, and `radar=False`

@@ -64,7 +64,8 @@ def render_video(
             ``result.frames``, as :func:`tv.analysis.ball_carriers
             <tactifoot_vision.analysis.ball_carriers>` returns; each frame's
             goes to ``annotator.annotate(..., ball_carrier=...)``, which rings
-            that person. Not used with ``birds_eye``.
+            that person. Not drawn with ``birds_eye``, but its length is
+            still checked.
 
     Returns:
         The written path. Settings are checked before ``output`` is opened, an

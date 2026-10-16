@@ -402,9 +402,26 @@ def test_the_ball_carrier_gets_a_ring(result: PipelineResult, style: str) -> Non
     ringed = full.annotate(_frame(), now, ball_carrier=2)
     changed = (ringed != full.annotate(_frame(), now)).any(axis=2)
     ys, xs = np.nonzero(changed)
-    x1, y1, x2, y2 = now.detections.xyxy[1]
+    carrier = list(now.detections.tracker_id).index(2)
+    x1, y1, x2, y2 = now.detections.xyxy[carrier]
     assert len(xs) and xs.min() >= x1 - 2 * (y2 - y1) and xs.max() <= x2 + 2 * (y2 - y1)
     assert ys.min() >= y1 and ys.max() <= y2 + (y2 - y1)
+
+
+def test_the_ball_carrier_ring_lies_under_the_boxes(result: PipelineResult) -> None:
+    now = result[0]
+    x1, y1, _, y2 = now.detections.xyxy[list(now.detections.tracker_id).index(2)]
+    ring = _ring_annotator().annotate(_frame(), now, ball_carrier=2)
+    boxed = viz.FrameAnnotator(
+        ball_color=RED, team_colors=("#0000FF", "#00FF00"), draw_labels=False,
+        draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+    image = boxed.annotate(_frame(), now, ball_carrier=2)
+    # The ring crosses the box's left edge; there the edge (team 1, green) is on top.
+    column = slice(round(y1), round(y2))
+    crossing = ring[column, round(x1), 2] > 200
+    assert crossing.any()
+    assert (image[column, round(x1)][crossing] == (0, 255, 0)).all()
 
 
 def test_the_ball_carrier_ring_lies_over_the_masks(result: PipelineResult) -> None:
@@ -1242,13 +1259,14 @@ def test_a_render_rings_the_carrier_only_in_frames_with_one(
     assert differs == [True, False, True, False, False]
 
 
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
 def test_render_video_needs_one_ball_carrier_per_frame(
-    result: PipelineResult, video: Path, tmp_path: Path
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
 ) -> None:
     with pytest.raises(ValueError, match="ball_carriers"):
         viz.render_video(
             result, video, tmp_path / "ring.mp4", progress=False,
-            ball_carriers=[1, 2],
+            birds_eye=birds_eye, ball_carriers=[1, 2],
         )  # fmt: skip
     assert not (tmp_path / "ring.mp4").exists()
 
