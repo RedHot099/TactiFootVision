@@ -99,7 +99,8 @@ class FrameAnnotator:
     the pitch model is projected into the frame; confident pitch keypoints are
     orange when the homography agrees with them and red when it does not.
     With ``trail_seconds``, the ball's path over that many seconds is drawn
-    from the ``history`` passed to :meth:`annotate` (ADR 0003).
+    from the ``history`` passed to :meth:`annotate` (ADR 0003). A
+    ``ball_carrier`` passed to :meth:`annotate` gets a ring at their feet.
 
     >>> annotator = FrameAnnotator(style="video_game", trail_seconds=1.0)
     >>> image = annotator.annotate(
@@ -135,6 +136,7 @@ class FrameAnnotator:
             draw_keypoints: pitch keypoints with confidence ``>= keypoint_threshold``.
             draw_pitch_lines: pitch markings projected with the inverse homography.
             pitch: pitch model the homography maps to (default ``SoccerPitch()``).
+            ball_color: the ball marker, the ball trail and the ball-carrier ring.
             trail_seconds: draw the ball's path over the last this many seconds,
                 in ``ball_color`` fading to nothing at that age; ``None``: no trail.
         """
@@ -166,12 +168,18 @@ class FrameAnnotator:
         frame: np.ndarray,
         frame_result: FrameResult,
         history: Sequence[FrameResult] | None = None,
+        ball_carrier: int | None = None,
     ) -> np.ndarray:
         """Return an annotated copy of ``frame`` (BGR ``uint8``).
 
         ``history``: the results of the frames before ``frame_result``, oldest
         first, e.g. ``result.window(index, trail_seconds)``; only the ball
         trail uses it, and it ignores frames older than ``trail_seconds``.
+        ``ball_carrier``: the ``tracker_id`` of the frame's ball carrier, e.g.
+        from :func:`tv.analysis.ball_carriers
+        <tactifoot_vision.analysis.ball_carriers>`, ringed at their feet in
+        ``ball_color`` under the boxes; ``None`` or an id nobody in the frame
+        has draws no ring.
         """
         image = frame.copy()
         thickness, text_scale = _scaled_sizes(image)
@@ -184,6 +192,8 @@ class FrameAnnotator:
             self._draw_trail(image, frame_result, history, homography, thickness)
 
         people = frame_result.detections
+        if ball_carrier is not None:
+            self._draw_ring(image, people, ball_carrier, thickness)
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
         if len(people):
             if self.draw_masks:
@@ -278,6 +288,27 @@ class FrameAnnotator:
         )
         valid &= np.isfinite(points).all(axis=1)
         draw_trail(image, xy, valid, ages, seconds, self.ball_color, thickness)
+
+    def _draw_ring(
+        self,
+        image: np.ndarray,
+        people: sv.Detections,
+        tracker_id: int,
+        thickness: int,
+    ) -> None:
+        """A closed ellipse at the feet of ``tracker_id``, outside the video-game one."""
+        if people.tracker_id is None:
+            return
+        for x1, _, x2, y2 in people.xyxy[people.tracker_id == tracker_id]:
+            if not np.isfinite([x1, x2, y2]).all():
+                continue
+            centre = (round(float(x1 + x2) / 2 * 16), round(float(y2) * 16))
+            width = 1.3 * float(x2 - x1)  # the video-game ellipse's is 1.0
+            axes = (round(width * 16), round(0.35 * width * 16))
+            cv2.ellipse(
+                image, centre, axes, 0, 0, 360, self.ball_color.as_bgr(),
+                2 * thickness, cv2.LINE_AA, 4,
+            )  # fmt: skip
 
     # --------------------------------------------------------------- pitch
     def _draw_pitch(

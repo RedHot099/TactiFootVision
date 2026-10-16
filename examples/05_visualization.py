@@ -23,6 +23,11 @@ game = tv.viz.FrameAnnotator(style="video_game", draw_keypoints=False).annotate(
 trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=1.0).annotate(
     frame, frame_result, history=result.window(frame_result.index, 1.0)
 )
+# A ring at the feet of the ball carrier, one tracker id or None per frame.
+carriers = tv.analysis.ball_carriers(result)
+ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+    frame, frame_result, ball_carrier=carriers[120]
+)
 radar = tv.viz.PitchRadar(draw_ids=True).draw(frame_result)
 # Each person's last two seconds as a tail on the radar.
 tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
@@ -33,11 +38,12 @@ visible = tv.viz.PitchRadar(draw_visible_area=True).draw(
     frame_result, frame_size=result.frame_size
 )
 tv.show(
-    [standard, game, trail, radar, tails, visible],
+    [standard, game, trail, ring, radar, tails, visible],
     titles=[
         "standard",
         "video game",
         "ball trail",
+        "ball carrier",
         "radar",
         "radar tails",
         "visible area",
@@ -48,13 +54,14 @@ tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
     OUT / "overlay.png"
 )
 
-# render_video fills each frame's history itself.
+# render_video fills each frame's history itself and rings each frame's carrier.
 video_path = tv.viz.render_video(
     result,
     VIDEO,
     OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(trail_seconds=1.0),
     radar=tv.viz.PitchRadar(trail_seconds=2.0, draw_visible_area=True),
+    ball_carriers=carriers,
 )
 print("video:", video_path)
 

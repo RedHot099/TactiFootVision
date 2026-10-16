@@ -108,6 +108,24 @@ trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL).annotate(
 tv.show(trail, titles=f"trail_seconds={TRAIL} at frame {trail_result.index}", width=11)
 """)
     nb.md("""
+`annotate(..., ball_carrier=tracker_id)` rings the ball carrier at their
+feet in `ball_color`. `tv.analysis.ball_carriers(result)` gives one
+`tracker_id`, or `None` for a loose ball, per frame of `result.frames`; `None`
+or an id nobody in the frame has draws no ring. Here: the first frame with a
+carrier.
+""")
+    nb.code("""
+carriers = tv.analysis.ball_carriers(result)
+carried = next(((f, c) for f, c in zip(result, carriers) if c is not None), None)
+if carried is None:
+    print("no frame of the demo clip has a ball carrier")
+else:
+    carrier_result, carrier = carried
+    ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+        video.read(carrier_result.index), carrier_result, ball_carrier=carrier)
+    display(tv.show(ring, titles=f"ball_carrier={carrier} at frame {carrier_result.index}", width=11))
+""")
+    nb.md("""
 `draw_masks=True` draws segmentation masks, which only a mask tracker (SAM2)
 produces and only `Pipeline(keep_masks=True)` keeps. With a box tracker there
 are no masks; the annotator then warns once and draws the rest.
@@ -200,7 +218,8 @@ pitch, and warns when the frame rates differ.
 Pass your own annotator and radar, or `radar=False` for none. With a
 `trail_seconds` annotator or radar, `render_video` passes each frame its
 `history` itself, for the longer of the two, and the radar the frame size
-its visible area needs.
+its visible area needs. `ball_carriers`, one per frame as
+`tv.analysis.ball_carriers` returns them, rings each frame's carrier.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
@@ -208,7 +227,7 @@ video_path = tv.viz.render_video(
     annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
     radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
-    progress=False,
+    ball_carriers=carriers, progress=False,
 )
 rendered = tv.VideoReader(video_path)
 print(rendered)
