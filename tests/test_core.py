@@ -213,6 +213,62 @@ def test_result_tables(tmp_path):
     assert frames["type"].tolist() == ["player", "goalkeeper", "ball"]
 
 
+def _timed_result(indices, fps=4.0):
+    """An empty result of the video frames ``indices``, each at ``index / fps``."""
+    frames = [
+        FrameResult(
+            i,
+            i / fps,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
+        for i in indices
+    ]
+    return PipelineResult(frames, fps, (100, 50), ["ball"])
+
+
+def test_window_holds_the_earlier_frames_within_the_seconds_oldest_first():
+    result = _timed_result(range(10))  # a frame every 0.25 s
+    assert [f.index for f in result.window(8, 1.0)] == [4, 5, 6, 7]
+    assert [f.index for f in result.window(8, 0.6)] == [6, 7]
+    assert result.window(8, 0.0) == []
+
+
+def test_window_with_a_stride_covers_the_same_seconds_with_fewer_frames():
+    result = _timed_result(range(0, 20, 2))  # stride 2: a frame every 0.5 s
+    assert [f.index for f in result.window(12, 1.0)] == [8, 10]
+    assert [f.index for f in result.window(12, 1.2)] == [8, 10]
+    skipped = _timed_result([0, 2, 4, 8, 10, 12])  # frame 6 was skipped
+    assert [f.index for f in skipped.window(12, 2.0)] == [4, 8, 10]
+
+
+def test_window_keeps_the_frame_exactly_the_seconds_back_at_any_frame_rate():
+    result = _timed_result(range(200), fps=25.0)  # index / 25 is not exact
+    assert all(len(result.window(i, 0.4)) == 10 for i in range(10, 200))
+
+
+def test_window_at_the_start_of_the_result_is_shorter_or_empty():
+    result = _timed_result(range(10, 20))
+    assert [f.index for f in result.window(11, 1.0)] == [10]
+    assert result.window(10, 1.0) == []
+
+
+def test_window_of_a_frame_not_in_the_result_says_so():
+    result = _timed_result(range(0, 20, 2))
+    with pytest.raises(KeyError, match="Frame 3 was not processed"):
+        result.window(3, 1.0)
+
+
+def test_lookup_in_a_result_out_of_video_order_says_so():
+    result = _timed_result(range(10))
+    result.frames.reverse()
+    with pytest.raises(ValueError, match="video order"):
+        result.frame(7)
+    with pytest.raises(ValueError, match="video order"):
+        result.window(7, 1.0)
+
+
 def test_freeze_frames_of_the_second_half_roll_over_the_minute():
     frames = [
         FrameResult(

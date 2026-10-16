@@ -1,5 +1,6 @@
 """What the inference pipeline produces: per-frame tracks, teams and pitch positions."""
 
+import bisect
 import json
 import math
 import pickle
@@ -29,6 +30,7 @@ _FREEZE_FRAME_COLUMNS = [
     "location", "frame_bbox", "confidence", "keeper", "team_id", "team_name",
     "interpolated",
 ]  # fmt: skip
+_EPS = 1e-6  # seconds: timestamps are index / fps, so equal spans may differ in the last bit
 _TRACK_COLUMNS = [
     "frame", "time", "object", "track_id", "class_name", "team_id", "team_name",
     "confidence", "x1", "y1", "x2", "y2", "pitch_x", "pitch_y", "interpolated",
@@ -164,7 +166,9 @@ class AppliedPostProcess:
 class PipelineResult:
     """Output of :meth:`Pipeline.run`: one :class:`FrameResult` per processed frame.
 
-    ``postprocesses`` lists the post-processes applied since, in order
+    ``frames`` are in video order, as :meth:`Pipeline.run` makes them, and
+    every post-process keeps that order. ``postprocesses`` lists the
+    post-processes applied since, in order
     (see :mod:`tactifoot_vision.pipeline.postprocess`).
     """
 
@@ -187,10 +191,34 @@ class PipelineResult:
 
     def frame(self, video_index: int) -> FrameResult:
         """Look up the result of a frame by its index in the source video."""
-        for result in self.frames:
-            if result.index == video_index:
-                return result
-        raise KeyError(f"Frame {video_index} was not processed")
+        return self.frames[self._position(video_index)]
+
+    def window(self, video_index: int, seconds: float) -> list[FrameResult]:
+        """The results of the frames before video frame ``video_index``, oldest first.
+
+        A frame belongs to the window when its ``timestamp`` is at most
+        ``seconds`` before that of ``video_index``; the frame itself does
+        not. The window covers the same time whatever the stride, and is
+        shorter, or empty, at the start of the result. This is the
+        ``history`` a trail drawing takes (ADR 0003).
+        """
+        position = self._position(video_index)
+        now = self.frames[position].timestamp
+        start = position
+        while start > 0 and now - self.frames[start - 1].timestamp <= seconds + _EPS:
+            start -= 1
+        return self.frames[start:position]
+
+    def _position(self, video_index: int) -> int:
+        """Where the frame ``video_index`` is in ``frames``."""
+        position = bisect.bisect_left(self.frames, video_index, key=lambda f: f.index)
+        if position == len(self.frames) or self.frames[position].index != video_index:
+            if any(f.index == video_index for f in self.frames):
+                raise ValueError(
+                    "PipelineResult needs frames in video order to look one up"
+                )
+            raise KeyError(f"Frame {video_index} was not processed")
+        return position
 
     @property
     def track_ids(self) -> list[int]:
