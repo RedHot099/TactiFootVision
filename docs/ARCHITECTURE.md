@@ -40,7 +40,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking` → `TrackingMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -72,7 +72,7 @@ src/tactifoot_vision/
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
-  evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
+  evaluation/         detection.py, keypoints.py, tracking.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
@@ -293,6 +293,16 @@ configs/              example run files
   `PipelineResult` is accepted too and goes through `to_freeze_frames(period)`,
   like the exported CSV, so both routes agree.
 * `evaluate` refuses options its evaluator does not take.
+* `evaluate_tracking(result, clip, iou_threshold=0.5)` → `TrackingMetrics`:
+  IDF1, MOTA, ID switches, false positives and false negatives of a
+  `PipelineResult` against a `LabelledClip`, per class (`per_class`, the
+  clip's class names) and overall (the class counts added up). Only the
+  processed frames are scored, so a strided run is not charged for skipped
+  frames. Identities are the people's `tracker_id`, after any remap by a
+  post-process; an untracked ball is one identity. Definitions follow
+  TrackEval: frame-by-frame Hungarian matching on IoU that keeps last frame's
+  matches (CLEAR MOT), and a one-to-one pairing of identities over the run
+  (IDF1).
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
