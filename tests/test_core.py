@@ -28,13 +28,21 @@ from tactifoot_vision.registry import Registry
 def test_import_is_lazy_and_light():
     code = (
         "import sys, tactifoot_vision as tv; "
-        "heavy = [m for m in ('torch', 'ultralytics', 'rfdetr', 'transformers', 'matplotlib') "
-        "if m in sys.modules]; print(heavy)"
+        "heavy = [m for m in ('torch', 'ultralytics', 'rfdetr', 'transformers', "
+        "'matplotlib', 'trackeval') if m in sys.modules]; print(heavy)"
     )
     out = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert out.stdout.strip() == "[]"
+
+
+def test_evaluation_imports_trackeval_only_for_hota():
+    code = "import sys, tactifoot_vision.evaluation; print('trackeval' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "False"
 
 
 def test_pitch_does_not_import_viz():
