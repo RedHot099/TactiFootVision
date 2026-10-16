@@ -178,7 +178,8 @@ class RunFile:
 
         ``run_inputs`` are :meth:`Pipeline.run` arguments (``start``, ``end``,
         ``stride``, ``progress``) and :meth:`PipelineResult.export` arguments
-        (``period``, ``period_start``); ``progress`` also applies to rendering.
+        (``period``, ``period_start``, ``team_names``); ``progress`` also
+        applies to rendering.
         Unknown names and a missing video fail before any model is loaded.
 
         Returns:

@@ -3,7 +3,7 @@
 import json
 import math
 import pickle
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,10 +26,11 @@ _FREEZE_FRAME_TYPES = ("player", "goalkeeper", "referee")  # other people: "othe
 _FREEZE_FRAME_COLUMNS = [
     "frame_id", "period", "timestamp", "timestamp_seconds", "minute", "second",
     "homography_matrix", "visible_area", "player_id", "type", "class_name",
-    "location", "frame_bbox", "confidence", "keeper", "team_id", "interpolated",
+    "location", "frame_bbox", "confidence", "keeper", "team_id", "team_name",
+    "interpolated",
 ]  # fmt: skip
 _TRACK_COLUMNS = [
-    "frame", "time", "object", "track_id", "class_name", "team_id",
+    "frame", "time", "object", "track_id", "class_name", "team_id", "team_name",
     "confidence", "x1", "y1", "x2", "y2", "pitch_x", "pitch_y", "interpolated",
 ]  # fmt: skip
 
@@ -200,23 +201,30 @@ class PipelineResult:
         return sorted(ids)
 
     # ---------------------------------------------------------------- tables
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self, team_names: Sequence[str] | None = None) -> pd.DataFrame:
         """One row per object per frame.
 
         Columns: ``frame, time, object ("person" | "ball"), track_id, class_name,
-        team_id, confidence, x1, y1, x2, y2, pitch_x, pitch_y, interpolated``.
-        ``track_id`` is ``UNTRACKED`` (-1) without a tracker and for the ball;
-        ``interpolated`` marks a ball position filled by ``track_ball``.
+        team_id, team_name, confidence, x1, y1, x2, y2, pitch_x, pitch_y,
+        interpolated``. ``track_id`` is ``UNTRACKED`` (-1) without a tracker
+        and for the ball; ``team_name`` is ``team_names[team_id]`` (``None``
+        without names or a team); ``interpolated`` marks a ball position
+        filled by ``track_ball``.
         """
+        return self._tracks_table(self._check_team_names(team_names))
+
+    def _tracks_table(self, names: list[str] | None) -> pd.DataFrame:
+        """:meth:`to_dataframe` with ``names`` already checked."""
         rows: list[dict] = []
         for f in self.frames:
             for kind, detections, pitch_xy, team_ids in _objects(f):
-                for obj in _object_rows(detections, pitch_xy, team_ids):
+                for obj in _object_rows(detections, pitch_xy, team_ids, names):
                     x1, y1, x2, y2 = (float(v) for v in obj["xyxy"])
                     rows.append({
                         "frame": f.index, "time": f.timestamp, "object": kind,
                         "track_id": obj["track_id"], "class_name": obj["class_name"],
-                        "team_id": obj["team_id"], "confidence": obj["confidence"],
+                        "team_id": obj["team_id"], "team_name": obj["team_name"],
+                        "confidence": obj["confidence"],
                         "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                         "pitch_x": float(obj["pitch_xy"][0]),
                         "pitch_y": float(obj["pitch_xy"][1]),
@@ -224,20 +232,25 @@ class PipelineResult:
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_TRACK_COLUMNS)
 
-    def to_csv(self, path: str | Path) -> Path:
+    def to_csv(self, path: str | Path, team_names: Sequence[str] | None = None) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.to_dataframe().to_csv(path, index=False)
+        self.to_dataframe(team_names).to_csv(path, index=False)
         return path
 
-    def to_parquet(self, path: str | Path) -> Path:
+    def to_parquet(
+        self, path: str | Path, team_names: Sequence[str] | None = None
+    ) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.to_dataframe().to_parquet(path, index=False)
+        self.to_dataframe(team_names).to_parquet(path, index=False)
         return path
 
     def to_freeze_frames(
-        self, period: int = 1, period_start: float | None = None
+        self,
+        period: int = 1,
+        period_start: float | None = None,
+        team_names: Sequence[str] | None = None,
     ) -> pd.DataFrame:
         """StatsBomb-360-like table: one row per object with JSON-encoded geometry.
 
@@ -257,17 +270,25 @@ class PipelineResult:
         ``player``, ``goalkeeper``, ``referee``, ``other`` or ``ball``;
         ``player_id`` is the track id (``UNTRACKED`` without a tracker,
         ``BALL_PLAYER_ID`` for the ball), and ``interpolated`` marks a ball
-        position filled by ``track_ball``. ``visible_area`` is the frame
-        outline on the pitch as StatsBomb's flat ``[x1, y1, x2, y2, ...]``
-        polygon (``None`` without a homography, or when part of the frame lies
-        beyond the horizon, where the outline has no finite pitch position).
+        position filled by ``track_ball``. ``team_name`` is
+        ``team_names[team_id]``, as in :meth:`to_dataframe`: the object's own
+        team, unlike the ``team_name`` of
+        :func:`~tactifoot_vision.data.load_statsbomb`, which is the team of
+        the event. ``visible_area`` is the frame outline on the pitch as
+        StatsBomb's flat ``[x1, y1, x2, y2, ...]`` polygon (``None`` without a
+        homography, or when part of the frame lies beyond the horizon, where
+        the outline has no finite pitch position).
         """
-        if period_start is None:
-            if period not in _PERIOD_KICK_OFF_MINUTE:
-                raise ValueError(
-                    f"Period {period} has no StatsBomb kick-off time; pass period_start"
-                )
-            period_start = _PERIOD_KICK_OFF_MINUTE[period] * 60.0
+        return self._freeze_frames_table(
+            period,
+            _period_start(period, period_start),
+            self._check_team_names(team_names),
+        )
+
+    def _freeze_frames_table(
+        self, period: int, period_start: float, names: list[str] | None
+    ) -> pd.DataFrame:
+        """:meth:`to_freeze_frames` with ``period_start`` and ``names`` resolved."""
         width, height = self.frame_size
         corners = np.array([[0, 0], [width, 0], [width, height], [0, height]], float)
         centre = (width / 2, height / 2)
@@ -289,7 +310,7 @@ class PipelineResult:
                 "visible_area": _json(visible_area),
             }
             for kind, detections, pitch_xy, team_ids in _objects(f):
-                for obj in _object_rows(detections, pitch_xy, team_ids):
+                for obj in _object_rows(detections, pitch_xy, team_ids, names):
                     name = obj["class_name"]
                     if kind == "ball":
                         kind_type, player_id = "ball", BALL_PLAYER_ID
@@ -302,9 +323,39 @@ class PipelineResult:
                         "frame_bbox": _json(obj["xyxy"].round().astype(int)),
                         "confidence": obj["confidence"],
                         "keeper": name == "goalkeeper", "team_id": obj["team_id"],
+                        "team_name": obj["team_name"],
                         "interpolated": obj["interpolated"],
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_FREEZE_FRAME_COLUMNS)
+
+    def _check_team_names(self, team_names: Sequence[str] | None) -> list[str] | None:
+        """``team_names`` as a list, checked to name every team of the result."""
+        if team_names is None:
+            return None
+        if isinstance(team_names, str) or not isinstance(
+            team_names, Sequence | np.ndarray
+        ):
+            raise ValueError(
+                "team_names must be a list of names, one per team id from 0, "
+                f"got {team_names!r}"
+            )
+        names = list(team_names)
+        for name in names:
+            if not isinstance(name, str) or not name:
+                # YAML reads [1860, Bayern] or [Yes, No] as numbers and booleans.
+                raise ValueError(
+                    f"team_names holds an empty or non-text name: {names}; "
+                    'quote names such as "1860" or "Yes" in YAML'
+                )
+            if names.count(name) > 1:
+                raise ValueError(f"team_names holds {name!r} twice: {names}")
+        teams = {int(t) for f in self.frames for t in f.team_ids if t != NO_TEAM}
+        if missing := sorted(t for t in teams if not 0 <= t < len(names)):
+            raise ValueError(
+                f"team_names {names} has no name for team {missing[0]}; "
+                "give one name per team id from 0"
+            )
+        return names
 
     # ----------------------------------------------------------- persistence
     def export(
@@ -313,20 +364,26 @@ class PipelineResult:
         *,
         period: int = 1,
         period_start: float | None = None,
+        team_names: Sequence[str] | None = None,
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
-        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_csv`) and
-        ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period`` and
-        ``period_start``; ``None`` is the period's kick-off). Render the
-        annotated video with :func:`tactifoot_vision.viz.render_video`, or
-        write the whole run folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`)
+        and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
+        and ``period_start``; ``None`` is the period's kick-off).
+        ``team_names`` (one per team id from 0, e.g. ``["Home", "Away"]``)
+        fill the tables' ``team_name`` column. ``period`` and ``team_names``
+        are checked before anything is written. Render the annotated video
+        with :func:`tactifoot_vision.viz.render_video`, or write the whole run
+        folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
         """
+        start = _period_start(period, period_start)
+        names = self._check_team_names(team_names)
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
-        self.to_csv(out_dir / "tracks.csv")
-        self.to_freeze_frames(period, period_start).to_csv(
+        self._tracks_table(names).to_csv(out_dir / "tracks.csv", index=False)
+        self._freeze_frames_table(period, start, names).to_csv(
             out_dir / "freeze_frames.csv", index=False
         )
         return out_dir
@@ -357,6 +414,17 @@ class PipelineResult:
         return result
 
 
+def _period_start(period: int, period_start: float | None) -> float:
+    """``period_start``, or the period's kick-off on StatsBomb's clock when ``None``."""
+    if period_start is not None:
+        return period_start
+    if period not in _PERIOD_KICK_OFF_MINUTE:
+        raise ValueError(
+            f"Period {period} has no StatsBomb kick-off time; pass period_start"
+        )
+    return _PERIOD_KICK_OFF_MINUTE[period] * 60.0
+
+
 def _objects(
     f: FrameResult,
 ) -> Iterator[tuple[str, sv.Detections, np.ndarray, np.ndarray | None]]:
@@ -366,18 +434,23 @@ def _objects(
 
 
 def _object_rows(
-    detections: sv.Detections, pitch_xy: np.ndarray, team_ids: np.ndarray | None
+    detections: sv.Detections,
+    pitch_xy: np.ndarray,
+    team_ids: np.ndarray | None,
+    team_names: list[str] | None,
 ) -> Iterator[dict]:
     """The fields every table row of an object shares, one dict per detection."""
     names = detections.data.get("class_name", [])
     interpolated = detections.data.get("interpolated", [])
     for i in range(len(detections)):
+        team = int(team_ids[i]) if team_ids is not None else NO_TEAM
         yield {
             "track_id": int(detections.tracker_id[i])
             if detections.tracker_id is not None
             else UNTRACKED,
             "class_name": str(names[i]) if len(names) else "",
-            "team_id": int(team_ids[i]) if team_ids is not None else NO_TEAM,
+            "team_id": team,
+            "team_name": team_names[team] if team_names and team != NO_TEAM else None,
             "confidence": _float(detections.confidence, i),
             "xyxy": detections.xyxy[i],
             "pitch_xy": pitch_xy[i],

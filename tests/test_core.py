@@ -424,6 +424,43 @@ def test_an_empty_result_exports_tables_with_headers(tmp_path):
     assert list(frames.columns) == list(_result().to_freeze_frames().columns)
 
 
+def test_exported_tables_name_the_teams_when_given(tmp_path):
+    out = _result().export(tmp_path / "run", team_names=["Home", "Away"])
+    for table in ("tracks.csv", "freeze_frames.csv"):
+        rows = pd.read_csv(out / table, keep_default_na=False)
+        # The player is in team 1; the goalkeeper and the ball have no team.
+        assert rows["team_id"].tolist() == [1, NO_TEAM, NO_TEAM]
+        assert rows["team_name"].tolist() == ["Away", "", ""]
+    unnamed = _result().export(tmp_path / "unnamed")
+    assert pd.read_csv(unnamed / "tracks.csv")["team_name"].isna().all()
+    # A tuple or a NumPy array of names works too.
+    names = np.array(["Home", "Away"])
+    assert _result().to_dataframe(names)["team_name"][0] == "Away"
+    assert _result().to_freeze_frames(team_names=("H", "A"))["team_name"][0] == "A"
+
+
+@pytest.mark.parametrize(
+    ("team_names", "message"),
+    [
+        (["Home"], "no name for team 1"),
+        ("Home", "list of names"),
+        (["Home", ""], "empty"),
+        ([1860, "Bayern"], 'quote names such as "1860"'),  # YAML [1860, Bayern]
+        (["Home", "Home"], "twice"),
+    ],
+)
+def test_export_refuses_team_names_before_writing(tmp_path, team_names, message):
+    with pytest.raises(ValueError, match=message):
+        _result().export(tmp_path / "run", team_names=team_names)
+    assert not (tmp_path / "run").exists()
+
+
+def test_export_checks_the_period_before_writing(tmp_path):
+    with pytest.raises(ValueError, match="period_start"):
+        _result().export(tmp_path / "run", period=5)
+    assert not (tmp_path / "run").exists()
+
+
 def test_freeze_frame_rows_share_one_builder_and_named_constants():
     from tactifoot_vision.pipeline.result import BALL_PLAYER_ID, UNTRACKED
 
