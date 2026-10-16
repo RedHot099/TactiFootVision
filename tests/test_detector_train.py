@@ -75,6 +75,17 @@ def test_run2_stages_read_football_yolo_without_the_dev_clips_then_soccersynth()
         assert dt.RUNS[stage]["settings"]["save_period"] == 1  # every epoch kept
 
 
+def test_run2c_mixes_football_yolo_into_the_run1_data_without_the_dev_clips():
+    run1 = set(dt.build_view(pool(), "run1").image)
+    view = dt.build_view(pool(), "run2c")
+    assert set(view.image) == run1 | {"/fy/train.jpg", "/fy/valid.jpg"}
+    assert not any(i.startswith("/synth") for i in view.image)
+    listed = dt.train_list(view, dt.RUNS["run2c"]["oversample"])
+    assert listed.count("/fy/train.jpg") == 20
+    assert listed.count("/gsr/train.jpg") == 1
+    assert dt.RUNS["run2c"]["init"].parts[-4] == "run1"
+
+
 def test_oversampling_repeats_paths_and_counts_images_per_epoch():
     view = dt.build_view(pool(), "run2a")
     listed = dt.train_list(view, {"football_yolo": 5})

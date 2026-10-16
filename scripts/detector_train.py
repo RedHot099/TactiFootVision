@@ -19,6 +19,8 @@ annotate neither goalkeeper nor referee, and the script checks that their tables
   the Ekstraklasa dev clips (its `test` split, see scripts/detector_data/football_yolo.py); run2b fine-tunes run2a's
   best.pt on SoccerSynth alone. Every epoch's checkpoint is kept (`save_period` 1);
   `scripts/detector_bench.py epochs` scores them all.
+* run2c: run 1's sets plus football_yolo (dev clips out) listed 20 times, from run 1's best.pt; 2a showed that
+  football_yolo alone makes the model forget GSR.
 
 Validation during training: every 4th frame of the frozen GSR valid benchmark (bench/, ticket 02), plus for run 2 every
 Ekstraklasa dev image (bench/ekstraklasa_dev); the full benchmarks are scored after the run with
@@ -164,6 +166,34 @@ RUNS: dict[str, dict] = {
             "seed": 0,
             "cos_lr": True,
             "close_mosaic": 2,
+            "save_period": 1,
+            "scale": 0.3,
+        },
+    },
+    # Run 2c (2026-10-16, after 2a): 2a closed the Ekstraklasa gap in 2-3 epochs but forgot GSR from epoch 1, so
+    # football_yolo is mixed into the run-1 data instead (oversampled to ~13% of the list), from run 1's best.pt.
+    # SoccerSynth stays out: in 2b the mixed val fell every epoch.
+    "run2c": {
+        "title": "detector-data run 2c training view (ticket 04): run 1 data + football_yolo x20, Ekstraklasa dev out",
+        "sets": (*RUN1_SETS, "football_yolo"),
+        "holdout": {"football_yolo": "test"},  # the Ekstraklasa dev clips
+        "oversample": {"football_yolo": 20},
+        "val_extra": EKSTRAKLASA_DEV,
+        "init": DATA / "runs/run1/yolo11l_1280/weights/best.pt",
+        "after": "run1",
+        "settings": {
+            "model": "yolo11l",
+            "imgsz": 1280,
+            "batch_size": 4,
+            "optimizer": "SGD",
+            "lr": 0.002,
+            # 99,478 + 20 x 736 = 114,198 listed images = 28,550 iterations per epoch (about 1 h 45).
+            "epochs": 3,
+            "patience": None,
+            "workers": 12,
+            "seed": 0,
+            "cos_lr": True,
+            "close_mosaic": 1,
             "save_period": 1,
             "scale": 0.3,
         },
