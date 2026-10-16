@@ -27,21 +27,26 @@ NO_HOTA = Hota(float("nan"), float("nan"), float("nan"))
 
 
 def hota_by_class(
-    truth: dict[str, Sequence[Frame]], predicted: dict[str, Sequence[Frame]]
+    clips: Sequence[tuple[dict[str, Sequence[Frame]], dict[str, Sequence[Frame]]]],
 ) -> tuple[dict[str, Hota], Hota]:
-    """HOTA of each class, ``truth[name][i]`` against ``predicted[name][i]``, and overall.
+    """HOTA of each class over ``clips``, and overall.
 
-    The overall numbers add up the detections of every class, as TrackEval's
-    detection-averaged combination of classes does.
+    Each clip is ``(truth, predicted)``, ``truth[name][i]`` against
+    ``predicted[name][i]``; a class is scored in the clips that list it. As
+    TrackEval does, the clips of a class are combined first, then the classes:
+    both add up the detections.
     """
     metric = _trackeval_hota()
     with _numpy_aliases():
-        results = {
-            name: metric.eval_sequence(_sequence(truth[name], predicted[name]))
-            for name in truth
-        }
-        if not results:
+        by_class: dict[str, dict[int, Any]] = {}
+        for i, (truth, predicted) in enumerate(clips):
+            for name in truth:
+                by_class.setdefault(name, {})[i] = metric.eval_sequence(
+                    _sequence(truth[name], predicted[name])
+                )
+        if not by_class:
             return {}, Hota(0.0, 0.0, 0.0)
+        results = {name: metric.combine_sequences(r) for name, r in by_class.items()}
         overall = metric.combine_classes_det_averaged(results)
     return {name: _summary(r) for name, r in results.items()}, _summary(overall)
 

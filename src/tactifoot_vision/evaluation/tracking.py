@@ -2,6 +2,7 @@
 
 import logging
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from typing import NamedTuple
 
@@ -17,7 +18,9 @@ from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 
 logger = logging.getLogger(__name__)
 
-_BALL_ID = 0  # track id of a ball the pipeline did not track: there is one ball
+# Track id of a ball the pipeline did not track: there is one ball. Classes are
+# scored apart here, so 0 cannot clash; to_mot has no classes and uses max + 1.
+_BALL_ID = 0
 _CONTINUING = 1000.0  # TrackEval's bonus that keeps last frame's matches
 _EPS = np.finfo(float).eps
 
@@ -99,6 +102,96 @@ def evaluate_tracking(
         hota: compute HOTA, which needs the ``eval`` extra (TrackEval); with
             ``False`` the HOTA numbers are NaN and TrackEval is not needed.
     """
+    pairs = [(result, clip)]
+    return _evaluate(pairs, iou_threshold, hota, clip.name, _class_names(clip))
+
+
+def evaluate_tracking_clips(
+    pairs: Iterable[tuple[PipelineResult, LabelledClip]],
+    iou_threshold: float = 0.5,
+    hota: bool = True,
+) -> TrackingMetrics:
+    """The metrics of :func:`evaluate_tracking` over several ``(result, clip)`` pairs combined.
+
+    As TrackEval combines sequences: the counts of every clip are added up
+    (for HOTA, the detections), so the numbers are those of one clip holding
+    them all, its identities kept apart. Every clip is scored on the classes
+    of all the clips, so predictions of a class a clip has no labels of are
+    false positives there; ``num_frames`` is the scored frames of all of them.
+    """
+    pairs = list(pairs)
+    if not pairs:
+        raise ValueError(
+            "evaluate_tracking_clips needs at least one (result, clip) pair"
+        )
+    class_names = sorted(set().union(*(_class_names(clip) for _, clip in pairs)))
+    return _evaluate(pairs, iou_threshold, hota, f"{len(pairs)} clips", class_names)
+
+
+def _evaluate(
+    pairs: list[tuple[PipelineResult, LabelledClip]],
+    iou_threshold: float,
+    hota: bool,
+    label: str,
+    class_names: list[str],
+) -> TrackingMetrics:
+    """The metrics of every pair's counts added up, logged as the tracking on ``label``."""
+    objects = [_by_class_and_frame(result, clip, class_names) for result, clip in pairs]
+    counts: dict[str, _Counts] = {}
+    for truth, predicted in objects:
+        for name in truth:
+            counts[name] = counts.get(name, _Counts()) + _count(
+                truth[name], predicted[name], iou_threshold
+            )
+    counts = dict(sorted(counts.items()))
+    if hota:
+        hota_per_class, overall = hota_by_class(objects)
+    else:
+        hota_per_class, overall = dict.fromkeys(counts, NO_HOTA), NO_HOTA
+    total = sum(counts.values(), _Counts())
+    per_class = pd.DataFrame(
+        [
+            [*hota_per_class[name], *(getattr(c, column) for column in _COLUMNS)]
+            for name, c in counts.items()
+        ],
+        index=pd.Index(list(counts), name="class_name"),
+        columns=_HOTA_COLUMNS + _COLUMNS,
+    )
+    metrics = TrackingMetrics(
+        hota=overall.hota,
+        deta=overall.deta,
+        assa=overall.assa,
+        idf1=total.idf1,
+        mota=total.mota,
+        id_switches=total.id_switches,
+        false_positives=total.false_positives,
+        false_negatives=total.false_negatives,
+        per_class=per_class,
+        num_frames=sum(len(result.frames) for result, _ in pairs),
+    )
+    logger.info(
+        "Tracking on %s (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, %d ID switches",
+        label,
+        metrics.num_frames,
+        metrics.hota,
+        metrics.idf1,
+        metrics.mota,
+        metrics.id_switches,
+    )
+    return metrics
+
+
+def _class_names(clip: LabelledClip) -> set[str]:
+    return {name for f in clip for name in _by_class(f.detections, f.ball)}
+
+
+def _by_class_and_frame(
+    result: PipelineResult, clip: LabelledClip, class_names: list[str]
+) -> tuple[dict[str, list[_Objects]], dict[str, list[_Objects]]]:
+    """Class name -> the true and the predicted objects of each processed frame.
+
+    Predicted classes not in ``class_names`` are left out.
+    """
     missing = {Truth.IDENTITIES, Truth.BOXES} - clip.truth
     if missing:
         raise ValueError(
@@ -125,61 +218,17 @@ def evaluate_tracking(
         truth.append(objects)
         predicted.append(_predicted(frame))
 
-    class_names = sorted(
-        {name for f in clip for name in _by_class(f.detections, f.ball)}
-    )
     ignored = sorted({name for p in predicted for name in p} - set(class_names))
     if ignored:
         logger.warning(
-            "Ignoring predicted classes that clip %s does not have: %s",
+            "Ignoring predicted classes that are not scored on clip %s: %s",
             clip.name,
             ", ".join(ignored),
         )
-    truth_by_class = {
-        name: [t.get(name, _EMPTY) for t in truth] for name in class_names
-    }
-    predicted_by_class = {
-        name: [p.get(name, _EMPTY) for p in predicted] for name in class_names
-    }
-    counts = {
-        name: _count(truth_by_class[name], predicted_by_class[name], iou_threshold)
-        for name in class_names
-    }
-    if hota:
-        hota_per_class, overall = hota_by_class(truth_by_class, predicted_by_class)
-    else:
-        hota_per_class, overall = dict.fromkeys(class_names, NO_HOTA), NO_HOTA
-    total = sum(counts.values(), _Counts())
-    per_class = pd.DataFrame(
-        [
-            [*hota_per_class[name], *(getattr(c, column) for column in _COLUMNS)]
-            for name, c in counts.items()
-        ],
-        index=pd.Index(list(counts), name="class_name"),
-        columns=_HOTA_COLUMNS + _COLUMNS,
+    return (
+        {name: [t.get(name, _EMPTY) for t in truth] for name in class_names},
+        {name: [p.get(name, _EMPTY) for p in predicted] for name in class_names},
     )
-    metrics = TrackingMetrics(
-        hota=overall.hota,
-        deta=overall.deta,
-        assa=overall.assa,
-        idf1=total.idf1,
-        mota=total.mota,
-        id_switches=total.id_switches,
-        false_positives=total.false_positives,
-        false_negatives=total.false_negatives,
-        per_class=per_class,
-        num_frames=len(result.frames),
-    )
-    logger.info(
-        "Tracking on %s (%d frames): HOTA %.4f, IDF1 %.4f, MOTA %.4f, %d ID switches",
-        clip.name,
-        metrics.num_frames,
-        metrics.hota,
-        metrics.idf1,
-        metrics.mota,
-        metrics.id_switches,
-    )
-    return metrics
 
 
 def _predicted(frame: FrameResult) -> dict[str, _Objects]:

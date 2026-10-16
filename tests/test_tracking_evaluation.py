@@ -6,11 +6,21 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
-from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
-from tactifoot_vision.evaluation import TrackingMetrics, evaluate_tracking
+from tactifoot_vision.data import (
+    LabelledClip,
+    LabelledFrame,
+    Truth,
+    load_labelled_clip,
+)
+from tactifoot_vision.evaluation import (
+    TrackingMetrics,
+    evaluate_tracking,
+    evaluate_tracking_clips,
+)
 from tactifoot_vision.pipeline import FrameResult, PipelineResult, remap_track_ids
 
 # Boxes far enough apart that only the intended pairs overlap.
@@ -265,9 +275,9 @@ def _noisy_fixture():
     return truth, predicted
 
 
-def _write_mot(path, frames, truth):
-    """The players of ``{index: (people rows, ball)}`` as MOTChallenge text, frames 1-based."""
-    tail = "1,1,1" if truth else "1,-1,-1,-1"  # gt: not ignored, pedestrian, visible
+def _write_mot_truth(path, frames):
+    """The players of ``{index: (people rows, ball)}`` as MOTChallenge ground truth."""
+    tail = "1,1,1"  # not ignored, pedestrian, visible
     lines = [
         f"{index + 1},{track_id},{x1},{y1},{x2 - x1},{y2 - y1},{tail}"
         for index, (people, _) in sorted(frames.items())
@@ -282,8 +292,13 @@ def _trackeval_on_mot(tmp_path, monkeypatch, truth, predicted):
     """TrackEval's own HOTA, CLEAR and Identity results for the players, read from MOT files."""
     import trackeval
 
-    _write_mot(tmp_path / "gt" / "clip" / "gt" / "gt.txt", truth, truth=True)
-    _write_mot(tmp_path / "trackers" / "ours" / "data" / "clip.txt", predicted, False)
+    _write_mot_truth(tmp_path / "gt" / "clip" / "gt" / "gt.txt", truth)
+    # The tracker's file is the export of its players, so TrackEval reads it.
+    players = {
+        i: ([row for row in people if row[1] == "player"], [])
+        for i, (people, _) in predicted.items()
+    }
+    _result(players).to_mot(tmp_path / "trackers" / "ours" / "data" / "clip.txt")
     quiet = {"PRINT_CONFIG": False}
     dataset = trackeval.datasets.MotChallenge2DBox(
         {
@@ -393,3 +408,134 @@ def test_a_clip_without_objects_has_hota_zero():
     metrics = evaluate_tracking(_result({0: ([], [])}), _clip({0: ([], [])}))
     assert (metrics.hota, metrics.deta, metrics.assa) == (0.0, 0.0, 0.0)
     assert metrics.per_class.empty
+
+
+def test_to_mot_writes_one_row_per_object_with_1_based_frames(tmp_path):
+    result = _result({0: ([(11, "player", (0, 0, 10, 20))], [BALL]), 2: ([], [])})
+    result.frames[0].detections.confidence = np.array([0.5])
+
+    path = result.to_mot(tmp_path / "run" / "mot.txt")
+
+    # The untracked ball is one track, after the people's largest id.
+    assert path.read_text().splitlines() == [
+        "1,11,0.00,0.00,10.00,20.00,0.5,-1,-1,-1",
+        "1,12,50.00,50.00,4.00,4.00,-1,-1,-1,-1",
+    ]
+
+
+def test_to_mot_writes_an_interpolated_ball_without_confidence(tmp_path):
+    result = _result({0: ([], [BALL])})
+    result.frames[0].ball.confidence = np.array([np.nan])  # as track_ball fills it
+    result.frames[0].ball.data["interpolated"] = np.array([True])
+
+    lines = result.to_mot(tmp_path / "mot.txt").read_text().splitlines()
+
+    assert lines == ["1,1,50.00,50.00,4.00,4.00,-1,-1,-1,-1"]
+
+
+def test_to_mot_refuses_negative_track_ids(tmp_path):
+    result = _result({3: ([(-1, "player", LEFT)], [])})
+    with pytest.raises(ValueError, match="frame 3 has -1"):
+        result.to_mot(tmp_path / "mot.txt")
+
+
+def test_to_mot_needs_track_ids(tmp_path):
+    result = _result({0: ([(1, "player", LEFT)], [])})
+    result.frames[0].detections.tracker_id = None
+    with pytest.raises(ValueError, match="track ids"):
+        result.to_mot(tmp_path / "mot.txt")
+
+
+@pytest.mark.parametrize("hota", [False, pytest.param(True, marks=needs_trackeval)])
+def test_mot_export_round_trips_into_the_evaluator(tmp_path, hota):
+    # The export, read back as a SoccerNet Tracking sequence, is the truth the
+    # same result scores perfectly on: same frames, boxes and identities.
+    result = _result({i: PREDICTED[i] for i in (0, 1, 3)})  # frame 2 skipped
+    folder = tmp_path / "SNMOT-001"
+    result.to_mot(folder / "gt" / "gt.txt")
+    (folder / "seqinfo.ini").write_text(
+        "[Sequence]\nname=SNMOT-001\nframeRate=25\nseqLength=4\n"
+        "imWidth=400\nimHeight=100\n"
+    )
+    # The referee 41 is only in frame 2, so the ball's id follows player 31.
+    classes = {11: "player", 12: "player", 21: "player", 31: "player", 32: "ball"}
+    (folder / "gameinfo.ini").write_text(
+        "[Sequence]\n"
+        + "".join(f"trackletID_{i}= {name};1\n" for i, name in classes.items())
+    )
+
+    clip = load_labelled_clip(folder)
+    metrics = evaluate_tracking(result, clip, hota=hota)
+
+    assert metrics.num_frames == 3
+    assert list(metrics.per_class.index) == ["ball", "player"]
+    assert list(metrics.per_class["instances"]) == [3, 7]
+    assert (metrics.idf1, metrics.mota) == (1.0, 1.0)
+    assert (metrics.false_positives, metrics.false_negatives) == (0, 0)
+    assert metrics.id_switches == 0
+    if hota:
+        assert metrics.hota == pytest.approx(1.0)
+
+
+def _shifted(frames, first_index, id_offset):
+    """``{index: (people rows, ball)}`` from ``first_index`` on, people ids moved by ``id_offset``."""
+    return {
+        first_index + i: ([(t + id_offset, n, box) for t, n, box in people], ball)
+        for i, (people, ball) in enumerate(frames[k] for k in sorted(frames))
+    }
+
+
+@pytest.mark.parametrize("hota", [False, pytest.param(True, marks=needs_trackeval)])
+def test_the_aggregate_equals_evaluating_the_concatenated_clips(hota):
+    noisy_truth, noisy_predicted = _noisy_fixture()
+    pairs = [
+        (_result(PREDICTED), _clip(TRUTH)),
+        (_result(noisy_predicted), _clip(noisy_truth)),
+    ]
+    # One clip holding both, its identities kept apart: the second clip's
+    # frames follow the first's and its track ids are moved by 100.
+    after = len(TRUTH)
+    concatenated = evaluate_tracking(
+        _result(PREDICTED | _shifted(noisy_predicted, after, 100)),
+        _clip(TRUTH | _shifted(noisy_truth, after, 100)),
+        hota=hota,
+    )
+
+    combined = evaluate_tracking_clips(pairs, hota=hota)
+
+    assert combined.num_frames == concatenated.num_frames == 14
+    assert combined.id_switches == concatenated.id_switches > 1
+    assert combined.as_dict() == pytest.approx(concatenated.as_dict(), nan_ok=True)
+    pd.testing.assert_frame_equal(combined.per_class, concatenated.per_class)
+
+
+@pytest.mark.parametrize("hota", [False, pytest.param(True, marks=needs_trackeval)])
+def test_the_aggregate_scores_every_clip_on_the_classes_of_all_clips(hota):
+    # The noisy clip has no ball labels, yet its run sees balls: as in the
+    # concatenated clip, they are false positives there, not left out.
+    noisy_truth, noisy_predicted = _noisy_fixture()
+    noisy_predicted = {
+        i: (people, [BALL]) for i, (people, _) in noisy_predicted.items()
+    }
+    pairs = [
+        (_result(noisy_predicted), _clip(noisy_truth)),
+        (_result(PREDICTED), _clip(TRUTH)),
+    ]
+    after = len(noisy_truth)
+    joined = _result(noisy_predicted | _shifted(PREDICTED, after, 100))
+    for frame in joined.frames[after:]:  # the second clip's ball is another one
+        frame.ball.tracker_id = np.full(len(frame.ball), 100)
+    concatenated = evaluate_tracking(
+        joined, _clip(noisy_truth | _shifted(TRUTH, after, 100)), hota=hota
+    )
+
+    combined = evaluate_tracking_clips(pairs, hota=hota)
+
+    assert combined.per_class.loc["ball", "false_positives"] == 10 + 1
+    assert combined.as_dict() == pytest.approx(concatenated.as_dict(), nan_ok=True)
+    pd.testing.assert_frame_equal(combined.per_class, concatenated.per_class)
+
+
+def test_the_aggregate_of_no_clips_is_an_error():
+    with pytest.raises(ValueError, match="at least one"):
+        evaluate_tracking_clips([], hota=False)
