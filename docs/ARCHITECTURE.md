@@ -784,8 +784,8 @@ nothing (`PipelineResult.export` writes their tables).
   `ball_carrier`. Run files cannot set it: a run computes no carriers.
   `birds_eye=True` writes the bird's-eye video: each frame is
   `radar.draw(frame_result, frame=frame, history=history, velocities=...)`,
-  padded to even pixel sizes for the encoder; the annotator and overlay settings are not used, and `radar=False`
-  is an error. Checks its settings and
+  padded to even pixel sizes for the encoder; the annotator and overlay
+  settings are not used, and `radar=False` is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
   link) before opening anything, checks that the source video (header and
   decoded frame size) and the drawing pitch match the result, raises

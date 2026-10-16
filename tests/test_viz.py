@@ -738,22 +738,28 @@ def test_radar_velocity_arrows_point_along_the_velocity_in_the_dots_colour() -> 
 
 
 @pytest.mark.parametrize(
-    ("speed", "seconds", "pitch", "reach"),
+    ("velocity", "seconds", "pitch", "reach"),
     [
-        (3.0, 1.0, SoccerPitch(), 3.0),
-        (6.0, 1.0, SoccerPitch(), 6.0),
-        (3.0, 2.0, SoccerPitch(), 6.0),
-        # m/s in StatsBomb units: 120 units are 105 m.
-        (6.0, 1.0, SoccerPitch(120, 80), 6.0 * 120 / 105),
+        ((3.0, 0), 1.0, SoccerPitch(), (3.0, 0)),
+        ((6.0, 0), 1.0, SoccerPitch(), (6.0, 0)),
+        ((3.0, 0), 2.0, SoccerPitch(), (6.0, 0)),
+        # m/s in StatsBomb units: 120 x 80 units are 105 x 68 m.
+        ((6.0, 0), 1.0, SoccerPitch(120, 80), (6.0 * 120 / 105, 0)),
+        ((0, 6.0), 1.0, SoccerPitch(120, 80), (0, 6.0 * 80 / 68)),
     ],
 )
 def test_radar_velocity_arrow_length_is_proportional_to_speed(
-    speed: float, seconds: float, pitch: SoccerPitch, reach: float
+    velocity: tuple[float, float],
+    seconds: float,
+    pitch: SoccerPitch,
+    reach: tuple[float, float],
 ) -> None:
     radar = _arrow_radar(seconds, pitch)
-    image = radar.draw(_two_people(), velocities=np.array([[speed, 0], [np.nan] * 2]))
-    assert _at(radar, image, 30 + reach - 0.6, 20)[2] > 0
-    assert _at(radar, image, 30 + reach + 1.2, 20)[2] == 0
+    image = radar.draw(_two_people(), velocities=np.array([velocity, [np.nan] * 2]))
+    tip = np.array([30.0, 20.0]) + reach
+    along = np.array(reach) / np.hypot(*reach)
+    assert _at(radar, image, *(tip - 0.6 * along))[2] > 0
+    assert _at(radar, image, *(tip + 1.2 * along))[2] == 0
 
 
 def test_radar_draws_no_arrow_for_people_without_a_velocity() -> None:

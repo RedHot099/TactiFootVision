@@ -61,9 +61,10 @@ def render_video(
         progress: show a progress bar.
         birds_eye: write the bird's-eye video instead: each frame is the radar
             drawn on the frame warped onto the pitch (``radar.draw(frame_result,
-            frame=frame, history=history, velocities=...)``), at the radar's size rounded up
-            to even numbers of pixels (the encoder needs them). The annotator
-            and the overlay settings are not used; ``radar=False`` is an error.
+            frame=frame, history=history, velocities=...)``), at the radar's
+            size rounded up to even numbers of pixels (the encoder needs
+            them). The annotator and the overlay settings are not used;
+            ``radar=False`` is an error.
         ball_carriers: one ``tracker_id`` or ``None`` per frame of
             ``result.frames``, as :func:`tv.analysis.ball_carriers
             <tactifoot_vision.analysis.ball_carriers>` returns; each frame's
