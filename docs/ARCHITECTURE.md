@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` → `LabelledClip`, `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip`, `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -67,7 +67,8 @@ src/tactifoot_vision/
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
-                      load_labelled_clip), soccernet.py, video.py, statsbomb.py
+                      load_labelled_clip), soccernet.py, synthetic.py
+                      (synthetic_pitch_clip), video.py, statsbomb.py
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
@@ -216,6 +217,15 @@ configs/              example run files
     frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
     `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Truth:
     identities, boxes, ball.
+* `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), *,
+  pitch=None, fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
+  renders `pitch_markings(pitch)` on striped grass through one frame → pitch
+  homography per frame (repeat one for a static camera, vary it for a pan),
+  writes the MPEG-4 video to `path` and returns a clip whose only truth is
+  that exact calibration. Beyond the grass margin and the horizon the frame
+  is a flat stand colour. `line_width` is in metres; `noise` (Gaussian, grey
+  levels) and `occluders` (player-sized boxes per frame) are drawn from
+  `seed`, so the same arguments give the same video. Frame sizes must be even.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
