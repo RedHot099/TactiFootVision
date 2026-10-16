@@ -128,7 +128,7 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
             "teams": {"n_teams": 3, "reducer": None},
             "pitch": {"length": 120, "width": 80},
             "homography": {"smoothing_window": 5},
-            "pipeline": {"ball_max_speed": None, "include_classes": ["player"]},
+            "pipeline": {"team_sample_stride": 5, "include_classes": ["player"]},
         },
     ).build_pipeline()
     assert (pipeline.detector.conf, pipeline.detector.iou) == (0.4, 0.3)
@@ -138,7 +138,7 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
     assert pipeline.team_classifier.reducer is None
     assert pipeline.pitch == SoccerPitch(120, 80) == pipeline.homography.pitch
     assert pipeline.homography._history.maxlen == 5
-    assert pipeline.ball_max_speed is None
+    assert pipeline.team_sample_stride == 5
     assert pipeline.include_classes == ("player",)
     assert pipeline.keypoint_model is None
 

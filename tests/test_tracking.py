@@ -8,7 +8,6 @@ from tactifoot_vision.tracking import (
     ByteTrackTracker,
     SAM2Tracker,
     available_trackers,
-    clean_ball_path,
     create_tracker,
 )
 from tactifoot_vision.tracking import sam2 as sam2_module
@@ -71,40 +70,6 @@ def test_bytetrack_reset_uses_video_fps_unless_fixed():
     fixed = ByteTrackTracker(lost_track_buffer=30, frame_rate=30)
     fixed.reset(fps=60)
     assert fixed._tracker.max_time_lost == 30
-
-
-# ----------------------------------------------------------------------- ball
-def test_clean_ball_path_drops_jumps():
-    path = np.array(
-        [[0, 0], [1, 0], [np.nan, np.nan], [2, 0], [50, 50], [3, 0], [3.5, 0.5]],
-        dtype=float,
-    )
-    cleaned = clean_ball_path(path, max_jump=2.0)
-    assert np.isnan(cleaned[2]).all()
-    assert np.isnan(cleaned[4]).all()  # outlier
-    np.testing.assert_allclose(cleaned[[0, 1, 3, 5, 6]], path[[0, 1, 3, 5, 6]])
-    assert np.isfinite(path[4]).all()  # input untouched
-
-
-def test_clean_ball_path_allows_longer_moves_after_gaps():
-    # undetected for 9 frames while travelling 15 m: plausible at 2 m per frame
-    path = np.array([[0, 0]] + [[np.nan, np.nan]] * 9 + [[15, 0], [16, 0]], dtype=float)
-    np.testing.assert_allclose(clean_ball_path(path, 2.0), path)
-    # the same move within one frame is not
-    cleaned = clean_ball_path(path[[0, 10, 11]], 2.0)
-    assert np.isnan(cleaned[1:]).all()
-    # a rejected outlier does not lock out the path: the allowance keeps growing
-    path = np.array([[0, 0], [30, 0], [30, 0], [30, 0], [30, 0]], dtype=float)
-    assert np.isnan(clean_ball_path(path, 8.0)[1:3]).all()
-    assert np.isfinite(clean_ball_path(path, 8.0)[4]).all()
-
-
-def test_clean_ball_path_validates_input():
-    with pytest.raises(ValueError):
-        clean_ball_path(np.zeros((3, 2)), max_jump=0)
-    with pytest.raises(ValueError):
-        clean_ball_path(np.zeros((3, 3)), max_jump=1)
-    assert clean_ball_path(np.zeros((0, 2)), 1.0).shape == (0, 2)
 
 
 # ----------------------------------------------------------------------- SAM2

@@ -26,11 +26,11 @@ _FREEZE_FRAME_TYPES = ("player", "goalkeeper", "referee")  # other people: "othe
 _FREEZE_FRAME_COLUMNS = [
     "frame_id", "period", "timestamp", "timestamp_seconds", "minute", "second",
     "homography_matrix", "visible_area", "player_id", "type", "class_name",
-    "location", "frame_bbox", "confidence", "keeper", "team_id",
+    "location", "frame_bbox", "confidence", "keeper", "team_id", "interpolated",
 ]  # fmt: skip
 _TRACK_COLUMNS = [
     "frame", "time", "object", "track_id", "class_name", "team_id",
-    "confidence", "x1", "y1", "x2", "y2", "pitch_x", "pitch_y",
+    "confidence", "x1", "y1", "x2", "y2", "pitch_x", "pitch_y", "interpolated",
 ]  # fmt: skip
 
 
@@ -106,6 +106,9 @@ class FrameResult:
     * ``pitch_xy`` – ``(N, 2)`` float pitch coordinates (NaN without homography);
       people are anchored at the bottom-centre of the box, the ball at its centre
     * ``team_id`` – ``(N,)`` int, ``NO_TEAM`` (-1) when unknown (people only)
+    * ``interpolated`` – ``(N,)`` bool, set on ``ball`` by
+      :func:`~tactifoot_vision.pipeline.track_ball`: ``True`` for a position
+      filled between measured ones (missing means ``False``)
     """
 
     index: int  # frame index in the source video
@@ -201,8 +204,9 @@ class PipelineResult:
         """One row per object per frame.
 
         Columns: ``frame, time, object ("person" | "ball"), track_id, class_name,
-        team_id, confidence, x1, y1, x2, y2, pitch_x, pitch_y``. ``track_id`` is
-        ``UNTRACKED`` (-1) without a tracker and for the ball.
+        team_id, confidence, x1, y1, x2, y2, pitch_x, pitch_y, interpolated``.
+        ``track_id`` is ``UNTRACKED`` (-1) without a tracker and for the ball;
+        ``interpolated`` marks a ball position filled by ``track_ball``.
         """
         rows: list[dict] = []
         for f in self.frames:
@@ -216,6 +220,7 @@ class PipelineResult:
                         "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                         "pitch_x": float(obj["pitch_xy"][0]),
                         "pitch_y": float(obj["pitch_xy"][1]),
+                        "interpolated": obj["interpolated"],
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_TRACK_COLUMNS)
 
@@ -251,7 +256,8 @@ class PipelineResult:
         event ``timestamp``, which restarts every period. ``type`` is
         ``player``, ``goalkeeper``, ``referee``, ``other`` or ``ball``;
         ``player_id`` is the track id (``UNTRACKED`` without a tracker,
-        ``BALL_PLAYER_ID`` for the ball). ``visible_area`` is the frame
+        ``BALL_PLAYER_ID`` for the ball), and ``interpolated`` marks a ball
+        position filled by ``track_ball``. ``visible_area`` is the frame
         outline on the pitch as StatsBomb's flat ``[x1, y1, x2, y2, ...]``
         polygon (``None`` without a homography, or when part of the frame lies
         beyond the horizon, where the outline has no finite pitch position).
@@ -296,6 +302,7 @@ class PipelineResult:
                         "frame_bbox": _json(obj["xyxy"].round().astype(int)),
                         "confidence": obj["confidence"],
                         "keeper": name == "goalkeeper", "team_id": obj["team_id"],
+                        "interpolated": obj["interpolated"],
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_FREEZE_FRAME_COLUMNS)
 
@@ -334,11 +341,19 @@ class PipelineResult:
 
     @classmethod
     def load(cls, path: str | Path) -> "PipelineResult":
-        """Read a result written by :meth:`save` (pickle: only load files you trust)."""
+        """Read a result written by :meth:`save` (pickle: only load files you trust).
+
+        A result saved before frames kept their ``ball_candidates`` is refused.
+        """
         with Path(path).open("rb") as fh:
             result = pickle.load(fh)
         if not isinstance(result, cls):
             raise TypeError(f"{path} does not contain a PipelineResult")
+        if not all(hasattr(frame, "ball_candidates") for frame in result.frames):
+            raise ValueError(
+                f"{path} was saved before results kept the ball candidates; "
+                "run the pipeline again to post-process it"
+            )
         return result
 
 
@@ -355,6 +370,7 @@ def _object_rows(
 ) -> Iterator[dict]:
     """The fields every table row of an object shares, one dict per detection."""
     names = detections.data.get("class_name", [])
+    interpolated = detections.data.get("interpolated", [])
     for i in range(len(detections)):
         yield {
             "track_id": int(detections.tracker_id[i])
@@ -365,6 +381,7 @@ def _object_rows(
             "confidence": _float(detections.confidence, i),
             "xyxy": detections.xyxy[i],
             "pitch_xy": pitch_xy[i],
+            "interpolated": bool(interpolated[i]) if len(interpolated) else False,
         }
 
 

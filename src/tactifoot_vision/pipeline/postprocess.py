@@ -90,8 +90,8 @@ def reproject(
     ``homographies[i]`` replaces ``result.frames[i].homography``; ``None``
     means no homography and NaN positions. ``pitch_xy`` is projected from the
     boxes as :meth:`Pipeline.run` does it: people at the bottom centre, the
-    ball and its candidates at their centre. A ball position the pipeline's
-    ``ball_max_speed`` filter dropped therefore comes back.
+    ball and its candidates at their centre. It does not choose the ball
+    again: run :func:`~tactifoot_vision.pipeline.track_ball` after it.
     """
     if len(homographies) != len(result.frames):
         raise ValueError(

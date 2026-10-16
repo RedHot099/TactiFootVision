@@ -73,10 +73,11 @@ src/tactifoot_vision/
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
   evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator)
-  tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
+  tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
-                      postprocess.py (POSTPROCESSES, reproject, remap_track_ids)
+                      postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
+                      ball.py (track_ball)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -122,6 +123,7 @@ configs/              example run files
 * `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`
+* `pipeline/ball.py`: `track_ball`
 
 ## Module specifications
 
@@ -287,9 +289,6 @@ configs/              example run files
   camera predictor with detector-driven re-seeding of new objects). Detections
   overlapping a tracked box never become new tracks; a track whose mask is
   empty on a re-seed frame loses its id.
-* `clean_ball_path(positions, max_jump)` drops ball positions further than
-  `max_jump` pitch units per elapsed frame from the last accepted one
-  (the pipeline's `ball_max_speed` is the same limit in units per second).
 * `TeamClassifier(embedder="siglip" | "resnet" | Embedder, n_teams=2, reducer="umap" | None)`:
   `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings (at least `n_teams`, checked
@@ -316,13 +315,13 @@ configs/              example run files
   the pitch; referees get `NO_TEAM`. Each run fits the team classifier on
   its own player crops, also when an earlier run (another match) fitted it;
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
-  The ball filter (`ball_max_speed`) also runs at the end of the pass for
-  now; the `ball-tracking` feature moves it into a post-process.
   `FrameResult.ball_candidates` keeps every ball detection of the frame,
   best confidence first, with its `pitch_xy`; `ball` is the chosen one: the
-  best candidate, until a post-process chooses another. The tables and
-  freeze frames export `ball` only, so they keep one ball row per frame.
-  The ball filter leaves the candidates' positions alone.
+  best candidate, until `track_ball` chooses another. The tables and
+  freeze frames export `ball` only, so they keep one ball row per frame,
+  with an `interpolated` flag.
+  `PipelineResult.load` refuses a result saved before frames kept their
+  ball candidates.
 * Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
   registered with `@POSTPROCESSES.register("name")`. They return a new
   result and never change their input. Registering keeps the function's
@@ -332,10 +331,22 @@ configs/              example run files
   Shared helpers keep a changed result consistent:
   `reproject(result, homographies)` replaces the homographies (one per
   frame, `None` for none) and recomputes `pitch_xy` from the boxes (ball
-  candidates included) as the pipeline does (so the ball filter's dropped
-  positions come back), and
+  candidates included) as the pipeline does, without choosing the ball
+  again (run `track_ball` after it), and
   `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
   in `data["original_tracker_id"]`.
+* `track_ball(result, ...)` (`pipeline/ball.py`, registered as
+  `track_ball`) chooses one ball per frame among the candidates: it drops
+  candidates that are weak, static, on a painted spot of `result.pitch` or
+  matching a person's box (RF-DETR scores every box in every class), follows
+  the ball with a constant-velocity gate on the pitch, restarts only on a
+  confident candidate after `restart_after`, removes outliers (far from the
+  balls on both sides, or weak and alone) and fills gaps of up to `max_gap`,
+  flagged `data["interpolated"]` (box on the projected position,
+  `confidence` NaN). Every threshold is an option, in metres and seconds:
+  pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
+  Frames with no ball chosen get an empty `ball`. Positions are on the pitch
+  plane; an airborne ball's is displaced (no ball height).
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
@@ -437,8 +448,8 @@ postprocess: [{type: join_tracks, max_gap: 40}]  # join_tracks: a later feature
   `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
 * **List overrides**: a number in the key indexes a list, and the index one
-  past the end appends. (`join_tracks` and `track_ball` in these examples come
-  with later features; no post-process is registered yet.) With `postprocess:
+  past the end appends. (`join_tracks` in these examples comes with a later
+  feature.) With `postprocess:
   [{type: join_tracks}]`, `postprocess.0.max_gap=30` edits the entry,
   `postprocess.1.type=track_ball` (or `postprocess.1={type: track_ball}`)
   appends one, `postprocess.0={type: ...}` replaces it, and `postprocess=[]`

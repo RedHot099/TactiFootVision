@@ -27,7 +27,6 @@ from tactifoot_vision.pitch.homography import HomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.teams.classifier import TeamClassifier
 from tactifoot_vision.teams.crops import extract_crops
-from tactifoot_vision.tracking.ball import clean_ball_path
 from tactifoot_vision.tracking.base import Tracker, create_tracker
 
 logger = logging.getLogger(__name__)
@@ -44,8 +43,8 @@ class Pipeline:
     the pitch (people at the bottom centre of their box, the ball candidates
     at their centre). The pass ends with the steps that need data only it
     has (ADR 0002): every track gets one team by majority vote over the crops
-    sampled during the pass, and ball positions that jump implausibly far are
-    removed.
+    sampled during the pass. To choose the live ball among the candidates,
+    run the :func:`~tactifoot_vision.pipeline.track_ball` post-process.
 
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
@@ -73,11 +72,6 @@ class Pipeline:
             Both settings only bound the work with a tracker: with
             ``tracker=None`` every detection is its own "track", so every
             team-class person is embedded on every frame.
-        ball_max_speed: fastest plausible ball, in pitch units per second (m/s
-            for the default pitch); faster jumps between kept ball positions
-            are outliers whose ``pitch_xy`` becomes NaN (see
-            :func:`~tactifoot_vision.tracking.clean_ball_path`); the ball
-            candidates keep theirs. ``None`` keeps all.
         crop_scale, crop_center_ratio: crop geometry passed to
             :func:`~tactifoot_vision.teams.extract_crops`.
         keep_masks: keep the tracker's segmentation masks (SAM2) in
@@ -104,7 +98,6 @@ class Pipeline:
         team_classes: Sequence[str] = ("player", GOALKEEPER),
         team_sample_stride: int = 10,
         team_samples_per_track: int = 20,
-        ball_max_speed: float | None = 40.0,
         crop_scale: float = 0.8,
         crop_center_ratio: float = 1.0,
         keep_masks: bool = False,
@@ -119,8 +112,6 @@ class Pipeline:
             )
         if team_sample_stride < 1:
             raise ValueError("team_sample_stride must be >= 1")
-        if ball_max_speed is not None and ball_max_speed <= 0:
-            raise ValueError("ball_max_speed must be positive or None")
         if pitch is not None and homography is not None and homography.pitch != pitch:
             raise ValueError(
                 f"pitch {pitch} differs from the homography estimator's {homography.pitch}"
@@ -146,7 +137,6 @@ class Pipeline:
                 ", ".join(sorted(missing)),
                 ", ".join(detector.class_names),
             )
-        self.ball_max_speed = ball_max_speed
         self.crop_scale = crop_scale
         self.crop_center_ratio = crop_center_ratio
         self.keep_masks = keep_masks
@@ -210,8 +200,6 @@ class Pipeline:
             )
         if self.team_classifier is not None:
             self._assign_teams(frames, keys, samples)
-        if self.ball_max_speed is not None:
-            self._clean_ball(frames, max_jump=self.ball_max_speed * stride / reader.fps)
         return PipelineResult(
             frames=frames,
             fps=reader.fps,
@@ -342,24 +330,6 @@ class Pipeline:
             )
         assigned = sum(team != NO_TEAM for team in teams.values())
         logger.info("Assigned teams to %d of %d tracks", assigned, len(track_class))
-
-    @staticmethod
-    def _clean_ball(frames: list[FrameResult], max_jump: float) -> None:
-        raw = np.array(
-            [f.ball_xy[0] if len(f.ball) else (np.nan, np.nan) for f in frames],
-            dtype=float,
-        ).reshape(-1, 2)
-        cleaned = clean_ball_path(raw, max_jump)
-        dropped = 0
-        for frame, before, after in zip(frames, raw, cleaned, strict=True):
-            if np.isfinite(before).all() and not np.isfinite(after).all():
-                frame.ball.data["pitch_xy"] = np.full((1, 2), np.nan)
-                dropped += 1
-        logger.info(
-            "Ball cleaning removed %d of %d pitch positions",
-            dropped,
-            int(np.isfinite(raw).all(axis=1).sum()),
-        )
 
     def __repr__(self) -> str:
         return (

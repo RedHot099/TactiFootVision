@@ -272,6 +272,14 @@ def test_ball_candidates_survive_save_and_load(tmp_path):
         assert len(PipelineResult.load(path)[1].ball_candidates) == 0
 
 
+def test_a_result_saved_before_ball_candidates_is_refused(tmp_path):
+    result = _result()
+    del result[1].__dict__["ball_candidates"]  # as pickled by the older FrameResult
+    path = result.save(tmp_path / "result.pkl")
+    with pytest.raises(ValueError, match="ball candidates.*run the pipeline again"):
+        PipelineResult.load(path)
+
+
 def test_tables_keep_one_row_for_the_chosen_ball_whatever_the_candidates():
     alone, with_spare = _result(), _with_spare_ball(_result())
     pd.testing.assert_frame_equal(with_spare.to_dataframe(), alone.to_dataframe())
