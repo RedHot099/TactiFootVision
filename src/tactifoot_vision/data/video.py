@@ -1,6 +1,7 @@
 """Reading video frames and turning a video into an image folder."""
 
 import logging
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,9 +10,15 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# The frame number in an OpenCV image-sequence pattern: %d, %6d, %06d.
+_FRAME_NUMBER = re.compile(r"%0?\d*d")
+
 
 class VideoReader:
-    """Frame access for a video file.
+    """Frame access for a video file or an image sequence.
+
+    An image sequence is an OpenCV pattern such as ``img1/%06d.jpg``; its
+    first image is frame 0.
 
     >>> video = VideoReader("match.mp4")
     >>> for index, frame in video.frames(start=100, end=200, stride=5): ...
@@ -20,7 +27,11 @@ class VideoReader:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         if not self.path.is_file():
-            raise FileNotFoundError(f"Video not found: {self.path}")
+            parts = _FRAME_NUMBER.split(self.path.name)
+            if len(parts) != 2:
+                raise FileNotFoundError(f"Video not found: {self.path}")
+            if not _has_match(self.path.parent, r"\d+".join(map(re.escape, parts))):
+                raise FileNotFoundError(f"No image matches {self.path}")
         capture = self._open()
         try:
             self.fps = float(capture.get(cv2.CAP_PROP_FPS))
@@ -101,6 +112,14 @@ class VideoReader:
             f"VideoReader({str(self.path)!r}, {self.width}x{self.height}, "
             f"{self.fps:.2f} fps, {self.frame_count} frames)"
         )
+
+
+def _has_match(folder: Path, name_pattern: str) -> bool:
+    """Whether ``folder`` holds a file whose whole name matches ``name_pattern``."""
+    if not folder.is_dir():
+        return False
+    name = re.compile(name_pattern)
+    return any(name.fullmatch(path.name) for path in folder.iterdir())
 
 
 def check_frame_range(start: int, end: int | None, stride: int) -> None:

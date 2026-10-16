@@ -1,4 +1,4 @@
-"""Data preparation: annotated datasets, format conversion, video frames, StatsBomb events."""
+"""Data preparation: annotated datasets, labelled clips, format conversion, video frames, StatsBomb events."""
 
 from tactifoot_vision.data.annotations import (
     NOT_LABELLED,
@@ -8,6 +8,12 @@ from tactifoot_vision.data.annotations import (
     Task,
 )
 from tactifoot_vision.data.dataset import SPLITS, Dataset, Sample, load_dataset
+from tactifoot_vision.data.labelled_clip import (
+    LabelledClip,
+    LabelledFrame,
+    Truth,
+    load_labelled_clip,
+)
 from tactifoot_vision.data.statsbomb import load_statsbomb
 from tactifoot_vision.data.video import VideoReader, extract_frames
 
@@ -18,10 +24,14 @@ __all__ = [
     "VISIBLE",
     "Annotations",
     "Dataset",
+    "LabelledClip",
+    "LabelledFrame",
     "Sample",
     "Task",
+    "Truth",
     "VideoReader",
     "extract_frames",
     "load_dataset",
+    "load_labelled_clip",
     "load_statsbomb",
 ]
