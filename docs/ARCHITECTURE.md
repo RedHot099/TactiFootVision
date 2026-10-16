@@ -41,7 +41,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
-| Match analysis | `tv.analysis` | `attack_direction`, `velocities`, `space_control` → `SpaceControl` |
+| Match analysis | `tv.analysis` | `attack_direction`, `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`, `velocities`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
@@ -83,8 +83,9 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
                       homographies.py (smooth_homographies)
-  analysis/           direction.py (attack_direction), velocity.py (velocities),
-                      space.py (space_control)
+  analysis/           direction.py (attack_direction), possession.py (ball_carriers,
+                      possession, passes, pass_counts, carrier_table),
+                      velocity.py (velocities), space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
                       subpixel.py (fixed-point coordinates for cv2 drawing),
                       trail.py (fading trails from history: ball trail, radar tails)
@@ -140,6 +141,7 @@ configs/              example run files
 * `pipeline/tracks.py`: `join_tracks`
 * `pipeline/roles.py`: `assign_roles`
 * `analysis/direction.py`: `attack_direction`
+* `analysis/possession.py`: `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`
 * `analysis/velocity.py`: `velocities`
 * `analysis/space.py`: `SpaceControl`, `space_control`
 
@@ -438,9 +440,10 @@ configs/              example run files
   checked before any model runs; an empty range is an error.
   `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None)`
   writes the run folder's data files (`result.pkl`, `tracks.csv`,
-  `freeze_frames.csv`, with headers even for an empty result). It is the
-  only writer of the run folder: analysis tables (none yet) are to join it
-  through `export`, which computes them with `tv.analysis`. `team_names`
+  `freeze_frames.csv`, `carriers.csv`, `passes.csv`, with headers even for
+  an empty result). It is the only writer of the run folder: the analysis
+  tables (`carriers.csv`, `passes.csv`) join it through `export`, which
+  computes them with `tv.analysis` and its defaults. `team_names`
   (one per team id from 0, e.g. `["Home", "Away"]`) fill the tables'
   `team_name` column (empty without names or a team): each object's own
   team, unlike the event team's `team_name` of `load_statsbomb`. A name
@@ -616,6 +619,33 @@ nothing (`PipelineResult.export` writes their tables).
   directions. Anything but two teams with pitch positions, or two means
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
+* `ball_carriers(result, max_distance=0.7, hysteresis=3)` → one `tracker_id`
+  or `None` per frame (the shape `render_video` is to take). In a frame with
+  a ball (filled in by `track_ball` too), the candidate is the person with a
+  team and a tracker id (players and goalkeepers; referees and staff have
+  `NO_TEAM` after `assign_roles`) whose box foot is nearest the ball's
+  centre in image pixels over their box height, under `max_distance`; else
+  the ball is loose. The image is used because the ball's height is
+  unknown. The carrier changes, to another person or to nobody, once a
+  candidate other than the carrier has been seen in `hysteresis` frames with
+  a ball in a row (processed frames, whatever the stride); a frame without a
+  ball neither confirms nor breaks it, so the carrier is held while the
+  ball is unseen.
+* `possession(result, carriers, frames=None)` → `{team_id: share}`: each
+  team's share of the frames with a carrier (every team of the result; they
+  add up to 1), over every frame, a position or a slice of `result.frames`
+  (carriers come from the whole result, so the hysteresis holds at the
+  range's edges); a range without a carrier is a `ValueError`.
+* `passes(result, carriers)` → a table `team_id, from_track_id,
+  to_track_id, from_frame, to_frame` (video indices: the passer's last frame
+  as carrier, the receiver's first), one row per change of carrier between
+  two players of the same team, skipping frames without a carrier in
+  between: a teammate taking a loose ball counts, a long pass whose receiver
+  never becomes the carrier is missed, and a carrier of the other team in
+  between breaks it. `pass_counts(result, carriers)` → `{team_id: count}`.
+* `carrier_table(result, carriers)` → `frame, time, track_id, team_id`, one
+  row per frame (empty without a carrier); a carrier's team is their
+  track's most frequent one.
 * `velocities(result, window=0.5, max_speed=12.0)` → one `(N, 2)` array per
   frame, row for row with its `detections`: each person's pitch velocity in
   m/s (pitch units scaled to 105 x 68 m), NaN without one. It is the slope

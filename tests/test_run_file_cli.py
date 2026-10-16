@@ -443,7 +443,9 @@ def test_export_writes_the_run_folder_data_files(tmp_path):
     out = result.export(tmp_path / "new" / "run", period=2, period_start=60.0)
     assert out == tmp_path / "new" / "run"
     assert sorted(p.name for p in out.iterdir()) == [
+        "carriers.csv",
         "freeze_frames.csv",
+        "passes.csv",
         "result.pkl",
         "tracks.csv",
     ]
@@ -691,7 +693,9 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
     assert isinstance(result, PipelineResult) and len(result) == 4
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
         "annotated.mp4",
+        "carriers.csv",
         "freeze_frames.csv",
+        "passes.csv",
         "result.pkl",
         "tracks.csv",
     ]

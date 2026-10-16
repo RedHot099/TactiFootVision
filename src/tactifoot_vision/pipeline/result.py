@@ -442,17 +442,28 @@ class PipelineResult:
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
-        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`)
-        and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
-        and ``period_start``; ``None`` is the period's kick-off).
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`),
+        ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
+        and ``period_start``; ``None`` is the period's kick-off), and the
+        analysis tables ``carriers.csv`` and ``passes.csv``
+        (:func:`~tactifoot_vision.analysis.carrier_table` and
+        :func:`~tactifoot_vision.analysis.passes` of the
+        :func:`~tactifoot_vision.analysis.ball_carriers` with their defaults).
         ``team_names`` (one per team id from 0, e.g. ``["Home", "Away"]``)
         fill the tables' ``team_name`` column. ``period`` and ``team_names``
         are checked before anything is written. Render the annotated video
         with :func:`tactifoot_vision.viz.render_video`, or write the whole run
         folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
         """
+        from tactifoot_vision import analysis  # it imports this module
+
         start = _period_start(period, period_start)
         names = self._check_team_names(team_names)
+        carriers = analysis.ball_carriers(self)
+        analysis_tables = {
+            "carriers.csv": analysis.carrier_table(self, carriers),
+            "passes.csv": analysis.passes(self, carriers),
+        }
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
@@ -460,6 +471,13 @@ class PipelineResult:
         self._freeze_frames_table(period, start, names).to_csv(
             out_dir / "freeze_frames.csv", index=False
         )
+        for file_name, table in analysis_tables.items():
+            table.insert(
+                table.columns.get_loc("team_id") + 1,
+                "team_name",
+                [_team_name(team, names) for team in table["team_id"]],
+            )
+            table.to_csv(out_dir / file_name, index=False)
         return out_dir
 
     def save(self, path: str | Path) -> Path:
@@ -530,12 +548,19 @@ def _object_rows(
             else UNTRACKED,
             "class_name": str(names[i]) if len(names) else "",
             "team_id": team,
-            "team_name": team_names[team] if team_names and team != NO_TEAM else None,
+            "team_name": _team_name(team, team_names),
             "confidence": _float(detections.confidence, i),
             "xyxy": detections.xyxy[i],
             "pitch_xy": pitch_xy[i],
             "interpolated": bool(interpolated[i]) if len(interpolated) else False,
         }
+
+
+def _team_name(team: Any, team_names: list[str] | None) -> str | None:
+    """``team_names[team]``, ``None`` without names or a team (``NO_TEAM``, ``pd.NA``)."""
+    if team_names is None or pd.isna(team) or team == NO_TEAM:
+        return None
+    return team_names[int(team)]
 
 
 def _float(values: np.ndarray | None, i: int) -> float | None:

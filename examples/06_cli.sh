@@ -20,7 +20,7 @@ uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/r
     --set teams=null --set render.annotator.style=video_game \
     --set render.annotator.trail_seconds=1.0 --set render.radar.trail_seconds=2.0 \
     --set render.radar.draw_visible_area=true
-ls "$OUT/run"   # result.pkl tracks.csv freeze_frames.csv annotated.mp4
+ls "$OUT/run"   # result.pkl tracks.csv freeze_frames.csv carriers.csv passes.csv annotated.mp4
 
 # Training: TrainConfig fields are flags (see `tactifoot train --help`);
 # backend options go through --set. A small sample of the football dataset

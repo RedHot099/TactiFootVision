@@ -104,7 +104,8 @@ result.to_dataframe().query("object == 'person'").head()
 """)
     nb.md("""
 `export` writes the run folder (`result.pkl`, `tracks.csv`, StatsBomb-style
-`freeze_frames.csv`), the same files `tactifoot run` produces.
+`freeze_frames.csv`, and the ball carrier and pass tables `carriers.csv` and
+`passes.csv`), the same files `tactifoot run` produces.
 """)
     nb.code("""
 run_folder = result.export(OUT / "run")
