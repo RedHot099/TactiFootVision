@@ -40,6 +40,7 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
 # postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
+#   - {type: join_tracks, max_gap: 1.6}  # join tracks into player tracks
 #   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
 # render:                              # tv.viz.render_video(...) arguments
 #   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)

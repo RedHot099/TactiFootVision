@@ -20,14 +20,13 @@ import logging
 import numpy as np
 import supervision as sv
 
-from tactifoot_vision.pipeline.postprocess import POSTPROCESSES
+from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, metres_per_unit
 from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 from tactifoot_vision.pitch.homography import pitch_to_frame
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 
 logger = logging.getLogger(__name__)
 
-_STD_SIZE = np.array([105.0, 68.0])  # metres of the pitch every pitch unit maps to
 # metres of distance to the prediction a unit of confidence is worth
 _CONFIDENCE_WEIGHT = 2.0
 _NEIGHBOURS = 4  # kept positions per side an outlier is judged against
@@ -158,7 +157,7 @@ def track_ball(
     times = np.array([f.timestamp for f in frames], dtype=float)
     if np.any(np.diff(times) <= 0):
         raise ValueError("track_ball needs frames in order of increasing timestamps")
-    scale = _STD_SIZE / [result.pitch.length, result.pitch.width]
+    scale = metres_per_unit(result.pitch)
     positions = [_candidate_xy(f) * scale for f in frames]
     confidences = [_confidence(f.ball_candidates) for f in frames]
     usable = _usable(
