@@ -157,7 +157,7 @@ class HomographyMetrics:
 
 @dataclass
 class TeamMetrics:
-    """Team accuracy of a run's ``team_id`` against a labelled clip's teams.
+    """Team accuracy and role confusion of a run against a labelled clip's teams and roles.
 
     Only people the run detected are scored: each true person is matched to
     a detected one by IoU in each processed frame, whatever their classes,
@@ -170,12 +170,21 @@ class TeamMetrics:
     matched detections that are right; ``track_accuracy`` the same share per
     run track (``tracker_id``), averaged over the tracks with a matched
     detection so that each counts once. Both are NaN without a match.
+    ``role_confusion`` counts the matched people by true role (rows,
+    ``true_role``) and the run's role (columns, ``predicted_role``), each
+    taken from ``class_name`` as in ``ROLES``: ``player``, ``goalkeeper``,
+    ``referee``, or ``other`` for any other class; a goalkeeper absorbed into
+    a team as a player is in row ``goalkeeper``, column ``player``.
+    :meth:`as_dict` leaves ``role_confusion`` out. An aggregate over
+    several clips maps each clip on its own, so its ``team_mapping`` is
+    ``None``.
     """
 
     accuracy: float
     track_accuracy: float
     recall: float
-    team_mapping: dict[int, int]
+    team_mapping: dict[int, int] | None  # None for an aggregate of several clips
+    role_confusion: pd.DataFrame
     correct: int  # matched detections with the right team
     matched: int  # true people matched to a detection
     instances: int  # true people in the scored frames

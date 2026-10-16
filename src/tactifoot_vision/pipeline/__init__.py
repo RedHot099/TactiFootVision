@@ -9,6 +9,7 @@ from tactifoot_vision.pipeline.postprocess import (
 )
 from tactifoot_vision.pipeline.result import (
     NO_TEAM,
+    ROLES,
     AppliedPostProcess,
     FrameResult,
     ObjectMasks,
@@ -19,6 +20,7 @@ from tactifoot_vision.pipeline.tracks import join_tracks
 __all__ = [
     "NO_TEAM",
     "POSTPROCESSES",
+    "ROLES",
     "AppliedPostProcess",
     "FrameResult",
     "ObjectMasks",

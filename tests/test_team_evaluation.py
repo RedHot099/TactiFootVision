@@ -3,11 +3,16 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
 from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
-from tactifoot_vision.evaluation import TeamMetrics, evaluate_teams
+from tactifoot_vision.evaluation import (
+    TeamMetrics,
+    evaluate_teams,
+    evaluate_teams_clips,
+)
 from tactifoot_vision.pipeline import (
     NO_TEAM,
     FrameResult,
@@ -19,6 +24,7 @@ from tactifoot_vision.pipeline import (
 A = (0, 0, 10, 10)
 B = (100, 0, 110, 10)
 C = (200, 0, 210, 10)
+G = (250, 0, 260, 10)
 R = (300, 0, 310, 10)
 EMPTY = (380, 80, 390, 90)  # nobody stands here
 
@@ -261,6 +267,17 @@ def test_a_clip_frame_without_team_ids_is_an_error():
         evaluate_teams(_result(TRUTH), clip)
 
 
+def test_people_without_a_class_name_are_an_error():
+    result, clip = _result(TRUTH), _clip(TRUTH)
+    del result.frames[0].detections.data["class_name"]
+    del clip.frame(1).detections.data["class_name"]
+
+    with pytest.raises(ValueError, match="result has no class_name in frame 0"):
+        evaluate_teams(result, _clip(TRUTH))
+    with pytest.raises(ValueError, match="fixture has no class_name in frame 1"):
+        evaluate_teams(_result(TRUTH), clip)
+
+
 def test_a_true_team_id_below_no_team_is_an_error():
     clip = _clip(TRUTH)
     clip.frame(1).detections.data["team_id"][0] = NO_TEAM - 1
@@ -269,3 +286,144 @@ def test_a_true_team_id_below_no_team_is_an_error():
         ValueError, match="fixture has a team_id below NO_TEAM .* frame 1"
     ):
         evaluate_teams(_result(TRUTH), clip)
+
+
+def _roles(counts):
+    """A role confusion matrix with these ``{(true, predicted): count}``, zero elsewhere."""
+    roles = ["player", "goalkeeper", "referee", "other"]
+    matrix = pd.DataFrame(
+        0,
+        index=pd.Index(roles, name="true_role"),
+        columns=pd.Index(roles, name="predicted_role"),
+    )
+    for (true, predicted), count in counts.items():
+        matrix.loc[true, predicted] = count
+    return matrix
+
+
+def test_a_goalkeeper_absorbed_into_a_team_appears_in_the_role_matrix_exactly():
+    # Goalkeeper 5 of team 0 is detected as a player of run team 3 (true team
+    # 0) in both frames, and as a goalkeeper in neither; referee 4 is detected
+    # as a player of run team 3 in frame 1, which is the wrong team; a
+    # linesman (class "linesman", role other) is detected as a referee.
+    truth = {
+        i: [*TRUTH[i], (5, "goalkeeper", 0, G), (6, "linesman", NO_TEAM, EMPTY)]
+        for i in range(2)
+    }
+    predicted = {
+        0: [
+            (10, "player", 3, A),
+            (20, "player", 3, B),
+            (30, "player", 8, C),
+            (40, "referee", NO_TEAM, R),
+            (50, "player", 3, G),
+            (60, "referee", NO_TEAM, EMPTY),
+        ],
+        1: [
+            (10, "player", 3, A),
+            (40, "player", 3, R),
+            (50, "player", 3, G),
+        ],
+    }
+
+    metrics = evaluate_teams(_result(predicted), _clip(truth))
+
+    pd.testing.assert_frame_equal(
+        metrics.role_confusion,
+        _roles(
+            {
+                ("player", "player"): 4,
+                ("goalkeeper", "player"): 2,
+                ("referee", "referee"): 1,
+                ("referee", "player"): 1,
+                ("other", "referee"): 1,
+            }
+        ),
+    )
+    assert metrics.team_mapping == {3: 0, 8: 1}
+    assert metrics.matched == 9
+    assert metrics.recall == pytest.approx(9 / 12)
+    assert metrics.correct == 8  # all but the referee given team 3
+    assert metrics.accuracy == pytest.approx(8 / 9)
+    # Each track counts once: 40 is 1/2 right, the five others all right.
+    assert metrics.track_accuracy == pytest.approx((5 + 0.5) / 6)
+
+
+def test_the_role_matrix_counts_only_matched_people():
+    metrics = evaluate_teams(_result({0: [(11, "player", 0, A)]}), _clip(TRUTH))
+
+    pd.testing.assert_frame_equal(
+        metrics.role_confusion, _roles({("player", "player"): 1})
+    )
+
+
+def _moved(frames, first_index, id_offset):
+    """``{index: people rows}`` from ``first_index`` on, track and team ids moved by ``id_offset``."""
+    return {
+        first_index + i: [
+            (t + id_offset, name, team if team == NO_TEAM else team + id_offset, box)
+            for t, name, team, box in frames[k]
+        ]
+        for i, k in enumerate(sorted(frames))
+    }
+
+
+def test_the_aggregate_equals_evaluating_the_concatenated_clips():
+    # Each clip has its own run and its own teams: the second run's team ids
+    # are swapped against the first's, a goalkeeper is absorbed into a team
+    # and a referee is given one.
+    first = {
+        0: [(10, "player", 5, A), (20, "player", 5, B), (30, "player", 7, C)],
+        1: [(10, "player", 5, A), (40, "referee", 7, R)],
+    }
+    second_truth = {
+        i: [(1, "player", 0, A), (2, "player", 1, B), (5, "goalkeeper", 0, G)]
+        for i in range(3)
+    }
+    second = {
+        0: [(10, "player", 1, A), (20, "player", 0, B), (50, "player", 1, G)],
+        1: [(10, "player", 1, A), (50, "player", 0, G)],
+        2: [(20, "player", 0, B)],
+    }
+    pairs = [
+        (_result(first), _clip(TRUTH)),
+        (_result(second), _clip(second_truth)),
+    ]
+    # One clip holding both, its people and teams kept apart: the second
+    # clip's frames follow the first's and its track and team ids, true and
+    # run, are moved by 100.
+    concatenated = evaluate_teams(
+        _result(first | _moved(second, 2, 100)),
+        _clip(TRUTH | _moved(second_truth, 2, 100)),
+    )
+
+    combined = evaluate_teams_clips(pairs)
+
+    assert concatenated.team_mapping == {5: 0, 7: 1, 101: 100, 100: 101}
+    assert combined.team_mapping is None
+    assert combined.num_frames == concatenated.num_frames == 5
+    assert (combined.correct, combined.matched, combined.instances) == (
+        concatenated.correct,
+        concatenated.matched,
+        concatenated.instances,
+    )
+    assert combined.correct < combined.matched < combined.instances
+    assert combined.as_dict() == pytest.approx(concatenated.as_dict())
+    pd.testing.assert_frame_equal(combined.role_confusion, concatenated.role_confusion)
+    assert combined.role_confusion.loc["goalkeeper", "player"] == 2
+
+
+def test_the_aggregate_of_one_clip_is_that_clip():
+    single = evaluate_teams(_result(TRUTH), _clip(TRUTH))
+
+    combined = evaluate_teams_clips([(_result(TRUTH), _clip(TRUTH))])
+
+    assert combined.as_dict() == single.as_dict()
+    assert combined.team_mapping == single.team_mapping == {0: 0, 1: 1}
+    assert (combined.correct, combined.matched, combined.instances) == (8, 8, 8)
+    pd.testing.assert_frame_equal(combined.role_confusion, single.role_confusion)
+
+
+def test_the_aggregate_of_no_clips_is_an_error():
+    with pytest.raises(ValueError, match="at least one"):
+        evaluate_teams_clips([])

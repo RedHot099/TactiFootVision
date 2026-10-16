@@ -23,7 +23,8 @@ PERSON_ANCHOR = sv.Position.BOTTOM_CENTER  # where a person's pitch position is 
 BALL_ANCHOR = sv.Position.CENTER
 # StatsBomb's match clock: the minute at which each period kicks off.
 _PERIOD_KICK_OFF_MINUTE = {1: 0, 2: 45, 3: 90, 4: 105}
-_FREEZE_FRAME_TYPES = ("player", "goalkeeper", "referee")  # other people: "other"
+# A person's role: their class name when it is one of these, else "other".
+ROLES = ("player", "goalkeeper", "referee", "other")
 _FREEZE_FRAME_COLUMNS = [
     "frame_id", "period", "timestamp", "timestamp_seconds", "minute", "second",
     "homography_matrix", "visible_area", "player_id", "type", "class_name",
@@ -377,7 +378,7 @@ class PipelineResult:
                     if kind == "ball":
                         kind_type, player_id = "ball", BALL_PLAYER_ID
                     else:
-                        kind_type = name if name in _FREEZE_FRAME_TYPES else "other"
+                        kind_type = name if name in ROLES else "other"
                         player_id = obj["track_id"]
                     rows.append(base | {
                         "player_id": player_id, "type": kind_type, "class_name": name,
