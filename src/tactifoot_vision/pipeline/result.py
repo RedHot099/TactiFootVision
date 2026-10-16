@@ -439,20 +439,45 @@ class PipelineResult:
         period: int = 1,
         period_start: float | None = None,
         team_names: Sequence[str] | None = None,
+        carrier_max_distance: float | None = None,
+        carrier_hysteresis: float | None = None,
+        carrier_max_gap: float | None = None,
     ) -> Path:
         """Write the run folder's data files to ``out_dir`` (created if missing).
 
-        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`)
-        and ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
-        and ``period_start``; ``None`` is the period's kick-off).
-        ``team_names`` (one per team id from 0, e.g. ``["Home", "Away"]``)
-        fill the tables' ``team_name`` column. ``period`` and ``team_names``
-        are checked before anything is written. Render the annotated video
+        ``result.pkl`` (:meth:`save`), ``tracks.csv`` (:meth:`to_dataframe`),
+        ``freeze_frames.csv`` (:meth:`to_freeze_frames` with ``period``
+        and ``period_start``; ``None`` is the period's kick-off), and the
+        analysis tables ``carriers.csv`` and ``passes.csv``
+        (:func:`~tactifoot_vision.analysis.carrier_table` and
+        :func:`~tactifoot_vision.analysis.passes` of the
+        :func:`~tactifoot_vision.analysis.ball_carriers`; they need team ids,
+        so they hold no carrier without a team classifier).
+        ``carrier_max_distance``, ``carrier_hysteresis`` and
+        ``carrier_max_gap`` are ``ball_carriers``' ``max_distance``,
+        ``hysteresis`` and ``max_gap``, passed on only when given (``None``
+        keeps its default). ``team_names`` (one per team id from 0, e.g.
+        ``["Home", "Away"]``) fill the tables' ``team_name`` column.
+        ``period``, ``team_names`` and the carrier options are checked before
+        anything is written. Render the annotated video
         with :func:`tactifoot_vision.viz.render_video`, or write the whole run
         folder with :meth:`tactifoot_vision.run_file.RunFile.run`.
         """
+        # tv.analysis imports this module
+        from tactifoot_vision.analysis.carriers import _run_folder_tables
+
         start = _period_start(period, period_start)
         names = self._check_team_names(team_names)
+        carrier_options = {
+            option: value
+            for option, value in (
+                ("max_distance", carrier_max_distance),
+                ("hysteresis", carrier_hysteresis),
+                ("max_gap", carrier_max_gap),
+            )
+            if value is not None
+        }
+        analysis_tables = _run_folder_tables(self, **carrier_options)
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.save(out_dir / "result.pkl")
@@ -460,6 +485,13 @@ class PipelineResult:
         self._freeze_frames_table(period, start, names).to_csv(
             out_dir / "freeze_frames.csv", index=False
         )
+        for file_name, table in analysis_tables.items():
+            table.insert(
+                table.columns.get_loc("team_id") + 1,
+                "team_name",
+                [_team_name(team, names) for team in table["team_id"]],
+            )
+            table.to_csv(out_dir / file_name, index=False)
         return out_dir
 
     def save(self, path: str | Path) -> Path:
@@ -530,12 +562,19 @@ def _object_rows(
             else UNTRACKED,
             "class_name": str(names[i]) if len(names) else "",
             "team_id": team,
-            "team_name": team_names[team] if team_names and team != NO_TEAM else None,
+            "team_name": _team_name(team, team_names),
             "confidence": _float(detections.confidence, i),
             "xyxy": detections.xyxy[i],
             "pitch_xy": pitch_xy[i],
             "interpolated": bool(interpolated[i]) if len(interpolated) else False,
         }
+
+
+def _team_name(team: Any, team_names: list[str] | None) -> str | None:
+    """``team_names[team]``, ``None`` without names or a team (``NO_TEAM``, ``pd.NA``)."""
+    if team_names is None or pd.isna(team) or team == NO_TEAM:
+        return None
+    return team_names[int(team)]
 
 
 def _float(values: np.ndarray | None, i: int) -> float | None:

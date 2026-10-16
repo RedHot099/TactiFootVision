@@ -1,6 +1,7 @@
 """Match analysis over a pipeline result (``tv.analysis``)."""
 
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
@@ -481,3 +482,265 @@ def test_space_control_documents_each_model_option_and_default():
         ("velocity_window", "0.5"),
     ]:
         assert f"``{option}`` ({default}" in doc
+
+
+# ------------------------------------------------- carrier, possession, passes
+# People of a scripted play: tracker id -> (class name, team id, foot x in
+# pixels). Every box is 20 x 50 px with its foot (bottom centre) at y = 200.
+PLAY = {
+    1: ("player", 0, 100.0),  # A
+    2: ("player", 0, 300.0),  # B
+    3: ("goalkeeper", 1, 500.0),  # C
+    9: ("referee", NO_TEAM, 104.0),  # nearer the ball than A, never the carrier
+}
+NEAR = {"A": (110.0, 195.0), "B": (310.0, 195.0), "C": (510.0, 195.0)}
+LOOSE = (700.0, 50.0)  # visible, nobody close
+
+
+def _play(
+    script: str,
+    people: dict[int, tuple[str, int, float]] = PLAY,
+    stride: int = 1,
+    tracked: bool = True,
+) -> PipelineResult:
+    """One frame per letter: the ball near ``A``, ``B`` or ``C``, loose (``.``)
+    or missing (``-``); lower case is a ball filled in by ``track_ball``.
+
+    No pitch positions or homography: the carrier rule works in the image.
+    """
+    frames = []
+    for position, letter in enumerate(script):
+        index = position * stride
+        ids = np.array(list(people))
+        feet = np.array([x for _, _, x in people.values()])
+        detections = sv.Detections(
+            xyxy=np.stack([feet - 10, np.full(len(feet), 150), feet + 10,
+                           np.full(len(feet), 200)], axis=1).astype(np.float32),
+            tracker_id=ids if tracked else None,
+            data={
+                "class_name": np.array([name for name, _, _ in people.values()]),
+                "team_id": np.array([team for _, team, _ in people.values()]),
+                "pitch_xy": np.full((len(ids), 2), np.nan),
+            },
+        )  # fmt: skip
+        ball = sv.Detections.empty()
+        if letter != "-":
+            x, y = NEAR.get(letter.upper(), LOOSE)
+            ball = sv.Detections(
+                xyxy=np.float32([[x - 5, y - 5, x + 5, y + 5]]),
+                data={
+                    "class_name": np.array(["ball"]),
+                    "interpolated": np.array([letter.islower()]),
+                },
+            )
+        frames.append(
+            FrameResult(index, index / 25, detections, ball, ball_candidates=ball)
+        )
+    return PipelineResult(frames, 25.0, (800, 400), ["ball", "player"])
+
+
+def _letters(carriers: list[int | None]) -> str:
+    return "".join({None: ".", 1: "A", 2: "B", 3: "C"}[c] for c in carriers)
+
+
+#        frame  0         1         2
+#               0123456789012345678901
+SCRIPT = "AAAA--BBB...CCCAAAbbbB"
+CARRIERS = "..AAAAAABBB...CCCAAABB"
+
+
+def test_a_scripted_play_gives_the_exact_carrier_sequence():
+    # A new carrier, or none, is confirmed once seen for 0.12 s: the third
+    # frame in a row at 25 fps; a missing ball holds the carrier, a filled-in
+    # one counts like any other.
+    carriers = tv.analysis.ball_carriers(_play(SCRIPT))
+    assert _letters(carriers) == CARRIERS
+    assert all(c is None or type(c) is int for c in carriers)
+
+
+def test_a_scripted_play_gives_the_exact_passes_and_possession():
+    result = _play(SCRIPT)
+    carriers = tv.analysis.ball_carriers(result)
+    passes = tv.analysis.passes(result, carriers)
+    # A to B, then (C of the other team in between) A to B again; frames are
+    # video indices: the last frame of the passer and the first of the receiver.
+    assert passes.to_dict("records") == [
+        {"team_id": 0, "from_track_id": 1, "to_track_id": 2, "from_frame": 7, "to_frame": 8},
+        {"team_id": 0, "from_track_id": 1, "to_track_id": 2, "from_frame": 19, "to_frame": 20},
+    ]  # fmt: skip
+    assert tv.analysis.pass_counts(result, carriers) == {0: 2, 1: 0}
+    # 17 frames have a carrier: 14 of team 0, 3 of team 1.
+    shares = tv.analysis.possession(result, carriers)
+    assert shares == pytest.approx({0: 14 / 17, 1: 3 / 17})
+    assert tv.analysis.possession(result, carriers, slice(11, 17)) == {0: 0.0, 1: 1.0}
+    assert tv.analysis.possession(result, carriers, 7) == {0: 1.0, 1: 0.0}
+
+
+def test_flicker_shorter_than_the_hysteresis_creates_no_pass():
+    # B is nearest for two frames, the ball looks loose for two: A keeps it.
+    result = _play("AAAABBAA..AABAB-BA")
+    carriers = tv.analysis.ball_carriers(result)
+    assert _letters(carriers) == "..AAAAAAAAAAAAAAAA"
+    assert tv.analysis.passes(result, carriers).empty
+    assert tv.analysis.pass_counts(result, carriers) == {0: 0, 1: 0}
+    # A loose frame between B's frames starts B's count again.
+    assert _letters(tv.analysis.ball_carriers(_play("AAAB.B.B"))) == "..AAAAAA"
+
+
+def test_the_hysteresis_and_distance_are_options():
+    result = _play("AABBA..")
+    carriers = tv.analysis.ball_carriers(result, hysteresis=0)  # one frame
+    assert _letters(carriers) == "AABBA.."
+    assert len(tv.analysis.passes(result, carriers)) == 2  # A to B, B to A
+    # The ball is 0.22 box heights from the nearest foot.
+    assert set(tv.analysis.ball_carriers(result, max_distance=0.2)) == {None}
+    assert _letters(tv.analysis.ball_carriers(_play("AAA"), max_distance=0.3)) == "..A"
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"max_distance": 0}, "max_distance"),
+        ({"max_distance": np.inf}, "max_distance"),
+        ({"hysteresis": -0.1}, "hysteresis"),
+        ({"hysteresis": np.inf}, "hysteresis"),
+        ({"hysteresis": np.nan}, "hysteresis"),
+        ({"max_gap": 0}, "max_gap"),
+        ({"max_gap": np.nan}, "max_gap"),
+    ],
+)
+def test_ball_carriers_check_their_options(options, message):
+    with pytest.raises(ValueError, match=message):
+        tv.analysis.ball_carriers(_play("AAA"), **options)
+
+
+def test_the_carrier_is_the_nearest_close_player_relative_to_box_height():
+    # A tall box (100 px) 40 px from the ball is nearer, in box heights, than
+    # a 50 px one 30 px away; a person without a team, nearer still, is not.
+    tall = {
+        1: ("player", 0, 100.0),
+        2: ("player", 1, 170.0),
+        7: ("player", NO_TEAM, 130.0),
+    }
+    result = _play("AAA", people=tall)
+    for frame in result:
+        frame.detections.xyxy[0, 1] = 100  # A is 100 px tall
+        frame.ball.xyxy[:] = [[135, 195, 145, 205]]  # 40 px from A, 30 from B
+    assert tv.analysis.ball_carriers(result) == [None, None, 1]
+
+
+def test_glossary_definitions():
+    # Ball carrier: the nearest player close enough to the ball (above).
+    # Possession: a team's share of the frames with one of its players as carrier.
+    # Pass: a change of carrier between two players of the same team, so not
+    # a change to the other team, and not a carrier keeping the ball after a
+    # loose spell, while a teammate taking a loose ball is one.
+    result = _play("AAA...AAA...BBBCCC")
+    carriers = tv.analysis.ball_carriers(result)
+    assert _letters(carriers) == "..AAA...AAA...BBBC"
+    passes = tv.analysis.passes(result, carriers)
+    assert passes[["from_track_id", "to_track_id"]].values.tolist() == [[1, 2]]
+    assert tv.analysis.possession(result, carriers) == pytest.approx({0: 0.9, 1: 0.1})
+
+
+def test_carriers_need_tracker_ids():
+    result = _play("AAA", tracked=False)
+    assert tv.analysis.ball_carriers(result) == [None, None, None]
+
+
+def test_possession_and_passes_check_the_carriers():
+    result = _play("AAA")
+    with pytest.raises(ValueError, match="one carrier per frame"):
+        tv.analysis.possession(result, [1, 1])
+    with pytest.raises(ValueError, match="one carrier per frame"):
+        tv.analysis.passes(result, [1])
+    with pytest.raises(ValueError, match="no ball carrier"):
+        tv.analysis.possession(result, [None, None, None])
+    with pytest.raises(ValueError, match="no ball carrier"):
+        tv.analysis.possession(result, [None, None, 1], slice(0, 2))
+
+
+def test_the_carrier_table_gives_track_and_team_per_frame():
+    result = _play("AAABBB.CCC", stride=2)
+    table = tv.analysis.carrier_table(result, tv.analysis.ball_carriers(result))
+    assert table.columns.tolist() == ["frame", "time", "track_id", "team_id"]
+    assert table["frame"].tolist() == list(range(0, 20, 2))
+    assert table["time"].iloc[1] == pytest.approx(0.08)
+    # At 0.08 s a frame, two frames in a row confirm a carrier.
+    assert table["track_id"].tolist() == [pd.NA, 1, 1, 1, 2, 2, 2, 2, 3, 3]
+    assert table["team_id"].tolist() == [pd.NA, 0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+def test_export_writes_the_carrier_and_pass_tables(tmp_path):
+    result = _play("AAABBB.CCC", stride=2)
+    out = result.export(tmp_path / "run", team_names=["Home", "Away"])
+    carriers = pd.read_csv(out / "carriers.csv", keep_default_na=False)
+    assert carriers.columns.tolist() == [
+        "frame", "time", "track_id", "team_id", "team_name"
+    ]  # fmt: skip
+    assert carriers["track_id"].astype(str).tolist() == [
+        "", "1", "1", "1", "2", "2", "2", "2", "3", "3"
+    ]  # fmt: skip
+    assert carriers["team_name"].tolist()[0:2] + carriers["team_name"].tolist()[-1:] == [
+        "", "Home", "Away"
+    ]  # fmt: skip
+    assert pd.read_csv(out / "passes.csv").to_dict("records") == [{
+        "team_id": 0, "team_name": "Home", "from_track_id": 1, "to_track_id": 2,
+        "from_frame": 6, "to_frame": 8,
+    }]  # fmt: skip
+    # Without names the column is empty; a result without a carrier still
+    # writes both tables with their headers.
+    unnamed = _play("...", stride=2).export(tmp_path / "unnamed")
+    assert pd.read_csv(unnamed / "carriers.csv")["team_name"].isna().all()
+    assert pd.read_csv(unnamed / "passes.csv").columns.tolist() == [
+        "team_id", "team_name", "from_track_id", "to_track_id", "from_frame", "to_frame"
+    ]  # fmt: skip
+
+
+def test_a_person_without_a_box_never_takes_the_ball():
+    result = _play("AAAA")
+    for frame in result:
+        frame.detections.xyxy[1] = np.nan  # B
+    assert _letters(tv.analysis.ball_carriers(result)) == "..AA"
+    loose = _play("....")
+    for frame in loose:
+        frame.detections.xyxy[1] = np.nan
+    assert set(tv.analysis.ball_carriers(loose)) == {None}
+
+
+@pytest.mark.parametrize("carrier", [42, 9])  # not in the result; the referee
+def test_carriers_must_be_people_who_can_carry_the_ball(carrier):
+    with pytest.raises(ValueError, match=f"{carrier}.*ball_carriers"):
+        tv.analysis.passes(_play("AAA"), [None, 1, carrier])
+
+
+@pytest.mark.parametrize(
+    ("stride", "carriers"),
+    [(1, "..AAAAAA"), (2, ".AAABB.."), (10, "AAABB..A")],
+)
+def test_the_hysteresis_is_in_seconds_at_any_stride(stride, carriers):
+    # 0.12 s is three frames at 25 fps, two at 12.5 and one at 2.5.
+    assert (
+        _letters(tv.analysis.ball_carriers(_play("AAABB..A", stride=stride)))
+        == carriers
+    )
+
+
+def test_the_carrier_is_held_while_the_ball_is_unseen_for_up_to_max_gap():
+    # The ball is last seen at 0.08 s; 1 s later the carrier is gone.
+    result = _play("AAA" + "-" * 30)
+    assert _letters(tv.analysis.ball_carriers(result)) == "..A" + "A" * 24 + "." * 6
+    assert _letters(tv.analysis.ball_carriers(result, max_gap=np.inf))[-1] == "A"
+    # The gap also ends a challenge: B, seen twice before it, needs three
+    # frames again after it.
+    result = _play("AAABB" + "-" * 30 + "BB")
+    assert _letters(tv.analysis.ball_carriers(result))[-3:] == "..."
+    assert _letters(tv.analysis.ball_carriers(result, max_gap=2.0))[-3:] == "ABB"
+
+
+def test_export_checks_the_carrier_options_before_writing(tmp_path):
+    with pytest.raises(ValueError, match="hysteresis"):
+        _play("AAA").export(tmp_path / "run", carrier_hysteresis=-1.0)
+    assert not (tmp_path / "run").exists()
+    out = _play("AAA").export(tmp_path / "set", carrier_hysteresis=0.0)
+    assert pd.read_csv(out / "carriers.csv")["track_id"].tolist() == [1, 1, 1]

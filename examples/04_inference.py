@@ -50,7 +50,8 @@ result = pipeline.run(VIDEO, end=250)
 print(result.to_dataframe().head())
 print("tracks:", len(result.track_ids))
 
-result.export(OUT, period=1)  # result.pkl, tracks.csv, freeze_frames.csv
+# result.pkl, tracks.csv, freeze_frames.csv, carriers.csv, passes.csv
+result.export(OUT, period=1)
 
 # Swapping a component is plain Python: here RF-DETR replaces YOLO.
 rfdetr_pipeline = tv.Pipeline(

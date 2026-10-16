@@ -294,8 +294,9 @@ freeze_frames = result.to_freeze_frames(period=1, period_start=17 * 60 + 15)
 freeze_frames[["frame_id", "period", "timestamp", "minute", "second", "player_id", "type", "team_id", "location"]].head()
 """)
     nb.md("""
-`export` writes the run folder's data files: `result.pkl`, `tracks.csv` and
-`freeze_frames.csv`. `tactifoot run` writes them through
+`export` writes the run folder's data files: `result.pkl`, `tracks.csv`,
+`freeze_frames.csv`, and the `tv.analysis` tables `carriers.csv` and
+`passes.csv`. `tactifoot run` writes them through
 `tv.run_file.load(run_file).run(video, output_dir, ...)`, which also renders
 `annotated.mp4`. `save` and `PipelineResult.load` keep the whole result for
 later, for example to render it again with other settings (see
