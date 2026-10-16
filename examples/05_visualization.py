@@ -24,9 +24,13 @@ trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=1.0).annotate(
     frame, frame_result, history=result.window(frame_result.index, 1.0)
 )
 radar = tv.viz.PitchRadar(draw_ids=True).draw(frame_result)
+# Each person's last two seconds as a tail on the radar.
+tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
+    frame_result, history=result.window(frame_result.index, 2.0)
+)
 tv.show(
-    [standard, game, trail, radar],
-    titles=["standard", "video game", "ball trail", "radar"],
+    [standard, game, trail, radar, tails],
+    titles=["standard", "video game", "ball trail", "radar", "radar tails"],
     cols=1,
 ).savefig(OUT / "frame_views.png")
 tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
@@ -39,6 +43,7 @@ video_path = tv.viz.render_video(
     VIDEO,
     OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(trail_seconds=1.0),
+    radar=tv.viz.PitchRadar(trail_seconds=2.0),
 )
 print("video:", video_path)
 

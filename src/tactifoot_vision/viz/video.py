@@ -44,8 +44,9 @@ def render_video(
             must hold every frame of the result (``RuntimeError`` otherwise).
         output: ``.mp4`` path to write (parent folders are created).
         annotator: frame drawing; default ``FrameAnnotator(pitch=result.pitch)``.
-            Each frame is drawn with ``history=result.window(index, seconds)``
-            for the longest ``trail_seconds`` among the drawers (ADR 0003).
+            Each frame is drawn, by the annotator and the radar, with
+            ``history=result.window(index, seconds)`` for the longest
+            ``trail_seconds`` among the drawers (ADR 0003).
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
             ``False`` for none.
         overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding:
@@ -54,9 +55,9 @@ def render_video(
         progress: show a progress bar.
         birds_eye: write the bird's-eye video instead: each frame is the radar
             drawn on the frame warped onto the pitch (``radar.draw(frame_result,
-            frame=frame)``), at the radar's size rounded up to even numbers
-            of pixels (the encoder needs them). The annotator and the overlay
-            settings are not used; ``radar=False`` is an error.
+            frame=frame, history=history)``), at the radar's size rounded up
+            to even numbers of pixels (the encoder needs them). The annotator
+            and the overlay settings are not used; ``radar=False`` is an error.
 
     Returns:
         The written path. Settings are checked before ``output`` is opened, an
@@ -143,19 +144,19 @@ def render_video(
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
+            history = result.window(index, trail_seconds) if trail_seconds else None
             if birds_eye:  # check_render_options: there is a radar
-                image = radar.draw(frame_result, frame=frame)
+                image = radar.draw(frame_result, frame=frame, history=history)
                 image = cv2.copyMakeBorder(
                     image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
                     cv2.BORDER_REPLICATE,
                 )  # fmt: skip
             else:
-                history = result.window(index, trail_seconds) if trail_seconds else None
                 image = annotator.annotate(frame, frame_result, history=history)
                 if radar:
                     image = overlay(
                         image,
-                        radar.draw(frame_result),
+                        radar.draw(frame_result, history=history),
                         position=overlay_position,
                         width_fraction=overlay_width_fraction,
                         alpha=overlay_alpha,

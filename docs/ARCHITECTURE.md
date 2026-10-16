@@ -81,7 +81,8 @@ src/tactifoot_vision/
                       ball.py (track_ball), tracks.py (join_tracks)
   analysis/           direction.py (attack_direction), space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
-                      subpixel.py (fixed-point coordinates for cv2 drawing)
+                      subpixel.py (fixed-point coordinates for cv2 drawing),
+                      trail.py (fading trails from history: ball trail, radar tails)
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
@@ -436,14 +437,19 @@ nothing (`PipelineResult.export` writes their tables).
   homography (none without one; no pixel fallback), broken at frames without
   a ball position (filled-in `interpolated` ones draw like any other), in
   `ball_color` with opacity falling linearly to zero at `trail_seconds`.
-* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None)`
+* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
   pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
   opacity; a `frame` (the video frame of `frame_result`) is the background,
   warped through `frame_result.homography` straight into the radar's canvas
   (the bird's-eye view at the radar's scale, no resampled `warp_to_pitch`
   image), the pitch colour where the frame shows nothing or there is no
-  homography;
+  homography. `trail_seconds` (off by default) draws motion tails from
+  `history`, as the ball trail does: each person's tail joins the earlier
+  `pitch_xy` of the same `tracker_id` within `trail_seconds`, in the dot's
+  colour (`default_color` without a team), broken at frames where the track
+  is missing or has no pitch position, fading linearly to zero at
+  `trail_seconds`, under the dots;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
@@ -472,10 +478,10 @@ nothing (`PipelineResult.export` writes their tables).
   overlay_position="bottom-center", overlay_width_fraction=0.25,
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
   birds_eye=False)` → output path; `source=None` uses `result.video_path`.
-  The annotator gets `history=result.window(index, seconds)` for the longest
-  `trail_seconds` among the drawers, `None` without a trail.
+  The annotator and the radar get `history=result.window(index, seconds)` for
+  the longest `trail_seconds` among them, `None` without a trail.
   `birds_eye=True` writes the bird's-eye video: each frame is
-  `radar.draw(frame_result, frame=frame)`, padded to even pixel sizes for the
+  `radar.draw(frame_result, frame=frame, history=history)`, padded to even pixel sizes for the
   encoder; the annotator and overlay settings are not used, and `radar=False`
   is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
