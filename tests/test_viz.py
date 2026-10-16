@@ -12,6 +12,7 @@ from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 
 import tactifoot_vision.viz as viz
+from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
@@ -240,6 +241,87 @@ def test_radar_draw_points_and_nan() -> None:
     assert (radar.draw_points(xy, colors="#FF0000") == image).all()
     with pytest.raises(ValueError, match="colours"):
         radar.draw_points(xy, colors=["#FF0000"])
+
+
+def test_radar_draws_space_control_under_the_lines_and_players(
+    result: PipelineResult,
+) -> None:
+    radar = viz.PitchRadar(width_px=400, padding_px=20)
+    grid = _halves()
+    empty = radar.draw()
+    image = radar.draw(space_control=grid)
+    assert image.shape == empty.shape and image.dtype == np.uint8
+    left, right = radar.to_pixels([[20, 50], [85, 50]]).round().astype(int)
+    pitch_bgr = np.array(radar.pitch_color.as_bgr())
+    for (x, y), team in ((left, 0), (right, 1)):
+        tint = image[y, x].astype(int) - pitch_bgr  # towards the team's colour
+        team_bgr = np.array(radar.team_colors[team].as_bgr()) - pitch_bgr
+        assert (np.sign(tint) == np.sign(team_bgr)).all() and np.abs(tint).sum() > 60
+    assert (image[:20] == empty[:20]).all()  # the padding stays the pitch colour
+    x, y = radar.to_pixels([[52.5, 50]]).round().astype(int)[0]
+    assert (image[y, x] > 200).all()  # the white halfway line is drawn on top
+    players = radar.draw(result[0], space_control=grid)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(players[y, x]) == sv.Color.from_hex("#00BFFF").as_bgr()
+    assert (radar.draw() == empty).all()  # the plain radar is unchanged
+
+
+def _halves() -> SpaceControl:
+    """Team 0 holds the left half of the pitch, team 1 the right half."""
+    control = np.zeros((68, 105))
+    control[:, :52] = 1
+    return SpaceControl(control, PITCH)
+
+
+def test_draw_space_control_on_any_top_down_image() -> None:
+    image = np.full((160, 250, 3), 50, dtype=np.uint8)
+    # 2 px per metre, the pitch's corner at pixel (20, 10).
+    pitch_to_image = np.array([[2.0, 0, 20], [0, 2.0, 10], [0, 0, 1]])
+    out = viz.draw_space_control(
+        image, _halves(), pitch_to_image, ("#FF0000", "#0000FF"), alpha=0.5
+    )
+    assert out.shape == image.shape and out.dtype == np.uint8 and (image == 50).all()
+    assert tuple(out[78, 60]) == (25, 25, 152)  # pitch (20, 34): team 0, red
+    assert tuple(out[78, 190]) == (152, 25, 25)  # pitch (85, 34): team 1, blue
+    outside = np.ones(image.shape[:2], bool)
+    outside[10:147, 20:231] = False
+    assert (out[outside] == 50).all()  # nothing drawn off the pitch
+
+
+def test_draw_space_control_through_a_perspective() -> None:
+    # A bird's-eye view that narrows towards the far touchline.
+    corners = np.float32([[0, 0], [105, 0], [105, 68], [0, 68]])
+    pixels = np.float32([[80, 20], [240, 20], [310, 220], [10, 220]])
+    pitch_to_image = cv2.getPerspectiveTransform(corners, pixels)
+    image = np.zeros((240, 320, 3), dtype=np.uint8)
+    out = viz.draw_space_control(image, _halves(), pitch_to_image, alpha=1.0)
+    team0, team1 = (sv.Color.from_hex(c).as_bgr() for c in viz.radar.TEAM_COLORS)
+    for xy, color in (([20, 60], team0), ([85, 10], team1)):
+        x, y = cv2.perspectiveTransform(np.float32([[xy]]), pitch_to_image)[0, 0]
+        assert tuple(out[round(y), round(x)]) == color
+    assert (out[:15] == 0).all() and (out[225:] == 0).all()
+
+
+def test_draw_space_control_checks_its_settings() -> None:
+    image = np.zeros((10, 10, 3), dtype=np.uint8)
+    grid, matrix = _halves(), np.eye(3)
+    with pytest.raises(ValueError, match="alpha must be in"):
+        viz.draw_space_control(image, grid, matrix, alpha=1.5)
+    with pytest.raises(ValueError, match="two team colours"):
+        viz.draw_space_control(image, grid, matrix, team_colors=["#FF0000"])
+    with pytest.raises(ValueError, match="3 x 3"):
+        viz.draw_space_control(image, grid, np.eye(2))
+
+
+def test_radar_space_control_needs_the_radar_pitch_and_two_colours() -> None:
+    grid = SpaceControl(np.full((68, 105), 0.5), SoccerPitch(120, 80))
+    with pytest.raises(ValueError, match="pitch"):
+        viz.PitchRadar().draw(space_control=grid)
+    grid = SpaceControl(np.full((68, 105), 0.5), PITCH)
+    with pytest.raises(ValueError, match="two team colours"):
+        viz.PitchRadar(team_colors=["#FF0000"]).draw(space_control=grid)
+    with pytest.raises(ValueError, match="space_control_alpha"):
+        viz.PitchRadar(space_control_alpha=1.5)
 
 
 @pytest.mark.parametrize(

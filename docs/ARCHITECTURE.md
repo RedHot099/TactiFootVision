@@ -41,7 +41,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
-| Match analysis | `tv.analysis` | `attack_direction` |
+| Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
@@ -79,7 +79,7 @@ src/tactifoot_vision/
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks)
-  analysis/           direction.py (attack_direction)
+  analysis/           direction.py (attack_direction), space.py (space_control)
   viz/                annotate.py, radar.py, video.py, plots.py
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
@@ -128,6 +128,7 @@ configs/              example run files
 * `pipeline/ball.py`: `track_ball`
 * `pipeline/tracks.py`: `join_tracks`
 * `analysis/direction.py`: `attack_direction`
+* `analysis/space.py`: `SpaceControl`, `space_control`
 
 ## Module specifications
 
@@ -402,18 +403,39 @@ nothing (`PipelineResult.export` writes their tables).
   directions. Anything but two teams with pitch positions, or two means
   less than `min_separation` (1 m by default, along a 105 m length) apart,
   is a `ValueError`.
+* `space_control(result, frames=None, cell_size=1.0, smoothing=1.2)` →
+  `SpaceControl(control, pitch)`: team 0's control against team 1 per cell,
+  in `[0, 1]` (`0.5`: shared), by the nearest-player rule, a smoothed
+  Voronoi partition. A cell's control is the sigmoid of how much nearer team
+  0's nearest player is than team 1's, over `smoothing` metres; `0` gives the
+  hard partition. Everyone with a team and a pitch position counts. Rows run
+  along `y` and columns along `x` (`SpaceControl.y`, `.x`: cell centres in
+  pitch units), so the array reads like the radar; cells are about
+  `cell_size` metres and tile the pitch exactly. `frames` is a position in
+  `result.frames`, a slice or `None` (every frame); over several frames the
+  control is the mean, leaving out frames without a positioned player in
+  each team. No such frame is a `ValueError`. `SpaceControl` refuses a
+  control that is not a non-empty 2-D array of values in `[0, 1]`.
 
 ### Results visualisation (`tv.viz`)
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
-* `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
+* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None)` → top-down
+  pitch image; a `SpaceControl` on the radar's pitch tints the pitch under the
+  lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
+  opacity;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
   for a `radius` override, by `draw_points`;
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame;
   `tv.viz.check_overlay(...)` checks those settings without a frame.
+* `draw_space_control(image, space_control, pitch_to_image, team_colors=TEAM_COLORS,
+  alpha=0.5)` → a copy of a top-down image (radar or bird's-eye view) with
+  the pitch tinted from team 1's colour (control `0`) to team 0's (`1`).
+  `pitch_to_image` is the 3x3 pitch → pixel homography; off the pitch the
+  image is unchanged.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
