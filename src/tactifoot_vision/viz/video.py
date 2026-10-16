@@ -156,7 +156,11 @@ def render_video(
                 if radar:
                     image = overlay(
                         image,
-                        radar.draw(frame_result, history=history),
+                        radar.draw(
+                            frame_result,
+                            history=history,
+                            frame_size=result.frame_size,
+                        ),
                         position=overlay_position,
                         width_fraction=overlay_width_fraction,
                         alpha=overlay_alpha,

@@ -28,9 +28,20 @@ radar = tv.viz.PitchRadar(draw_ids=True).draw(frame_result)
 tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
     frame_result, history=result.window(frame_result.index, 2.0)
 )
+# The part of the pitch the camera shows, outlined under the players.
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(
+    frame_result, frame_size=result.frame_size
+)
 tv.show(
-    [standard, game, trail, radar, tails],
-    titles=["standard", "video game", "ball trail", "radar", "radar tails"],
+    [standard, game, trail, radar, tails, visible],
+    titles=[
+        "standard",
+        "video game",
+        "ball trail",
+        "radar",
+        "radar tails",
+        "visible area",
+    ],
     cols=1,
 ).savefig(OUT / "frame_views.png")
 tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
@@ -43,7 +54,7 @@ video_path = tv.viz.render_video(
     VIDEO,
     OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(trail_seconds=1.0),
-    radar=tv.viz.PitchRadar(trail_seconds=2.0),
+    radar=tv.viz.PitchRadar(trail_seconds=2.0, draw_visible_area=True),
 )
 print("video:", video_path)
 

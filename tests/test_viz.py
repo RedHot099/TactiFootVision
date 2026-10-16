@@ -20,7 +20,12 @@ from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.models.base import TrainResult
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
-from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
+from tactifoot_vision.pitch import (
+    SoccerPitch,
+    frame_to_pitch,
+    pitch_to_frame,
+    visible_area,
+)
 
 matplotlib.use("Agg")
 
@@ -622,6 +627,106 @@ def test_radar_tail_length_must_be_positive(seconds: float) -> None:
         viz.PitchRadar(trail_seconds=seconds)
 
 
+# ------------------------------------------------------------- visible area
+# frame -> pitch: 8 px a metre, the frame's top-left corner at (20, 15), so
+# the visible area is [20, 60] x [15, 45], clear of the pitch markings.
+VISIBLE = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
+
+
+def _area_radar(draw_visible_area: bool = True) -> viz.PitchRadar:
+    """Red team 0, white 3 px lines and a green outline on a black pitch."""
+    return viz.PitchRadar(
+        draw_visible_area=draw_visible_area, visible_area_color=GREEN,
+        team_colors=(RED, BLUE), pitch_color=BLACK, line_thickness=3,
+    )  # fmt: skip
+
+
+def _outlined(pixel: np.ndarray) -> bool:
+    return tuple(pixel) == (0, 255, 0)
+
+
+def _visible_in(homography: np.ndarray | None, *people) -> FrameResult:
+    return dataclasses.replace(_people_at(0, *people), homography=homography)
+
+
+def test_radar_outlines_the_visible_area_under_the_players() -> None:
+    radar = _area_radar()
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))  # on the top edge
+    image = radar.draw(now, frame_size=(W, H))
+    for x, y in ((30, 15), (60, 30), (50, 45), (20, 30)):  # one point per edge
+        assert _outlined(_at(radar, image, x, y))
+    assert (_at(radar, image, 30, 30) == 0).all()  # inside
+    assert (_at(radar, image, 10, 30) == 0).all()  # outside
+    assert tuple(_at(radar, image, 40, 15)) == (0, 0, 255)  # the dot on top
+    # The frame gives the frame size, and the outline is drawn over it.
+    frame = np.full((H, W, 3), 90, dtype=np.uint8)
+    over_frame = radar.draw(now, frame=frame)
+    assert _outlined(_at(radar, over_frame, 30, 15))
+    assert (_at(radar, over_frame, 30, 30) == 90).all()
+
+
+def test_radar_draws_no_visible_area_beyond_the_horizon_or_without_a_homography() -> (
+    None
+):
+    radar = _area_radar()
+    plain = radar.draw(_visible_in(None), frame_size=(W, H))
+    assert (plain == _area_radar(False).draw(_visible_in(None))).all()
+    # The horizon at y = 33: the bottom of the frame lies beyond it.
+    beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
+    assert (radar.draw(_visible_in(beyond), frame_size=(W, H)) == plain).all()
+
+
+def test_radar_outlines_a_visible_area_reaching_towards_the_horizon() -> None:
+    # The horizon just below the frame: its bottom corners lie about 1e9 m
+    # away, far past the radar, and the outline is cut at the radar's edge.
+    to_horizon = np.diag([1.0, 1.0, 1.0])
+    to_horizon[2, 1] = -(1 - 1e-8) / H
+    homography = VISIBLE @ to_horizon
+    assert np.abs(visible_area(homography, (W, H))).max() > 1e9
+    radar = _area_radar()
+    image = radar.draw(_visible_in(homography), frame_size=(W, H))
+    assert _outlined(_at(radar, image, 30, 15))  # the top edge
+    assert _outlined(_at(radar, image, 20, 60))  # the left edge, to the touchline
+    assert (_at(radar, image, 30, 30) == 0).all()  # inside
+
+
+def test_radar_visible_area_is_off_by_default() -> None:
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))
+    today = _area_radar(False).draw(now)
+    assert (_area_radar(False).draw(now, frame_size=(W, H)) == today).all()
+    assert (_area_radar().draw(now, frame_size=(W, H)) != today).any()
+
+
+def test_radar_visible_area_has_its_own_colour() -> None:
+    radar = viz.PitchRadar(draw_visible_area=True, line_thickness=3)
+    image = radar.draw(_visible_in(VISIBLE), frame_size=(W, H))
+    outline = sv.Color.from_hex(viz.radar.VISIBLE_AREA_COLOR).as_bgr()
+    assert outline != radar.line_color.as_bgr()  # not the markings' white
+    assert tuple(_at(radar, image, 30, 15)) == outline
+    with pytest.raises(ValueError):
+        viz.PitchRadar(visible_area_color="nope")
+
+
+def test_radar_visible_area_needs_the_frame_size() -> None:
+    with pytest.raises(ValueError, match="frame_size"):
+        _area_radar().draw(_visible_in(VISIBLE))
+    assert (_area_radar().draw() == _area_radar(False).draw()).all()  # no frame
+
+
+def test_the_visible_area_is_what_warp_to_pitch_shows() -> None:
+    px_per_m = 4
+    shown = viz.warp_to_pitch(_frame(), HOMOGRAPHY, PITCH, px_per_m)[..., 3] > 0
+    outline = cv2.perspectiveTransform(
+        visible_area(HOMOGRAPHY, (W, H))[None],
+        viz.pitch_to_birds_eye(PITCH, px_per_m),
+    )[0]
+    inside = np.zeros(shown.shape, np.uint8)
+    cv2.fillPoly(inside, [np.round(outline).astype(np.int32)], 1)
+    edge = cv2.dilate(inside, np.ones((3, 3))) != cv2.erode(inside, np.ones((3, 3)))
+    assert shown.sum() > 10_000
+    assert (shown == inside.astype(bool))[~edge].all()
+
+
 # ------------------------------------------------------------ bird's-eye view
 def _pitch_template(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
     """Top-down pitch, BGR: a colour gradient along both axes and white lines."""
@@ -987,9 +1092,10 @@ class _RadarHistorySpy(viz.PitchRadar):
         super().__init__(**kwargs)
         self.histories: list[list[int] | None] = []
 
-    def draw(self, frame_result=None, space_control=None, frame=None, history=None):
+    def draw(self, frame_result=None, space_control=None, frame=None, **kwargs):
+        history = kwargs.get("history")
         self.histories.append(None if history is None else [f.index for f in history])
-        return super().draw(frame_result, space_control, frame, history=history)
+        return super().draw(frame_result, space_control, frame, **kwargs)
 
 
 @pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
@@ -1006,6 +1112,21 @@ def test_render_video_windows_the_longer_of_the_annotator_and_radar_trails(
     assert longer == [[], [0], [0, 2], [2, 4], [4, 6]]
     assert radar.histories == longer
     assert annotator.histories == ([] if birds_eye else longer)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_a_render_with_the_visible_area_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=viz.PitchRadar(**options),
+            birds_eye=birds_eye, progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, outlined = render("plain.mp4"), render("area.mp4", draw_visible_area=True)
+    assert all((p != o).any() for p, o in zip(plain, outlined, strict=True))
 
 
 # --------------------------------------------------------------------- plots

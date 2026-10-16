@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import supervision as sv
 
-from tactifoot_vision.pitch.homography import frame_to_pitch, project_points
+from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
 NO_TEAM = -1
@@ -317,16 +317,10 @@ class PipelineResult:
         self, period: int, period_start: float, names: list[str] | None
     ) -> pd.DataFrame:
         """:meth:`to_freeze_frames` with ``period_start`` and ``names`` resolved."""
-        width, height = self.frame_size
-        corners = np.array([[0, 0], [width, 0], [width, height], [0, height]], float)
-        centre = (width / 2, height / 2)
         rows: list[dict] = []
         for f in self.frames:
             t = period_start + f.timestamp
-            visible_area = None
-            if f.homography is not None:
-                outline, in_front = project_points(corners, f.homography, centre)
-                visible_area = outline.reshape(-1) if in_front.all() else None
+            area = visible_area(f.homography, self.frame_size)
             base = {
                 "frame_id": f.index,
                 "period": period,
@@ -335,7 +329,7 @@ class PipelineResult:
                 "minute": math.floor(t / 60),
                 "second": math.floor(t % 60),
                 "homography_matrix": _json(f.homography),
-                "visible_area": _json(visible_area),
+                "visible_area": _json(None if area is None else area.reshape(-1)),
             }
             for kind, detections, pitch_xy, team_ids in _objects(f):
                 for obj in _object_rows(detections, pitch_xy, team_ids, names):

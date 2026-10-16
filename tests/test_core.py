@@ -20,6 +20,7 @@ from tactifoot_vision.pitch import (
     frame_to_pitch,
     pitch_markings,
     pitch_to_frame,
+    visible_area,
 )
 from tactifoot_vision.registry import Registry
 
@@ -567,6 +568,20 @@ def test_visible_area_is_none_when_a_corner_lies_beyond_the_horizon():
     assert result.to_freeze_frames()["visible_area"].iloc[0] is None
     result.frames[0].homography = np.array([[1, 0, 0], [0, 1, 0], [0, 0.001, 1.0]])
     assert json.loads(result.to_freeze_frames()["visible_area"].iloc[0])
+
+
+def test_visible_area_is_the_frame_outline_on_the_pitch():
+    # frame -> pitch: 8 px a metre, the frame's top-left corner at (20, 15)
+    homography = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
+    np.testing.assert_allclose(
+        visible_area(homography, (320, 240)),
+        [[20, 15], [60, 15], [60, 45], [20, 45]],
+    )
+    # The horizon at y = 33 of a 100 x 50 frame: no outline.
+    beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
+    assert visible_area(beyond, (100, 50)) is None
+    assert visible_area(None, (100, 50)) is None
+    assert tv.pitch.visible_area is visible_area
 
 
 # ------------------------------------------------------- review round 3 (Fable)

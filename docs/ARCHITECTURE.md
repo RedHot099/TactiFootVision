@@ -125,7 +125,10 @@ configs/              example run files
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`,
+  `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
+  without a homography or when part of the frame lies beyond the horizon;
+  freeze frames and the radar use it)
 * `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, frame windows, save/load)
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`
@@ -322,8 +325,8 @@ configs/              example run files
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
   `second` follow that match clock, `timestamp` is that match clock too
   (StatsBomb's event timestamp restarts every period), and `visible_area` is
-  StatsBomb's flat `[x1, y1, x2, y2, ...]` polygon (`None` when part of the
-  frame lies beyond the horizon).
+  StatsBomb's flat `[x1, y1, x2, y2, ...]` polygon of `tv.pitch.visible_area`
+  (`None` when part of the frame lies beyond the horizon).
   With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
   `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
   covers, so memory grows with the people's area, not the frame area.
@@ -437,7 +440,8 @@ nothing (`PipelineResult.export` writes their tables).
   homography (none without one; no pixel fallback), broken at frames without
   a ball position (filled-in `interpolated` ones draw like any other), in
   `ball_color` with opacity falling linearly to zero at `trail_seconds`.
-* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None)`
+* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
+  frame_size=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
   pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
   opacity; a `frame` (the video frame of `frame_result`) is the background,
@@ -449,7 +453,11 @@ nothing (`PipelineResult.export` writes their tables).
   `pitch_xy` of the same `tracker_id` within `trail_seconds`, in the dot's
   colour (`default_color` without a team), broken at frames where the track
   is missing or has no pitch position, fading linearly to zero at
-  `trail_seconds`, under the dots;
+  `trail_seconds`, under the dots. `draw_visible_area` (off by default)
+  outlines `tv.pitch.visible_area` in `visible_area_color` (gold, apart from
+  the white markings) under the tails and dots,
+  cut to the image, and needs `frame_size` (default the size of `frame`);
+  nothing without a homography or when part of the frame lies beyond the horizon;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
@@ -479,7 +487,8 @@ nothing (`PipelineResult.export` writes their tables).
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
   birds_eye=False)` → output path; `source=None` uses `result.video_path`.
   The annotator and the radar get `history=result.window(index, seconds)` for
-  the longest `trail_seconds` among them, `None` without a trail.
+  the longest `trail_seconds` among them, `None` without a trail; the overlay
+  radar gets `frame_size=result.frame_size`.
   `birds_eye=True` writes the bird's-eye video: each frame is
   `radar.draw(frame_result, frame=frame, history=history)`, padded to even pixel sizes for the
   encoder; the annotator and overlay settings are not used, and `radar=False`

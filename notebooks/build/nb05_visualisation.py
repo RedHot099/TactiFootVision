@@ -167,6 +167,17 @@ tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(trail_result, history=result.w
 tv.show(tails, titles=f"trail_seconds=2.0 at frame {trail_result.index}", width=7)
 """)
     nb.md("""
+`draw_visible_area` outlines the frame's visible area, the part of the pitch
+the camera shows, under the players, in `visible_area_color`. It is `tv.pitch.visible_area`, the
+polygon freeze frames export, and needs the frame size: pass
+`frame_size=result.frame_size`, or the `frame`. There is no outline without a
+homography or when part of the frame lies beyond the horizon.
+""")
+    nb.code("""
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_size=result.frame_size)
+tv.show(visible, titles="draw_visible_area=True", width=7)
+""")
+    nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
 `width_fraction` the size and `alpha` the opacity.
 """)
@@ -188,13 +199,14 @@ frame size differs from the result's and a radar or annotator drawing another
 pitch, and warns when the frame rates differ.
 Pass your own annotator and radar, or `radar=False` for none. With a
 `trail_seconds` annotator or radar, `render_video` passes each frame its
-`history` itself, for the longer of the two.
+`history` itself, for the longer of the two, and the radar the frame size
+its visible area needs.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
     result, VIDEO, OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
-    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0),
+    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
     progress=False,
 )

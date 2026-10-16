@@ -8,9 +8,10 @@ import supervision as sv
 
 from tactifoot_vision.analysis.space import SpaceControl
 from tactifoot_vision.pipeline.result import FrameResult
+from tactifoot_vision.pitch.homography import visible_area
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.birds_eye import _warp_frame
-from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
+from tactifoot_vision.viz.subpixel import SUBPIXEL, clip_segment, to_fixed
 from tactifoot_vision.viz.trail import draw_trail, trail_frames
 
 type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
@@ -19,6 +20,7 @@ type ColorLike = str | sv.Color | tuple[int, int, int] | list[int]
 TEAM_COLORS: tuple[str, ...] = ("#00BFFF", "#FF1493")
 DEFAULT_COLOR = "#FFFFFF"  # people without a team (referees, unassigned tracks)
 BALL_COLOR = "#FFFF00"
+VISIBLE_AREA_COLOR = "#FFD700"  # apart from the white markings
 PITCH_COLOR = "#22312B"
 LINE_COLOR = "#FFFFFF"
 
@@ -62,13 +64,17 @@ class PitchRadar:
     ``x`` runs left to right and ``y`` top to bottom, so the far touchline of a
     broadcast view is at the top, as on screen. With ``trail_seconds``, each
     person's movement over that many seconds is drawn as a tail from the
-    ``history`` passed to :meth:`draw` (ADR 0003).
+    ``history`` passed to :meth:`draw` (ADR 0003). With ``draw_visible_area``,
+    the part of the pitch the frame shows is outlined.
 
     >>> radar = PitchRadar()
     >>> image = radar.draw(result[0])          # BGR uint8
     >>> frame = overlay(frame, image)          # paste onto the video frame
     >>> tails = PitchRadar(trail_seconds=2.0).draw(
     ...     result.frame(index), history=result.window(index, 2.0)
+    ... )
+    >>> visible = PitchRadar(draw_visible_area=True).draw(
+    ...     result.frame(index), frame_size=result.frame_size
     ... )
     """
 
@@ -88,6 +94,8 @@ class PitchRadar:
         line_thickness: int | None = None,
         space_control_alpha: float = 0.5,
         trail_seconds: float | None = None,
+        draw_visible_area: bool = False,
+        visible_area_color: ColorLike = VISIBLE_AREA_COLOR,
     ) -> None:
         """
         Args:
@@ -102,6 +110,10 @@ class PitchRadar:
             trail_seconds: draw each person's path over the last this many
                 seconds under the dots, in their colour fading to nothing at
                 that age; ``None``: no tails.
+            draw_visible_area: outline the frame's visible area
+                (:func:`~tactifoot_vision.pitch.visible_area`) in
+                ``visible_area_color`` under the players; nothing without a
+                homography or when part of the frame lies beyond the horizon.
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -132,6 +144,7 @@ class PitchRadar:
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
         self.ball_color = as_color(ball_color)
+        self.visible_area_color = as_color(visible_area_color)
         if player_radius is None:
             player_radius = max(3, round(width_px / 80))
         if ball_radius is None:
@@ -144,6 +157,7 @@ class PitchRadar:
         self.draw_ids = draw_ids
         self.space_control_alpha = space_control_alpha
         self.trail_seconds = trail_seconds
+        self.draw_visible_area = draw_visible_area
         self._background = self._draw_background()
 
     @property
@@ -163,6 +177,7 @@ class PitchRadar:
         space_control: SpaceControl | None = None,
         frame: np.ndarray | None = None,
         history: Sequence[FrameResult] | None = None,
+        frame_size: tuple[int, int] | None = None,
     ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
@@ -181,6 +196,10 @@ class PitchRadar:
         ``history``: the results of the frames before ``frame_result``, oldest
         first, e.g. ``result.window(index, trail_seconds)``; only the motion
         tails use it, and they ignore frames older than ``trail_seconds``.
+
+        ``frame_size``: ``(width, height)`` of the video frame, e.g.
+        ``result.frame_size``, which the visible area needs; default the size
+        of ``frame``.
         """
         if frame is not None and frame_result is None:
             raise ValueError(
@@ -196,6 +215,15 @@ class PitchRadar:
             image = self._draw_background(space_control, frame, homography)
         if frame_result is None:
             return image
+        if self.draw_visible_area:
+            if frame_size is None and frame is not None:
+                frame_size = (frame.shape[1], frame.shape[0])
+            if frame_size is None:
+                raise ValueError(
+                    "draw_visible_area needs the frame size: pass "
+                    "frame_size=result.frame_size, or the frame"
+                )
+            self._draw_visible_area(image, frame_result.homography, frame_size)
         index = team_color_index(frame_result.team_ids, len(self.team_colors))
         palette = [*self.team_colors, self.default_color]
         tracker_id = frame_result.detections.tracker_id
@@ -299,6 +327,30 @@ class PitchRadar:
                 -1, cv2.LINE_AA, SUBPIXEL,
             )  # fmt: skip
         return image
+
+    def _draw_visible_area(
+        self,
+        image: np.ndarray,
+        homography: np.ndarray | None,
+        frame_size: tuple[int, int],
+    ) -> None:
+        """The visible area's outline, cut to the image: near the horizon its
+        corners lie too far away for cv2's fixed-point coordinates."""
+        area = visible_area(homography, frame_size)
+        if area is None:
+            return
+        corners = self.to_pixels(area)
+        margin = self.line_thickness + 2  # cut ends stay off the image
+        low, high = np.array([-margin, -margin]), np.add(self.size, margin)
+        edges = [
+            clip_segment(a, b, low, high)
+            for a, b in zip(corners, np.roll(corners, -1, axis=0), strict=True)
+        ]
+        cv2.polylines(
+            image, [to_fixed(e) for e in edges if e is not None], False,
+            self.visible_area_color.as_bgr(), self.line_thickness, cv2.LINE_AA,
+            SUBPIXEL,
+        )  # fmt: skip
 
     def _draw_tails(
         self,
