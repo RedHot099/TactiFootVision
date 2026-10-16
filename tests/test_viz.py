@@ -10,6 +10,7 @@ import pytest
 import supervision as sv
 from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
+from matplotlib.path import Path as MplPath
 
 import tactifoot_vision.viz as viz
 from tactifoot_vision.analysis import SpaceControl
@@ -351,6 +352,129 @@ def test_overlay_blends_and_validates() -> None:
         viz.overlay(frame, patch, position="middle-left")
     with pytest.raises(ValueError, match="alpha"):
         viz.overlay(frame, patch, alpha=2)
+
+
+# ------------------------------------------------------------ bird's-eye view
+def _pitch_template(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
+    """Top-down pitch, BGR: a colour gradient along both axes and white lines."""
+    height, width = round(68 * px_per_m), round(105 * px_per_m)
+    columns, rows = np.meshgrid(np.arange(width), np.arange(height))
+    image = np.dstack([40 + columns * 160 // width, 40 + rows * 160 // height,
+                       np.full_like(columns, 128)]).astype(np.uint8)  # fmt: skip
+    to_pixels = np.array([width / pitch.length, height / pitch.width])
+    lines, _ = viz.radar.pitch_markings(pitch)
+    for line in lines:
+        cv2.polylines(image, [np.round(line * to_pixels - 0.5).astype(np.int32)],
+                      False, (255, 255, 255), 2)  # fmt: skip
+    return image
+
+
+def _canvas_to_pitch(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
+    """Bird's-eye pixel (column, row) -> pitch: pixels tile the pitch."""
+    sx, sy = np.round(np.array([105, 68]) * px_per_m) / [pitch.length, pitch.width]
+    return np.array([[1 / sx, 0, 0.5 / sx], [0, 1 / sy, 0.5 / sy], [0, 0, 1]])
+
+
+@pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
+def test_pitch_to_birds_eye_is_the_warp_canvas(pitch: SoccerPitch) -> None:
+    to_image = viz.pitch_to_birds_eye(pitch, px_per_m=4)
+    np.testing.assert_allclose(to_image, np.linalg.inv(_canvas_to_pitch(pitch, 4)))
+
+
+def test_draw_space_control_on_a_birds_eye_view() -> None:
+    frame = np.full((H, W, 3), 200, dtype=np.uint8)
+    view = viz.warp_to_pitch(frame, HOMOGRAPHY, PITCH, px_per_m=2)
+    out = viz.draw_space_control(
+        view, _halves(), viz.pitch_to_birds_eye(PITCH, px_per_m=2),
+        ("#FF0000", "#0000FF"), alpha=0.5,
+    )  # fmt: skip
+    assert out.shape == view.shape and (out[..., 3] == view[..., 3]).all()
+    assert tuple(out[68, 80]) == (100, 100, 228, 255)  # pitch (40, 34): team 0, red
+    assert tuple(out[68, 130]) == (228, 100, 100, 255)  # pitch (65, 34): team 1
+    hidden = view[..., 3] == 0
+    assert (out[hidden] == 0).all()  # nothing tinted where the frame shows nothing
+
+
+@pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
+def test_warp_to_pitch_rectifies_a_synthetic_pitch(pitch: SoccerPitch) -> None:
+    to_pitch = np.diag([pitch.length / 105, pitch.width / 68, 1]) @ HOMOGRAPHY
+    template = _pitch_template(pitch, 4)
+    # The camera's view of the template, rendered through the known homography
+    # (frame coordinates are continuous: pixel centres at + 0.5).
+    canvas_to_frame = np.linalg.inv(to_pitch) @ _canvas_to_pitch(pitch, 4)
+    to_centres = np.array([[1, 0, -0.5], [0, 1, -0.5], [0, 0, 1]])
+    frame = cv2.warpPerspective(template, to_centres @ canvas_to_frame, (W, H))
+    out = viz.warp_to_pitch(frame, to_pitch, pitch, px_per_m=4)
+    assert out.shape == (272, 420, 4) and out.dtype == np.uint8
+    seen = cv2.erode((out[..., 3] == 255).astype(np.uint8), np.ones((5, 5)))
+    assert seen.sum() > 0.9 * 45 * 48 * 16  # most of the 45 x 48 m in view
+    error = np.abs(out[..., :3].astype(int) - template)[seen.astype(bool)]
+    assert error.mean() < 2.5  # resampled twice: the lines blur a little
+
+
+def test_warp_to_pitch_leaves_the_unseen_pitch_transparent() -> None:
+    frame = np.full((H, W, 3), 200, dtype=np.uint8)
+    out = viz.warp_to_pitch(frame, HOMOGRAPHY, PITCH, px_per_m=2)
+    assert out.shape == (136, 210, 4)
+    # Pixel centres inside the frame outline on the pitch (the visible area).
+    outline = frame_to_pitch(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), HOMOGRAPHY)
+    columns, rows = np.meshgrid(np.arange(210), np.arange(136))
+    centres = np.column_stack([columns.ravel(), rows.ravel()]) / 2 + 0.25
+    view = MplPath(outline).contains_points(centres).reshape(136, 210)
+    alpha = out[..., 3]
+    assert set(np.unique(alpha)) == {0, 255}
+    assert ((alpha == 255) == view).all()  # transparent outside the view
+    assert (out[alpha == 0, :3] == 0).all()  # with no colour invented
+    assert (out[alpha == 255, :3] == 200).all()
+
+
+def _camera(
+    position: np.ndarray,
+    target: tuple[float, float],
+    focal: float,
+    size: tuple[int, int],
+) -> np.ndarray:
+    """Pitch -> frame homography of a pinhole camera at ``position`` (x, y,
+    height in metres) looking at ``target`` on the pitch."""
+    forward = np.array([*target, 0.0]) - position
+    forward /= np.linalg.norm(forward)
+    right = np.cross(forward, [0, 0, 1.0])
+    right /= np.linalg.norm(right)
+    down = np.cross(forward, right)
+    rotation = np.array([right, down, forward])
+    translation = -rotation @ position
+    intrinsics = np.array([[focal, 0, size[0] / 2], [0, focal, size[1] / 2], [0, 0, 1]])
+    return intrinsics @ np.column_stack([rotation[:, :2], translation])
+
+
+def test_warp_to_pitch_does_not_smear_points_behind_the_camera() -> None:
+    # A low camera inside the pitch at x = 60, looking along the length with
+    # the horizon in the frame: the pitch behind it (x < 60) is never seen.
+    size = (640, 360)
+    to_frame = _camera(np.array([60.0, 34.0, 6.0]), (105.0, 34.0), 320, size)
+    frame = np.full((size[1], size[0], 3), 200, dtype=np.uint8)
+    canvas_to_frame = to_frame @ _canvas_to_pitch(PITCH, 2)
+    # A plain warp mirrors the pitch behind the camera into the sky ...
+    naive = cv2.warpPerspective(
+        frame, canvas_to_frame, (210, 136), flags=cv2.WARP_INVERSE_MAP
+    )
+    assert (naive[:, :110] > 0).mean() > 0.5
+    # ... warp_to_pitch leaves it transparent.
+    out = viz.warp_to_pitch(frame, np.linalg.inv(to_frame), PITCH, px_per_m=2)
+    assert (out[:, :120] == 0).all()  # column 120: the camera's x = 60 m at 2 px/m
+    assert (out[:, 200:, 3] == 255).all()  # x > 100 m: in front, in view
+
+
+def test_warp_to_pitch_checks_its_inputs() -> None:
+    frame = np.zeros((H, W, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="px_per_m"):
+        viz.warp_to_pitch(frame, HOMOGRAPHY, px_per_m=0)
+    with pytest.raises(ValueError, match="3 x 3"):
+        viz.warp_to_pitch(frame, np.eye(2))
+    with pytest.raises(ValueError, match="BGR uint8"):
+        viz.warp_to_pitch(frame[..., 0], HOMOGRAPHY)
+    with pytest.raises(ValueError, match="BGR uint8"):
+        viz.warp_to_pitch(frame.astype(np.float32), HOMOGRAPHY)
 
 
 # --------------------------------------------------------------------- video

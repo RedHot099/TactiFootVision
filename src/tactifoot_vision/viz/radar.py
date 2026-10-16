@@ -312,12 +312,14 @@ def draw_space_control(
     lines and players afterwards to keep them on top (``PitchRadar.draw`` does).
 
     Args:
-        image: BGR ``uint8`` image of the pitch seen from above: a radar or a
-            bird's-eye view of the video.
+        image: ``uint8`` image of the pitch seen from above: a BGR radar, or the
+            BGRA bird's-eye view of :func:`~tactifoot_vision.viz.warp_to_pitch`,
+            tinted only where it is not transparent, its alpha kept.
         space_control: from :func:`tactifoot_vision.analysis.space_control`.
         pitch_to_image: 3x3 homography from pitch coordinates (of
-            ``space_control.pitch``) to pixels of ``image``; an affine matrix
-            for a radar, a perspective one for a bird's-eye view.
+            ``space_control.pitch``) to pixels of ``image``, pixel centres at
+            integers; for ``warp_to_pitch``'s image it is
+            :func:`~tactifoot_vision.viz.pitch_to_birds_eye`.
         team_colors: team 0's colour, then team 1's.
         alpha: opacity of the tint (1 = opaque).
     """
@@ -366,9 +368,10 @@ def draw_space_control(
     colors = control * team0 + (1 - control) * team1
     out = image.copy()
     inside = on_pitch.astype(bool)
-    out[inside] = np.round(out[inside] * (1 - alpha) + colors[inside] * alpha).astype(
-        np.uint8
-    )
+    if image.shape[2] == 4:  # a bird's-eye view: tint only what the frame shows
+        inside &= image[..., 3] > 0
+    tinted = out[inside, :3] * (1 - alpha) + colors[inside] * alpha
+    out[inside, :3] = np.round(tinted).astype(np.uint8)
     return out
 
 
