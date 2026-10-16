@@ -207,6 +207,11 @@ class Pipeline:
             class_names=list(self.detector.class_names),
             pitch=self.pitch,
             video_path=reader.path,
+            # without a tracker the keys are made up per detection: no track to key
+            track_embeddings=samples.means() if self.tracker is not None else {},
+            track_embedding_samples=(
+                samples.counts() if self.tracker is not None else {}
+            ),
         )
 
     # -------------------------------------------------------------- per frame
@@ -382,6 +387,17 @@ class _TeamSamples:
     @property
     def keys(self) -> list[int]:
         return [key for key, rows in self.by_key.items() for _ in rows]
+
+    def means(self) -> dict[int, np.ndarray]:
+        """Mean embedding of each key's sample (float16, as the sample)."""
+        return {
+            key: np.mean(rows, axis=0, dtype=np.float32).astype(np.float16)
+            for key, rows in self.by_key.items()
+        }
+
+    def counts(self) -> dict[int, int]:
+        """How many embeddings each key's sample holds."""
+        return {key: len(rows) for key, rows in self.by_key.items()}
 
     def embeddings(self) -> np.ndarray:
         rows = [row for rows in self.by_key.values() for row in rows]

@@ -80,7 +80,7 @@ src/tactifoot_vision/
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
-                      ball.py (track_ball), tracks.py (join_tracks)
+                      ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles)
   analysis/           direction.py (attack_direction), space.py (space_control)
   viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
                       subpixel.py (fixed-point coordinates for cv2 drawing),
@@ -135,6 +135,7 @@ configs/              example run files
 * `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
 * `pipeline/ball.py`: `track_ball`
 * `pipeline/tracks.py`: `join_tracks`
+* `pipeline/roles.py`: `assign_roles`
 * `analysis/direction.py`: `attack_direction`
 * `analysis/space.py`: `SpaceControl`, `space_control`
 
@@ -464,6 +465,11 @@ configs/              example run files
   the pitch; referees get `NO_TEAM`. Each run fits the team classifier on
   its own player crops, also when an earlier run (another match) fitted it;
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
+  With a tracker, `PipelineResult.track_embeddings` keeps the mean of each
+  track's sampled embeddings (float16) by the tracker's own id, and
+  `track_embedding_samples` their number, so a post-process
+  (`assign_roles`) can compare kits without the video. `PipelineResult.load`
+  refuses a result saved before results kept them.
   `FrameResult.ball_candidates` keeps every ball detection of the frame,
   best confidence first, with its `pitch_xy`; `ball` is the chosen one: the
   best candidate, until `track_ball` chooses another. The tables and
@@ -516,6 +522,25 @@ configs/              example run files
   `remap_track_ids`, so the tracker's id stays in
   `data["original_tracker_id"]`. No rows are added: tables keep measured
   positions only. Metres and seconds, as in `track_ball`.
+* `assign_roles(result, outlier_spread=3.0, min_box_share=0.5, off_pitch_margin=1.5)`
+  (`pipeline/roles.py`, registered as `assign_roles`) finds the goalkeepers
+  and referees the detector called players, track by track (player tracks
+  after `join_tracks`). A track whose median pitch position is more than
+  `off_pitch_margin` m outside the pitch is dropped, rows and masks. A
+  `player` track whose mean embedding (`track_embeddings` of the tracks it
+  joins, weighted by their samples) is more than `outlier_spread` team spreads from every team's
+  centre (median embedding of the team's player tracks; spread: their
+  median distance to it) is an outlier, with no colour threshold. The rule
+  compares the embedder's raw embeddings, not the team classifier's UMAP
+  space. The outlier nearest each goal, in its penalty area for at least
+  `min_box_share` (above 0) of its positioned rows, becomes the
+  `goalkeeper` of the team defending that goal (`attack_direction`, so one
+  period per result), unless a detector goalkeeper stands in that area; one
+  track keeps one goal at most. When the sides cannot be told, a warning is
+  logged and the candidates stay players of their voted team. The other
+  outliers become `referee` with `NO_TEAM`. Detector `goalkeeper` and
+  `referee` tracks keep their class and team; a role class missing from
+  `class_names` keeps the player's `class_id` (logged).
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident
