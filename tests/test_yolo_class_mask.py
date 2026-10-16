@@ -12,6 +12,7 @@ from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import DetectionModel
 from ultralytics.utils.loss import v8DetectionLoss
 
+import tactifoot_vision as tv
 from tactifoot_vision.models._yolo_class_mask import (
     ClassMaskedDataset,
     ClassMaskedLoss,
@@ -182,3 +183,20 @@ def test_trainer_masks_the_training_model_only(tmp_path):
     assert np.isfinite(trainer.tloss.numpy()).all()
     checkpoint = torch.load(trainer.last, weights_only=False)
     assert "ClassMasked" not in repr(checkpoint["ema"])
+
+
+def test_repeated_images_in_a_list_get_their_mask_on_every_copy(tmp_path):
+    """Oversampling lists an image several times; the export links each copy to the same file."""
+    images, table = _tiny_set(tmp_path)
+    listed = [images / "img0.jpg"] * 3 + [images / "img5.jpg"] * 2
+    (tmp_path / "train.txt").write_text("".join(f"{p}\n" for p in listed))
+    data_yaml = tmp_path / "list.yaml"
+    data_yaml.write_text(
+        f"path: {tmp_path}\ntrain: train.txt\nval: train.txt\nnames: {NAMES}\n"
+    )
+    dataset = tv.load_dataset(data_yaml)
+    assert len(dataset["train"]) == 5
+    exported = dataset.to_yolo(tmp_path / "export")
+    data = _dataset(exported.parent / "train/images", table)
+    assert len(data) == 5
+    assert sorted(data.class_masks.sum(axis=1).tolist()) == [1, 1, 4, 4, 4]

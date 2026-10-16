@@ -3,13 +3,16 @@
     uv run python scripts/detector_bench.py build      # bench sets, manifest, research/detector_bench.json
     uv run python scripts/detector_bench.py evaluate --weights W --split valid --out DIR
     uv run python scripts/detector_bench.py placement --weights W --out DIR
+    uv run python scripts/detector_bench.py epochs --weights-dir RUN/yolo11l_1280/weights --out DIR  # every epoch
 
 Benchmark: SoccerNet GSR valid (dev) and test (final, read once per candidate), every `STRIDE`-th frame of every clip
 (frames 1, 6, 11, ...: the frames GSR test is downloaded with and the frames of the pitch-keypoints homography
 evaluation), read by `tv.data.Dataset.from_gsr` (classes ball / goalkeeper / player / referee; GSR's "other" dropped).
 The secondary no-regression set is `football_yolo` valid (the Roboflow set the current detector was trained on).
 
-`evaluate` scores every row of `ROWS` (inference settings) with `tv.evaluation.evaluate_detector`: per-class AP50 and
+`evaluate` scores every row of `ROWS` (inference settings) on every set of `SETS` (`--rows`, `--sets` select; GSR
+test is scored alone): `gsr` (the frozen benchmark), `roboflow` (football_yolo valid, square) and `ekstraklasa`
+(the Ekstraklasa dev clips of ticket 04, 16:9; its labels are checked against the dev record) with `tv.evaluation.evaluate_detector`: per-class AP50 and
 AP50-95 (supervision's COCO-style mAP, predictions down to `EVAL_CONF`), and precision / recall at the pipeline's
 operating point `OPERATING` (E3: conf 0.3, ball 0.15) with IoU >= `MATCH_IOU` matching. `--split test` writes its
 file and prints only the path (GSR test is for ticket 05).
@@ -42,6 +45,14 @@ CHECKOUT = Path("/home/kuba/projects/tactifoot_vision")
 GSR = CHECKOUT / "data/SoccerNetGS"
 ROBOFLOW = CHECKOUT / "data/datasets/football_yolo"
 BENCH = Path("/mnt/storage/tactifoot_research/detector_data/bench")
+# Ekstraklasa dev (ticket 04, run 2): whole held-out LiveTag clips of football_yolo, un-stretched to 16:9
+# (scripts/detector_data/football_yolo.py, record research/ekstraklasa_dev_split.json). Not part of the frozen GSR
+# benchmark; the baseline trained on these clips, so its scores here are in-sample.
+EKSTRAKLASA_DEV = BENCH / "ekstraklasa_dev"
+EKSTRAKLASA_JSON = (
+    Path(__file__).resolve().parents[1] / "research/ekstraklasa_dev_split.json"
+)
+SETS = ("gsr", "roboflow", "ekstraklasa")  # scoring row families: <set>/<row>
 FREEZE = Path(__file__).resolve().parents[1] / "research/detector_bench.json"
 HOMOGRAPHY_SOURCE = (
     CHECKOUT
@@ -230,29 +241,48 @@ def check_manifest(dataset: Dataset, split: str) -> None:
 
 
 # ------------------------------------------------------------------ evaluate
-def evaluate(args: argparse.Namespace) -> None:
-    sets = {"gsr": (gsr_split(args.split), args.split)}
-    check_manifest(sets["gsr"][0], args.split)
-    if args.split == "valid":
+def ekstraklasa_dev() -> Dataset:
+    """The Ekstraklasa dev set, after checking its labels against the dev record."""
+    frozen = json.loads(EKSTRAKLASA_JSON.read_text())["labels_sha256"]
+    digest = hashlib.sha256()
+    for path in sorted((EKSTRAKLASA_DEV / "valid/labels").glob("*.txt")):
+        digest.update(path.name.encode() + b"\n" + path.read_bytes())
+    if digest.hexdigest() != frozen:
+        raise SystemExit(f"{EKSTRAKLASA_DEV} labels differ from {EKSTRAKLASA_JSON}")
+    return tv.load_dataset(EKSTRAKLASA_DEV)
+
+
+def evaluation_sets(split: str, names: list[str] | None) -> dict[str, tuple]:
+    """``{set: (dataset, split)}`` to score; GSR test is scored alone."""
+    names = list(SETS) if names is None else names
+    if split == "test":
+        names = ["gsr"]
+    sets: dict[str, tuple] = {}
+    if "gsr" in names:
+        sets["gsr"] = (gsr_split(split), split)
+        check_manifest(sets["gsr"][0], split)
+    if "roboflow" in names:
         sets["roboflow"] = (tv.load_dataset(ROBOFLOW), "valid")
-    result = {
-        "weights": str(args.weights),
-        "weights_sha256": sha256_file(args.weights),
-        "split": args.split,
-        "eval_conf": EVAL_CONF,
-        "operating_point": OPERATING,
-        "rows": {},
-    }
+    if "ekstraklasa" in names:
+        sets["ekstraklasa"] = (ekstraklasa_dev(), "valid")
+    return sets
+
+
+def score(
+    weights: Path, sets: dict[str, tuple], rows: list[str] | None, device: str | None
+) -> dict:
+    """``{"<set>/<row>": metrics}`` of ``weights`` for every selected row of ``ROWS`` on every set."""
+    scored = {}
     for row, settings in ROWS.items():
-        if args.rows and row not in args.rows:
+        if rows and row not in rows:
             continue
         model = tv.load_model(
             "yolo",
-            args.weights,
+            weights,
             conf=OPERATING["conf"],
             iou=settings["iou"],
             imgsz=settings["imgsz"],
-            device=args.device,
+            device=device,
         )
         for name, (dataset, split) in sets.items():
             clock = time.perf_counter()
@@ -265,7 +295,7 @@ def evaluate(args: argparse.Namespace) -> None:
                 match_iou=MATCH_IOU,
                 input_size=settings["input_size"],
             )
-            result["rows"][f"{name}/{row}"] = {
+            scored[f"{name}/{row}"] = {
                 "settings": settings,
                 "map50_95": metrics.map50_95,
                 "map50": metrics.map50,
@@ -274,6 +304,20 @@ def evaluate(args: argparse.Namespace) -> None:
                 "per_class": metrics.per_class.reset_index().to_dict(orient="records"),
             }
             logger.info("%s/%s done", name, row)
+    return scored
+
+
+def evaluate(args: argparse.Namespace) -> None:
+    sets = evaluation_sets(args.split, args.sets)
+    result = {
+        "weights": str(args.weights),
+        "weights_sha256": sha256_file(args.weights),
+        "split": args.split,
+        "sets": list(sets),
+        "eval_conf": EVAL_CONF,
+        "operating_point": OPERATING,
+        "rows": score(args.weights, sets, args.rows, args.device),
+    }
     args.out.mkdir(parents=True, exist_ok=True)
     path = args.out / f"detection_{args.split}.json"
     path.write_text(json.dumps(result, indent=2) + "\n")
@@ -285,6 +329,74 @@ def evaluate(args: argparse.Namespace) -> None:
         print(f"\n{key}: mAP50-95 {row['map50_95']:.4f} mAP50 {row['map50']:.4f}")
         print(table.round(4).to_string())
     print(path)
+
+
+# ------------------------------------------------------------------ epochs
+def epoch_checkpoints(weights_dir: Path) -> list[tuple[int, Path]]:
+    """``(epoch, path)`` of every Ultralytics ``epoch<N>.pt`` (N counts from 0), in epoch order."""
+    found = []
+    for path in weights_dir.glob("epoch*.pt"):
+        number = path.stem.removeprefix("epoch")
+        if number.isdigit():
+            found.append((int(number), path))
+    return sorted(found)
+
+
+def gsr_every(dataset: Dataset, every: int) -> Dataset:
+    """Every ``every``-th GSR valid frame in (clip, frame) order: the bench file-name order, so ``every=4`` is the
+    training runs' validation subset."""
+    samples = sorted(
+        dataset["valid"], key=lambda s: (s.meta["sequence"], int(s.meta["frame"]))
+    )
+    return dataset.with_split("valid", samples[::every])
+
+
+def epoch_table(results: dict[int, dict]) -> pd.DataFrame:
+    """One row per epoch and ``<set>/<row>``: mAP50, mAP50-95 and per-class AP50."""
+    records = []
+    for epoch, rows in sorted(results.items()):
+        for key, row in rows.items():
+            record = {
+                "epoch": epoch,
+                "row": key,
+                "map50": row["map50"],
+                "map50_95": row["map50_95"],
+            }
+            record |= {f"ap50_{c['class_name']}": c["map50"] for c in row["per_class"]}
+            records.append(record)
+    return pd.DataFrame(records)
+
+
+def epochs(args: argparse.Namespace) -> None:
+    """Score every ``epoch<N>.pt`` of a run folder (each written once to ``<out>/epoch<N>.json``, reused when its
+    weights hash matches) and write ``<out>/epochs.csv``."""
+    sets = evaluation_sets("valid", args.sets)
+    if "gsr" in sets and args.gsr_every > 1:
+        sets["gsr"] = (gsr_every(sets["gsr"][0], args.gsr_every), "valid")
+    args.out.mkdir(parents=True, exist_ok=True)
+    results = {}
+    for epoch, path in epoch_checkpoints(args.weights_dir):
+        out = args.out / f"epoch{epoch}.json"
+        digest = sha256_file(path)
+        if out.is_file():
+            done = json.loads(out.read_text())
+            if done["weights_sha256"] == digest and set(done["rows"]) >= {
+                f"{s}/{r}" for s in sets for r in (args.rows or ROWS)
+            }:
+                results[epoch] = done["rows"]
+                continue
+        rows = score(path, sets, args.rows, args.device)
+        record = {
+            "weights": str(path),
+            "weights_sha256": digest,
+            "gsr_every": args.gsr_every,
+            "rows": rows,
+        }
+        out.write_text(json.dumps(record, indent=2) + "\n")
+        results[epoch] = rows
+    table = epoch_table(results)
+    table.to_csv(args.out / "epochs.csv", index=False)
+    print(table.round(4).to_string(index=False))
 
 
 # ------------------------------------------------------------------ placement
@@ -467,9 +579,26 @@ def main() -> None:
         command.add_argument("--device", default=None)
     e.add_argument("--split", choices=SPLITS, default="valid")
     e.add_argument("--rows", nargs="*", choices=list(ROWS), default=None)
+    e.add_argument("--sets", nargs="*", choices=list(SETS), default=None)
+    ep = commands.add_parser("epochs", help="score every epoch<N>.pt of a run folder")
+    ep.add_argument("--weights-dir", type=Path, required=True)
+    ep.add_argument("--out", type=Path, required=True)
+    ep.add_argument("--device", default=None)
+    ep.add_argument("--rows", nargs="*", choices=list(ROWS), default=["1280"])
+    ep.add_argument(
+        "--sets", nargs="*", choices=list(SETS), default=["gsr", "ekstraklasa"]
+    )
+    ep.add_argument(
+        "--gsr-every",
+        type=int,
+        default=4,
+        help="GSR valid frames: every Nth bench frame (4 = the training validation subset, 1 = full)",
+    )
     args = parser.parse_args()
     tv.setup_logging("INFO")
-    {"build": build, "evaluate": evaluate, "placement": placement}[args.command](args)
+    {"build": build, "evaluate": evaluate, "placement": placement, "epochs": epochs}[
+        args.command
+    ](args)
 
 
 if __name__ == "__main__":

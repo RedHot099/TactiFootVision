@@ -1,19 +1,28 @@
-"""Training run 1 of detector-data (ticket 04): the view, the throughput probe, the run.
+"""Training runs of detector-data (ticket 04): the view, the throughput probe, the run.
 
-    uv run python scripts/detector_train.py view                 # runs/run1: lists, data.yaml, class-mask table
-    uv run python scripts/detector_train.py probe --model yolo11l --batch 8
-    uv run python scripts/detector_train.py train --smoke        # ~200 iterations on a random slice
-    uv run python scripts/detector_train.py train                # the full run (see runs/run1/RUN.md)
-    uv run python scripts/detector_train.py train --resume       # continue from weights/last.pt
+    uv run python scripts/detector_train.py view --run run2a       # runs/run2a: lists, data.yaml, class-mask table
+    uv run python scripts/detector_train.py probe --run run1 --model yolo11l --batch 8
+    uv run python scripts/detector_train.py train --run run2a --smoke   # ~200 iterations on a random slice
+    uv run python scripts/detector_train.py train --run run2a           # the full run (see runs/run2a/RUN.md)
+    uv run python scripts/detector_train.py train --run run2a --resume  # continue from weights/last.pt
 
-View (ticket 04, "Run 1 decisions"): every pool image except the GSR valid/test games (2, 3, 5, 7, 8, 11: the
-frozen benchmark) and except any image tagged as a near-duplicate of a GSR valid/test frame. xG evaluation/gate games
-and Soccana are in. Classes outside a source's `annotated_classes` get no classification loss (the package's
-`annotated_classes` option of the `yolo` model); the "player means any person" sources (ISSIA, TeamTrack, SportsMOT,
-SoccerPlayerDetection) annotate neither goalkeeper nor referee, and the script checks that their tables say so.
+Each run is an entry of `RUNS`: the pool sets it reads, the images it holds out, per-set oversampling, the extra
+validation images, the initial weights and the Ultralytics settings. Every view drops the GSR valid/test games (2, 3,
+5, 7, 8, 11: the frozen benchmark) and any image tagged as a near-duplicate of a GSR valid/test frame. Classes outside
+a source's `annotated_classes` get no classification loss (the package's `annotated_classes` option of the `yolo`
+model); the "player means any person" sources (ISSIA, TeamTrack, SportsMOT, SoccerPlayerDetection, SoccerSynth)
+annotate neither goalkeeper nor referee, and the script checks that their tables say so.
 
-Validation during training: every 4th frame of the frozen GSR valid benchmark (bench/, ticket 02), so per-epoch
-validation stays cheap; the full benchmark is scored after the run with scripts/detector_bench.py.
+* run 1 ("Run 1 decisions"): every image of the sets the pool held on 2026-10-15 (`RUN1_SETS`; SoccerSynth and
+  football_yolo came later), from COCO weights. Its view is reproduced exactly (same list hash).
+* run 2 (owner, 2026-10-16), two sequential stages: run2a fine-tunes run 1's best.pt on football_yolo alone, without
+  the Ekstraklasa dev clips (its `test` split, see scripts/detector_data/football_yolo.py); run2b fine-tunes run2a's
+  best.pt on SoccerSynth alone. Every epoch's checkpoint is kept (`save_period` 1);
+  `scripts/detector_bench.py epochs` scores them all.
+
+Validation during training: every 4th frame of the frozen GSR valid benchmark (bench/, ticket 02), plus for run 2 every
+Ekstraklasa dev image (bench/ekstraklasa_dev); the full benchmarks are scored after the run with
+scripts/detector_bench.py.
 """
 
 import argparse
@@ -35,8 +44,8 @@ CHECKOUT = Path("/home/kuba/projects/tactifoot_vision")
 DATA = Path("/mnt/storage/tactifoot_research/detector_data")
 POOL = DATA / "pool_index.parquet"
 BENCH_VALID = DATA / "bench/yolo/valid/valid/images"
-RUN = DATA / "runs/run1"
-VIEW_JSON = Path(__file__).resolve().parents[1] / "research/detector_run1_view.json"
+EKSTRAKLASA_DEV = DATA / "bench/ekstraklasa_dev/valid/images"
+RESEARCH = Path(__file__).resolve().parents[1] / "research"
 
 CLASSES = ["ball", "goalkeeper", "player", "referee"]
 BENCH_GAMES = {
@@ -48,7 +57,13 @@ BENCH_GAMES = {
     "gsr:11",
 }  # GSR valid + test
 BENCH_DUP_SETS = {"gsr_valid", "gsr_test"}
-ANY_PERSON_SOURCES = {"issia", "teamtrack", "sportsmot", "soccer_player_detection"}
+ANY_PERSON_SOURCES = {
+    "issia",
+    "teamtrack",
+    "sportsmot",
+    "soccer_player_detection",
+    "soccersynth",
+}
 VAL_EVERY = 4  # every 4th benchmark frame (bench frames are every 5th GSR frame)
 SMOKE = {
     "train_images": 800,
@@ -57,45 +72,139 @@ SMOKE = {
     "seed": 0,
 }  # 2 x 200 iterations at batch 4
 
-# Run settings, chosen by the probe (see the ticket's comments).
 WEIGHTS = {
     "yolo11m": CHECKOUT / "models/yolo11m.pt",
     "yolo11l": CHECKOUT / "models/yolo11l.pt",
 }
-RUN_SETTINGS = {
-    "model": "yolo11l",
-    "imgsz": 1280,
-    "batch_size": 4,
-    # Explicit SGD (what "auto" picks for this many iterations): a resumed AdamW run
-    # gave NaN losses in Ultralytics 8.3.205 (stock trainer too); SGD resumes cleanly.
-    "optimizer": "SGD",
-    "lr": 0.01,
-    "epochs": 22,
-    "patience": 7,
-    "workers": 12,
-    "seed": 0,
-    "cos_lr": True,
-    "close_mosaic": 2,
-    "save_period": 5,
-    "scale": 0.3,
+# The sets of the pool when run 1 was built (2026-10-15).
+RUN1_SETS = (
+    "issia",
+    "roboflow_ball",
+    "roboflow_players",
+    "soccana",
+    "soccer_player_detection",
+    "soccernet_gsr",
+    "soccernet_v3",
+    "sportsmot_football",
+    "teamtrack",
+)
+RUNS: dict[str, dict] = {
+    "run1": {
+        "title": "detector-data run 1 training view (ticket 04)",
+        "sets": RUN1_SETS,
+        "holdout": {},  # set -> split held out of training
+        "oversample": {},  # set -> times listed in train.txt
+        "val_extra": None,  # folder of extra validation images
+        "init": None,  # None: the model's COCO weights
+        "after": None,  # the run whose best.pt is the init (its smoke best.pt in smoke mode)
+        # Chosen by the probe (see the ticket's comments).
+        "settings": {
+            "model": "yolo11l",
+            "imgsz": 1280,
+            "batch_size": 4,
+            # Explicit SGD (what "auto" picks for this many iterations): a resumed AdamW run
+            # gave NaN losses in Ultralytics 8.3.205 (stock trainer too); SGD resumes cleanly.
+            "optimizer": "SGD",
+            "lr": 0.01,
+            "epochs": 22,
+            "patience": 7,
+            "workers": 12,
+            "seed": 0,
+            "cos_lr": True,
+            "close_mosaic": 2,
+            "save_period": 5,
+            "scale": 0.3,
+        },
+    },
+    # Run 2 (owner, 2026-10-16): two sequential fine-tuning stages, every epoch's checkpoint kept (save_period 1,
+    # Ultralytics writes weights/epoch<N>.pt with N from 0) so each stage and epoch can be compared.
+    "run2a": {
+        "title": "detector-data run 2a training view (ticket 04): football_yolo only, Ekstraklasa dev clips out",
+        "sets": ("football_yolo",),
+        "holdout": {"football_yolo": "test"},  # the Ekstraklasa dev clips
+        "oversample": {},
+        "val_extra": EKSTRAKLASA_DEV,
+        "init": DATA / "runs/run1/yolo11l_1280/weights/best.pt",
+        "after": "run1",
+        "settings": {
+            "model": "yolo11l",
+            "imgsz": 1280,
+            "batch_size": 4,
+            "optimizer": "SGD",
+            "lr": 0.002,
+            # 736 images = 184 iterations per epoch; 35 epochs = 6,440 iterations.
+            "epochs": 35,
+            "patience": None,  # Ultralytics' default 100 > epochs: no early stop
+            "workers": 12,
+            "seed": 0,
+            "cos_lr": True,
+            "close_mosaic": 2,
+            "save_period": 1,
+            "scale": 0.3,
+        },
+    },
+    "run2b": {
+        "title": "detector-data run 2b training view (ticket 04): SoccerSynth only, from run 2a",
+        "sets": ("soccersynth",),
+        "holdout": {},
+        "oversample": {},
+        "val_extra": EKSTRAKLASA_DEV,
+        "init": DATA / "runs/run2a/yolo11l_1280/weights/best.pt",
+        "after": "run2a",
+        "settings": {
+            "model": "yolo11l",
+            "imgsz": 1280,
+            "batch_size": 4,
+            "optimizer": "SGD",
+            "lr": 0.002,
+            # 50,877 images = 12,720 iterations per epoch (about 50 min at 17-18 img/s).
+            "epochs": 5,
+            "patience": None,
+            "workers": 12,
+            "seed": 0,
+            "cos_lr": True,
+            "close_mosaic": 2,
+            "save_period": 1,
+            "scale": 0.3,
+        },
+    },
 }
 
 logger = logging.getLogger("detector_train")
 
 
+def run_dir(run: str) -> Path:
+    return DATA / "runs" / run
+
+
+def view_json(run: str) -> Path:
+    return RESEARCH / f"detector_{run}_view.json"
+
+
 # ------------------------------------------------------------------ view
-def build_view(pool: pd.DataFrame) -> pd.DataFrame:
-    """Every pool image outside the GSR benchmark games and their near-duplicates."""
+def build_view(pool: pd.DataFrame, run: str) -> pd.DataFrame:
+    """One row per training image of ``run``: its sets, minus the GSR benchmark games, their near-duplicates and
+    the run's held-out splits."""
+    spec = RUNS[run]
+    missing = set(spec["sets"]) - set(pool.set)
+    assert not missing, f"sets {sorted(missing)} are not in the pool"
+    held = pd.Series(False, index=pool.index)
+    for set_name, split in spec["holdout"].items():
+        held |= (pool.set == set_name) & (pool.split == split)
     excluded = (
-        pool.game.isin(BENCH_GAMES).fillna(False)
+        ~pool.set.isin(spec["sets"])
+        | held
+        | pool.game.isin(BENCH_GAMES).fillna(False)
         | pool.near_dup_set.isin(BENCH_DUP_SETS).fillna(False)
         | pool.gsr_split.isin(["valid", "test"]).fillna(False)
     )
     view = pool[~excluded].copy()
     assert not view.gsr_split.isin(["valid", "test"]).any()
-    for source in ANY_PERSON_SOURCES:
+    assert not ANY_PERSON_SOURCES - set(pool.source), (
+        f"any-person sources missing from the pool: {ANY_PERSON_SOURCES - set(pool.source)}"
+    )
+    for source in ANY_PERSON_SOURCES & set(view.source):
         annotated = view.annotated_classes[view.source == source]
-        assert len(annotated), f"no {source} images in the view"
         assert annotated.map(
             lambda s: not {"goalkeeper", "referee"} & set(s.split(","))
         ).all(), (
@@ -104,12 +213,22 @@ def build_view(pool: pd.DataFrame) -> pd.DataFrame:
     return view
 
 
-def counts(view: pd.DataFrame) -> dict:
-    """Images and boxes per source, plus the share of images and boxes each class mask removes."""
+def train_list(view: pd.DataFrame, oversample: dict[str, int]) -> list[str]:
+    """The sorted image paths of the view, each listed ``oversample[set]`` times (default once)."""
+    times = view.set.map(lambda s: oversample.get(s, 1)).to_numpy()
+    return sorted(np.repeat(view.image.to_numpy(), times).tolist())
+
+
+def counts(view: pd.DataFrame, oversample: dict[str, int] | None = None) -> dict:
+    """Images and boxes per source, the images per epoch with oversampling, and the share of images and boxes each
+    class mask removes."""
+    oversample = oversample or {}
+    times = view.set.map(lambda s: oversample.get(s, 1))
     per_source = {}
     for source, rows in view.groupby("source"):
         per_source[source] = {
             "images": len(rows),
+            "images_per_epoch": int(times[rows.index].sum()),
             "annotated_classes": sorted(
                 set(",".join(rows.annotated_classes).split(","))
             ),
@@ -129,6 +248,7 @@ def counts(view: pd.DataFrame) -> dict:
     any_masked = view.annotated_classes.map(lambda a: set(a.split(",")) != set(CLASSES))
     return {
         "images": len(view),
+        "images_per_epoch": int(times.sum()),
         "boxes": {c: int(view[f"n_{c}"].sum()) for c in CLASSES},
         "per_source": per_source,
         "masked_share_by_class": masked,
@@ -165,30 +285,40 @@ def sha256_lines(lines: list[str]) -> str:
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
+def val_images(run: str) -> list[str]:
+    """Every ``VAL_EVERY``-th frame of the sorted GSR valid benchmark, then the run's extra validation images."""
+    val = sorted(str(p) for p in BENCH_VALID.iterdir() if p.suffix == ".jpg")
+    extra = RUNS[run]["val_extra"]
+    more = (
+        sorted(str(p) for p in extra.iterdir() if p.suffix == ".jpg") if extra else []
+    )
+    return val[::VAL_EVERY] + more
+
+
 def view(args: argparse.Namespace) -> None:
-    RUN.mkdir(parents=True, exist_ok=True)
+    spec, out = RUNS[args.run], run_dir(args.run)
+    out.mkdir(parents=True, exist_ok=True)
     pool = pd.read_parquet(POOL)
-    train = build_view(pool).sort_values("image")
-    val = sorted(str(p) for p in BENCH_VALID.iterdir() if p.suffix == ".jpg")[
-        ::VAL_EVERY
-    ]
-    train_images = train.image.tolist()
+    train = build_view(pool, args.run).sort_values("image")
+    train_images = train_list(train, spec["oversample"])
+    val = val_images(args.run)
     label_check = {
-        "train": check_label_paths(train_images),
+        "train": check_label_paths(sorted(set(train_images))),
         "val": check_label_paths(val),
     }
 
-    (RUN / "train.txt").write_text("\n".join(train_images) + "\n")
-    (RUN / "val.txt").write_text("\n".join(val) + "\n")
-    write_yaml(RUN / "data.yaml", "train.txt", "val.txt")
+    (out / "train.txt").write_text("\n".join(train_images) + "\n")
+    (out / "val.txt").write_text("\n".join(val) + "\n")
+    write_yaml(out / "data.yaml", "train.txt", "val.txt")
     table = train[["image", "source", "annotated_classes"]].reset_index(drop=True)
-    table.to_parquet(RUN / "annotated_classes.parquet", index=False)
+    table.to_parquet(out / "annotated_classes.parquet", index=False)
 
-    # Smoke slice: a random sample of the view, a sparser validation subset.
-    smoke = RUN / "smoke_data"
+    # Smoke slice: a random sample of the training list, a sparser validation subset.
+    smoke = out / "smoke_data"
     smoke.mkdir(exist_ok=True)
     rng = np.random.default_rng(SMOKE["seed"])
-    pick = sorted(rng.choice(train_images, SMOKE["train_images"], replace=False))
+    size = min(SMOKE["train_images"], len(train_images))
+    pick = sorted(rng.choice(train_images, size, replace=False))
     (smoke / "train.txt").write_text("\n".join(pick) + "\n")
     (smoke / "val.txt").write_text(
         "\n".join(val[:: SMOKE["val_every"] // VAL_EVERY]) + "\n"
@@ -196,45 +326,55 @@ def view(args: argparse.Namespace) -> None:
     write_yaml(smoke / "data.yaml", "train.txt", "val.txt")
 
     record = {
-        "title": "detector-data run 1 training view (ticket 04)",
+        "title": spec["title"],
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "pool_index": str(POOL),
         "pool_images": len(pool),
         "rule": {
+            "sets": list(spec["sets"]),
             "excluded_games": sorted(BENCH_GAMES),
             "excluded_near_dup_sets": sorted(BENCH_DUP_SETS),
             "excluded_gsr_splits": ["valid", "test"],
-            "included": "everything else: xG evaluation/gate games, Soccana, every source split",
+            "held_out_splits": spec["holdout"],
+            "oversample": spec["oversample"],
+            "included": "everything else of the sets: xG evaluation/gate games, Soccana, every source split",
             "class_mask": "per image, the source's annotated_classes; classes outside it get no cls loss",
             "any_person_sources": sorted(ANY_PERSON_SOURCES),
         },
-        "train": counts(train) | {"list_sha256": sha256_lines(train_images)},
+        "init": str(spec["init"] or WEIGHTS[spec["settings"]["model"]]),
+        "after": spec["after"],
+        "settings": spec["settings"],
+        "train": counts(train, spec["oversample"])
+        | {"list_sha256": sha256_lines(train_images)},
         "val": {
-            "source": str(BENCH_VALID),
-            "rule": f"every {VAL_EVERY}th frame of the sorted GSR valid benchmark (frames every 5th GSR frame)",
+            "source": [str(BENCH_VALID)]
+            + ([str(spec["val_extra"])] if spec["val_extra"] else []),
+            "rule": f"every {VAL_EVERY}th frame of the sorted GSR valid benchmark (frames every 5th GSR frame)"
+            + (", then every image of the extra folder" if spec["val_extra"] else ""),
             "images": len(val),
             "list_sha256": sha256_lines(val),
             "files": [Path(v).name for v in val],
         },
         "label_paths": label_check,
         "files": {
-            "data_yaml": str(RUN / "data.yaml"),
-            "annotated_classes": str(RUN / "annotated_classes.parquet"),
+            "data_yaml": str(out / "data.yaml"),
+            "annotated_classes": str(out / "annotated_classes.parquet"),
             "smoke_data_yaml": str(smoke / "data.yaml"),
         },
     }
-    VIEW_JSON.write_text(json.dumps(record, indent=2) + "\n")
+    view_json(args.run).write_text(json.dumps(record, indent=2, default=str) + "\n")
     summary = {k: v for k, v in record["train"].items() if k != "per_source"}
     logger.info("view: %s", json.dumps(summary))
     for source, row in record["train"]["per_source"].items():
         logger.info(
-            "  %-24s %6d images  %s  %s",
+            "  %-24s %6d images (%6d per epoch)  %s  %s",
             source,
             row["images"],
+            row["images_per_epoch"],
             row["annotated_classes"],
             row["boxes"],
         )
-    logger.info("val: %d images; wrote %s and %s", len(val), RUN, VIEW_JSON)
+    logger.info("val: %d images; wrote %s and %s", len(val), out, view_json(args.run))
 
 
 # ------------------------------------------------------------------ probe
@@ -296,8 +436,9 @@ def probe(args: argparse.Namespace) -> None:
         del model, optimizer, batch
         torch.cuda.empty_cache()
     if not args.gpu_only:
-        smoke = RUN / "smoke_data"
-        hyp = get_cfg(overrides={"imgsz": args.imgsz, "scale": RUN_SETTINGS["scale"]})
+        smoke = run_dir(args.run) / "smoke_data"
+        scale = RUNS[args.run]["settings"]["scale"]
+        hyp = get_cfg(overrides={"imgsz": args.imgsz, "scale": scale})
         data = ClassMaskedDataset(
             img_path=str(smoke / "train.txt"),
             imgsz=args.imgsz,
@@ -305,7 +446,9 @@ def probe(args: argparse.Namespace) -> None:
             augment=True,
             hyp=hyp,
             data={"names": dict(enumerate(CLASSES)), "nc": 4, "channels": 3},
-            class_masks=read_class_masks(RUN / "annotated_classes.parquet", CLASSES),
+            class_masks=read_class_masks(
+                run_dir(args.run) / "annotated_classes.parquet", CLASSES
+            ),
         )
         loader = build_dataloader(data, args.batch, args.workers, shuffle=True)
         it = iter(loader)
@@ -320,12 +463,12 @@ def probe(args: argparse.Namespace) -> None:
             "loader_img_per_s": round(args.steps * args.batch / elapsed, 1),
         }
     logger.info("probe: %s", json.dumps(result))
-    with (RUN / "probe.jsonl").open("a") as fh:
+    with (run_dir(args.run) / "probe.jsonl").open("a") as fh:
         fh.write(json.dumps(result) + "\n")
 
 
-def _weights(model: str) -> Path:
-    path = WEIGHTS[model]
+def _weights(model: str | Path) -> Path:
+    path = WEIGHTS.get(model, Path(model))
     if not path.is_file():
         from ultralytics.utils.downloads import attempt_download_asset
 
@@ -334,14 +477,31 @@ def _weights(model: str) -> Path:
 
 
 # ------------------------------------------------------------------ train
+def init_weights(run: str, smoke: bool = False) -> Path:
+    """The run's initial weights: COCO for run 1, else the previous run's best.pt (in smoke mode the previous run's
+    smoke best.pt when its full run has not happened yet, so stages can be smoked in a row)."""
+    spec = RUNS[run]
+    if spec["init"] is None:
+        return _weights(spec["settings"]["model"])
+    path = Path(spec["init"])
+    if smoke and not path.is_file() and spec["after"]:
+        path = run_dir(spec["after"]) / "smoke/weights/best.pt"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"initial weights of {run} not found: {path} (run {spec['after']} first)"
+        )
+    return path
+
+
 def train(args: argparse.Namespace) -> None:
-    settings = dict(RUN_SETTINGS)
+    spec, out = RUNS[args.run], run_dir(args.run)
+    settings = dict(spec["settings"])
     model = settings.pop("model")
     name = f"{model}_{settings['imgsz']}"
-    data_yaml = RUN / "data.yaml"
-    weights: Path = _weights(model)
+    data_yaml = out / "data.yaml"
+    weights = init_weights(args.run, args.smoke)
     if args.smoke:
-        data_yaml = RUN / "smoke_data/data.yaml"
+        data_yaml = out / "smoke_data/data.yaml"
         name = "smoke"
         settings |= {
             "epochs": SMOKE["epochs"],
@@ -350,19 +510,20 @@ def train(args: argparse.Namespace) -> None:
             "val": False,
         }
     if args.resume:
-        weights = RUN / name / "weights/last.pt"
+        weights = out / name / "weights/last.pt"
         settings["resume"] = True
     started = time.time()
     dataset = tv.load_dataset(data_yaml)
     logger.info("loaded %r in %.0f s", dataset, time.time() - started)
+    logger.info("run %s from %s: %s", args.run, weights, json.dumps(settings))
     result = tv.train(
         "yolo",
         dataset,
         weights=weights,
-        output_dir=RUN,
+        output_dir=out,
         name=name,
         exist_ok=True,
-        annotated_classes=RUN / "annotated_classes.parquet",
+        annotated_classes=out / "annotated_classes.parquet",
         **settings,
     )
     logger.info("done: %s %s", result.weights, json.dumps(result.metrics))
@@ -373,7 +534,8 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     commands = parser.add_subparsers(required=True)
-    commands.add_parser("view").set_defaults(handler=view)
+    v = commands.add_parser("view")
+    v.set_defaults(handler=view)
     p = commands.add_parser("probe")
     p.add_argument("--model", choices=sorted(WEIGHTS), required=True)
     p.add_argument("--batch", type=int, required=True)
@@ -387,6 +549,8 @@ def main() -> None:
     t.add_argument("--smoke", action="store_true")
     t.add_argument("--resume", action="store_true")
     t.set_defaults(handler=train)
+    for command in (v, p, t):
+        command.add_argument("--run", choices=sorted(RUNS), required=True)
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,

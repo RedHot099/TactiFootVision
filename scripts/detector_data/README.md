@@ -90,5 +90,8 @@ view = pool[~pool.xg_role.isin(["evaluation", "gate"]) & ~pool.gsr_split.isin(["
 ## Sources (one set each)
 
 soccernet_v3 (+ v3D ball refinement), roboflow_players, roboflow_ball, soccer_player_detection, issia, teamtrack,
-sportsmot_football, soccana, soccersynth (synthetic), plus soccernet_gsr from the GSR converter. Blocked (owner action):
+sportsmot_football, soccana, soccersynth (synthetic), football_yolo (the baseline's Roboflow set: Ekstraklasa LiveTag
+clips un-stretched to 16:9 + three other families; its `test` split is the Ekstraklasa dev holdout, whole clips, record
+`research/ekstraklasa_dev_split.json`, YOLO copy `bench/ekstraklasa_dev`; views must leave it out), plus soccernet_gsr
+from the GSR converter. Blocked (owner action):
 SoccerTrack v2 (Hugging Face gate), SoccerDB (Google Drive links dead, Baidu only).

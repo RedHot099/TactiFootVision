@@ -732,3 +732,143 @@ def test_reference_id_names_v3_work_copies():
         "soccernet_v3",
         None,
     )
+
+
+# ------------------------------------------------------------- football_yolo
+def test_football_yolo_names_give_family_clip_frame_and_game():
+    from scripts.detector_data import football_yolo as fy
+
+    livetag = fy.parse_name(
+        Path(
+            "-29_07-29_51-ATAK-3-STREFA-2-polowa-slask-lech-_mp4-0042_jpg.rf.0a1b2c.jpg"
+        )
+    )
+    assert livetag == {
+        "family": "lech_livetag",
+        "clip": "29_07-29_51-ATAK-3-STREFA-2-polowa-slask-lech",
+        "frame": 42,
+        "game": "football_yolo:slask-lech",
+    }
+    upper = fy.parse_name(
+        Path("-32_00-32_30-ATAK-3-STREFA-1-POLOWA-SLASK-LECH-_mp4-0003_jpg.jpg")
+    )
+    assert upper["game"] == "football_yolo:slask-lech"
+    uefa = fy.parse_name(
+        Path("-9_59-10_19-Passes-Into-Box-Lech-Poznan-Kauno-Zalgiris-_mp4-0001_jpg.jpg")
+    )
+    assert uefa["game"] == "football_yolo:lech-poznan-kauno-zalgiris"
+    assert fy.parse_name(Path("11414_598.jpg")) == {
+        "family": "ucl_barcelona_mancity",
+        "clip": "barcelona_mancity_2016",
+        "frame": 11414,
+        "game": fy.BARCA_CITY,
+    }
+    assert fy.parse_name(Path("5000.jpg"))["clip"] == "lech_home_wide"
+    assert fy.parse_name(Path("jsladjf152946.jpg"))["frame"] == 152946
+    with pytest.raises(ValueError, match="family"):
+        fy.parse_name(Path("other_name.jpg"))
+
+
+def test_football_yolo_keeps_the_least_augmented_copy(tmp_path):
+    from scripts.detector_data import football_yolo as fy
+
+    clean = picture(1)
+    rotated = clean.copy()
+    rotated[:20, :20] = 0
+    rotated[-20:, -20:] = 0
+    noisy = clean.copy()
+    noisy[::7, ::5] = 255
+    assert fy.augmentation_marks(clean) == (0, 0.0)
+    assert fy.augmentation_marks(rotated)[0] == 2
+    assert fy.augmentation_marks(noisy)[1] > 0
+    copies = [
+        {"split": "train", "path": "b.jpg", "black": 0, "noise": 0.01},
+        {"split": "train", "path": "a.jpg", "black": 2, "noise": 0.0},
+        {"split": "train", "path": "c.jpg", "black": 0, "noise": 0.001},
+    ]
+    assert fy.pick_copy(copies)["path"] == "c.jpg"
+    copies.append({"split": "valid", "path": "z.jpg", "black": 1, "noise": 0.1})
+    assert fy.pick_copy(copies)["path"] == "z.jpg"
+
+    paths = {
+        name: write(tmp_path / name, image)
+        for name, image in [
+            ("f_mp4-0001_jpg.rf.aa.jpg", rotated),
+            ("f_mp4-0001_jpg.rf.bb.jpg", clean),
+            ("f_mp4-0002_jpg.rf.cc.jpg", noisy),
+        ]
+    }
+    dataset = Dataset(
+        Task.DETECT,
+        common.CLASS_NAMES,
+        {"train": [sample(p) for p in paths.values()]},
+    )
+    kept, report = fy.collapse_copies(dataset)
+    assert sorted(s.image_path.name for s in kept["train"]) == [
+        "f_mp4-0001_jpg.rf.bb.jpg",
+        "f_mp4-0002_jpg.rf.cc.jpg",
+    ]
+    assert report["rf_copies_dropped"] == 1 and report["source_stems"] == 2
+
+
+def test_football_yolo_unstretch_resizes_to_16_9_and_keeps_normalised_boxes(tmp_path):
+    from scripts.detector_data import football_yolo as fy
+
+    square = write(tmp_path / "s_mp4-0001_jpg.rf.aa.jpg", picture(4, (640, 640)))
+    wide = write(tmp_path / "1000.jpg", picture(5, (720, 1280)))
+    dataset = Dataset(
+        Task.DETECT,
+        common.CLASS_NAMES,
+        {
+            "train": [
+                Sample(
+                    square,
+                    640,
+                    640,
+                    Annotations(np.array([[64.0, 320, 128, 384]]), np.array([2])),
+                ),
+                sample(wide),
+            ]
+        },
+    )
+    out, count = fy.unstretch(dataset, tmp_path / "work")
+    assert count == 1
+    first, second = out["train"]
+    assert first.image_path == tmp_path / "work/train/s_mp4-0001_jpg.jpg"
+    assert (first.width, first.height) == (1280, 720)
+    assert cv2.imread(str(first.image_path)).shape == (720, 1280, 3)
+    np.testing.assert_allclose(first.annotations.boxes, [[128, 360, 256, 432]])
+    np.testing.assert_allclose(
+        first.annotations.boxes / [1280, 720, 1280, 720], [[0.1, 0.5, 0.2, 0.6]]
+    )
+    assert second.image_path == wide  # already 16:9: untouched
+
+
+def test_football_yolo_holdout_takes_whole_clips_in_the_share_deterministically(
+    tmp_path,
+):
+    from scripts.detector_data import football_yolo as fy
+
+    clips = {f"c{i}": n for i, n in enumerate([18, 11, 17, 13, 30, 17, 20, 16, 28])}
+    held = fy.choose_holdout(clips, (0.20, 0.25), seed=0)
+    total = sum(clips.values())
+    share = sum(clips[c] for c in held) / total
+    assert 0.20 <= share <= 0.25
+    assert held == fy.choose_holdout(clips, (0.20, 0.25), seed=0)
+    assert held == sorted(held)
+    with pytest.raises(ValueError, match="no clip set"):
+        fy.choose_holdout({"a": 10, "b": 10}, (0.20, 0.25))
+
+    a = write(tmp_path / "a_mp4-0001_jpg.jpg", picture(1))
+    b = write(tmp_path / "b_mp4-0001_jpg.jpg", picture(2))
+    c = write(tmp_path / "b_mp4-0002_jpg.jpg", picture(3))
+    dataset = Dataset(
+        Task.DETECT,
+        common.CLASS_NAMES,
+        {"train": [sample(a), sample(b)], "valid": [sample(c)]},
+    )
+    moved, original = fy.move_to_holdout(dataset, {"b"})
+    assert [s.image_path for s in moved["train"]] == [a]
+    assert moved["valid"] == []
+    assert [s.image_path for s in moved[fy.HOLDOUT_SPLIT]] == [b, c]
+    assert original == {str(b): "train", str(c): "valid"}
