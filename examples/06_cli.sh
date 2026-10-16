@@ -14,12 +14,13 @@ uv run tactifoot info
 # render.annotator.trail_seconds draws the ball's last second in the video,
 # render.radar.trail_seconds each person's last two seconds on the radar;
 # with teams=null every tail is in the default colour. render.radar.draw_visible_area
-# outlines the part of the pitch the camera shows.
+# outlines the part of the pitch the camera shows, and render.radar.velocity_seconds
+# draws each person's velocity as an arrow (the run computes the velocities).
 uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/run" \
     --start 250 --end 300 \
     --set teams=null --set render.annotator.style=video_game \
     --set render.annotator.trail_seconds=1.0 --set render.radar.trail_seconds=2.0 \
-    --set render.radar.draw_visible_area=true
+    --set render.radar.draw_visible_area=true --set render.radar.velocity_seconds=1.0
 ls "$OUT/run"   # result.pkl tracks.csv freeze_frames.csv carriers.csv passes.csv annotated.mp4
 
 # Training: TrainConfig fields are flags (see `tactifoot train --help`);

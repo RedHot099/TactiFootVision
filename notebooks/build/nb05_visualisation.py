@@ -196,6 +196,20 @@ visible = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_siz
 tv.show(visible, titles="draw_visible_area=True", width=7)
 """)
     nb.md("""
+`velocity_seconds` draws each person's velocity as an arrow in their colour,
+from the dot to where the velocity takes them in that many seconds.
+`draw` takes the frame's velocities, as `tv.analysis.velocities(result)`
+gives them: one m/s array per frame of `result.frames`, row for row with
+the detections. A person without a velocity (no track, too few positions in
+the window, or too fast) gets no arrow.
+""")
+    nb.code("""
+velocities = tv.analysis.velocities(result)
+moving_at = next(i for i, f in enumerate(result) if f.index == trail_result.index)
+arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(trail_result, velocities=velocities[moving_at])
+tv.show(arrows, titles=f"velocity_seconds=1.0 at frame {trail_result.index}", width=7)
+""")
+    nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
 `width_fraction` the size and `alpha` the opacity.
 """)
@@ -218,14 +232,15 @@ pitch, and warns when the frame rates differ.
 Pass your own annotator and radar, or `radar=False` for none. With a
 `trail_seconds` annotator or radar, `render_video` passes each frame its
 `history` itself, for the longer of the two, and the radar the frame size
-its visible area needs. `ball_carriers`, one per frame as
+its visible area needs. A `velocity_seconds` radar gets each frame's
+`tv.analysis.velocities` too. `ball_carriers`, one per frame as
 `tv.analysis.ball_carriers` returns them, rings each frame's carrier.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
     result, VIDEO, OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
-    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True),
+    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
     ball_carriers=carriers, progress=False,
 )

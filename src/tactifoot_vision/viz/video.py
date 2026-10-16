@@ -10,6 +10,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
+from tactifoot_vision.analysis.velocity import velocities
 from tactifoot_vision.data.video import VideoReader
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.viz.annotate import FrameAnnotator
@@ -50,14 +51,17 @@ def render_video(
             ``history=result.window(index, seconds)`` for the longest
             ``trail_seconds`` among the drawers (ADR 0003).
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
-            ``False`` for none.
+            ``False`` for none. With ``velocity_seconds`` it is drawn with
+            each frame's :func:`tv.analysis.velocities(result)
+            <tactifoot_vision.analysis.velocities>` (default window and
+            ``max_speed``), computed once before ``output`` is opened.
         overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding:
             see :func:`overlay`.
         fps: output frame rate; default derived from the source and the stride.
         progress: show a progress bar.
         birds_eye: write the bird's-eye video instead: each frame is the radar
             drawn on the frame warped onto the pitch (``radar.draw(frame_result,
-            frame=frame, history=history)``), at the radar's size rounded up
+            frame=frame, history=history, velocities=...)``), at the radar's size rounded up
             to even numbers of pixels (the encoder needs them). The annotator
             and the overlay settings are not used; ``radar=False`` is an error.
         ball_carriers: one ``tracker_id`` or ``None`` per frame of
@@ -135,6 +139,11 @@ def render_video(
                 f"{result.pitch}; pass pitch=result.pitch"
             )
     trail_seconds = _longest_trail(annotator, radar)
+    moving = (
+        {f.index: v for f, v in zip(result.frames, velocities(result), strict=True)}
+        if radar and radar.velocity_seconds
+        else dict.fromkeys(indices)
+    )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     size = _even_size(radar.size) if birds_eye and radar else reader.size
@@ -164,7 +173,10 @@ def render_video(
                 continue
             history = result.window(index, trail_seconds) if trail_seconds else None
             if birds_eye:  # check_render_options: there is a radar
-                image = radar.draw(frame_result, frame=frame, history=history)
+                image = radar.draw(
+                    frame_result, frame=frame, history=history,
+                    velocities=moving[index],
+                )  # fmt: skip
                 image = cv2.copyMakeBorder(
                     image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
                     cv2.BORDER_REPLICATE,
@@ -180,6 +192,7 @@ def render_video(
                             frame_result,
                             history=history,
                             frame_size=result.frame_size,
+                            velocities=moving[index],
                         ),
                         position=overlay_position,
                         width_fraction=overlay_width_fraction,

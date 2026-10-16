@@ -7,6 +7,7 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.analysis.space import SpaceControl
+from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.homography import visible_area
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
@@ -65,7 +66,10 @@ class PitchRadar:
     broadcast view is at the top, as on screen. With ``trail_seconds``, each
     person's movement over that many seconds is drawn as a tail from the
     ``history`` passed to :meth:`draw` (ADR 0003). With ``draw_visible_area``,
-    the part of the pitch the frame shows is outlined.
+    the part of the pitch the frame shows is outlined. With
+    ``velocity_seconds``, each person's velocity, passed to :meth:`draw` from
+    :func:`tv.analysis.velocities <tactifoot_vision.analysis.velocities>`, is
+    an arrow from their dot.
 
     >>> radar = PitchRadar()
     >>> image = radar.draw(result[0])          # BGR uint8
@@ -75,6 +79,10 @@ class PitchRadar:
     ... )
     >>> visible = PitchRadar(draw_visible_area=True).draw(
     ...     result.frame(index), frame_size=result.frame_size
+    ... )
+    >>> velocities = tv.analysis.velocities(result)  # per frame of result.frames
+    >>> arrows = PitchRadar(velocity_seconds=1.0).draw(
+    ...     result.frames[i], velocities=velocities[i]
     ... )
     """
 
@@ -96,6 +104,7 @@ class PitchRadar:
         trail_seconds: float | None = None,
         draw_visible_area: bool = False,
         visible_area_color: ColorLike = VISIBLE_AREA_COLOR,
+        velocity_seconds: float | None = None,
     ) -> None:
         """
         Args:
@@ -114,6 +123,10 @@ class PitchRadar:
                 (:func:`~tactifoot_vision.pitch.visible_area`) in
                 ``visible_area_color`` under the players; nothing without a
                 homography or when part of the frame lies beyond the horizon.
+            velocity_seconds: draw each person's velocity as an arrow in their
+                colour, from their dot to where it takes them in this many
+                seconds, under the dots (an arrow shorter than the dot hides
+                under it); ``None``: no arrows.
         """
         draw_width = width_px - 2 * padding_px
         if padding_px < 0 or draw_width < 50:
@@ -126,6 +139,10 @@ class PitchRadar:
         _check_alpha("space_control_alpha", space_control_alpha)
         if trail_seconds is not None and not trail_seconds > 0:
             raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
+        if velocity_seconds is not None and not velocity_seconds > 0:
+            raise ValueError(
+                f"velocity_seconds must be > 0 or None, got {velocity_seconds}"
+            )
         self.pitch = pitch or SoccerPitch()
         self.width_px = int(width_px)
         self.padding_px = int(padding_px)
@@ -158,6 +175,7 @@ class PitchRadar:
         self.space_control_alpha = space_control_alpha
         self.trail_seconds = trail_seconds
         self.draw_visible_area = draw_visible_area
+        self.velocity_seconds = velocity_seconds
         self._background = self._draw_background()
 
     @property
@@ -178,6 +196,7 @@ class PitchRadar:
         frame: np.ndarray | None = None,
         history: Sequence[FrameResult] | None = None,
         frame_size: tuple[int, int] | None = None,
+        velocities: np.ndarray | None = None,
     ) -> np.ndarray:
         """Radar image of one frame: players coloured by team, then the ball.
 
@@ -200,6 +219,11 @@ class PitchRadar:
         ``frame_size``: ``(width, height)`` of the video frame, e.g.
         ``result.frame_size``, which the visible area needs; default the size
         of ``frame``.
+
+        ``velocities``: ``(N, 2)`` m/s, row for row with
+        ``frame_result.detections``, e.g. this frame's array of
+        :func:`tv.analysis.velocities <tactifoot_vision.analysis.velocities>`;
+        only the arrows use it, and a person with a NaN row gets none.
         """
         if frame is not None and frame_result is None:
             raise ValueError(
@@ -237,6 +261,17 @@ class PitchRadar:
         colors = [palette[i] for i in index[order]]
         if self.trail_seconds and history and tracker_id is not None:
             self._draw_tails(image, frame_result, history, tracker_id[order], colors)
+        if self.velocity_seconds and velocities is not None:
+            velocities = np.asarray(velocities, dtype=float)
+            if velocities.shape != (len(frame_result.detections), 2):
+                raise ValueError(
+                    f"velocities has shape {velocities.shape} but the frame has "
+                    f"{len(frame_result.detections)} people; pass one (x, y) row "
+                    "per detection, as tv.analysis.velocities gives"
+                )
+            self._draw_arrows(
+                image, frame_result.pitch_xy[order], velocities[order], colors
+            )
         self._draw_dots(
             image,
             frame_result.pitch_xy[order],
@@ -375,6 +410,29 @@ class PitchRadar:
             draw_trail(
                 image, self.to_pixels(points), valid, ages, seconds, color, thickness
             )
+
+    def _draw_arrows(
+        self,
+        image: np.ndarray,
+        xy: np.ndarray,
+        velocities: np.ndarray,
+        colors: Sequence[sv.Color],
+    ) -> None:
+        """An arrow from each position along its velocity (m/s), as far as it
+        goes in ``velocity_seconds``; none where either is NaN."""
+        seconds = self.velocity_seconds or 0.0  # set: draw checked it
+        tips = xy + velocities / metres_per_unit(self.pitch) * seconds
+        thickness = max(1, round(self.player_radius / 4))
+        for start, end, color in zip(
+            self.to_pixels(xy), self.to_pixels(tips), colors, strict=True
+        ):
+            length = float(np.hypot(*(end - start)))
+            if not np.isfinite(length) or length == 0:
+                continue
+            cv2.arrowedLine(
+                image, tuple(to_fixed(start)), tuple(to_fixed(end)), color.as_bgr(),
+                thickness, cv2.LINE_AA, SUBPIXEL, min(0.5, self.player_radius / length),
+            )  # fmt: skip
 
     def _draw_dots(
         self,

@@ -13,6 +13,7 @@ from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.path import Path as MplPath
 
+import tactifoot_vision.analysis as tv_analysis
 import tactifoot_vision.viz as viz
 from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
@@ -704,6 +705,133 @@ def test_radar_tails_are_off_by_default(result: PipelineResult) -> None:
 def test_radar_tail_length_must_be_positive(seconds: float) -> None:
     with pytest.raises(ValueError, match="trail_seconds"):
         viz.PitchRadar(trail_seconds=seconds)
+
+
+# ---------------------------------------------------------- velocity arrows
+def _arrow_radar(
+    velocity_seconds: float | None = 1.0, pitch: SoccerPitch | None = None
+) -> viz.PitchRadar:
+    """Red team 0, green without a team, on a black pitch with black lines."""
+    return viz.PitchRadar(
+        pitch=pitch, velocity_seconds=velocity_seconds, team_colors=(RED, BLUE),
+        default_color=GREEN, pitch_color=BLACK, line_color=BLACK,
+    )  # fmt: skip
+
+
+def _two_people() -> FrameResult:
+    """#7 (team 0) at ``(30, 20)`` and #3 (no team) at ``(60, 50)``."""
+    return _people_at(0, (7, 0, (30.0, 20.0)), (3, -1, (60.0, 50.0)))
+
+
+def test_radar_velocity_arrows_point_along_the_velocity_in_the_dots_colour() -> None:
+    radar = _arrow_radar(1.0)
+    # m/s, row for row: #7 runs along the length, #3 towards the far touchline.
+    image = radar.draw(_two_people(), velocities=np.array([[6.0, 0], [0, -6.0]]))
+    red, green = _at(radar, image, 34, 20), _at(radar, image, 60, 46)
+    assert red[2] > 200 and red[[0, 1]].max() == 0
+    assert green[1] > 200 and green[[0, 2]].max() == 0
+    assert _at(radar, image, 35.4, 20)[2] > 0  # up to the tip, 6 m on
+    assert (_at(radar, image, 37.2, 20) == 0).all()  # not past it
+    assert (_at(radar, image, 26, 20) == 0).all()  # nor behind the dot
+    assert (_at(radar, image, 60, 54) == 0).all()
+    assert (_at(radar, image, 64, 50) == 0).all()
+
+
+@pytest.mark.parametrize(
+    ("speed", "seconds", "pitch", "reach"),
+    [
+        (3.0, 1.0, SoccerPitch(), 3.0),
+        (6.0, 1.0, SoccerPitch(), 6.0),
+        (3.0, 2.0, SoccerPitch(), 6.0),
+        # m/s in StatsBomb units: 120 units are 105 m.
+        (6.0, 1.0, SoccerPitch(120, 80), 6.0 * 120 / 105),
+    ],
+)
+def test_radar_velocity_arrow_length_is_proportional_to_speed(
+    speed: float, seconds: float, pitch: SoccerPitch, reach: float
+) -> None:
+    radar = _arrow_radar(seconds, pitch)
+    image = radar.draw(_two_people(), velocities=np.array([[speed, 0], [np.nan] * 2]))
+    assert _at(radar, image, 30 + reach - 0.6, 20)[2] > 0
+    assert _at(radar, image, 30 + reach + 1.2, 20)[2] == 0
+
+
+def test_radar_draws_no_arrow_for_people_without_a_velocity() -> None:
+    radar, now = _arrow_radar(), _two_people()
+    image = radar.draw(now, velocities=np.array([[np.nan, np.nan], [0, -6.0]]))
+    assert (_at(radar, image, 34, 20) == 0).all()
+    assert _at(radar, image, 60, 46)[1] > 200
+    assert (
+        radar.draw(now) == radar.draw(now, velocities=np.full((2, 2), np.nan))
+    ).all()
+    assert (radar.draw(now) == _arrow_radar(None).draw(now)).all()  # no velocities
+
+
+def test_radar_velocity_arrows_are_off_by_default(result: PipelineResult) -> None:
+    now = result[2]
+    velocities = np.full((len(now.detections), 2), 5.0)
+    today = viz.PitchRadar().draw(now)
+    assert (viz.PitchRadar().draw(now, velocities=velocities) == today).all()
+    with_arrows = viz.PitchRadar(velocity_seconds=1.0)
+    assert (with_arrows.draw(now, velocities=velocities) != today).any()
+
+
+def test_radar_velocity_arrows_check_their_settings() -> None:
+    for seconds in (0, -1.0):
+        with pytest.raises(ValueError, match="velocity_seconds"):
+            viz.PitchRadar(velocity_seconds=seconds)
+    with pytest.raises(ValueError, match="velocities"):
+        _arrow_radar().draw(_two_people(), velocities=np.zeros((3, 2)))
+
+
+class _VelocitySpy(viz.PitchRadar):
+    """Records the ``velocities`` of each drawn radar."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.velocities: list[np.ndarray | None] = []
+
+    def draw(self, frame_result=None, space_control=None, frame=None, **kwargs):
+        self.velocities.append(kwargs.get("velocities"))
+        return super().draw(frame_result, space_control, frame, **kwargs)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_passes_each_frames_velocities(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    spy = _VelocitySpy(velocity_seconds=1.0)
+    viz.render_video(
+        result, video, tmp_path / "arrows.mp4", radar=spy, birds_eye=birds_eye,
+        progress=False,
+    )  # fmt: skip
+    expected = tv_analysis.velocities(result)
+    assert len(spy.velocities) == len(expected)
+    for drawn, velocities in zip(spy.velocities, expected, strict=True):
+        np.testing.assert_array_equal(drawn, velocities)
+    assert np.isfinite(np.concatenate(expected)).any()
+    without = _VelocitySpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", radar=without, birds_eye=birds_eye,
+        progress=False,
+    )  # fmt: skip
+    assert without.velocities == [None] * 5
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_a_render_with_velocity_arrows_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=viz.PitchRadar(**options),
+            birds_eye=birds_eye, overlay_width_fraction=1.0, progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, arrows = render("plain.mp4"), render("arrows.mp4", velocity_seconds=1.0)
+    # Frames 0 and 8 have no velocities: three positions are needed in 0.5 s.
+    assert all((p != a).any() for p, a in zip(plain[1:4], arrows[1:4], strict=True))
 
 
 # ------------------------------------------------------------- visible area
