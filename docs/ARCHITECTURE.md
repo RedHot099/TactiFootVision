@@ -80,7 +80,8 @@ src/tactifoot_vision/
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks)
   analysis/           direction.py (attack_direction), space.py (space_control)
-  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py
+  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
+                      subpixel.py (fixed-point coordinates for cv2 drawing)
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
@@ -427,8 +428,14 @@ nothing (`PipelineResult.export` writes their tables).
 
 ### Results visualisation (`tv.viz`)
 
-* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
+* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result, history=None)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
+  `trail_seconds` (off by default) draws the ball trail from `history`, the
+  results before the frame, oldest first (ADR 0003): each earlier ball
+  `pitch_xy` within `trail_seconds` projected through the current frame's
+  homography (none without one; no pixel fallback), broken at frames without
+  a ball position (filled-in `interpolated` ones draw like any other), in
+  `ball_color` with opacity falling linearly to zero at `trail_seconds`.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
   pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
@@ -465,6 +472,8 @@ nothing (`PipelineResult.export` writes their tables).
   overlay_position="bottom-center", overlay_width_fraction=0.25,
   overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
   birds_eye=False)` → output path; `source=None` uses `result.video_path`.
+  The annotator gets `history=result.window(index, seconds)` for the longest
+  `trail_seconds` among the drawers, `None` without a trail.
   `birds_eye=True` writes the bird's-eye video: each frame is
   `radar.draw(frame_result, frame=frame)`, padded to even pixel sizes for the
   encoder; the annotator and overlay settings are not used, and `radar=False`

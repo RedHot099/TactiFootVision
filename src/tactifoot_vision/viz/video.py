@@ -44,6 +44,8 @@ def render_video(
             must hold every frame of the result (``RuntimeError`` otherwise).
         output: ``.mp4`` path to write (parent folders are created).
         annotator: frame drawing; default ``FrameAnnotator(pitch=result.pitch)``.
+            Each frame is drawn with ``history=result.window(index, seconds)``
+            for the longest ``trail_seconds`` among the drawers (ADR 0003).
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
             ``False`` for none.
         overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding:
@@ -113,6 +115,7 @@ def render_video(
                 f"{type(part).__name__} draws {part.pitch} but the result uses "
                 f"{result.pitch}; pass pitch=result.pitch"
             )
+    trail_seconds = _longest_trail(annotator, radar)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     size = _even_size(radar.size) if birds_eye and radar else reader.size
@@ -147,7 +150,8 @@ def render_video(
                     cv2.BORDER_REPLICATE,
                 )  # fmt: skip
             else:
-                image = annotator.annotate(frame, frame_result)
+                history = result.window(index, trail_seconds) if trail_seconds else None
+                image = annotator.annotate(frame, frame_result, history=history)
                 if radar:
                     image = overlay(
                         image,
@@ -212,6 +216,12 @@ def check_render_options(**options: Any) -> None:
             "birds_eye=True draws the radar on the warped frame; "
             "give it a radar or leave radar unset"
         )
+
+
+def _longest_trail(*drawers: object) -> float:
+    """The longest ``trail_seconds`` among the drawers that have one (0: none)."""
+    lengths = [getattr(d, "trail_seconds", None) for d in drawers if d]
+    return max((s for s in lengths if s), default=0.0)
 
 
 def _same_file(output: Path, source: Path) -> bool:

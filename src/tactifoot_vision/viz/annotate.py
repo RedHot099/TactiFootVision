@@ -21,6 +21,7 @@ from tactifoot_vision.viz.radar import (
     team_color_index,
     text_color_for,
 )
+from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
 
 # Ground-truth class colours: bright hues that stand out on grass, checked for
 # colour-blind separation (labels always accompany them).
@@ -29,6 +30,7 @@ KEYPOINT_COLOR = "#FFA500"  # confident keypoint that agrees with the homography
 KEYPOINT_OUTLIER_COLOR = "#FF0000"  # confident keypoint the homography disagrees with
 PITCH_LINE_COLOR = "#FFFFFF"
 MASK_OPACITY = 0.45
+_TRAIL_PIECES = 8  # per segment between frames, so the fade looks continuous
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +99,13 @@ class FrameAnnotator:
     (``style="video_game"``, with a triangle over the ball). With a homography,
     the pitch model is projected into the frame; confident pitch keypoints are
     orange when the homography agrees with them and red when it does not.
+    With ``trail_seconds``, the ball's path over that many seconds is drawn
+    from the ``history`` passed to :meth:`annotate` (ADR 0003).
 
-    >>> annotator = FrameAnnotator(style="video_game")
-    >>> image = annotator.annotate(frame, result.frame(index))
+    >>> annotator = FrameAnnotator(style="video_game", trail_seconds=1.0)
+    >>> image = annotator.annotate(
+    ...     frame, result.frame(index), history=result.window(index, 1.0)
+    ... )
     """
 
     def __init__(
@@ -116,6 +122,7 @@ class FrameAnnotator:
         keypoint_threshold: float = 0.5,
         pitch: SoccerPitch | None = None,
         pitch_line_color: ColorLike = PITCH_LINE_COLOR,
+        trail_seconds: float | None = None,
     ) -> None:
         """
         Args:
@@ -129,9 +136,13 @@ class FrameAnnotator:
             draw_keypoints: pitch keypoints with confidence ``>= keypoint_threshold``.
             draw_pitch_lines: pitch markings projected with the inverse homography.
             pitch: pitch model the homography maps to (default ``SoccerPitch()``).
+            trail_seconds: draw the ball's path over the last this many seconds,
+                in ``ball_color`` fading to nothing at that age; ``None``: no trail.
         """
         if style not in ("standard", "video_game"):
             raise ValueError(f"Unknown style {style!r}; use 'standard' or 'video_game'")
+        if trail_seconds is not None and not trail_seconds > 0:
+            raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
         self.style = style
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
@@ -144,14 +155,25 @@ class FrameAnnotator:
         self.keypoint_threshold = keypoint_threshold
         self.pitch = pitch or SoccerPitch()
         self.pitch_line_color = as_color(pitch_line_color)
+        self.trail_seconds = trail_seconds
         colors = [*self.team_colors, self.default_color]
         self._palette = sv.ColorPalette(colors)
         self._text_palette = sv.ColorPalette([text_color_for(c) for c in colors])
         self._markings = pitch_markings(self.pitch)
         self._warned_no_masks = False
 
-    def annotate(self, frame: np.ndarray, frame_result: FrameResult) -> np.ndarray:
-        """Return an annotated copy of ``frame`` (BGR ``uint8``)."""
+    def annotate(
+        self,
+        frame: np.ndarray,
+        frame_result: FrameResult,
+        history: Sequence[FrameResult] | None = None,
+    ) -> np.ndarray:
+        """Return an annotated copy of ``frame`` (BGR ``uint8``).
+
+        ``history``: the results of the frames before ``frame_result``, oldest
+        first, e.g. ``result.window(index, trail_seconds)``; only the ball
+        trail uses it, and it ignores frames older than ``trail_seconds``.
+        """
         image = frame.copy()
         thickness, text_scale = _scaled_sizes(image)
         homography = frame_result.homography
@@ -159,6 +181,8 @@ class FrameAnnotator:
             self._draw_pitch(image, homography, thickness)
         if self.draw_keypoints and frame_result.keypoints is not None:
             self._draw_keypoints(image, frame_result.keypoints, homography, text_scale)
+        if self.trail_seconds and history and homography is not None:
+            self._draw_trail(image, frame_result, history, homography, thickness)
 
         people = frame_result.detections
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
@@ -232,6 +256,63 @@ class FrameAnnotator:
                 (1 - MASK_OPACITY) * region[crop] + MASK_OPACITY * tints[index]
             ).astype(np.uint8)
 
+    # --------------------------------------------------------------- trail
+    def _draw_trail(
+        self,
+        image: np.ndarray,
+        frame_result: FrameResult,
+        history: Sequence[FrameResult],
+        homography: np.ndarray,
+        thickness: int,
+    ) -> None:
+        """The ball's earlier pitch positions, projected into this frame.
+
+        Opacity falls linearly with age along the line, from full now to none
+        at ``trail_seconds``. A frame without a ball position breaks the line;
+        filled-in (``interpolated``) positions draw like any other.
+        """
+        seconds = self.trail_seconds or 0.0  # set: annotate checked it
+        now = frame_result.timestamp
+        # Within a microsecond: timestamps are index / fps, as in the window.
+        recent = [f for f in history if 0 < now - f.timestamp <= seconds + 1e-6]
+        frames = [*recent, frame_result]
+        ages = np.array([now - f.timestamp for f in frames])
+        points = np.array([_ball_position(f) for f in frames])
+        size = (image.shape[1], image.shape[0])
+        xy, valid = project_to_frame(points, homography, size)
+        valid &= np.isfinite(points).all(axis=1)
+        segments = np.flatnonzero(valid[:-1] & valid[1:])
+        if len(segments) == 0:
+            return
+        # Opacity per pixel, only in the box around the line (clipped to the
+        # frame). Each segment is cut into pieces at their mean age; newer
+        # pieces are drawn last and cover older ones at the joints.
+        used = xy[np.union1d(segments, segments + 1)]
+        x0, y0 = np.maximum(np.floor(used.min(axis=0)) - thickness - 1, 0).astype(int)
+        x1, y1 = np.minimum(np.ceil(used.max(axis=0)) + thickness + 2, size).astype(int)
+        if x0 >= x1 or y0 >= y1:
+            return
+        alpha = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+        origin = np.array([x0, y0]) << SUBPIXEL
+        t = np.linspace(0.0, 1.0, _TRAIL_PIECES + 1)[:, None]
+        for i in segments:
+            ends = to_fixed(xy[i] * (1 - t) + xy[i + 1] * t) - origin
+            piece_ages = ages[i] + (ages[i + 1] - ages[i]) * (t[:-1, 0] + t[1:, 0]) / 2
+            for k, age in enumerate(piece_ages):
+                cv2.line(
+                    alpha, tuple(ends[k]), tuple(ends[k + 1]),
+                    round(255 * (1 - age / seconds)), thickness, cv2.LINE_AA,
+                    SUBPIXEL,
+                )  # fmt: skip
+        drawn = alpha > 0
+        if drawn.any():
+            region = image[y0:y1, x0:x1]
+            weight = alpha[drawn, None] / 255.0
+            color = np.array(self.ball_color.as_bgr(), dtype=float)
+            region[drawn] = np.round(
+                (1 - weight) * region[drawn] + weight * color
+            ).astype(np.uint8)
+
     # --------------------------------------------------------------- pitch
     def _draw_pitch(
         self, image: np.ndarray, homography: np.ndarray, thickness: int
@@ -282,6 +363,12 @@ class FrameAnnotator:
             _draw_dot(image, xy[i], radius, color)
             org = (round(float(xy[i, 0])) + radius + 2, round(float(xy[i, 1])) - radius)
             _put_text(image, str(i), org, text_scale * 0.8, sv.Color.WHITE)
+
+
+def _ball_position(frame_result: FrameResult) -> np.ndarray:
+    """The pitch position of the frame's ball; NaN without a ball."""
+    xy = frame_result.ball_xy
+    return xy[0] if len(xy) else np.full(2, np.nan)
 
 
 def _labels(detections: sv.Detections) -> list[str]:

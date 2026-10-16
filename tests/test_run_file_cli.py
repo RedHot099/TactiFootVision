@@ -1081,3 +1081,15 @@ def test_cli_run_applies_post_processes_from_set(tmp_path, toy_postprocesses):
         *("--set", "postprocess.0.type=test_add", "--set", "postprocess.0.offset=4"),
     )
     assert PipelineResult.load(out / "result.pkl").track_ids == [5]
+
+
+# ------------------------------------------------------------ showcase overlays
+def test_the_ball_trail_length_reaches_the_render_section(tmp_path):
+    data = {"detector": DETECTOR, "render": {"annotator": {"trail_seconds": 0.5}}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.annotator.trail_seconds=0"])
+    with pytest.raises(ValueError, match="trail_seconds"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
