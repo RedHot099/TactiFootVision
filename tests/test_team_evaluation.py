@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import supervision as sv
 
-from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
+from tactifoot_vision.data import UNKNOWN_TEAM, LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.evaluation import (
     TeamMetrics,
     evaluate_teams,
@@ -278,12 +278,30 @@ def test_people_without_a_class_name_are_an_error():
         evaluate_teams(_result(TRUTH), clip)
 
 
-def test_a_true_team_id_below_no_team_is_an_error():
+def test_people_of_an_unknown_true_team_are_matched_but_not_scored():
+    # Player 3's team is unknown in frame 1: whatever the run gives them is
+    # not scored, and their detection is not matched to anyone else.
+    truth = {0: TRUTH[0], 1: [*TRUTH[1][:2], (3, "player", UNKNOWN_TEAM, C)]}
+    predicted = {
+        i: [(11, "player", 0, A), (12, "player", 0, B), (13, "player", 1, C)]
+        for i in range(2)
+    }
+    predicted[1][2] = (13, "referee", 0, C)  # wrong team and role, unscored
+
+    metrics = evaluate_teams(_result(predicted), _clip(truth))
+
+    assert (metrics.correct, metrics.matched, metrics.instances) == (5, 5, 6)
+    assert metrics.accuracy == 1.0
+    assert metrics.team_mapping == {0: 0, 1: 1}
+    assert metrics.role_confusion.loc["player", "referee"] == 0
+
+
+def test_a_true_team_id_below_unknown_team_is_an_error():
     clip = _clip(TRUTH)
-    clip.frame(1).detections.data["team_id"][0] = NO_TEAM - 1
+    clip.frame(1).detections.data["team_id"][0] = UNKNOWN_TEAM - 1
 
     with pytest.raises(
-        ValueError, match="fixture has a team_id below NO_TEAM .* frame 1"
+        ValueError, match="fixture has a team_id below UNKNOWN_TEAM .* frame 1"
     ):
         evaluate_teams(_result(TRUTH), clip)
 

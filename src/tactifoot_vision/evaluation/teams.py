@@ -9,15 +9,15 @@ import pandas as pd
 import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
-from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
+from tactifoot_vision.data.labelled_clip import UNKNOWN_TEAM, LabelledClip, Truth
 from tactifoot_vision.evaluation.metrics import TeamMetrics
 from tactifoot_vision.pipeline.result import NO_TEAM, ROLES, PipelineResult
 
 logger = logging.getLogger(__name__)
 
 # The mapped team of a run team id with no true team: true team ids are
-# NO_TEAM or above, so it is never right.
-_UNMAPPED = NO_TEAM - 1
+# UNKNOWN_TEAM or above, so it is never right.
+_UNMAPPED = UNKNOWN_TEAM - 1
 
 
 class _Matches(NamedTuple):
@@ -53,7 +53,9 @@ def evaluate_teams(
     teams by the one-to-one assignment that agrees on the most matched people
     (Hungarian), so a swapped labelling is not counted as wrong. ``NO_TEAM``
     is right for someone without a true team (a referee) and wrong for anyone
-    else; a team given to a referee is wrong. Teams are read from ``team_id``
+    else; a team given to a referee is wrong. A true person of
+    ``UNKNOWN_TEAM`` is matched, so their detection is not matched to anyone
+    else, but left out of every number. Teams are read from ``team_id``
     and roles from ``class_name`` after any post-process that changed them.
 
     Args:
@@ -189,18 +191,22 @@ def _matched_people(
                 f"Labelled clip {clip.name} has no {missing} in frame "
                 f"{frame.index}; a clip with boxes and teams gives every person both"
             )
-        if len(truth) and np.min(truth.data["team_id"]) < NO_TEAM:
+        true_teams = np.asarray(truth.data.get("team_id", []), int)
+        if len(truth) and np.min(true_teams) < UNKNOWN_TEAM:
             raise ValueError(
-                f"Labelled clip {clip.name} has a team_id below NO_TEAM "
-                f"({NO_TEAM}) in frame {frame.index}; true teams are ids from 0, "
-                "or NO_TEAM for people without a team"
+                f"Labelled clip {clip.name} has a team_id below UNKNOWN_TEAM "
+                f"({UNKNOWN_TEAM}) in frame {frame.index}; true teams are ids "
+                "from 0, NO_TEAM for people without a team or UNKNOWN_TEAM for "
+                "people whose team is unknown"
             )
-        instances += len(truth)
+        instances += int(np.sum(true_teams != UNKNOWN_TEAM))
         rows, cols = _match(truth, detected, iou_threshold)
+        scored = true_teams[rows] != UNKNOWN_TEAM
+        rows, cols = rows[scored], cols[scored]
         if len(cols):
             track_ids.append(np.asarray(detected.tracker_id, int)[cols])
             predicted.append(frame.team_ids[cols])
-            true.append(np.asarray(truth.data["team_id"], int)[rows])
+            true.append(true_teams[rows])
             predicted_roles.append(np.asarray(detected.data["class_name"], str)[cols])
             true_roles.append(np.asarray(truth.data["class_name"], str)[rows])
     return _Matches(

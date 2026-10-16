@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip`, `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -208,8 +208,11 @@ configs/              example run files
   pitch positions puts them in `detections.data["pitch_xy"]` (NaN where
   unknown), in `SoccerPitch` units like `FrameResult`'s, and a source with
   teams puts them in `detections.data["team_id"]` (`NO_TEAM` for people
-  without a team), like `FrameResult`'s. `clip.truth` is the set of `Truth`
-  kinds the source provides (`identities`, `boxes`, `ball`,
+  without a team), like `FrameResult`'s, and `tv.data.UNKNOWN_TEAM` (-2) for
+  people whose team the source does not know; truth `NO_TEAM` never means
+  unknown. SoccerNet's team labels `left` and `right` (the team on that
+  side of the main camera's picture) are teams 0 and 1. `clip.truth` is the
+  set of `Truth` kinds the source provides (`identities`, `boxes`, `ball`,
   `pitch_positions`, `calibration`, `teams`), so a consumer can refuse a clip
   that lacks one. The clip also carries `name`, `fps`, `width`, `height` and
   `video_path`, which the frames are read from in place: readers never copy
@@ -219,8 +222,22 @@ configs/              example run files
     boxes with track ids, classes from the `gameinfo.ini` tracklet labels
     (`other` tracklets are left out). MOT frame `n` is `img1/<n:06d>.jpg`,
     frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
-    `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Truth:
-    identities, boxes, ball.
+    `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Teams
+    from the tracklet labels (`player team left;7`); a player or
+    goalkeeper label without one is `UNKNOWN_TEAM`. Truth: identities,
+    boxes, ball, and teams when some label names one.
+  * SoccerNet GSR (`Labels-GameState.json`, v1.3): image `<n:06d>.jpg` of
+    `info.im_dir` is frame `n - 1`; an image with `is_labeled` false keeps
+    an empty, uncalibrated frame. Boxes from `bbox_image`, classes from
+    `attributes.role` (`other` left out), teams from `attributes.team` (null
+    is `UNKNOWN_TEAM` for players and goalkeepers), jersey numbers in
+    `data["jersey"]` (`""` when null), pitch positions from the
+    `bbox_pitch` bottom middle. GSR pitch coordinates are centre-origin
+    metres, shifted by half the pitch into `SoccerPitch` coordinates. A camera
+    annotation becomes the frame's homography: the pinhole part of the
+    SoccerNet camera (distortion left out), inverted and shifted likewise.
+    Truth: identities, boxes, ball, and pitch positions, teams and
+    calibration when some person or frame has them.
 * `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), *,
   pitch=None, fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
   renders `pitch_markings(pitch)` on striped grass through one frame → pitch
@@ -368,15 +385,16 @@ configs/              example run files
   one-to-one assignment that agrees on the most matched people
   (`team_mapping`), so a swapped labelling scores 1; a run team id left
   unmapped is wrong. `NO_TEAM` is right for someone without a true team (a
-  referee) and wrong for a player. `accuracy` is per matched detection,
+  referee) and wrong for a player. A true person of `UNKNOWN_TEAM` is
+  matched, so their detection goes to nobody else, but left out of every
+  number. `accuracy` is per matched detection,
   `track_accuracy` the per-detection share averaged over the run's tracks
   (`tracker_id`), each counting once. `role_confusion` counts the matched
   people by true and predicted role (`tv.pipeline.ROLES`: `player`,
   `goalkeeper`, `referee`, `other`), from `class_name`, so a goalkeeper
   absorbed into a team as a player shows; `as_dict()` leaves it out. The clip must carry boxes and teams, and people without a
   `team_id` or `class_name`, in the result or the clip, or a true `team_id`
-  below `NO_TEAM` (kept free for a future "unknown" marker) are a
-  `ValueError`.
+  below `UNKNOWN_TEAM` are a `ValueError`.
 * `evaluate_teams_clips(pairs, iou_threshold=0.5)` maps each clip's team ids
   on its own, then pools the matched people of several `(result, clip)`
   pairs, as one clip holding them all with its tracks and teams kept apart;

@@ -4,7 +4,14 @@ import cv2
 import numpy as np
 import pytest
 
-from tactifoot_vision.data import LabelledClip, Truth, VideoReader, load_labelled_clip
+from tactifoot_vision.data import (
+    UNKNOWN_TEAM,
+    LabelledClip,
+    Truth,
+    VideoReader,
+    load_labelled_clip,
+)
+from tactifoot_vision.pipeline import NO_TEAM
 
 SEQINFO = """[Sequence]
 name=SNMOT-060
@@ -102,10 +109,42 @@ def test_reading_a_frame_that_is_not_in_the_clip_fails(tmp_path):
         clip.frame(3)
 
 
-def test_soccernet_tracking_has_identities_boxes_and_ball_but_no_pitch_truth(tmp_path):
-    clip = load_labelled_clip(_sequence(tmp_path))
+def test_soccernet_tracking_keeps_the_team_side_of_its_tracklet_labels(tmp_path):
+    """``left`` is team 0 and ``right`` team 1; a referee has no team."""
+    gameinfo = GAMEINFO + "trackletID_6= player team;9\n"
+    gt = GT + "3,6,900,400,25,70,1,-1,-1,-1\n"
+
+    clip = load_labelled_clip(_sequence(tmp_path, gt=gt, gameinfo=gameinfo))
+
+    np.testing.assert_array_equal(clip.frame(0).detections.data["team_id"], [0, 1])
+    # A player whose label has no side has an unknown team.
+    np.testing.assert_array_equal(
+        clip.frame(2).detections.data["team_id"], [NO_TEAM, 0, UNKNOWN_TEAM]
+    )
+    assert clip.frame(1).detections.data["team_id"].dtype == int
+
+
+def test_an_unknown_tracklet_team_fails(tmp_path):
+    gameinfo = GAMEINFO.replace("player team left", "player team middle")
+
+    with pytest.raises(ValueError, match=r"trackletid_1 .*'middle'"):
+        load_labelled_clip(_sequence(tmp_path, gameinfo=gameinfo))
+
+
+def test_soccernet_tracking_without_team_labels_has_no_team_truth(tmp_path):
+    gameinfo = GAMEINFO.replace(" team left", "").replace(" team right", "")
+
+    clip = load_labelled_clip(_sequence(tmp_path, gameinfo=gameinfo))
 
     assert clip.truth == {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
+
+
+def test_soccernet_tracking_has_identities_boxes_ball_and_teams_but_no_pitch_truth(
+    tmp_path,
+):
+    clip = load_labelled_clip(_sequence(tmp_path))
+
+    assert clip.truth == {Truth.IDENTITIES, Truth.BOXES, Truth.BALL, Truth.TEAMS}
     assert Truth.PITCH_POSITIONS not in clip.truth
     assert Truth.CALIBRATION not in clip.truth
     assert all(frame.homography is None for frame in clip)

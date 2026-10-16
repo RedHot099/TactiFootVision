@@ -8,6 +8,11 @@ from pathlib import Path
 import numpy as np
 import supervision as sv
 
+# The team_id of a person whose team the source does not know, such as a GSR
+# player labelled with a null team. It is below NO_TEAM (-1), which in truth
+# means no team; evaluate_teams leaves these people out of every number.
+UNKNOWN_TEAM = -2
+
 
 class Truth(StrEnum):
     """A kind of truth a labelled clip carries; each source provides some of them."""
@@ -32,7 +37,8 @@ class LabelledFrame:
     A source with teams puts them in ``data["team_id"]``, the same key and
     ``(N,)`` int dtype as a ``FrameResult``'s: team ids from 0, and
     ``NO_TEAM`` (-1) for people who have no team, such as referees. Unlike a
-    ``FrameResult``'s, truth ``NO_TEAM`` never means an unknown team.
+    ``FrameResult``'s, truth ``NO_TEAM`` never means an unknown team: a
+    person whose team the source does not know has ``UNKNOWN_TEAM`` (-2).
     """
 
     index: int  # the frame's FrameResult.index when the pipeline runs on the clip
@@ -82,16 +88,22 @@ class LabelledClip:
 
 
 _TRACKING_FILES = ("gt/gt.txt", "gameinfo.ini", "seqinfo.ini")
-_EXPECTED = f"a SoccerNet Tracking sequence folder ({', '.join(_TRACKING_FILES)})"
+_GSR_FILE = "Labels-GameState.json"
+_EXPECTED = (
+    f"a SoccerNet Tracking sequence folder ({', '.join(_TRACKING_FILES)}) "
+    f"or a SoccerNet GSR sequence folder ({_GSR_FILE})"
+)
 
 
 def load_labelled_clip(path: str | Path) -> LabelledClip:
     """Load a labelled clip folder, detecting its layout.
 
     Known layouts: a SoccerNet Tracking sequence folder (``gt/gt.txt``,
-    ``gameinfo.ini``, ``seqinfo.ini``). Video frames are referenced in place,
-    never copied or re-encoded. A folder in no known layout, or one missing a
-    file of its layout, is a ``ValueError`` naming the path and the layout.
+    ``gameinfo.ini``, ``seqinfo.ini``) and a SoccerNet Game State
+    Reconstruction sequence folder (``Labels-GameState.json``). Video
+    frames are referenced in place, never copied or re-encoded. A folder in
+    no known layout, or one missing a file of its layout, is a
+    ``ValueError`` naming the path and the layout.
     """
     from tactifoot_vision.data import soccernet  # it imports this module
 
@@ -101,6 +113,8 @@ def load_labelled_clip(path: str | Path) -> LabelledClip:
         if missing:
             raise ValueError(f"{path / missing[0]} not found; expected {_EXPECTED}")
         return soccernet.read_tracking(path)
+    if path.is_dir() and (path / _GSR_FILE).is_file():
+        return soccernet.read_gamestate(path / _GSR_FILE)
     raise ValueError(
         f"{path} is not a labelled clip in a known layout; expected {_EXPECTED}"
     )
