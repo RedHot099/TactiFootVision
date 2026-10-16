@@ -39,7 +39,8 @@ class Pipeline:
 
     Per frame: detect, split off the ball candidates (the ``ball_class``
     detections) and take the most confident as the ball, track the people,
-    detect pitch keypoints, update the homography and project everyone onto
+    detect pitch keypoints, update the homography (given the frame and the
+    people's boxes, for ``refine_with_lines``) and project everyone onto
     the pitch (people at the bottom centre of their box, the ball candidates
     at their centre). The pass ends with the steps that need data only it
     has (ADR 0002): every track gets one team by majority vote over the crops
@@ -241,7 +242,7 @@ class Pipeline:
         matrix = None
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
-            matrix = self.homography.update(keypoints)
+            matrix = self.homography.update(keypoints, frame, people.xyxy)
         people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
         candidates.data["pitch_xy"] = project_detections(
             candidates, BALL_ANCHOR, matrix
@@ -256,6 +257,7 @@ class Pipeline:
             keypoints=keypoints,
             homography=matrix,
             masks=masks,
+            line_fit=self.homography.line_fit,
         )
 
     def _sample_crops(

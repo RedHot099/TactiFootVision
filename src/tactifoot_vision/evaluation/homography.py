@@ -11,8 +11,8 @@ from tactifoot_vision.data.labelled_clip import LabelledClip, LabelledFrame, Tru
 from tactifoot_vision.evaluation.metrics import HomographyMetrics
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import PERSON_ANCHOR, PipelineResult
-from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.projection import project_points
 
 logger = logging.getLogger(__name__)
 

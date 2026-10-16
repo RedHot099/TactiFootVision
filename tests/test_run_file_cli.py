@@ -21,7 +21,7 @@ from tactifoot_vision.cli import main
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models import MODELS, Model, TrainConfig, TrainResult
 from tactifoot_vision.pipeline import Pipeline, PipelineResult
-from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
+from tactifoot_vision.pitch import HomographyEstimator, LineRefinerConfig, SoccerPitch
 from tactifoot_vision.teams import EMBEDDERS, Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker
 
@@ -143,6 +143,25 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
     assert pipeline.keypoint_model is None
 
 
+def test_the_run_file_switches_line_refinement_on(tmp_path):
+    pipeline = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "homography": {
+                "refine_with_lines": True,
+                "min_line_points": 120,
+                "line_options": {"tophat_px": 11, "stages": [[30, 6], [8, 2]]},
+            },
+        },
+    ).build_pipeline()
+    assert pipeline.homography.refine_with_lines is True
+    assert pipeline.homography.min_line_points == 120
+    assert pipeline.homography.line_options == LineRefinerConfig(
+        tophat_px=11, stages=((30, 6), (8, 2))
+    )
+
+
 def test_null_sections_turn_components_off(tmp_path):
     pipeline = _load(
         tmp_path, {"detector": DETECTOR, "keypoints": None, "tracker": None}
@@ -163,6 +182,11 @@ def _homography_settings(estimator):
         estimator.ransac_threshold,
         estimator.max_age,
         estimator._history.maxlen,
+        estimator.refine_with_lines,
+        estimator.min_line_points,
+        estimator.line_inlier_px,
+        estimator.min_line_inlier_share,
+        estimator.line_options,
     )
 
 

@@ -14,6 +14,7 @@ import pandas as pd
 import supervision as sv
 
 from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
+from tactifoot_vision.pitch.lines import LineFit
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
 NO_TEAM = -1
@@ -123,6 +124,9 @@ class FrameResult:
     keypoints: sv.KeyPoints | None = None  # pitch keypoints in frame pixels
     homography: np.ndarray | None = None  # 3x3 frame -> pitch
     masks: ObjectMasks | None = None  # one per person (Pipeline(keep_masks=True))
+    # How the homography fits the painted lines (HomographyEstimator's
+    # refine_with_lines); None when it was not refined on them.
+    line_fit: LineFit | None = None
 
     @property
     def pitch_xy(self) -> np.ndarray:
