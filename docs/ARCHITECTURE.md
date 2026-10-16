@@ -40,7 +40,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `compare_with_statsbomb` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` → `TeamMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -206,10 +206,12 @@ configs/              example run files
   package vocabulary: `player`, `goalkeeper`, `referee`, `ball`), and
   `homography` the frame → pitch calibration when known. A source with
   pitch positions puts them in `detections.data["pitch_xy"]` (NaN where
-  unknown), in `SoccerPitch` units like `FrameResult`'s. `clip.truth` is the
-  set of `Truth` kinds the source provides (`identities`, `boxes`, `ball`,
-  `pitch_positions`, `calibration`), so a consumer can refuse a clip that
-  lacks one. The clip also carries `name`, `fps`, `width`, `height` and
+  unknown), in `SoccerPitch` units like `FrameResult`'s, and a source with
+  teams puts them in `detections.data["team_id"]` (`NO_TEAM` for people
+  without a team), like `FrameResult`'s. `clip.truth` is the set of `Truth`
+  kinds the source provides (`identities`, `boxes`, `ball`,
+  `pitch_positions`, `calibration`, `teams`), so a consumer can refuse a clip
+  that lacks one. The clip also carries `name`, `fps`, `width`, `height` and
   `video_path`, which the frames are read from in place: readers never copy
   or re-encode a frame. A folder in no known layout, or missing a file of
   its layout, is a `ValueError` naming the path and the expected layout.
@@ -357,6 +359,21 @@ configs/              example run files
   interval of each top-level number from a bootstrap that resamples whole
   clips, deterministic under `seed`; `None` for a single clip, whose
   resampling has no spread. Every clip must be scored against the same truth.
+* `evaluate_teams(result, clip, iou_threshold=0.5)` → `TeamMetrics`: the
+  team accuracy of a `PipelineResult`'s `team_id` against a `LabelledClip`'s
+  teams, on the processed frames. In each frame the true people are matched
+  one to one to the detected ones by Hungarian matching on IoU, whatever
+  their classes, and `recall` is the share matched; only matched people are
+  scored. The run's team ids are mapped onto the true teams by the
+  one-to-one assignment that agrees on the most matched people
+  (`team_mapping`), so a swapped labelling scores 1; a run team id left
+  unmapped is wrong. `NO_TEAM` is right for someone without a true team (a
+  referee) and wrong for a player. `accuracy` is per matched detection,
+  `track_accuracy` the per-detection share averaged over the run's tracks
+  (`tracker_id`), each counting once. The clip must carry boxes and teams,
+  and people without a `team_id`, in the result or the clip, or a true
+  `team_id` below `NO_TEAM` (kept free for a future "unknown" marker) are a
+  `ValueError`.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 

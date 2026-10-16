@@ -17,6 +17,7 @@ class Truth(StrEnum):
     BALL = "ball"  # the ball's box
     PITCH_POSITIONS = "pitch_positions"
     CALIBRATION = "calibration"  # a frame -> pitch homography per frame
+    TEAMS = "teams"  # each person's team, or none (referees)
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,10 @@ class LabelledFrame:
     ``tracker_id`` (the source's track ids) and ``data["class_name"]``. A
     source with pitch positions puts them in ``data["pitch_xy"]``, ``(N, 2)``
     ``SoccerPitch`` coordinates (NaN where unknown), as in a ``FrameResult``.
+    A source with teams puts them in ``data["team_id"]``, the same key and
+    ``(N,)`` int dtype as a ``FrameResult``'s: team ids from 0, and
+    ``NO_TEAM`` (-1) for people who have no team, such as referees. Unlike a
+    ``FrameResult``'s, truth ``NO_TEAM`` never means an unknown team.
     """
 
     index: int  # the frame's FrameResult.index when the pipeline runs on the clip
