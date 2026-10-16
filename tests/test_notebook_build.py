@@ -54,7 +54,8 @@ def test_a_failed_timed_out_or_dead_notebook_is_reported_not_raised(
     assert node.cells[0].outputs[0].text == "partial"  # kept for saving
 
 
-def test_the_visualisation_notebook_shows_the_ball_carrier_ring(build):
+def _visualisation_keywords() -> set[str]:
+    """The keyword arguments the visualisation notebook's code cells pass."""
     from nb05_visualisation import notebook
 
     sources = [
@@ -62,11 +63,18 @@ def test_the_visualisation_notebook_shows_the_ball_carrier_ring(build):
         for cell in notebook().cells
         if cell.cell_type == "code"
     ]  # without IPython magics
-    keywords = {
+    return {
         keyword.arg
         for source in sources
         for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Call)
         for keyword in node.keywords
     }
-    assert {"ball_carrier", "ball_carriers"} <= keywords
+
+
+def test_the_visualisation_notebook_shows_the_ball_carrier_ring(build):
+    assert {"ball_carrier", "ball_carriers"} <= _visualisation_keywords()
+
+
+def test_the_visualisation_notebook_shows_the_velocity_arrows(build):
+    assert {"velocity_seconds", "velocities"} <= _visualisation_keywords()

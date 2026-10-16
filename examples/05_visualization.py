@@ -37,8 +37,13 @@ tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
 visible = tv.viz.PitchRadar(draw_visible_area=True).draw(
     frame_result, frame_size=result.frame_size
 )
+# Each person's velocity as an arrow: where it takes them in one second.
+velocities = tv.analysis.velocities(result)  # one array per frame of result.frames
+arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(
+    frame_result, velocities=velocities[120]
+)
 tv.show(
-    [standard, game, trail, ring, radar, tails, visible],
+    [standard, game, trail, ring, radar, tails, visible, arrows],
     titles=[
         "standard",
         "video game",
@@ -47,6 +52,7 @@ tv.show(
         "radar",
         "radar tails",
         "visible area",
+        "velocity arrows",
     ],
     cols=1,
 ).savefig(OUT / "frame_views.png")
@@ -54,13 +60,16 @@ tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
     OUT / "overlay.png"
 )
 
-# render_video fills each frame's history itself and rings each frame's carrier.
+# render_video fills each frame's history and velocities itself and rings
+# each frame's carrier.
 video_path = tv.viz.render_video(
     result,
     VIDEO,
     OUT / "annotated.mp4",
     annotator=tv.viz.FrameAnnotator(trail_seconds=1.0),
-    radar=tv.viz.PitchRadar(trail_seconds=2.0, draw_visible_area=True),
+    radar=tv.viz.PitchRadar(
+        trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0
+    ),
     ball_carriers=carriers,
 )
 print("video:", video_path)

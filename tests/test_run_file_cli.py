@@ -1172,6 +1172,17 @@ def test_the_radar_visible_area_reaches_the_render_section(tmp_path):
     assert not (tmp_path / "bad").exists()  # refused before the run
 
 
+def test_the_radar_velocity_arrows_reach_the_render_section(tmp_path):
+    data = {"detector": DETECTOR, "render": {"radar": {"velocity_seconds": 1.0}}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.radar.velocity_seconds=0"])
+    with pytest.raises(ValueError, match="velocity_seconds"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
+
+
 def test_ball_carriers_are_not_reachable_from_the_render_section(tmp_path):
     # A run does not compute carriers, so a run file cannot pass them.
     data = {"detector": DETECTOR, "render": {"ball_carriers": [1, None]}}

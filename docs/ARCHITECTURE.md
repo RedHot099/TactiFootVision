@@ -717,7 +717,7 @@ nothing (`PipelineResult.export` writes their tables).
   `ball_color`, over any mask and under the boxes; `None` or an id nobody in the frame has
   draws nothing. No label and no panel.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
-  frame_size=None)`
+  frame_size=None, velocities=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
   pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
   opacity; a `frame` (the video frame of `frame_result`) is the background,
@@ -733,7 +733,17 @@ nothing (`PipelineResult.export` writes their tables).
   outlines `tv.pitch.visible_area` in `visible_area_color` (gold, apart from
   the white markings) under the tails and dots,
   cut to the image, and needs `frame_size` (default the size of `frame`);
-  nothing without a homography or when part of the frame lies beyond the horizon;
+  nothing without a homography or when part of the frame lies beyond the horizon.
+  `velocity_seconds` (off by default) draws each person's velocity from
+  `velocities`, the frame's `(N, 2)` m/s array of `tv.analysis.velocities`
+  (row for row with `detections`; with arrows on, another shape is a
+  `ValueError`), as an
+  arrow in the dot's colour from the dot to where the velocity takes them in
+  `velocity_seconds`, converted to the radar's pitch units, under the dots;
+  none for a NaN row or without `velocities`. Drawing stays stateless: the
+  radar takes the velocities, it does not fit them from `history`, which
+  holds only earlier frames while `velocities` fits a window centred on the
+  frame;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
@@ -764,15 +774,18 @@ nothing (`PipelineResult.export` writes their tables).
   birds_eye=False, ball_carriers=None)` → output path; `source=None` uses `result.video_path`.
   The annotator and the radar get `history=result.window(index, seconds)` for
   the longest `trail_seconds` among them, `None` without a trail; the overlay
-  radar gets `frame_size=result.frame_size`. `ball_carriers`, one
-  `tracker_id` or `None` per frame of `result.frames` as
+  radar gets `frame_size=result.frame_size`. A radar with `velocity_seconds`
+  gets each frame's `velocities` from `tv.analysis.velocities(result)` (its
+  defaults), computed once before `output` is opened, so
+  `render.radar.velocity_seconds` in a run file draws the arrows.
+  `ball_carriers`, one `tracker_id` or `None` per frame of `result.frames` as
   `tv.analysis.ball_carriers` returns them (another length is a
   `ValueError`, with `birds_eye` too), gives the annotator each frame's
   `ball_carrier`. Run files cannot set it: a run computes no carriers.
   `birds_eye=True` writes the bird's-eye video: each frame is
-  `radar.draw(frame_result, frame=frame, history=history)`, padded to even pixel sizes for the
-  encoder; the annotator and overlay settings are not used, and `radar=False`
-  is an error. Checks its settings and
+  `radar.draw(frame_result, frame=frame, history=history, velocities=...)`,
+  padded to even pixel sizes for the encoder; the annotator and overlay
+  settings are not used, and `radar=False` is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
   link) before opening anything, checks that the source video (header and
   decoded frame size) and the drawing pitch match the result, raises
