@@ -407,6 +407,13 @@ def test_the_ball_carrier_gets_a_ring(result: PipelineResult, style: str) -> Non
     assert ys.min() >= y1 and ys.max() <= y2 + (y2 - y1)
 
 
+def test_the_ball_carrier_ring_lies_over_the_masks(result: PipelineResult) -> None:
+    now = dataclasses.replace(result[0])
+    now.masks = ObjectMasks.from_dense(np.ones((len(now.detections), H, W), bool))
+    image = _ring_annotator(draw_masks=True).annotate(_frame(), now, ball_carrier=2)
+    assert _ringed(image, now, 2)
+
+
 @pytest.mark.parametrize("carrier", [None, 99], ids=["None", "unknown id"])
 def test_no_ball_carrier_ring_for_none_or_an_unknown_id(
     result: PipelineResult, carrier: int | None

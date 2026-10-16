@@ -714,7 +714,7 @@ nothing (`PipelineResult.export` writes their tables).
   a ball position (filled-in `interpolated` ones draw like any other), in
   `ball_color` with opacity falling linearly to zero at `trail_seconds`.
   `ball_carrier` (a `tracker_id`) rings that person at their feet in
-  `ball_color`, under the boxes; `None` or an id nobody in the frame has
+  `ball_color`, over any mask and under the boxes; `None` or an id nobody in the frame has
   draws nothing. No label and no panel.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
   frame_size=None)`
