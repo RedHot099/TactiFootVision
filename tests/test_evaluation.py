@@ -326,7 +326,11 @@ def test_statsbomb_comparison_accepts_a_pipeline_result():
     people.data["pitch_xy"] = np.array([[10.5, 10.0], [52.0, 50.0]])
     people.data["team_id"] = np.array([0, 1])
     frame = FrameResult(
-        index=30, timestamp=1.2, detections=people, ball=sv.Detections.empty()
+        index=30,
+        timestamp=1.2,
+        detections=people,
+        ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     result = PipelineResult(
         frames=[frame], fps=25.0, frame_size=(1280, 720), class_names=["player"]
@@ -349,7 +353,11 @@ def test_statsbomb_comparison_of_a_second_half_pipeline_result():
         },
     )
     frame = FrameResult(
-        index=30, timestamp=1.2, detections=people, ball=sv.Detections.empty()
+        index=30,
+        timestamp=1.2,
+        detections=people,
+        ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     result = PipelineResult([frame], 25.0, (1280, 720), ["player"])
     statsbomb = pd.DataFrame(
@@ -406,7 +414,13 @@ def _frame(index, timestamp, rows, ball_xy=None):
             confidence=np.ones(1, np.float32),
             data={"class_name": np.array(["ball"]), "pitch_xy": np.array([ball_xy])},
         )
-    return FrameResult(index=index, timestamp=timestamp, detections=people, ball=ball)
+    return FrameResult(
+        index=index,
+        timestamp=timestamp,
+        detections=people,
+        ball=ball,
+        ball_candidates=ball,
+    )
 
 
 def _one_player_at(xy, **extra):
@@ -468,7 +482,15 @@ def test_statsbomb_csv_route_agrees_with_the_result_route(tmp_path):
 
 def test_statsbomb_comparison_of_an_empty_result():
     empty = PipelineResult(
-        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        [
+            FrameResult(
+                0,
+                0.0,
+                sv.Detections.empty(),
+                sv.Detections.empty(),
+                ball_candidates=sv.Detections.empty(),
+            )
+        ],
         25.0,
         (64, 48),
         [],

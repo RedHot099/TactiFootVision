@@ -32,12 +32,21 @@ def _frame(index: int, tracker_ids: tuple[int, ...] | None = (1, 2)) -> FrameRes
             "team_id": np.zeros(n, int),
         },
     )
-    ball = sv.Detections(
-        xyxy=np.array([[60, 20, 64, 24]], np.float32),
-        confidence=np.array([0.8], np.float32),
-        data={"class_name": np.array(["ball"]), "pitch_xy": np.full((1, 2), np.nan)},
+    candidates = sv.Detections(
+        xyxy=np.array([[60, 20, 64, 24], [100, 0, 104, 4]], np.float32),
+        confidence=np.array([0.8, 0.3], np.float32),
+        data={
+            "class_name": np.array(["ball"] * 2),
+            "pitch_xy": np.full((2, 2), np.nan),
+        },
     )
-    return FrameResult(index=index, timestamp=index / 25, detections=people, ball=ball)
+    return FrameResult(
+        index=index,
+        timestamp=index / 25,
+        detections=people,
+        ball=candidates[:1],
+        ball_candidates=candidates,
+    )
 
 
 def _result(*frames: FrameResult) -> PipelineResult:
@@ -153,12 +162,16 @@ def test_reproject_moves_pitch_positions_to_the_new_homographies():
     # people at the bottom centre of their box, the ball at its centre
     np.testing.assert_allclose(moved[0].pitch_xy, [[15, 25], [70, 50]])
     np.testing.assert_allclose(moved[0].ball_xy, [[41, 16]])
+    np.testing.assert_allclose(
+        moved[0].ball_candidates.data["pitch_xy"], [[41, 16], [61, 6]]
+    )
     np.testing.assert_array_equal(moved[0].homography, HALF_AND_SHIFT)
     assert np.isnan(moved[1].pitch_xy).all() and np.isnan(moved[1].ball_xy).all()
     assert moved[1].homography is None
     # the rest of the frame and the input are untouched
     assert moved[0].detections.data["team_id"].tolist() == [0, 0]
     assert np.isnan(result[0].pitch_xy).all() and result[0].homography is None
+    assert np.isnan(result[0].ball_candidates.data["pitch_xy"]).all()
     np.testing.assert_array_equal(result[0].pitch_xy, snapshot[0].pitch_xy)
 
 

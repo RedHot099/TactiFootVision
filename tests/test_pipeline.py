@@ -450,7 +450,9 @@ def _frame_with(keys, names, xy) -> "tv.pipeline.FrameResult":
         tracker_id=np.array(keys),
         data={"class_name": np.array(names), "pitch_xy": np.array(xy, float)},
     )
-    return tv.pipeline.FrameResult(0, 0.0, detections, sv.Detections.empty())
+    return tv.pipeline.FrameResult(
+        0, 0.0, detections, sv.Detections.empty(), ball_candidates=sv.Detections.empty()
+    )
 
 
 def test_goalkeeper_without_pitch_positions_keeps_its_crop_vote():
@@ -616,3 +618,40 @@ def test_the_most_confident_ball_is_kept(video):
         assert len(frame.ball) == 1
         assert frame.ball.confidence.tolist() == [pytest.approx(0.95)]
         assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
+
+
+def test_every_ball_candidate_is_kept_best_first(video):
+    result = Pipeline(
+        _ThreeBalls(device="cpu"),
+        keypoint_model=KnownHomographyKeypoints(device="cpu"),
+        tracker=None,
+    ).run(video, end=3, progress=False)
+    for t, frame in enumerate(result):
+        candidates = frame.ball_candidates
+        assert candidates.confidence.tolist() == pytest.approx([0.95, 0.7, 0.5])
+        assert candidates.xyxy[1:, 0].tolist() == [300, 10]
+        assert candidates.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
+        np.testing.assert_array_equal(frame.ball.xyxy, candidates.xyxy[:1])
+        centres = candidates.get_anchors_coordinates(sv.Position.CENTER)
+        np.testing.assert_allclose(
+            candidates.data["pitch_xy"],
+            frame_to_pitch(centres, FRAME_TO_PITCH),
+            atol=1e-3,
+        )
+
+
+def test_ball_cleaning_leaves_the_candidates_alone(result):
+    frame = result.frame(TELEPORT_FRAME)
+    assert np.isnan(frame.ball_xy).all()
+    assert np.isfinite(frame.ball_candidates.data["pitch_xy"]).all()
+
+
+def test_the_ball_shares_no_memory_with_its_candidates(video):
+    result = Pipeline(_ThreeBalls(device="cpu"), tracker=None).run(
+        video, end=1, progress=False
+    )
+    frame = result[0]
+    frame.ball.xyxy[:] = 0
+    frame.ball.data["pitch_xy"][:] = 0
+    assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(150, abs=2)
+    assert np.isnan(frame.ball_candidates.data["pitch_xy"][0]).all()

@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -12,7 +13,13 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
-from tactifoot_vision.models.base import MODELS, Model, TrainConfig, TrainResult
+from tactifoot_vision.models.base import (
+    MODELS,
+    Model,
+    TrainConfig,
+    TrainResult,
+    check_class_conf,
+)
 from tactifoot_vision.utils import cache_dir
 
 logger = logging.getLogger(__name__)
@@ -69,7 +76,7 @@ class _UltralyticsModel(Model):
 
     def _run(self, image: np.ndarray) -> Any:
         options: dict[str, Any] = {
-            "conf": self.conf,
+            "conf": self._lowest_conf,
             "iou": self.iou,
             "device": self.device,
             "verbose": False,
@@ -158,13 +165,38 @@ class YOLODetector(_UltralyticsModel):
     task = Task.DETECT
     default_weights = "yolo11n.pt"
 
+    def __init__(
+        self,
+        weights: str | Path | None = None,
+        *,
+        conf: float = 0.25,
+        class_conf: Mapping[str, float] | None = None,
+        iou: float = 0.7,
+        imgsz: int | None = None,
+        device: str | None = None,
+    ) -> None:
+        """
+        Args:
+            weights: checkpoint path or an Ultralytics model name (``"yolo11s.pt"``,
+                downloaded by Ultralytics); ``None`` uses ``default_weights``.
+            conf: minimum confidence of returned objects.
+            class_conf: minimum confidence per class name, replacing ``conf``
+                for those classes, e.g. ``{"ball": 0.05}`` so that weak ball
+                candidates are kept.
+            iou: IoU threshold of non-maximum suppression.
+            imgsz: inference size; ``None`` keeps the size the model was trained at.
+            device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
+        """
+        self.class_conf = check_class_conf(class_conf)
+        super().__init__(weights, conf=conf, iou=iou, imgsz=imgsz, device=device)
+
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
         detections = sv.Detections.from_ultralytics(self._run(image))
         detections.data["class_name"] = np.asarray(self.class_names, dtype=str)[
             detections.class_id.astype(int)
         ]
-        return detections
+        return self._apply_class_conf(detections)
 
 
 @MODELS.register("yolo_pose")

@@ -1,5 +1,6 @@
 """The inference pipeline: detection -> tracking -> pitch projection -> teams."""
 
+import copy
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -37,13 +38,14 @@ GOALKEEPER = "goalkeeper"
 class Pipeline:
     """Turns a match video into per-frame tracks, pitch positions and teams.
 
-    Per frame: detect, split off the ball (best-confidence ``ball_class``
-    detection), track the people, detect pitch keypoints, update the
-    homography and project everyone onto the pitch (people at the bottom
-    centre of their box, the ball at its centre). The pass ends with the steps
-    that need data only it has (ADR 0002): every track gets one team by
-    majority vote over the crops sampled during the pass, and ball positions
-    that jump implausibly far are removed.
+    Per frame: detect, split off the ball candidates (the ``ball_class``
+    detections) and take the most confident as the ball, track the people,
+    detect pitch keypoints, update the homography and project everyone onto
+    the pitch (people at the bottom centre of their box, the ball candidates
+    at their centre). The pass ends with the steps that need data only it
+    has (ADR 0002): every track gets one team by majority vote over the crops
+    sampled during the pass, and ball positions that jump implausibly far are
+    removed.
 
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
@@ -74,7 +76,8 @@ class Pipeline:
         ball_max_speed: fastest plausible ball, in pitch units per second (m/s
             for the default pitch); faster jumps between kept ball positions
             are outliers whose ``pitch_xy`` becomes NaN (see
-            :func:`~tactifoot_vision.tracking.clean_ball_path`). ``None`` keeps all.
+            :func:`~tactifoot_vision.tracking.clean_ball_path`); the ball
+            candidates keep theirs. ``None`` keeps all.
         crop_scale, crop_center_ratio: crop geometry passed to
             :func:`~tactifoot_vision.teams.extract_crops`.
         keep_masks: keep the tracker's segmentation masks (SAM2) in
@@ -228,9 +231,8 @@ class Pipeline:
                 )
             detections.data["class_name"] = np.zeros(0, dtype=str)
         is_ball = detections.data["class_name"] == self.ball_class
-        ball = detections[is_ball]
-        if len(ball) > 1:
-            ball = ball[[int(np.argmax(ball.confidence))]]
+        candidates = detections[is_ball]
+        candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
         people = detections[~is_ball]
         if self.include_classes is not None:
             people = people[np.isin(people.data["class_name"], self.include_classes)]
@@ -248,13 +250,16 @@ class Pipeline:
             keypoints = self.keypoint_model.predict(frame)
             matrix = self.homography.update(keypoints)
         people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
-        ball.data["pitch_xy"] = project_detections(ball, BALL_ANCHOR, matrix)
+        candidates.data["pitch_xy"] = project_detections(
+            candidates, BALL_ANCHOR, matrix
+        )
         people.data["team_id"] = np.full(len(people), NO_TEAM, dtype=int)
         return FrameResult(
             index=index,
             timestamp=index / fps,
             detections=people,
-            ball=ball,
+            ball=copy.deepcopy(candidates[:1]),  # a slice would share their arrays
+            ball_candidates=candidates,
             keypoints=keypoints,
             homography=matrix,
             masks=masks,
