@@ -3,7 +3,7 @@
 import logging
 import numbers
 import random
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
@@ -12,13 +12,20 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from tactifoot_vision.data._files import clipped_box
 from tactifoot_vision.data.annotations import Annotations, Task
+from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
+from tactifoot_vision.data.video import sequence_images
 
 logger = logging.getLogger(__name__)
 
 SPLITS = ("train", "valid", "test")
 SPLIT_ALIASES = {"val": "valid", "validation": "valid"}
 LinkMode = Literal["symlink", "hardlink", "copy"]
+# The classes of a dataset built from labelled clips: the package vocabulary.
+_CLIP_CLASSES = ("player", "goalkeeper", "referee", "ball")
+# OpenCV's image-sequence reader only finds a first image numbered 0 to 4.
+_LAST_FIRST_IMAGE = 4
 
 
 def canonical_split(name: str) -> str:
@@ -121,6 +128,66 @@ class Dataset:
 
         return coco.read_dataset(Path(root), flip_idx=flip_idx)
 
+    @classmethod
+    def from_clips(
+        cls,
+        clips: LabelledClip | Iterable[LabelledClip],
+        train: float = 0.8,
+        valid: float = 0.2,
+        test: float = 0.0,
+        seed: int = 0,
+    ) -> "Dataset":
+        """Detection dataset of the frames of labelled clips, split per clip.
+
+        The fractions count clips, not frames, and are rounded as in
+        :meth:`resplit`: every frame of a clip lands in the clip's split, so
+        adjacent frames never sit on both sides of a split. Each frame with a
+        box becomes a sample whose image is that frame's file of the clip's
+        image sequence, referenced in place; a frame without one is left
+        out, since a clip cannot tell an empty frame from an unlabelled one.
+        The images must be one per frame, numbered without a gap, the
+        lowest-numbered being frame 0 as :class:`VideoReader` reads them; its
+        number must be 0 to 4, the first numbers OpenCV looks for. The
+        SoccerNet readers number from 1 (image ``n`` is frame ``n - 1``), so
+        a SoccerNet folder that also holds an image 0 is refused rather than
+        read one frame off. Boxes are clipped to the image. A clip without a
+        boxed frame still takes a clip's share of its split, with a warning. Classes are ``player``,
+        ``goalkeeper``, ``referee`` and ``ball``. A clip without box truth or
+        with another class, one read from a video file (its frames have no
+        file of their own; extract them first), a missing or extra image and
+        the same clip passed twice are ``ValueError``, as is no clip at all.
+        """
+        clips = [clips] if isinstance(clips, LabelledClip) else list(clips)
+        if not clips:
+            raise ValueError("A detection dataset from clips needs at least one clip")
+        seen: set[Path] = set()
+        for clip in clips:
+            # Resolved, so one sequence reached by two paths is caught too.
+            images = clip.video_path.parent.resolve() / clip.video_path.name
+            if images in seen:
+                raise ValueError(
+                    f"Clip {clip.name} ({clip.video_path}) is given twice; its "
+                    "frames could land in two splits"
+                )
+            seen.add(images)
+        pairs = [(clip, _clip_samples(clip)) for clip in clips]
+        for clip, samples in pairs:
+            if not samples:
+                logger.warning(
+                    "Clip %s has no frame with a box; it makes no sample but "
+                    "still counts as a clip in the split fractions",
+                    clip.name,
+                )
+        splits = _split_by_fractions(pairs, train, valid, test, seed)
+        return cls(
+            task=Task.DETECT,
+            class_names=list(_CLIP_CLASSES),
+            splits={
+                split: [sample for _, samples in members for sample in samples]
+                for split, members in splits.items()
+            },
+        )
+
     # ------------------------------------------------------------------- access
     def __getitem__(self, split: str) -> list[Sample]:
         """The samples of ``split`` (a new list; empty if the split is missing)."""
@@ -207,22 +274,8 @@ class Dataset:
         goes to the last split with a non-zero fraction, so a split asked to
         be empty (``test=0``) stays empty.
         """
-        fractions = {"train": train, "valid": valid, "test": test}
-        if any(f < 0 for f in fractions.values()):
-            raise ValueError(f"Split fractions must not be negative, got {fractions}")
-        total = train + valid + test
-        if not np.isclose(total, 1.0):
-            raise ValueError(f"Split fractions must sum to 1, got {total}")
-        pool = list(self)
-        random.Random(seed).shuffle(pool)
-        last = max(i for i, f in enumerate(fractions.values()) if f > 0)
-        splits, begin, cumulative = {}, 0, 0.0
-        for position, (name, fraction) in enumerate(fractions.items()):
-            cumulative += fraction
-            end = len(pool) if position >= last else round(len(pool) * cumulative)
-            splits[name] = pool[begin:end]
-            begin = end
-        return replace(self, splits={k: v for k, v in splits.items() if v})
+        splits = _split_by_fractions(list(self), train, valid, test, seed)
+        return replace(self, splits=splits)
 
     def merge(self, other: "Dataset") -> "Dataset":
         """Concatenate the splits of two datasets with identical classes.
@@ -264,6 +317,103 @@ class Dataset:
         from tactifoot_vision.data import coco
 
         return coco.write_dataset(self, Path(out_dir), link=link)
+
+
+def _clip_samples(clip: LabelledClip) -> list[Sample]:
+    """One sample per frame of ``clip`` with a box, its image the frame's file in place.
+
+    Boxes are clipped to the image, as both exporters write them, and a box
+    with nothing left inside it is dropped.
+    """
+    if Truth.BOXES not in clip.truth:
+        raise ValueError(
+            f"Clip {clip.name} has no {Truth.BOXES.value} truth, so it makes no "
+            "detection samples"
+        )
+    samples = []
+    for frame, image in zip(clip.frames, _frame_images(clip), strict=True):
+        objects = [d for d in (frame.detections, frame.ball) if len(d)]
+        names = [
+            str(n) for d in objects for n in d.data.get("class_name", [""] * len(d))
+        ]
+        unknown = sorted(set(names) - set(_CLIP_CLASSES))
+        if unknown:
+            raise ValueError(
+                f"Frame {frame.index} of clip {clip.name} has class {unknown[0]!r}; "
+                f"a detection dataset from clips has classes {_CLIP_CLASSES}"
+            )
+        boxes, class_ids = [], []
+        for box, name in zip(
+            (box for d in objects for box in d.xyxy), names, strict=True
+        ):
+            box = clipped_box(box, clip.width, clip.height)
+            if box is not None:
+                boxes.append(box)
+                class_ids.append(_CLIP_CLASSES.index(name))
+        if boxes:
+            annotations = Annotations(np.array(boxes), class_ids)
+            samples.append(Sample(image, clip.width, clip.height, annotations))
+    return samples
+
+
+def _frame_images(clip: LabelledClip) -> list[Path]:
+    """The image file of each frame of ``clip``, as :class:`VideoReader` reads them.
+
+    The lowest-numbered image is frame 0, and OpenCV only opens a sequence
+    whose first image is numbered 0 to 4. The images must be exactly one
+    per frame, numbered without a gap: a missing or extra image would move
+    the labels onto other frames.
+    """
+    pattern = clip.video_path
+    try:
+        images = sequence_images(pattern)
+    except ValueError:
+        raise ValueError(
+            f"Clip {clip.name} is read from {pattern}, not an image sequence, so "
+            "its frames cannot be referenced in place; extract them first"
+        ) from None
+    numbers = [number for number, _ in images]
+    first = numbers[0] if numbers else 0
+    if first > _LAST_FIRST_IMAGE:
+        raise ValueError(
+            f"Clip {clip.name}: the first image matching {pattern} is "
+            f"{images[0][1].name}, numbered {first}; OpenCV (VideoReader, the "
+            f"pipeline) only opens a sequence starting at 0 to {_LAST_FIRST_IMAGE}"
+        )
+    if numbers != list(range(first, first + len(clip.frames))):
+        found = f" ({images[0][1].name} to {images[-1][1].name})" if images else ""
+        raise ValueError(
+            f"Clip {clip.name} has {len(clip.frames)} frames but {pattern.parent} "
+            f"holds {len(images)} images matching {pattern.name}{found}; it needs "
+            "one image per frame, numbered without a gap"
+        )
+    return [path for _, path in images]
+
+
+def _split_by_fractions[T](
+    items: list[T], train: float, valid: float, test: float, seed: int
+) -> dict[str, list[T]]:
+    """Shuffle ``items`` and cut them into the non-empty splits of these fractions.
+
+    Boundaries are rounded cumulatively and the remainder goes to the last
+    split with a non-zero fraction, so a zero fraction stays empty.
+    """
+    fractions = {"train": train, "valid": valid, "test": test}
+    if any(f < 0 for f in fractions.values()):
+        raise ValueError(f"Split fractions must not be negative, got {fractions}")
+    total = train + valid + test
+    if not np.isclose(total, 1.0):
+        raise ValueError(f"Split fractions must sum to 1, got {total}")
+    pool = list(items)
+    random.Random(seed).shuffle(pool)
+    last = max(i for i, f in enumerate(fractions.values()) if f > 0)
+    splits, begin, cumulative = {}, 0, 0.0
+    for position, (name, fraction) in enumerate(fractions.items()):
+        cumulative += fraction
+        end = len(pool) if position >= last else round(len(pool) * cumulative)
+        splits[name] = pool[begin:end]
+        begin = end
+    return {k: v for k, v in splits.items() if v}
 
 
 def _subset_count(want: object, available: int) -> int:

@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -172,6 +172,24 @@ configs/              example run files
   every link mode and loses nothing else. A marker entry that does not
   resolve inside the export folder (an absolute path, `..`, a symlinked
   folder) is refused, so a corrupt marker deletes nothing.
+* `Dataset.from_clips(clips, train, valid, test, seed)` builds a detection
+  dataset from one or more labelled clips with box truth. The fractions
+  count clips and round as in `resplit`, so every frame of a clip lands in
+  the clip's split. Each frame with a box is a sample whose image is that
+  frame's file of the clip's image sequence, referenced in place; the
+  sequence must hold one image per frame, numbered without a gap, its
+  lowest-numbered image being frame 0 as `VideoReader` reads it, so a
+  missing or extra image cannot move the labels onto other frames. That
+  first number must be 0 to 4, the numbers OpenCV looks for; SoccerNet
+  folders start at 1 (image `n` is frame `n - 1`). No clip at all is
+  refused; a clip without a boxed frame warns and still takes a clip's
+  share of its split. A frame
+  without a box is left out, since a clip cannot tell an empty frame from
+  an unlabelled one. Boxes are clipped to the image, as both exporters
+  write them. Classes are `player`, `goalkeeper`, `referee`, `ball`. A clip
+  without box truth or with another class, one read from a video file and
+  the same clip given twice (paths resolved) are refused. Only `to_yolo` /
+  `to_coco` with `link="copy"` copy frames.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).

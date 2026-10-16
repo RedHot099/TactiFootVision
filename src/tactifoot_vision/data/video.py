@@ -27,10 +27,11 @@ class VideoReader:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         if not self.path.is_file():
-            parts = _FRAME_NUMBER.split(self.path.name)
-            if len(parts) != 2:
-                raise FileNotFoundError(f"Video not found: {self.path}")
-            if not _has_match(self.path.parent, r"\d+".join(map(re.escape, parts))):
+            try:
+                images = sequence_images(self.path)
+            except ValueError:
+                raise FileNotFoundError(f"Video not found: {self.path}") from None
+            if not images:
                 raise FileNotFoundError(f"No image matches {self.path}")
         capture = self._open()
         try:
@@ -114,12 +115,19 @@ class VideoReader:
         )
 
 
-def _has_match(folder: Path, name_pattern: str) -> bool:
-    """Whether ``folder`` holds a file whose whole name matches ``name_pattern``."""
-    if not folder.is_dir():
-        return False
-    name = re.compile(name_pattern)
-    return any(name.fullmatch(path.name) for path in folder.iterdir())
+def sequence_images(pattern: Path) -> list[tuple[int, Path]]:
+    """The images of the image sequence ``pattern`` as ``(number, path)``, by number.
+
+    A path that is a file, or has no single frame number, is a ``ValueError``.
+    """
+    parts = _FRAME_NUMBER.split(pattern.name)
+    if len(parts) != 2 or pattern.is_file():
+        raise ValueError(f"{pattern} is not an image-sequence pattern such as %06d.jpg")
+    if not pattern.parent.is_dir():
+        return []
+    name = re.compile(r"(\d+)".join(map(re.escape, parts)))
+    found = ((name.fullmatch(p.name), p) for p in pattern.parent.iterdir())
+    return sorted((int(match.group(1)), path) for match, path in found if match)
 
 
 def check_frame_range(start: int, end: int | None, stride: int) -> None:
