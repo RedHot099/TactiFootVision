@@ -55,9 +55,10 @@ def _feet_box(metres: tuple[float, float]) -> list[float]:
 Track = tuple[int, str, int, str | None, Path]
 
 # Red (team 0) stands nearer x = 0 than blue (team 1), so red defends that goal.
+# Ten tracks a team, as a match shows: kits are told apart by the teams' spreads.
 PLAYERS: list[Track] = [
-    *[(1 + i, "player", 0, "red", _at(25 + 4 * i, 10 + 12 * i)) for i in range(5)],
-    *[(11 + i, "player", 1, "blue", _at(60 + 4 * i, 8 + 12 * i)) for i in range(5)],
+    *[(1 + i, "player", 0, "red", _at(20 + 3 * i, 4 + 6.5 * i)) for i in range(10)],
+    *[(11 + i, "player", 1, "blue", _at(58 + 3 * i, 2 + 6.5 * i)) for i in range(10)],
 ]
 # Kit outliers the vote put into a team: one in each penalty area, one in midfield.
 KEEPER_LEFT: Track = (21, "player", 1, "yellow", _at(3, 34))
@@ -184,6 +185,38 @@ def test_the_outlier_rule_needs_no_threshold_per_match(scale, spread):
     assert all(roles[t] == {("player", team)} for t, _, team, *_ in PLAYERS)
 
 
+def test_officials_the_vote_put_into_a_team_are_found():
+    # a few blue players in view and every official voted blue: a centre and
+    # spread of the voted team would be the officials' as much as blue's
+    few_blue = PLAYERS[10:16]
+    linesmen = [
+        (31 + i, "player", 1, "black", _at(20 + 25 * i, -0.5)) for i in range(4)
+    ]
+    officials = [
+        (21, "player", 1, "yellow", _at(3, 34)),
+        (22, "player", 1, "green", _at(101, 30)),
+        (23, "player", 1, "black", _at(50, 40)),
+        *linesmen,
+    ]
+
+    roles = _roles(assign_roles(_result([*PLAYERS[:10], *few_blue, *officials])))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[22] == {("goalkeeper", 1)}
+    for tracker_id, *_ in [officials[2], *linesmen]:
+        assert roles[tracker_id] == {("referee", NO_TEAM)}
+    for tracker_id, _, team, *_ in [*PLAYERS[:10], *few_blue]:
+        assert roles[tracker_id] == {("player", team)}
+
+
+@pytest.mark.parametrize("n_kits", [5, 6, 7])
+def test_a_team_split_into_kits_is_put_back_together(n_kits):
+    # only two kits on the pitch: the spare kits split the teams, not officials
+    roles = _roles(assign_roles(_result(PLAYERS, spread=0.1), n_kits=n_kits))
+
+    assert all(roles[t] == {("player", team)} for t, _, team, *_ in PLAYERS)
+
+
 def test_the_outlier_option_is_relative_to_the_team_spread():
     # with a limit beyond the kits' distance nobody is an outlier
     roles = _roles(assign_roles(_result(SCENE), outlier_spread=1000.0))
@@ -192,9 +225,22 @@ def test_the_outlier_option_is_relative_to_the_team_spread():
     assert roles[23] == {("player", 0)}
 
 
-def test_only_the_outlier_nearest_each_goal_keeps_it():
-    second = (24, "player", 1, "yellow", _at(10, 30))  # also in the box, further out
+def test_every_track_of_the_keepers_kit_in_the_area_is_the_goalkeeper():
+    # the keeper tracked in two pieces the joining left apart
+    second = (24, "player", 1, "yellow", _at(10, 30))
     roles = _roles(assign_roles(_result([*SCENE, second])))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[24] == {("goalkeeper", 0)}
+
+
+def test_an_outlier_of_another_kit_in_the_area_stays_a_referee():
+    # the referee in the box three frames in four: fewer rows there than the keeper
+    def visits(index: int) -> tuple[float, float]:
+        return (8.0, 40.0) if index % 4 else (30.0, 40.0)
+
+    referee = (24, "player", 0, "black", visits)
+    roles = _roles(assign_roles(_result([*SCENE, referee])))
 
     assert roles[21] == {("goalkeeper", 0)}
     assert roles[24] == {("referee", NO_TEAM)}
@@ -255,13 +301,25 @@ def test_detector_roles_are_kept():
     assert roles[21] == {("goalkeeper", 0)}
 
 
-def test_a_goal_with_a_detector_goalkeeper_gets_no_second_one():
+def test_a_detector_goalkeeper_gives_its_goal_its_kit():
+    # the keeper's other pieces join it; the referee in the box stays a referee
     detector_keeper = (41, "goalkeeper", 0, "yellow", _at(2, 30))
-    roles = _roles(assign_roles(_result([*SCENE, detector_keeper])))
+    referee = (24, "player", 0, "black", _at(8, 40))
+    roles = _roles(assign_roles(_result([*SCENE, detector_keeper, referee])))
 
     assert roles[41] == {("goalkeeper", 0)}
-    assert roles[21] == {("referee", NO_TEAM)}
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[24] == {("referee", NO_TEAM)}
     assert roles[22] == {("goalkeeper", 1)}  # the other goal still gets one
+
+
+def test_a_goal_whose_detector_goalkeeper_has_no_outlier_kit_gets_none():
+    detector_keeper = (41, "goalkeeper", 0, "red", _at(2, 30))
+    referee = (24, "player", 0, "black", _at(8, 40))
+    roles = _roles(assign_roles(_result([*PLAYERS, detector_keeper, referee])))
+
+    assert roles[41] == {("goalkeeper", 0)}
+    assert roles[24] == {("referee", NO_TEAM)}
 
 
 def test_the_class_id_follows_the_new_class_name():
@@ -302,7 +360,7 @@ def test_frames_without_a_tracker_are_left_alone():
 
 
 def test_a_team_of_too_few_player_tracks_is_warned_about(caplog):
-    thin_blue = [track for track in SCENE if track[0] not in (12, 13, 14, 15)]
+    thin_blue = [track for track in SCENE if track[0] not in range(12, 21)]
 
     assign_roles(_result(thin_blue))
 
@@ -364,7 +422,9 @@ def test_undecided_sides_leave_the_goalkeeper_candidates_players(caplog):
     ]
     steward = (31, "player", 0, "red", _at(50, -6))
 
-    roles = _roles(assign_roles(_result([*level, *SCENE[10:], steward])))
+    roles = _roles(
+        assign_roles(_result([*level, KEEPER_LEFT, KEEPER_RIGHT, REFEREE, steward]))
+    )
 
     assert roles[21] == {("player", 1)}
     assert roles[22] == {("player", 0)}
@@ -398,7 +458,12 @@ def test_the_input_is_left_alone_and_the_call_is_recorded():
     assert by_name.postprocesses == [
         AppliedPostProcess(
             "assign_roles",
-            {"outlier_spread": 3.0, "min_box_share": 0.5, "off_pitch_margin": 1.5},
+            {
+                "n_kits": 6,
+                "outlier_spread": 3.0,
+                "min_box_share": 0.5,
+                "off_pitch_margin": 1.5,
+            },
         )
     ]
     assert by_name.track_embeddings == result.track_embeddings
@@ -423,6 +488,7 @@ def test_a_result_saved_before_team_embeddings_were_kept_is_refused(tmp_path):
 @pytest.mark.parametrize(
     ("options", "match"),
     [
+        ({"n_kits": 1}, "n_kits"),
         ({"outlier_spread": 0}, "outlier_spread"),
         ({"min_box_share": 1.5}, "min_box_share"),
         ({"min_box_share": 0}, "min_box_share"),
