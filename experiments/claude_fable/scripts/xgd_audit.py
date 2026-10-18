@@ -11,6 +11,9 @@ tickets 02 and 09, pitch-keypoints 04).
     audit 1 (ticket 02): ./run.sh python scripts/xgd_audit.py --extract cache/xgd_extract --configs C1 C2 C3 C4 \
         --reference-configs --out results/xgd_audit
 
+    retrained detector (detector re-run): E3 with detector-data's detector, from the full run's cache (its t0 rows):
+    ./run.sh python scripts/xgd_audit.py --extract cache/xgd_full4 --configs E3 --reference-configs --out results/xgd_audit4
+
 Diagnostic only (`xgpoc.detector.audit`): the one detector script allowed to read StatsBomb data and the pairing,
 each with its columns named (no goal or outcome column). Auditing any of D1-D4 or E1-E3 requires that audit's committed
 declaration (`research/xg_detector_audit2_configs.json`, `research/pitchkp_audit3_configs.json`) to have its committed
@@ -125,6 +128,7 @@ def main() -> None:
             raise SystemExit(f"{folder} holds {record['config']['name']}, not {name}")
         frames = pd.read_parquet(folder / "frames.parquet", columns=audit.FRAME_READ_COLUMNS)
         cached = pd.read_parquet(folder / "features.parquet")
+        cached = cached[cached.offset_ms == 0]          # a full-run cache (pk_extract3_full.py) also holds -400 ms rows
         replayed = replayed_features(frames, name)
         replay[name] = audit.check_replay(cached, replayed)
         if replay[name]:
