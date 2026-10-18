@@ -47,7 +47,8 @@ data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, play
 data/keypoints/                   YOLO-pose pitch dataset (32 landmarks, flip_idx)
 data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
 data/videos/broadcast_60s.mp4     one minute of match footage
-models/football_yolo11m.pt        trained detector
+models/detector_yolo11l_1280_dd2c.pt  default detector of configs/pipeline.yaml (imgsz 1280; card: .json beside)
+models/football_yolo11m.pt        detector trained on football_yolo (notebooks, examples)
 models/football_rfdetr_base.pth   trained RF-DETR detector
 models/pitch_yolov8n_pose.pt      trained pitch keypoint model
 external/segment-anything-2-real-time/   optional, for the SAM2 tracker

@@ -883,3 +883,16 @@ def test_a_new_render_video_parameter_reaches_render_without_edits(
     loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
     assert received == [5]
     assert (tmp_path / "out" / "annotated.mp4").is_file()
+
+
+def test_shipped_run_file_uses_the_detector_data_weights_at_their_training_size():
+    # detector-data 05: the retrained YOLO11l won on GSR test; it was trained at 1280, so the run file says so
+    root = Path(__file__).resolve().parents[1]
+    detector = run_file.load(root / "configs" / "pipeline.yaml").sections["detector"]
+    assert detector == {
+        "type": "yolo",
+        "weights": str(root / "models" / "detector_yolo11l_1280_dd2c.pt"),
+        "conf": 0.3,
+        "iou": 0.5,
+        "imgsz": 1280,
+    }

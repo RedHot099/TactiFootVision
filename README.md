@@ -19,7 +19,7 @@ uv sync
 import tactifoot_vision as tv
 
 pipeline = tv.Pipeline(
-    detector=tv.load_model("yolo", "models/football_yolo11m.pt"),
+    detector=tv.load_model("yolo", "models/detector_yolo11l_1280_dd2c.pt", imgsz=1280),
     keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt"),
     team_classifier=tv.teams.TeamClassifier("siglip"),
 )

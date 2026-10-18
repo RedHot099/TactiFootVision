@@ -246,5 +246,16 @@
       "check": "baseline reproduces pk_ball_evidence (pitch-keypoints report): placed 0.5019, far 0.2508 on 6,404 frames"
     }
   },
-  "rules": "GSR valid is the dev set; GSR test is read once per final candidate (ticket 05) plus the baseline row."
+  "rules": "GSR valid is the dev set; GSR test is read once per final candidate (ticket 05) plus the baseline row.",
+  "placement_homographies_test": {
+    "file": "/mnt/storage/tactifoot_research/detector_data/bench/gsr_test_homographies.parquet",
+    "sha256": "b51bb5d8fc331aca59b70b9048ae489f5b05afdeae0c5bf727f46f8d3f958aba",
+    "frames": 6209,
+    "source": "/home/kuba/projects/tactifoot_vision/.claude/worktrees/research-xg-detector/experiments/claude_fable/results/pk_candidates/y11m_960_e18_square/test/per_frame.parquet",
+    "source_sha256": "df8c3cb00b1a66c082aed5ab203ee1d5f3a5e01ed3c9457bc7caa416d51748f5",
+    "method": "kp03_r2_refined",
+    "convention": "720p frame pixels -> corner-origin metres (105 x 68)",
+    "ticket": "detector-data 05",
+    "frames_scored": "scored GSR test frames whose single truth ball (bbox_pitch) lies on the pitch"
+  }
 }

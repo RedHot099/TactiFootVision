@@ -2,7 +2,8 @@
 
     uv run python scripts/detector_bench.py build      # bench sets, manifest, research/detector_bench.json
     uv run python scripts/detector_bench.py evaluate --weights W --split valid --out DIR
-    uv run python scripts/detector_bench.py placement --weights W --out DIR
+    uv run python scripts/detector_bench.py placement --weights W --split valid --out DIR
+    uv run python scripts/detector_bench.py homographies --split test  # freeze GSR test homographies (ticket 05)
     uv run python scripts/detector_bench.py epochs --weights-dir RUN/yolo11l_1280/weights --out DIR  # every epoch
 
 Benchmark: SoccerNet GSR valid (dev) and test (final, read once per candidate), every `STRIDE`-th frame of every clip
@@ -22,7 +23,9 @@ every scored GSR valid frame whose truth ball (one ball annotation with a pitch 
 confident detected ball (>= 0.15, the 1080p frame resized to 720p, imgsz 1920, NMS IoU 0.5) is placed by the frozen
 homography of that frame (`kp03_r2_refined`, the chosen method of pitch-keypoints 03, cached in the bench folder);
 reported: the share of frames with a placed ball, its error and the share of placed balls > 5 m from the truth, with
-2,000-draw clip-bootstrap intervals. The homographies are fixed so that only the detector changes.
+2,000-draw clip-bootstrap intervals. The homographies are fixed so that only the detector changes. `--split test`
+uses the GSR test homographies of the same method (pitch-keypoints 03's single test scoring of its chosen keypoint
+model), frozen by `homographies --split test` and recorded in research/detector_bench.json (ticket 05).
 """
 
 import argparse
@@ -54,13 +57,26 @@ EKSTRAKLASA_JSON = (
 )
 SETS = ("gsr", "roboflow", "ekstraklasa")  # scoring row families: <set>/<row>
 FREEZE = Path(__file__).resolve().parents[1] / "research/detector_bench.json"
-HOMOGRAPHY_SOURCE = (
+PK_CANDIDATE = (
     CHECKOUT
     / ".claude/worktrees/research-xg-detector/experiments/claude_fable/results/pk_candidates"
-    / "y11m_960_e18_square/retune_valid/per_frame.parquet"
+    / "y11m_960_e18_square"
 )
+# Per split: the pitch-keypoints run whose kp03_r2_refined homographies the placement uses (same keypoint model,
+# sha256 5be9954a..., same parameters; the test run is that phase's single GSR test scoring).
+HOMOGRAPHY_SOURCES = {
+    "valid": PK_CANDIDATE / "retune_valid/per_frame.parquet",
+    "test": PK_CANDIDATE / "test/per_frame.parquet",
+}
 HOMOGRAPHY_METHOD = "kp03_r2_refined"
-HOMOGRAPHY_FILE = "gsr_valid_homographies.parquet"
+# The valid record sits in the bench manifest (ticket 02); the test one was added in ticket 05 under this key of
+# research/detector_bench.json, outside the manifest so that the manifest's frozen sha256 still holds.
+TEST_HOMOGRAPHY_KEY = "placement_homographies_test"
+
+
+def homography_file(split: str) -> str:
+    return f"gsr_{split}_homographies.parquet"
+
 
 STRIDE = 5
 SPLITS = ("valid", "test")
@@ -184,25 +200,9 @@ def build(args: argparse.Namespace) -> None:
         "labels_sha256": labels_digest(files, ROBOFLOW / "valid" / "labels"),
     }
 
-    table = pd.read_parquet(
-        HOMOGRAPHY_SOURCE, columns=["clip", "frame", "method", "homography"]
+    manifest["placement_homographies"] = cache_homographies(
+        HOMOGRAPHY_SOURCES["valid"], out / homography_file("valid")
     )
-    table = table[(table.method == HOMOGRAPHY_METHOD) & table.homography.notna()]
-    table = table.drop(columns="method").sort_values(
-        ["clip", "frame"], ignore_index=True
-    )
-    table["homography"] = table.homography.map(lambda h: np.asarray(h, float).tolist())
-    homography_path = out / HOMOGRAPHY_FILE
-    table.to_parquet(homography_path, index=False)
-    manifest["placement_homographies"] = {
-        "file": str(homography_path),
-        "sha256": sha256_file(homography_path),
-        "frames": len(table),
-        "source": str(HOMOGRAPHY_SOURCE),
-        "source_sha256": sha256_file(HOMOGRAPHY_SOURCE),
-        "method": HOMOGRAPHY_METHOD,
-        "convention": "720p frame pixels -> corner-origin metres (105 x 68)",
-    }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     freeze = {
@@ -227,6 +227,71 @@ def build(args: argparse.Namespace) -> None:
     FREEZE.parent.mkdir(exist_ok=True)
     FREEZE.write_text(json.dumps(freeze, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
+
+
+def cache_homographies(source: Path, path: Path) -> dict:
+    """Write the ``HOMOGRAPHY_METHOD`` homographies of a pitch-keypoints ``per_frame.parquet`` to ``path`` (clip, frame,
+    flat 3x3) and return their record."""
+    table = pd.read_parquet(source, columns=["clip", "frame", "method", "homography"])
+    table = table[(table.method == HOMOGRAPHY_METHOD) & table.homography.notna()]
+    table = table.drop(columns="method").sort_values(
+        ["clip", "frame"], ignore_index=True
+    )
+    table["homography"] = table.homography.map(lambda h: np.asarray(h, float).tolist())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_parquet(path, index=False)
+    return {
+        "file": str(path),
+        "sha256": sha256_file(path),
+        "frames": len(table),
+        "source": str(source),
+        "source_sha256": sha256_file(source),
+        "method": HOMOGRAPHY_METHOD,
+        "convention": "720p frame pixels -> corner-origin metres (105 x 68)",
+    }
+
+
+def homographies(args: argparse.Namespace) -> None:
+    """Freeze the GSR test homographies (ticket 05): cache them in the bench folder and record them in FREEZE."""
+    if args.split != "test":
+        raise SystemExit("the valid homographies are frozen by `build`")
+    freeze = json.loads(FREEZE.read_text())
+    record = cache_homographies(
+        HOMOGRAPHY_SOURCES["test"], BENCH / homography_file("test")
+    )
+    frozen = freeze.get(TEST_HOMOGRAPHY_KEY)
+    if frozen and frozen["sha256"] != record["sha256"]:
+        raise SystemExit(f"{record['file']} differs from the frozen test homographies")
+    freeze[TEST_HOMOGRAPHY_KEY] = record | {
+        "ticket": "detector-data 05",
+        "frames_scored": "scored GSR test frames whose single truth ball (bbox_pitch) lies on the pitch",
+    }
+    FREEZE.write_text(json.dumps(freeze, indent=2) + "\n")
+    print(json.dumps(freeze[TEST_HOMOGRAPHY_KEY], indent=2))
+
+
+def frozen_homographies(split: str) -> dict[tuple[str, int], np.ndarray]:
+    """``(clip, frame) -> 3x3`` of the split's frozen homographies, after checking the cached file's sha256."""
+    if split == "valid":
+        frozen = json.loads((BENCH / "manifest.json").read_text())[
+            "placement_homographies"
+        ]
+    else:
+        frozen = json.loads(FREEZE.read_text()).get(TEST_HOMOGRAPHY_KEY)
+        if frozen is None:
+            raise SystemExit(
+                "no frozen test homographies: run `homographies --split test`"
+            )
+    path = BENCH / homography_file(split)
+    if sha256_file(path) != frozen["sha256"]:
+        raise SystemExit(f"{path} differs from the frozen homographies")
+    table = pd.read_parquet(path)
+    return {
+        (c, int(f)): np.asarray(h, float).reshape(3, 3)
+        for c, f, h in zip(
+            table["clip"], table["frame"], table["homography"], strict=True
+        )
+    }
 
 
 def check_manifest(dataset: Dataset, split: str) -> None:
@@ -422,9 +487,9 @@ def ball_truth(labels: dict) -> dict[int, np.ndarray]:
     return {frame: xy[0] for frame, xy in found.items() if len(xy) == 1}
 
 
-def placement_rows(model, homographies: dict) -> pd.DataFrame:
+def placement_rows(model, homographies: dict, split: str) -> pd.DataFrame:
     rows = []
-    for labels_path in sorted((GSR / "valid").glob("*/Labels-GameState.json")):
+    for labels_path in sorted((GSR / split).glob("*/Labels-GameState.json")):
         labels = json.loads(labels_path.read_text())
         clip, game = labels_path.parent.name, str(labels["info"].get("game_id", ""))
         truth = ball_truth(labels)
@@ -531,17 +596,7 @@ def bootstrap(table: pd.DataFrame) -> dict:
 
 
 def placement(args: argparse.Namespace) -> None:
-    frozen = json.loads((BENCH / "manifest.json").read_text())["placement_homographies"]
-    path = BENCH / HOMOGRAPHY_FILE
-    if sha256_file(path) != frozen["sha256"]:
-        raise SystemExit(f"{path} differs from the frozen homographies")
-    table = pd.read_parquet(path)
-    homographies = {
-        (c, int(f)): np.asarray(h, float).reshape(3, 3)
-        for c, f, h in zip(
-            table["clip"], table["frame"], table["homography"], strict=True
-        )
-    }
+    homographies = frozen_homographies(args.split)
     model = tv.load_model(
         "yolo",
         args.weights,
@@ -551,8 +606,9 @@ def placement(args: argparse.Namespace) -> None:
         device=args.device,
     )
     clock = time.perf_counter()
-    rows = placement_rows(model, homographies)
+    rows = placement_rows(model, homographies, args.split)
     summary = {
+        "split": args.split,
         "weights": str(args.weights),
         "weights_sha256": sha256_file(args.weights),
         "settings": PLACEMENT,
@@ -577,7 +633,10 @@ def main() -> None:
         command.add_argument("--weights", type=Path, required=True)
         command.add_argument("--out", type=Path, required=True)
         command.add_argument("--device", default=None)
-    e.add_argument("--split", choices=SPLITS, default="valid")
+    for command in (e, p):
+        command.add_argument("--split", choices=SPLITS, default="valid")
+    h = commands.add_parser("homographies", help="freeze the GSR test homographies")
+    h.add_argument("--split", choices=["test"], required=True)
     e.add_argument("--rows", nargs="*", choices=list(ROWS), default=None)
     e.add_argument("--sets", nargs="*", choices=list(SETS), default=None)
     ep = commands.add_parser("epochs", help="score every epoch<N>.pt of a run folder")
@@ -596,9 +655,13 @@ def main() -> None:
     )
     args = parser.parse_args()
     tv.setup_logging("INFO")
-    {"build": build, "evaluate": evaluate, "placement": placement, "epochs": epochs}[
-        args.command
-    ](args)
+    {
+        "build": build,
+        "evaluate": evaluate,
+        "placement": placement,
+        "epochs": epochs,
+        "homographies": homographies,
+    }[args.command](args)
 
 
 if __name__ == "__main__":

@@ -171,7 +171,7 @@ class YOLODetector(_UltralyticsModel):
 
     Example::
 
-        model = tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3)
+        model = tv.load_model("yolo", "models/detector_yolo11l_1280_dd2c.pt", conf=0.3)
         detections = model(frame)
     """
 

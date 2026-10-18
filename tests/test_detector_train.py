@@ -4,11 +4,13 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
 import pandas as pd
 import pytest
+import supervision as sv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -180,3 +182,75 @@ def test_bench_ekstraklasa_set_checks_its_labels_and_test_scores_gsr_only(
     (labels / "a.txt").write_text("2 0.5 0.5 0.1 0.3\n")
     with pytest.raises(SystemExit, match="differ"):
         detector_bench.evaluation_sets("valid", ["ekstraklasa"])
+
+
+def per_frame(path: Path, clip: str, frames: list[int]) -> Path:
+    """A pitch-keypoints per_frame.parquet: frames of one clip, the kp03 method plus a decoy method."""
+    rows = [
+        {"clip": clip, "frame": f, "method": m, "homography": np.eye(3).ravel()}
+        for f in frames
+        for m in (detector_bench.HOMOGRAPHY_METHOD, "kp03_r10")
+    ]
+    pd.DataFrame(rows).to_parquet(path)
+    return path
+
+
+def test_bench_placement_test_split_uses_frozen_test_homographies_and_test_clips(
+    tmp_path, monkeypatch
+):
+    bench, freeze = tmp_path / "bench", tmp_path / "freeze.json"
+    freeze.write_text(json.dumps({"title": "frozen"}))
+    source = per_frame(tmp_path / "per_frame.parquet", "SNGS-116", [1, 6])
+    monkeypatch.setattr(detector_bench, "BENCH", bench)
+    monkeypatch.setattr(detector_bench, "FREEZE", freeze)
+    monkeypatch.setitem(detector_bench.HOMOGRAPHY_SOURCES, "test", source)
+    with pytest.raises(SystemExit, match="no frozen test"):
+        detector_bench.frozen_homographies("test")
+
+    args = SimpleNamespace(split="test")
+    detector_bench.homographies(args)
+    record = json.loads(freeze.read_text())[detector_bench.TEST_HOMOGRAPHY_KEY]
+    assert record["frames"] == 2 and record["file"].endswith(
+        "gsr_test_homographies.parquet"
+    )
+    assert json.loads(freeze.read_text())["title"] == "frozen"
+    found = detector_bench.frozen_homographies("test")
+    assert sorted(found) == [("SNGS-116", 1), ("SNGS-116", 6)]
+    detector_bench.homographies(args)  # same table again: allowed
+
+    per_frame(source, "SNGS-116", [1])  # a changed source must not overwrite the record
+    with pytest.raises(SystemExit, match="differs"):
+        detector_bench.homographies(args)
+
+    # placement_rows reads the split's clips: a test clip with a ball at the pitch centre, an identity homography
+    clip = tmp_path / "gsr/test/SNGS-116"
+    (clip / "img1").mkdir(parents=True)
+    cv2.imwrite(str(clip / "img1/000001.jpg"), np.zeros((720, 1280, 3), np.uint8))
+    pitch = {"x_bottom_middle": 0.0, "y_bottom_middle": 0.0}
+    (clip / "Labels-GameState.json").write_text(
+        json.dumps(
+            {
+                "info": {"game_id": 7},
+                "categories": [{"id": 4, "name": "ball"}],
+                "images": [{"image_id": "1", "file_name": "000001.jpg"}],
+                "annotations": [
+                    {"image_id": "1", "category_id": 4, "bbox_pitch": pitch}
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(detector_bench, "GSR", tmp_path / "gsr")
+
+    class Ball:
+        def predict(self, frame):
+            assert frame.shape == (720, 1280, 3)
+            return sv.Detections(
+                xyxy=np.array([[50.0, 32.0, 55.0, 36.0]]),
+                confidence=np.array([0.9]),
+                data={"class_name": np.array(["ball"])},
+            )
+
+    rows = detector_bench.placement_rows(Ball(), found, "test")
+    assert rows["clip"].tolist() == ["SNGS-116"] and rows["game"].tolist() == ["7"]
+    assert rows["error_m"].iloc[0] == pytest.approx(0.0)  # centre (52.5, 34) = truth
+    assert detector_bench.placement_rows(Ball(), found, "valid").empty
