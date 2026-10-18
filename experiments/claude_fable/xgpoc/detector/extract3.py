@@ -1,6 +1,7 @@
 """Audit 3's extractor configurations (pitch-keypoints 04): the SoccerNet pitch model and a declared shot-location source.
 
-Every configuration shares C4/D3's detector (YOLO11m at 1920, conf 0.3, NMS IoU 0.5, ball 0.15) and teams (SigLIP,
+Every configuration shares C4/D3's detector (YOLO11m at 1920, conf 0.3, NMS IoU 0.5, ball 0.15; `DETECTORS` adds
+detector-data's YOLO11l at 1280 at the same operating point, for the re-runs with the retrained detector) and teams (SigLIP,
 k-means k = 2 on the frame's player crops), and the pitch keypoint model of pitch-keypoints 03 as it was evaluated:
 `models/pitch_yolo11m_pose_sn960.pt` through `tv.load_model("yolo_pose", W, conf=0.1, imgsz=960, resize="square")`,
 with the homography settings chosen on GSR valid (keypoint threshold 0.3, RANSAC 2 m, line refinement whose line mask
@@ -70,18 +71,39 @@ AUDIT_3_DECLARATION = Path(__file__).resolve().parents[2] / "research/pitchkp_au
 AUDIT_3_DECLARATION_SHA256 = "f7f23eaede754326a24b6d177c1e83e1eb6158c2cb22f1e36b81794604f8a8b7"  # committed before audit 3
 
 
-def settings(config: SourceConfig) -> dict:
-    """Everything that defines a configuration's output, for its completion record."""
-    return {"name": config.name, "source": list(config.source)} | COMMON | {
+@dataclass(frozen=True)
+class Detector:
+    """A people/ball detector the configurations can run with: its checkpoint and input size (the operating point,
+    conf / NMS IoU / ball conf of `COMMON`, is shared)."""
+
+    name: str
+    weights: Path
+    imgsz: int
+
+
+DETECTORS = {d.name: d for d in (
+    Detector("yolo11m_1920", ex.DETECTOR_WEIGHTS, COMMON["detector_imgsz"]),   # C4/D3's, audit 3's and xg-stack's
+    # detector-data 05 (run 2c epoch1, trained at 1280; model card beside the weights), same operating point
+    Detector("dd2c_1280", CHECKOUT / "models/detector_yolo11l_1280_dd2c.pt", 1280))}
+DEFAULT_DETECTOR = DETECTORS["yolo11m_1920"]
+
+
+def settings(config: SourceConfig, detector: Detector = DEFAULT_DETECTOR) -> dict:
+    """Everything that defines a configuration's output, for its completion record (the default detector's record is
+    the one audit 3 and the full run wrote)."""
+    out = {"name": config.name, "source": list(config.source)} | COMMON | {
         "keypoint_weights": str(KEYPOINT_WEIGHTS), "keypoint_sha256": KEYPOINT_SHA256}
+    if detector != DEFAULT_DETECTOR:
+        out |= {"detector": detector.name, "detector_weights": str(detector.weights), "detector_imgsz": detector.imgsz}
+    return out
 
 
-def ball_analyzer(device: str | None = None) -> FrameAnalyzer:
-    """The analyzer without teams: detector, pitch keypoints and homography at the settings of `COMMON`."""
+def ball_analyzer(device: str | None = None, detector: Detector = DEFAULT_DETECTOR) -> FrameAnalyzer:
+    """The analyzer without teams: `detector`, pitch keypoints and homography at the settings of `COMMON`."""
     import tactifoot_vision as tv
 
-    detector = tv.load_model("yolo", ex.DETECTOR_WEIGHTS, conf=COMMON["detector_conf"], iou=COMMON["detector_iou"],
-                             imgsz=COMMON["detector_imgsz"], class_conf={"ball": COMMON["ball_conf"]}, device=device)
+    detector = tv.load_model("yolo", detector.weights, conf=COMMON["detector_conf"], iou=COMMON["detector_iou"],
+                             imgsz=detector.imgsz, class_conf={"ball": COMMON["ball_conf"]}, device=device)
     keypoints = tv.load_model("yolo_pose", KEYPOINT_WEIGHTS, conf=COMMON["keypoint_conf"], imgsz=COMMON["keypoint_imgsz"],
                               resize=COMMON["keypoint_resize"], device=device)
     homography = tv.pitch.HomographyEstimator(min_confidence=COMMON["homography_min_confidence"],
@@ -90,11 +112,12 @@ def ball_analyzer(device: str | None = None) -> FrameAnalyzer:
     return FrameAnalyzer(detector, keypoints, None, homography=homography)
 
 
-def build_analyzers(embedder, device: str | None = None) -> tuple[FrameAnalyzer, FrameAnalyzer]:
+def build_analyzers(embedder, device: str | None = None,
+                    detector: Detector = DEFAULT_DETECTOR) -> tuple[FrameAnalyzer, FrameAnalyzer]:
     """(analyzer with teams, `ball_analyzer`), sharing the models."""
     import tactifoot_vision as tv
 
-    ball_only = ball_analyzer(device)
+    ball_only = ball_analyzer(device, detector)
     teams = tv.teams.TeamClassifier(embedder, n_teams=COMMON["n_teams"], reducer=COMMON["team_reducer"])
     with_teams = FrameAnalyzer(ball_only.detector, ball_only.keypoint_model, teams, homography=ball_only.homography,
                                crop_scale=COMMON["crop_scale"])

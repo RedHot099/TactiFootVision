@@ -238,6 +238,25 @@ def test_real_analysers_load_the_declared_models(monkeypatch):
     assert analyser.detector.class_conf == {"ball": 0.15} and analyser.detector.imgsz == 1920
 
 
+def test_the_retrained_detector_swaps_only_weights_and_input_size(monkeypatch):
+    import tactifoot_vision as tv
+    from tactifoot_vision.models.ultralytics import YOLODetector, YOLOPoseModel
+
+    class Names:
+        names = {0: "ball", 1: "goalkeeper", 2: "player", 3: "referee"}
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+    monkeypatch.setattr(YOLOPoseModel, "_load", lambda self, weights: setattr(self, "_yolo", Names()))
+    new = e3.DETECTORS["dd2c_1280"]
+    old, ball_only = e3.ball_analyzer("cpu"), e3.ball_analyzer("cpu", new)
+    assert (ball_only.detector.weights, ball_only.detector.imgsz) == (new.weights, 1280)
+    assert (ball_only.detector.conf, ball_only.detector.iou, ball_only.detector.class_conf) == (
+        old.detector.conf, old.detector.iou, old.detector.class_conf)
+    config = e3.CONFIGS["E3"]
+    assert e3.settings(config) == e3.settings(config, e3.DEFAULT_DETECTOR) and "detector" not in e3.settings(config)
+    changed = {k for k, v in e3.settings(config, new).items() if e3.settings(config).get(k) != v}
+    assert changed == {"detector", "detector_weights", "detector_imgsz"}
+
+
 # ------------------------------------------------------------------ diagnostics after the choice
 def test_calibration_groups_match_plan_games_to_calibration_games_by_league_season_date_and_teams():
     import sys

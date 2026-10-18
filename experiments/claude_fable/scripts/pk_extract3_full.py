@@ -1,7 +1,7 @@
 """Run audit 3's chosen configuration on every index shot at t0 and -400 ms (pitch-keypoints 04), resumably.
 
     ./run.sh python scripts/pk_extract3_full.py [--out cache/xgd_full3] [--report results/xgd_full3] [--chunk 500]
-        [--limit N] [--device cuda]
+        [--limit N] [--device cuda] [--detector dd2c_1280]
 
 Which configuration: `chosen` in audit 3's `results/xgd_audit3/choice.json`, read first, here and nowhere else (a name,
 no StatsBomb value). Everything after it runs inside `no_statsbomb_reads()`; the index is read for the frame paths and
@@ -84,7 +84,9 @@ def main() -> None:
     parser.add_argument("--chunk", type=int, default=500)
     parser.add_argument("--limit", type=int, help="first N shots only (smoke runs)")
     parser.add_argument("--device", default=None)
+    parser.add_argument("--detector", choices=sorted(e3.DETECTORS), default=e3.DEFAULT_DETECTOR.name)
     args = parser.parse_args()
+    detector = e3.DETECTORS[args.detector]
 
     name = chosen_config(args.choice)
     choice_input = {"path": str(args.choice), "sha256": sha256_file(args.choice), "chosen": name}
@@ -104,8 +106,8 @@ def main() -> None:
         shot_ids = shot_games.shot_id.tolist()[: args.limit]
         shot_games = shot_games[shot_games.shot_id.isin(shot_ids)]
         code = records.code_hashes(Path(__file__))
-        identity = {"config": e3.settings(config), "chunk": args.chunk,
-                    "models": records.model_hashes(ex.DETECTOR_WEIGHTS, e3.KEYPOINT_WEIGHTS, ex.SIGLIP),
+        identity = {"config": e3.settings(config, detector), "chunk": args.chunk,
+                    "models": records.model_hashes(detector.weights, e3.KEYPOINT_WEIGHTS, ex.SIGLIP),
                     "code_digest": code["digest"], "libraries": records.library_versions(),
                     "inputs": {"index": {"path": str(args.index), "sha256": sha256_file(args.index),
                                          "columns": ["shot_id", "game", *ex.FRAME_COLUMNS.values()]},
@@ -116,7 +118,7 @@ def main() -> None:
         todo = [(n, ids) for n, ids in enumerate(chunks(shot_ids, args.chunk)) if not done(parts, n)]
         if todo:
             embedder = tv.teams.SigLIPEmbedder(model_name=ex.SIGLIP, device=args.device)
-            analyzer, ball_only = e3.build_analyzers(embedder, device=args.device)
+            analyzer, ball_only = e3.build_analyzers(embedder, device=args.device, detector=detector)
             for n, ids in todo:
                 started, clock = datetime.now(UTC), time.perf_counter()
                 out = e3.extract(ex.frame_table(args.index, ids), [config], analyzer, ball_only, cv2.imread,
@@ -144,7 +146,7 @@ def main() -> None:
         summary["frames_analysed"] = len(frames)
         summary["frames_by_offset"] = {str(k): int(v) for k, v in frames.offset_ms.value_counts().items()}
         reference = reference_differences(features, args.reference / name / "features.parquet")
-        record = {"config": e3.settings(config), "identity": identity | {"code": code, "git": records.git_state()},
+        record = {"config": e3.settings(config, detector), "identity": identity | {"code": code, "git": records.git_state()},
                   "run": {"offsets_ms": list(e3.STUDY_OFFSETS), "sessions": sessions, "seconds": round(seconds, 1),
                           "ms_per_shot": round(1000 * seconds / max(len(shot_ids), 1), 1)},
                   "coverage": summary, "audit_cache_t0_differences": reference,
