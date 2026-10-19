@@ -5,6 +5,7 @@ from typing import Any
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation.detection import evaluate_detector
 from tactifoot_vision.evaluation.homography import (
     evaluate_homography,
@@ -28,7 +29,7 @@ from tactifoot_vision.models.base import Model
 
 
 def evaluate(
-    model: Model, dataset: Dataset, split: str = "valid", **kwargs: Any
+    model: Model, dataset: Dataset, split: Split | str = Split.VALID, **kwargs: Any
 ) -> DetectionMetrics | KeypointMetrics:
     """Score ``model`` on a dataset split with the metrics matching its task.
 

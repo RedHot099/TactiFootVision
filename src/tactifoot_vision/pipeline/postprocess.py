@@ -28,6 +28,7 @@ from typing import Any, cast
 
 import numpy as np
 
+from tactifoot_vision.enums import DetectionKey
 from tactifoot_vision.pipeline.result import (
     BALL_ANCHOR,
     PERSON_ANCHOR,
@@ -43,6 +44,7 @@ _STD_SIZE = np.array([105.0, 68.0])  # metres of the pitch every pitch unit maps
 
 class _PostProcessRegistry(Registry[PipelineResult]):
     def register[F: Callable[..., Any]](self, name: str) -> Callable[[F], F]:
+        name = str(name)
         add = super().register(name)
 
         def decorator(function: F) -> F:
@@ -115,11 +117,15 @@ def reproject(
     for frame, homography in zip(result.frames, homographies, strict=True):
         matrix = None if homography is None else np.array(homography, dtype=float)
         people = copy.deepcopy(frame.detections)
-        people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
+        people.data[DetectionKey.PITCH_XY] = project_detections(
+            people, PERSON_ANCHOR, matrix
+        )
         ball = copy.deepcopy(frame.ball)
         candidates = copy.deepcopy(frame.ball_candidates)
         for balls in (ball, candidates):
-            balls.data["pitch_xy"] = project_detections(balls, BALL_ANCHOR, matrix)
+            balls.data[DetectionKey.PITCH_XY] = project_detections(
+                balls, BALL_ANCHOR, matrix
+            )
         frames.append(
             dataclasses.replace(
                 frame,
@@ -146,7 +152,9 @@ def remap_track_ids(
         people = frame.detections
         if people.tracker_id is not None:
             people = copy.deepcopy(people)
-            people.data.setdefault("original_tracker_id", people.tracker_id.copy())
+            people.data.setdefault(
+                DetectionKey.ORIGINAL_TRACKER_ID, people.tracker_id.copy()
+            )
             people.tracker_id = np.array(
                 [mapping.get(int(i), int(i)) for i in people.tracker_id],
                 dtype=people.tracker_id.dtype,

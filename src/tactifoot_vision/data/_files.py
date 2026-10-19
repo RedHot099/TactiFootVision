@@ -7,13 +7,14 @@ from pathlib import Path
 
 import numpy as np
 
+from tactifoot_vision.enums import LinkMode
+
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
 # Written into every export folder, so a later export may safely clear it. It
 # lists, relative to the export folder, the folders the export manages (lines
 # ending in "/") and every file it writes; a later export deletes exactly these.
 EXPORT_MARKER = ".tactifoot-export"
-LINK_MODES = ("symlink", "hardlink", "copy")
 
 
 def image_size(path: Path) -> tuple[int, int]:
@@ -24,19 +25,14 @@ def image_size(path: Path) -> tuple[int, int]:
         return image.size
 
 
-def check_link_mode(mode: str) -> None:
-    if mode not in LINK_MODES:
-        raise ValueError(f"link must be 'symlink', 'hardlink' or 'copy', got {mode!r}")
-
-
-def link_file(source: Path, target: Path, mode: str) -> None:
+def link_file(source: Path, target: Path, mode: LinkMode | str) -> None:
     """Place ``source`` at ``target`` as a symlink, hard link or copy."""
-    check_link_mode(mode)
+    mode = LinkMode.parse(mode, "link")
     if target.is_symlink() or target.exists():
         target.unlink()
-    if mode == "symlink":
+    if mode is LinkMode.SYMLINK:
         target.symlink_to(source.resolve())
-    elif mode == "hardlink":
+    elif mode is LinkMode.HARDLINK:
         try:
             os.link(source.resolve(), target)
         except OSError:  # e.g. across file systems

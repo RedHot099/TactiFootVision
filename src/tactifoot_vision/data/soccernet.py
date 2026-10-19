@@ -12,28 +12,27 @@ from tactifoot_vision.data.labelled_clip import (
     UNKNOWN_TEAM,
     LabelledClip,
     LabelledFrame,
-    Truth,
 )
+from tactifoot_vision.enums import DetectionKey, ObjectKind, Role, Truth
 from tactifoot_vision.pipeline.result import NO_TEAM
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
-BALL = "ball"
 # First word of a gameinfo.ini tracklet label -> package class name. "other"
 # objects (none of the package classes) are left out of the clip.
 _TRACKLET_CLASSES = {
-    "player": "player",
-    "goalkeeper": "goalkeeper",
-    "goalkeepers": "goalkeeper",
-    "referee": "referee",
-    "ball": BALL,
+    "player": Role.PLAYER,
+    "goalkeeper": Role.GOALKEEPER,
+    "goalkeepers": Role.GOALKEEPER,
+    "referee": Role.REFEREE,
+    "ball": ObjectKind.BALL,
     "other": None,
 }
 # GSR attributes.role -> package class name; "other" is left out likewise.
 _GSR_ROLES = {
-    "player": "player",
-    "goalkeeper": "goalkeeper",
-    "referee": "referee",
-    "ball": BALL,
+    "player": Role.PLAYER,
+    "goalkeeper": Role.GOALKEEPER,
+    "referee": Role.REFEREE,
+    "ball": ObjectKind.BALL,
     "other": None,
 }
 # SoccerNet's team label (the team on the left or right of the main camera's
@@ -94,8 +93,8 @@ def read_tracking(folder: Path) -> LabelledClip:
     frames = []
     for index in range(length):
         here = kept & (frame_numbers == index + 1)
-        ball = here & (names == BALL)
-        people = here & (names != BALL)
+        ball = here & (names == ObjectKind.BALL)
+        people = here & (names != ObjectKind.BALL)
         frames.append(
             LabelledFrame(
                 index=index,
@@ -103,7 +102,7 @@ def read_tracking(folder: Path) -> LabelledClip:
                     xyxy[people],
                     track_ids[people],
                     names[people],
-                    team_id=teams[people],
+                    {DetectionKey.TEAM_ID: teams[people]},
                 ),
                 ball=_detections(xyxy[ball], track_ids[ball], names[ball]),
             )
@@ -181,7 +180,8 @@ def read_gamestate(path: Path) -> LabelledClip:
             elif annotation.get("supercategory") == "object":
                 row = _gsr_object(annotation)
                 if row is not None:
-                    (balls if row["class_name"] == BALL else people)[index].append(row)
+                    group = balls if row["class_name"] == ObjectKind.BALL else people
+                    group[index].append(row)
         except (KeyError, TypeError, ValueError, np.linalg.LinAlgError) as error:
             raise ValueError(
                 f"{path}: annotation {annotation.get('id')} of image {image_id} "
@@ -195,7 +195,7 @@ def read_gamestate(path: Path) -> LabelledClip:
             ball=_detections(
                 np.array([row["xyxy"] for row in balls[index]], float),
                 np.array([row["track_id"] for row in balls[index]], int),
-                np.array([BALL] * len(balls[index]), dtype=object),
+                np.array([ObjectKind.BALL] * len(balls[index]), dtype=object),
             ),
             homography=homographies.get(index),
         )
@@ -262,7 +262,7 @@ def _gsr_object(annotation: dict[str, Any]) -> dict[str, Any] | None:
         "track_id": int(annotation["track_id"]),
         "class_name": class_name,
     }
-    if class_name == BALL:
+    if class_name == ObjectKind.BALL:
         return row
     team = attributes.get("team")
     if team is not None and team not in _SIDES:
@@ -282,7 +282,7 @@ def _gsr_object(annotation: dict[str, Any]) -> dict[str, Any] | None:
 
 def _team_id(class_name: str | None, team: str | None) -> int:
     """A person's team id from their team label; referees have none."""
-    if class_name == "referee":
+    if class_name == Role.REFEREE:
         return NO_TEAM
     return _SIDES[team] if team is not None else UNKNOWN_TEAM
 
@@ -292,9 +292,15 @@ def _gsr_people(rows: list[dict]) -> sv.Detections:
         np.array([row["xyxy"] for row in rows], float),
         np.array([row["track_id"] for row in rows], int),
         np.array([row["class_name"] for row in rows], dtype=object),
-        team_id=np.array([row["team_id"] for row in rows], int),
-        jersey=np.array([row["jersey"] for row in rows], dtype=object).astype(str),
-        pitch_xy=np.array([row["pitch_xy"] for row in rows], float).reshape(-1, 2),
+        {
+            DetectionKey.TEAM_ID: np.array([row["team_id"] for row in rows], int),
+            DetectionKey.JERSEY: np.array(
+                [row["jersey"] for row in rows], dtype=object
+            ).astype(str),
+            DetectionKey.PITCH_XY: np.array(
+                [row["pitch_xy"] for row in rows], float
+            ).reshape(-1, 2),
+        },
     )
 
 
@@ -384,10 +390,13 @@ def _read_gt(path: Path) -> np.ndarray:
 
 
 def _detections(
-    xyxy: np.ndarray, track_ids: np.ndarray, names: np.ndarray, **data: np.ndarray
+    xyxy: np.ndarray,
+    track_ids: np.ndarray,
+    names: np.ndarray,
+    data: dict[str, np.ndarray] | None = None,
 ) -> sv.Detections:
     return sv.Detections(
         xyxy=xyxy.reshape(-1, 4),
         tracker_id=track_ids.astype(int),
-        data={"class_name": names.astype(str), **data},
+        data={DetectionKey.CLASS_NAME: names.astype(str), **(data or {})},
     )

@@ -42,23 +42,13 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from tactifoot_vision.enums import RunFileSection
 from tactifoot_vision.registry import Registry
 
 if TYPE_CHECKING:
     from tactifoot_vision.pipeline import Pipeline, PipelineResult
     from tactifoot_vision.pitch import SoccerPitch
 
-SECTIONS = (
-    "detector",
-    "keypoints",
-    "tracker",
-    "teams",
-    "pitch",
-    "homography",
-    "pipeline",
-    "render",
-    "postprocess",
-)
 # Pipeline arguments that other sections build.
 _PIPELINE_PARTS = (
     "detector",
@@ -78,7 +68,12 @@ _RENDER_ARGUMENTS = (
     "progress",
     "ball_carriers",
 )
-_NULLABLE = {"keypoints", "tracker", "teams", "postprocess"}
+_NULLABLE = {
+    RunFileSection.KEYPOINTS,
+    RunFileSection.TRACKER,
+    RunFileSection.TEAMS,
+    RunFileSection.POSTPROCESS,
+}
 
 
 def load(path: str | Path, overrides: Iterable[str] = ()) -> "RunFile":
@@ -147,22 +142,26 @@ class RunFile:
         from tactifoot_vision.tracking import create_tracker
 
         sections = self.sections
-        kwargs = sections.get("pipeline", {})
-        kwargs["detector"] = _create(load_model, sections["detector"])
-        if sections.get("keypoints") is not None:
-            kwargs["keypoint_model"] = _create(load_model, sections["keypoints"])
-        if "tracker" in sections:
-            tracker = sections["tracker"]
+        kwargs = sections.get(RunFileSection.PIPELINE, {})
+        kwargs["detector"] = _create(load_model, sections[RunFileSection.DETECTOR])
+        if sections.get(RunFileSection.KEYPOINTS) is not None:
+            kwargs["keypoint_model"] = _create(
+                load_model, sections[RunFileSection.KEYPOINTS]
+            )
+        if RunFileSection.TRACKER in sections:
+            tracker = sections[RunFileSection.TRACKER]
             kwargs["tracker"] = (
                 None if tracker is None else _create(create_tracker, tracker)
             )
-        if sections.get("teams") is not None:
-            kwargs["team_classifier"] = TeamClassifier(**sections["teams"])
-        if "pitch" in sections:
-            kwargs["pitch"] = SoccerPitch(**sections["pitch"])
-        if "homography" in sections:
+        if sections.get(RunFileSection.TEAMS) is not None:
+            kwargs["team_classifier"] = TeamClassifier(**sections[RunFileSection.TEAMS])
+        if RunFileSection.PITCH in sections:
+            kwargs["pitch"] = SoccerPitch(**sections[RunFileSection.PITCH])
+        if RunFileSection.HOMOGRAPHY in sections:
             pitch = [kwargs["pitch"]] if "pitch" in kwargs else []
-            kwargs["homography"] = HomographyEstimator(*pitch, **sections["homography"])
+            kwargs["homography"] = HomographyEstimator(
+                *pitch, **sections[RunFileSection.HOMOGRAPHY]
+            )
         return Pipeline(**kwargs)
 
     def run(
@@ -213,7 +212,7 @@ class RunFile:
         )
         export_options = {k: v for k, v in run_inputs.items() if k in export_inputs}
         out = result.export(output_dir, **export_options)
-        if postprocesses := self._sections.get("postprocess"):
+        if postprocesses := self._sections.get(RunFileSection.POSTPROCESS):
             for entry in postprocesses:
                 options = dict(entry)
                 result = POSTPROCESSES.create(options.pop("type"), result, **options)
@@ -264,7 +263,9 @@ class RunFile:
         from tactifoot_vision.viz.video import check_render_options
 
         kwargs = {
-            k: v for k, v in self.sections.get("render", {}).items() if k not in exclude
+            k: v
+            for k, v in self.sections.get(RunFileSection.RENDER, {}).items()
+            if k not in exclude
         }
         if "annotator" in kwargs:
             kwargs["annotator"] = FrameAnnotator(pitch=pitch, **kwargs["annotator"])
@@ -293,31 +294,33 @@ def _check(data: dict[str, Any]) -> None:
     from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
     from tactifoot_vision.tracking import TRACKERS
 
-    unknown = [name for name in data if name not in SECTIONS]
+    unknown = [name for name in data if name not in RunFileSection]
     if unknown:
         raise ValueError(
-            f"Unknown run file section {unknown[0]!r}; valid sections: {', '.join(SECTIONS)}"
+            f"Unknown run file section {unknown[0]!r}; valid sections: "
+            f"{', '.join(RunFileSection)}"
         )
-    if "detector" not in data:
+    if RunFileSection.DETECTOR not in data:
         raise ValueError("The run file needs a 'detector' section")
     for name, section in data.items():
-        if section is None and name in _NULLABLE:
+        kind = RunFileSection(name)
+        if section is None and kind in _NULLABLE:
             continue
-        if name == "postprocess":
+        if kind is RunFileSection.POSTPROCESS:
             _check_postprocess(section, POSTPROCESSES)
             continue
         section = _mapping(name, section)
-        if name in ("detector", "keypoints"):
+        if kind in (RunFileSection.DETECTOR, RunFileSection.KEYPOINTS):
             _check_typed(name, section, MODELS)
-        elif name == "tracker":
+        elif kind is RunFileSection.TRACKER:
             _check_typed(name, section, TRACKERS)
-        elif name == "teams":
+        elif kind is RunFileSection.TEAMS:
             _check_teams(section)
-        elif name == "pitch":
+        elif kind is RunFileSection.PITCH:
             _check_keys(name, section, SoccerPitch)
-        elif name == "homography":
+        elif kind is RunFileSection.HOMOGRAPHY:
             _check_keys(name, section, HomographyEstimator, exclude=("pitch",))
-        elif name == "pipeline":
+        elif kind is RunFileSection.PIPELINE:
             _check_keys(name, section, Pipeline, exclude=_PIPELINE_PARTS)
         else:
             _check_render(name, section)

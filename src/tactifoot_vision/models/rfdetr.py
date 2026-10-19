@@ -19,6 +19,7 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import DetectionKey, ModelType, Split
 from tactifoot_vision.models.base import (
     MODELS,
     Model,
@@ -52,7 +53,7 @@ _ARCHITECTURE_FIELDS = (
 )
 
 
-@MODELS.register("rfdetr")
+@MODELS.register(ModelType.RFDETR)
 class RFDETRDetector(Model):
     """RF-DETR box detector (sizes nano, small, medium, base, large).
 
@@ -66,7 +67,7 @@ class RFDETRDetector(Model):
         detections = model(frame)  # data["class_name"]: "player", "ball", ...
     """
 
-    name = "rfdetr"
+    name = ModelType.RFDETR.value
     task = Task.DETECT
     _train_config_aliases = {
         "num_workers": "workers",
@@ -163,9 +164,9 @@ class RFDETRDetector(Model):
             logger.debug("Dropping %d detections without a class", (index < 0).sum())
         detections = detections[index >= 0]
         detections.class_id = index[index >= 0]
-        detections.data["class_name"] = np.asarray(self._class_names, dtype=str)[
-            detections.class_id
-        ]
+        detections.data[DetectionKey.CLASS_NAME] = np.asarray(
+            self._class_names, dtype=str
+        )[detections.class_id]
         return self._apply_class_conf(detections)
 
     # --------------------------------------------------------------- training
@@ -182,8 +183,12 @@ class RFDETRDetector(Model):
         # history must describe this run only.
         (run_dir / "log.txt").unlink(missing_ok=True)
         # RF-DETR always builds a test loader; reuse the validation images if needed.
-        has_test = bool(dataset["test"])
-        export = dataset if has_test else dataset.with_split("test", dataset["valid"])
+        has_test = bool(dataset[Split.TEST])
+        export = (
+            dataset
+            if has_test
+            else dataset.with_split(Split.TEST, dataset[Split.VALID])
+        )
         coco_root = export.to_coco(run_dir / "dataset")
 
         model_config = self._rf.model_config

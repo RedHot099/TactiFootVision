@@ -17,6 +17,7 @@ from collections.abc import Iterable
 
 import numpy as np
 
+from tactifoot_vision.enums import DetectionKey, PostProcessName
 from tactifoot_vision.pipeline.postprocess import (
     POSTPROCESSES,
     metres_per_unit,
@@ -52,7 +53,7 @@ class _Tracks:
     end_xy: np.ndarray
 
 
-@POSTPROCESSES.register("join_tracks")
+@POSTPROCESSES.register(PostProcessName.JOIN_TRACKS)
 def join_tracks(
     result: PipelineResult,
     max_gap: float = 1.6,
@@ -116,7 +117,7 @@ def _tracks(frames: list[FrameResult], scale: np.ndarray) -> _Tracks:
         if people.tracker_id is None:
             continue
         xy = frame.pitch_xy * scale
-        names = people.data.get("class_name", np.full(len(people), ""))
+        names = people.data.get(DetectionKey.CLASS_NAME, np.full(len(people), ""))
         for tracker_id, position, team, name in zip(
             people.tracker_id, xy, frame.team_ids, names, strict=True
         ):

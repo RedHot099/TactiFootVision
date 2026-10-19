@@ -6,6 +6,7 @@ from dataclasses import dataclass, fields
 import numpy as np
 
 from tactifoot_vision.analysis.velocity import _velocities_near
+from tactifoot_vision.enums import SpaceModel
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
@@ -66,7 +67,7 @@ def space_control(
     frames: int | slice | None = None,
     cell_size: float = 1.0,
     *,
-    model: str = "nearest_player",
+    model: SpaceModel | str = SpaceModel.NEAREST_PLAYER,
     **options: float,
 ) -> SpaceControl:
     """Space control of team 0 against team 1 by a model chosen by name.
@@ -274,16 +275,17 @@ class _PitchControl:
         return self.reaction_time + distance / self.max_speed
 
 
-_MODELS: dict[str, type[_NearestPlayer] | type[_PitchControl]] = {
-    "nearest_player": _NearestPlayer,
-    "pitch_control": _PitchControl,
+_MODELS: dict[SpaceModel, type[_NearestPlayer] | type[_PitchControl]] = {
+    SpaceModel.NEAREST_PLAYER: _NearestPlayer,
+    SpaceModel.PITCH_CONTROL: _PitchControl,
 }
 
 
-def _model(name: str, options: dict[str, float]) -> _NearestPlayer | _PitchControl:
+def _model(
+    name: SpaceModel | str, options: dict[str, float]
+) -> _NearestPlayer | _PitchControl:
     """The named model with ``options``."""
-    if name not in _MODELS:
-        raise ValueError(f"Unknown model {name!r}. Available: {', '.join(_MODELS)}")
+    name = SpaceModel.parse(name, "model")
     model = _MODELS[name]
     valid = [field.name for field in fields(model)]
     unknown = sorted(set(options) - set(valid))

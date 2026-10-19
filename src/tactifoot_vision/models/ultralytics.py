@@ -13,6 +13,7 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import DetectionKey, ModelType
 from tactifoot_vision.models.base import (
     MODELS,
     Model,
@@ -148,7 +149,7 @@ class _UltralyticsModel(Model):
         )
 
 
-@MODELS.register("yolo")
+@MODELS.register(ModelType.YOLO)
 class YOLODetector(_UltralyticsModel):
     """Ultralytics YOLO box detector (YOLOv8, YOLO11, ... detection checkpoints).
 
@@ -161,7 +162,7 @@ class YOLODetector(_UltralyticsModel):
         detections = model(frame)
     """
 
-    name = "yolo"
+    name = ModelType.YOLO.value
     task = Task.DETECT
     default_weights = "yolo11n.pt"
 
@@ -193,13 +194,13 @@ class YOLODetector(_UltralyticsModel):
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
         detections = sv.Detections.from_ultralytics(self._run(image))
-        detections.data["class_name"] = np.asarray(self.class_names, dtype=str)[
-            detections.class_id.astype(int)
-        ]
+        detections.data[DetectionKey.CLASS_NAME] = np.asarray(
+            self.class_names, dtype=str
+        )[detections.class_id.astype(int)]
         return self._apply_class_conf(detections)
 
 
-@MODELS.register("yolo_pose")
+@MODELS.register(ModelType.YOLO_POSE)
 class YOLOPoseModel(_UltralyticsModel):
     """Ultralytics YOLO pose model, e.g. pitch landmarks (32 keypoints per pitch).
 
@@ -214,7 +215,7 @@ class YOLOPoseModel(_UltralyticsModel):
         best = keypoints.xy[0]  # (32, 2) pixel coordinates of the best pitch
     """
 
-    name = "yolo_pose"
+    name = ModelType.YOLO_POSE.value
     task = Task.POSE
     default_weights = "yolov8n-pose.pt"
 
@@ -266,7 +267,7 @@ def _keypoints_from_arrays(
         confidence=confidence.astype(np.float32),
         class_id=class_id,
         data={
-            "class_name": np.asarray(class_names, dtype=str)[class_id],
+            DetectionKey.CLASS_NAME: np.asarray(class_names, dtype=str)[class_id],
             "xyxy": xyxy[order].astype(np.float32).reshape(-1, 4),
             "box_confidence": box_confidence.astype(np.float32),
         },

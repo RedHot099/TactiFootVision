@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import DetectionKey, Split
 from tactifoot_vision.registry import Registry
 from tactifoot_vision.utils import next_run_dir, resolve_device
 
@@ -189,7 +190,7 @@ class Model(ABC):
         thresholds = np.array(
             [
                 self.class_conf.get(str(n), self.conf)
-                for n in detections.data["class_name"]
+                for n in detections.data[DetectionKey.CLASS_NAME]
             ],
             dtype=float,
         )
@@ -210,7 +211,7 @@ class Model(ABC):
             raise ValueError(
                 f"{self.name} is a {self.task.value} model but the dataset is {dataset.task.value}"
             )
-        if not dataset["train"] or not dataset["valid"]:
+        if not dataset[Split.TRAIN] or not dataset[Split.VALID]:
             raise ValueError(
                 "Training needs non-empty 'train' and 'valid' splits; "
                 "create them with dataset.resplit(train=0.8, valid=0.2)"
@@ -234,7 +235,7 @@ class Model(ABC):
         return result
 
     def evaluate(
-        self, dataset: Dataset, split: str = "valid", **kwargs: Any
+        self, dataset: Dataset, split: Split | str = Split.VALID, **kwargs: Any
     ) -> "DetectionMetrics | KeypointMetrics":
         """Score on a dataset split with backend-independent metrics.
 

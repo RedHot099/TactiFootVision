@@ -21,6 +21,8 @@ class Registry[T]:
         self._factories: dict[str, Callable[..., T]] = {}
 
     def register[F: Callable[..., Any]](self, name: str) -> Callable[[F], F]:
+        name = str(name)  # a built-in name's enum member is stored as its plain string
+
         def decorator(factory: F) -> F:
             if name in self._factories:
                 raise ValueError(f"{self.kind} {name!r} is already registered")

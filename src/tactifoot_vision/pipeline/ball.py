@@ -20,6 +20,7 @@ import logging
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.enums import DetectionKey, PostProcessName
 from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, metres_per_unit
 from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
 from tactifoot_vision.pitch.homography import pitch_to_frame
@@ -71,7 +72,7 @@ class _Options:
         return self.gate + self.gate_speed * self.elapsed(dt)
 
 
-@POSTPROCESSES.register("track_ball")
+@POSTPROCESSES.register(PostProcessName.TRACK_BALL)
 def track_ball(
     result: PipelineResult,
     min_confidence: float = 0.12,
@@ -187,7 +188,7 @@ def track_ball(
 
 def _candidate_xy(frame: FrameResult) -> np.ndarray:
     candidates = frame.ball_candidates
-    xy = candidates.data.get("pitch_xy")
+    xy = candidates.data.get(DetectionKey.PITCH_XY)
     if xy is None:
         return np.full((len(candidates), 2), np.nan)
     return np.asarray(xy, dtype=float).reshape(-1, 2)
@@ -391,7 +392,7 @@ def _chosen_ball(frame: FrameResult, choice: int | None) -> sv.Detections:
     """A copy of the chosen candidate, flagged as measured (no rows for none)."""
     rows = [] if choice is None else [choice]
     ball = copy.deepcopy(frame.ball_candidates[np.array(rows, dtype=int)])
-    ball.data["interpolated"] = np.zeros(len(ball), dtype=bool)
+    ball.data[DetectionKey.INTERPOLATED] = np.zeros(len(ball), dtype=bool)
     return ball
 
 
@@ -420,7 +421,9 @@ def _between(
     start: sv.Detections, end: sv.Detections, share: float, homography: np.ndarray
 ) -> sv.Detections:
     """The ball ``share`` of the way from ``start`` to ``end``, flagged as interpolated."""
-    pitch_xy = (1 - share) * start.data["pitch_xy"][0] + share * end.data["pitch_xy"][0]
+    pitch_xy = (1 - share) * start.data[DetectionKey.PITCH_XY][0] + (
+        share * end.data[DetectionKey.PITCH_XY][0]
+    )
     centre = pitch_to_frame(pitch_xy[None], homography)[0]
     size = (1 - share) * (start.xyxy[0, 2:] - start.xyxy[0, :2]) + share * (
         end.xyxy[0, 2:] - end.xyxy[0, :2]
@@ -431,6 +434,8 @@ def _between(
     )
     if ball.confidence is not None:
         ball.confidence = np.full(1, np.nan, dtype=ball.confidence.dtype)
-    ball.data["pitch_xy"] = pitch_xy[None].astype(start.data["pitch_xy"].dtype)
-    ball.data["interpolated"] = np.ones(1, dtype=bool)
+    ball.data[DetectionKey.PITCH_XY] = pitch_xy[None].astype(
+        start.data[DetectionKey.PITCH_XY].dtype
+    )
+    ball.data[DetectionKey.INTERPOLATED] = np.ones(1, dtype=bool)
     return ball

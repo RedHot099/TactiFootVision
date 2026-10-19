@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.enums import DetectionKey, TrackerType
 from tactifoot_vision.tracking.base import TRACKERS, Tracker
 from tactifoot_vision.utils import resolve_device
 
@@ -48,7 +49,7 @@ class _Candidate:
         self.hits += 1
 
 
-@TRACKERS.register("sam2")
+@TRACKERS.register(TrackerType.SAM2)
 class SAM2Tracker(Tracker):
     """Segmentation-mask tracking with SAM2, prompted and re-seeded from detections.
 
@@ -77,7 +78,7 @@ class SAM2Tracker(Tracker):
         device: torch device; ``None`` picks CUDA when available.
     """
 
-    name = "sam2"
+    name = TrackerType.SAM2.value
 
     def __init__(
         self,
@@ -174,7 +175,7 @@ class SAM2Tracker(Tracker):
             confidence=np.ones(len(ids), dtype=np.float32),
             class_id=np.array([self._tracks[t][0] for t in ids], dtype=int),
             tracker_id=ids,
-            data={"class_name": np.array([self._tracks[t][1] for t in ids])},
+            data={DetectionKey.CLASS_NAME: np.array([self._tracks[t][1] for t in ids])},
         )
 
     def _autocast(self) -> Any:
@@ -374,12 +375,12 @@ def _classes(detections: sv.Detections) -> tuple[np.ndarray, np.ndarray]:
         if detections.class_id is not None
         else np.full(n, -1, dtype=int)
     )
-    names = detections.data.get("class_name", np.full(n, "", dtype=object))
+    names = detections.data.get(DetectionKey.CLASS_NAME, np.full(n, "", dtype=object))
     return np.asarray(class_ids), np.asarray(names)
 
 
 def _empty() -> sv.Detections:
     empty = sv.Detections.empty()
     empty.tracker_id = np.zeros(0, dtype=int)
-    empty.data = {"class_name": np.zeros(0, dtype=str)}
+    empty.data = {DetectionKey.CLASS_NAME: np.zeros(0, dtype=str)}
     return empty

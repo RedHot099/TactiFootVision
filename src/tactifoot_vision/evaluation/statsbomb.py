@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from tactifoot_vision.enums import Role
+
 if TYPE_CHECKING:
     from tactifoot_vision.pipeline.result import PipelineResult
 
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 _TIME = ["period", "minute", "second"]
 # StatsBomb 360 freeze frames hold only these; other detections never match.
-_CANDIDATE_TYPES = ("player", "goalkeeper")
+_CANDIDATE_TYPES = (Role.PLAYER.value, Role.GOALKEEPER.value)
 # freeze-frame column -> column added to the StatsBomb table
 _DETECTED = {
     "location": "detected_location",

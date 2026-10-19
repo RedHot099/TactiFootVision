@@ -13,6 +13,7 @@ import math
 import numpy as np
 from scipy.signal import savgol_filter
 
+from tactifoot_vision.enums import PostProcessName
 from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, reproject
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch
@@ -20,12 +21,16 @@ from tactifoot_vision.pitch.pitch import SoccerPitch
 logger = logging.getLogger(__name__)
 
 # post-processes that read pitch positions, so they belong after this one
-_READ_POSITIONS = ("track_ball", "join_tracks", "assign_roles")
+_READ_POSITIONS = (
+    PostProcessName.TRACK_BALL,
+    PostProcessName.JOIN_TRACKS,
+    PostProcessName.ASSIGN_ROLES,
+)
 # a scaled matrix this many times the norm of its stretch's median is left out
 _NORM_LIMIT = 10.0
 
 
-@POSTPROCESSES.register("smooth_homographies")
+@POSTPROCESSES.register(PostProcessName.SMOOTH_HOMOGRAPHIES)
 def smooth_homographies(
     result: PipelineResult, window: float = 0.36, order: int = 2
 ) -> PipelineResult:

@@ -12,6 +12,7 @@ import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
+from tactifoot_vision.enums import DetectionKey
 from tactifoot_vision.evaluation.hota import NO_HOTA, hota_by_class
 from tactifoot_vision.evaluation.metrics import TrackingMetrics
 from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
@@ -269,7 +270,7 @@ def _by_class(*groups: sv.Detections) -> dict[str, _Objects]:
     for detections in groups:
         if len(detections) == 0:
             continue
-        names = np.asarray(detections.data["class_name"]).astype(str)
+        names = np.asarray(detections.data[DetectionKey.CLASS_NAME]).astype(str)
         for name in np.unique(names):
             here = names == name
             ids, xyxy = objects.get(name, _EMPTY)

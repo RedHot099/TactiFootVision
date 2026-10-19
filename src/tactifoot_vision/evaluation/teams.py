@@ -10,14 +10,16 @@ import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
 from tactifoot_vision.data.labelled_clip import UNKNOWN_TEAM, LabelledClip, Truth
+from tactifoot_vision.enums import DetectionKey, Role
 from tactifoot_vision.evaluation.metrics import TeamMetrics
-from tactifoot_vision.pipeline.result import NO_TEAM, ROLES, PipelineResult
+from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
 
 logger = logging.getLogger(__name__)
 
 # The mapped team of a run team id with no true team: true team ids are
 # UNKNOWN_TEAM or above, so it is never right.
 _UNMAPPED = UNKNOWN_TEAM - 1
+_ROLES = tuple(role.value for role in Role)  # the role-confusion table's order
 
 
 class _Matches(NamedTuple):
@@ -127,19 +129,19 @@ def _metrics(scored: list[_Scored]) -> TeamMetrics:
 
 def _role_confusion(true: np.ndarray, predicted: np.ndarray) -> pd.DataFrame:
     """Matched people counted by true role (rows) and predicted role (columns)."""
-    counts = np.zeros((len(ROLES), len(ROLES)), int)
+    counts = np.zeros((len(_ROLES), len(_ROLES)), int)
     np.add.at(counts, (_role_index(true), _role_index(predicted)), 1)
     return pd.DataFrame(
         counts,
-        index=pd.Index(ROLES, name="true_role"),
-        columns=pd.Index(ROLES, name="predicted_role"),
+        index=pd.Index(_ROLES, name="true_role"),
+        columns=pd.Index(_ROLES, name="predicted_role"),
     )
 
 
 def _role_index(class_names: np.ndarray) -> np.ndarray:
-    """Each class name's position in ``ROLES``: its own role, else ``other``."""
-    index = np.full(len(class_names), ROLES.index("other"))
-    for i, role in enumerate(ROLES):
+    """Each class name's position in ``_ROLES``: its own role, else ``other``."""
+    index = np.full(len(class_names), _ROLES.index(Role.OTHER))
+    for i, role in enumerate(_ROLES):
         index[class_names == role] = i
     return index
 
@@ -191,7 +193,7 @@ def _matched_people(
                 f"Labelled clip {clip.name} has no {missing} in frame "
                 f"{frame.index}; a clip with boxes and teams gives every person both"
             )
-        true_teams = np.asarray(truth.data.get("team_id", []), int)
+        true_teams = np.asarray(truth.data.get(DetectionKey.TEAM_ID, []), int)
         if len(truth) and np.min(true_teams) < UNKNOWN_TEAM:
             raise ValueError(
                 f"Labelled clip {clip.name} has a team_id below UNKNOWN_TEAM "
@@ -207,8 +209,12 @@ def _matched_people(
             track_ids.append(np.asarray(detected.tracker_id, int)[cols])
             predicted.append(frame.team_ids[cols])
             true.append(true_teams[rows])
-            predicted_roles.append(np.asarray(detected.data["class_name"], str)[cols])
-            true_roles.append(np.asarray(truth.data["class_name"], str)[rows])
+            predicted_roles.append(
+                np.asarray(detected.data[DetectionKey.CLASS_NAME], str)[cols]
+            )
+            true_roles.append(
+                np.asarray(truth.data[DetectionKey.CLASS_NAME], str)[rows]
+            )
     return _Matches(
         track_ids=_joined(track_ids, int),
         predicted=_joined(predicted, int),
@@ -226,7 +232,11 @@ def _joined(parts: list[np.ndarray], dtype: type) -> np.ndarray:
 
 def _missing_keys(detections: sv.Detections) -> str:
     """The keys scoring needs that ``detections.data`` lacks, joined by "or"."""
-    return " or ".join(k for k in ("class_name", "team_id") if k not in detections.data)
+    return " or ".join(
+        k
+        for k in (DetectionKey.CLASS_NAME, DetectionKey.TEAM_ID)
+        if k not in detections.data
+    )
 
 
 def _match(

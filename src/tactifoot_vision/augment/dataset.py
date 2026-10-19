@@ -16,7 +16,8 @@ from tactifoot_vision.data._files import (
     check_output_location,
     unique_stems,
 )
-from tactifoot_vision.data.dataset import SPLITS, Dataset, Sample, canonical_split
+from tactifoot_vision.data.dataset import Dataset, Sample
+from tactifoot_vision.enums import Split
 from tactifoot_vision.utils import ensure_dir
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ def augment_dataset(
     transform: Transform,
     out_dir: str | Path,
     copies: int = 1,
-    splits: Sequence[str] = ("train",),
+    splits: Sequence[Split | str] = (Split.TRAIN,),
     seed: int = 0,
     image_format: str = "jpg",
     progress: bool = True,
@@ -65,7 +66,7 @@ def augment_dataset(
     """
     if copies < 1:
         raise ValueError(f"copies must be >= 1, got {copies}")
-    split_names = list(dict.fromkeys(canonical_split(s) for s in splits))
+    split_names = list(dict.fromkeys(Split.parse(s) for s in splits))
     missing = [s for s in split_names if not dataset[s]]
     if missing:
         raise ValueError(
@@ -118,7 +119,7 @@ def augment_dataset(
                 annotations = replace(annotations, flip_idx=dataset.flip_idx)
             for k, path in enumerate(paths):
                 seed_seq = np.random.SeedSequence(
-                    seed, spawn_key=(SPLITS.index(split), index, k)
+                    seed, spawn_key=(list(Split).index(split), index, k)
                 )
                 new_image, new_annotations = transform(
                     image, annotations, np.random.default_rng(seed_seq)

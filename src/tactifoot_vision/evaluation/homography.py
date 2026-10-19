@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, LabelledFrame, Truth
+from tactifoot_vision.enums import DetectionKey
 from tactifoot_vision.evaluation.metrics import HomographyMetrics
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import PERSON_ANCHOR, PipelineResult
@@ -244,7 +245,7 @@ def _position_points(
 ) -> dict[str, _Points] | None:
     """The people with a known pitch position within ``margin_m`` of the pitch and their box feet, keyed by identity."""
     people = frame.detections
-    positions = people.data.get("pitch_xy")
+    positions = people.data.get(DetectionKey.PITCH_XY)
     if positions is None:
         return None
     positions = np.asarray(positions, float).reshape(-1, 2)
