@@ -620,8 +620,9 @@ def overlay(
         alpha: opacity of the overlay (1 = opaque).
         padding: distance in pixels from the frame border.
     """
-    check_overlay(position, width_fraction, alpha, padding)
-    vertical, _, horizontal = OverlayPosition(position).partition("-")
+    position = OverlayPosition.parse(position, "position")
+    check_overlay(None, width_fraction, alpha, padding)
+    vertical, _, horizontal = position.partition("-")
     horizontal = horizontal or "center"
     frame_h, frame_w = frame.shape[:2]
     image_h, image_w = image.shape[:2]

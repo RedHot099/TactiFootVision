@@ -48,6 +48,7 @@ def evaluate_detector(
         raise ValueError(
             f"evaluate_detector needs a detection model, got a {model.task.value} model"
         )
+    split = Split.parse(split)
     samples = dataset[split][:max_images]
     if not samples:
         raise ValueError(f"Split {split!r} of {dataset!r} has no images")

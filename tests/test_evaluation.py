@@ -10,6 +10,7 @@ import pytest
 import supervision as sv
 
 from tactifoot_vision.data import Annotations, Dataset, Sample, Task
+from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation import (
     DetectionMetrics,
     KeypointMetrics,
@@ -254,6 +255,29 @@ def test_evaluate_dispatches_on_task(tmp_path):
     model = FakeModel(Task.POSE, {0: _pose([[10, 10]] * 3), 1: _pose()}, ["pitch"])
     result = model.evaluate(keypoints, pck_threshold=0.1)
     assert isinstance(result, KeypointMetrics) and result.pck_threshold == 0.1
+
+
+def test_every_evaluator_takes_the_split_as_a_member_or_a_string(tmp_path):
+    detection = _detection_dataset(tmp_path, LABELS)
+    detector = FakeModel(Task.DETECT, PERFECT, CLASSES)
+    pose_dir = tmp_path / "pose"
+    pose_dir.mkdir()
+    keypoints = _keypoint_dataset(pose_dir)
+    poser = FakeModel(Task.POSE, {0: _pose([[10, 10]] * 3), 1: _pose()}, ["pitch"])
+    runs = [
+        (evaluate_detector, detector, detection),
+        (evaluate_keypoints, poser, keypoints),
+        (evaluate, detector, detection),
+        (type(detector).evaluate, detector, detection),
+    ]
+    for function, model, dataset in runs:
+        by_member = function(model, dataset, split=Split.VALID).as_dict()
+        assert by_member == function(model, dataset, split="valid").as_dict()
+        assert by_member == function(model, dataset, split="val").as_dict()
+        with pytest.raises(
+            ValueError, match="Unknown split 'dev'. Available: train, valid, test"
+        ):
+            function(model, dataset, split="dev")
 
 
 # ------------------------------------------------------------- statsbomb

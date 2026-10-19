@@ -173,7 +173,7 @@ class TeamMetrics:
     detection so that each counts once. Both are NaN without a match.
     ``role_confusion`` counts the matched people by true role (rows,
     ``true_role``) and the run's role (columns, ``predicted_role``), each
-    taken from ``class_name`` as in ``ROLES``: ``player``, ``goalkeeper``,
+    taken from ``class_name`` as in ``tv.enums.Role``: ``player``, ``goalkeeper``,
     ``referee``, or ``other`` for any other class; a goalkeeper absorbed into
     a team as a player is in row ``goalkeeper``, column ``player``.
     :meth:`as_dict` leaves ``role_confusion`` out. An aggregate over

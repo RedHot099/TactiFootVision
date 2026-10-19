@@ -41,6 +41,7 @@ def evaluate_keypoints(
         raise ValueError(
             f"evaluate_keypoints needs a keypoint model, got a {model.task.value} model"
         )
+    split = Split.parse(split)
     num_keypoints = dataset.num_keypoints
     if num_keypoints is None:
         raise ValueError(f"{dataset!r} has no keypoints")

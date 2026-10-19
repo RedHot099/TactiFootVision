@@ -18,7 +18,7 @@ import tactifoot_vision.viz as viz
 from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
-from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition
+from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition, Split
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.models.base import TrainResult
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
@@ -1489,6 +1489,19 @@ def test_show_samples_and_augmentations(tmp_path: Path) -> None:
     assert isinstance(fig, Figure) and len([a for a in fig.axes if a.images]) == 4
     with pytest.raises(ValueError, match="empty"):
         viz.show_samples(dataset, split="valid")
+    for show in (
+        viz.show_samples,
+        lambda d, **kw: viz.show_augmentations(d, flip, **kw),
+    ):
+        by_member = show(dataset, split=Split.TRAIN, n=1)
+        by_name = show(dataset, split="train", n=1)
+        assert [a.get_title() for a in by_member.axes] == [
+            a.get_title() for a in by_name.axes
+        ]
+        with pytest.raises(
+            ValueError, match="Unknown split 'dev'. Available: train, valid, test"
+        ):
+            show(dataset, split="dev")
 
 
 def test_plot_training_ultralytics_and_rfdetr(tmp_path: Path) -> None:
@@ -1733,6 +1746,10 @@ def test_render_video_refuses_to_overwrite_its_source(
 def test_overlay_options_have_a_validator(options, match):
     with pytest.raises(ValueError, match=match):
         viz.check_overlay(**options)
+    viz.check_overlay(position=OverlayPosition.CENTER_LEFT)
+    viz.check_overlay(position="center-left")
+    with pytest.raises(ValueError, match="Unknown position 'left'. Available: center"):
+        viz.check_overlay(position="left")
     viz.check_overlay()  # nothing given: nothing to check
 
 
@@ -1744,7 +1761,27 @@ def test_render_video_checks_overlay_options_before_writing(
             result, video, tmp_path / "a.mp4", overlay_position="bottom-middle",
             radar=False, progress=False,
         )  # fmt: skip
+    with pytest.raises(
+        ValueError, match="'bottom-middle'. Available: center, top-left"
+    ):
+        viz.render_video(
+            result, video, tmp_path / "a.mp4", overlay_position="bottom-middle",
+            progress=False,
+        )  # fmt: skip
     assert not (tmp_path / "a.mp4").exists()
+    frames = [
+        _read_all(
+            viz.render_video(
+                result,
+                video,
+                tmp_path / f"{i}.mp4",
+                overlay_position=position,
+                progress=False,
+            )  # fmt: skip
+        )[0]
+        for i, position in enumerate((OverlayPosition.TOP_LEFT, "top-left"))
+    ]
+    np.testing.assert_array_equal(frames[0], frames[1])
     with pytest.raises(ValueError, match="fps"):
         viz.render_video(result, video, tmp_path / "a.mp4", fps=0, progress=False)
     assert not (tmp_path / "a.mp4").exists()

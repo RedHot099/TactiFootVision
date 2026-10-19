@@ -32,7 +32,7 @@ class Vocabulary(StrEnum):
         # Messages, logs and printed lists show the plain string a user would type.
         return repr(self.value)
 
-    def __reduce_ex__(self, protocol: object) -> tuple[type[str], tuple[str]]:
+    def __reduce_ex__(self, protocol: int) -> tuple[type[str], tuple[str]]:
         # A member pickles as its plain string (a key of a saved result's
         # sv.Detections.data, say), so no saved file needs this module to load.
         return str, (self.value,)
@@ -65,7 +65,7 @@ class Role(Vocabulary):
     OTHER = "other"
 
     @classmethod
-    def of(cls, class_name: str) -> "Role":
+    def of(cls, class_name: str) -> Self:
         """The role of a **Class name**: itself when it is a role, else ``OTHER``."""
         return cls(class_name) if class_name in cls else cls.OTHER
 

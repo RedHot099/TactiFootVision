@@ -195,7 +195,8 @@ def _pick(count: int, n: int, seed: int) -> np.ndarray:
     )
 
 
-def _split_samples(dataset: Dataset, split: str) -> list[Sample]:
+def _split_samples(dataset: Dataset, split: Split | str) -> list[Sample]:
+    split = Split.parse(split)
     samples = dataset[split]
     if not samples:
         raise ValueError(f"Split {split!r} is empty; available: {dataset.split_names}")

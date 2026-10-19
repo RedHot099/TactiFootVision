@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from tactifoot_vision.enums import Reducer
+from tactifoot_vision.enums import ColorSpace, Pooling, Reducer
 from tactifoot_vision.teams import (
     EMBEDDERS,
     Embedder,
@@ -154,6 +154,17 @@ def test_real_embedders(name, options, dim):
     assert embedder.embed([]).shape == (0, dim)
     labels = TeamClassifier(embedder, reducer=None).fit_predict(crops[:5])
     assert len(set(labels[:3])) == 1 and len(set(labels[3:5])) == 1
+
+
+@pytest.mark.model
+def test_siglip_takes_its_modes_as_members_or_strings():
+    crops = _crops(RED, 2, 0) + _crops(BLUE, 2, 1)
+    options = {"color_hist_bins": 8, "device": "cpu"}
+    by_member = SigLIPEmbedder(
+        pooling=Pooling.CLS, color_space=ColorSpace.HSV, **options
+    )
+    by_name = SigLIPEmbedder(pooling="cls", color_space="hsv", **options)
+    np.testing.assert_array_equal(by_member.embed(crops), by_name.embed(crops))
 
 
 def test_fit_uses_at_most_max_fit_samples():

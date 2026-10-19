@@ -17,3 +17,4 @@ A `StrEnum` member equals its string, so the boundaries stay strings:
 
 - Adding a role or a mode is one change in `tv.enums`; the call sites and the error messages follow.
 - A member prints and pickles as its plain string. Debugging output shows `'player'`, not `<Role.PLAYER: 'player'>`; `type()` still tells them apart.
+- `yaml.safe_dump` refuses a member, which is not exactly a `str`: write `.value` before dumping one, as the clip dataset does for its class names.

@@ -220,6 +220,8 @@ def _unwrap_optional(annotation: Any) -> Any:
         args = [a for a in get_args(annotation) if a is not type(None)]
         if len(args) == 1:
             return args[0]
+        if all(isinstance(a, type) and issubclass(a, str) for a in args):
+            return str  # an enum or its string (ADR 0004): the flag's text as it is
     return annotation
 
 

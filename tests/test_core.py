@@ -82,6 +82,12 @@ def test_registry():
     registry.register(TrackerType.SAM2)(A)
     assert registry.names() == ["a", "sam2"] and type(registry.names()[1]) is str
     assert registry.get("sam2") is registry.get(TrackerType.SAM2) is A
+    assert TrackerType.SAM2 in registry and TrackerType.BYTETRACK not in registry
+    assert registry.create(TrackerType.SAM2, x=4).x == registry.create("sam2", x=4).x
+    with pytest.raises(
+        ValueError, match="Unknown thing 'bytetrack'. Available: a, sam2"
+    ):
+        registry.create(TrackerType.BYTETRACK)
 
 
 def test_pitch_vertices_and_scaling():

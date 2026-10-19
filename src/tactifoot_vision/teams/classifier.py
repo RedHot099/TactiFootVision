@@ -43,7 +43,7 @@ class TeamClassifier:
 
     def __init__(
         self,
-        embedder: str | Embedder = EmbedderType.SIGLIP,
+        embedder: EmbedderType | str | Embedder = EmbedderType.SIGLIP,
         n_teams: int = 2,
         reducer: Reducer | str | None = Reducer.UMAP,
         umap_components: int = 3,

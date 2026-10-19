@@ -267,7 +267,7 @@ def _keypoints_from_arrays(
         confidence=confidence.astype(np.float32),
         class_id=class_id,
         data={
-            "class_name": np.asarray(class_names, dtype=str)[class_id],
+            DetectionKey.CLASS_NAME: np.asarray(class_names, dtype=str)[class_id],
             "xyxy": xyxy[order].astype(np.float32).reshape(-1, 4),
             "box_confidence": box_confidence.astype(np.float32),
         },

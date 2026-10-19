@@ -88,7 +88,7 @@ class Pipeline:
         self,
         detector: Model,
         keypoint_model: Model | None = None,
-        tracker: Tracker | str | None = TrackerType.BYTETRACK,
+        tracker: Tracker | TrackerType | str | None = TrackerType.BYTETRACK,
         team_classifier: TeamClassifier | None = None,
         refit_teams: bool = True,
         pitch: SoccerPitch | None = None,

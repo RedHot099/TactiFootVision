@@ -17,13 +17,8 @@ from tactifoot_vision.data._files import (
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
-from tactifoot_vision.data.dataset import (
-    Dataset,
-    LinkMode,
-    Sample,
-    check_flip_idx,
-)
-from tactifoot_vision.enums import Split
+from tactifoot_vision.data.dataset import Dataset, Sample, check_flip_idx
+from tactifoot_vision.enums import LinkMode, Split
 
 logger = logging.getLogger(__name__)
 

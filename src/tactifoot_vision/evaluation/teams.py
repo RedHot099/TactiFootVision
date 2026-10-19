@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # The mapped team of a run team id with no true team: true team ids are
 # UNKNOWN_TEAM or above, so it is never right.
 _UNMAPPED = UNKNOWN_TEAM - 1
+_ROLES = tuple(role.value for role in Role)  # the role-confusion table's order
 
 
 class _Matches(NamedTuple):
@@ -128,21 +129,19 @@ def _metrics(scored: list[_Scored]) -> TeamMetrics:
 
 def _role_confusion(true: np.ndarray, predicted: np.ndarray) -> pd.DataFrame:
     """Matched people counted by true role (rows) and predicted role (columns)."""
-    roles = [role.value for role in Role]
-    counts = np.zeros((len(roles), len(roles)), int)
+    counts = np.zeros((len(_ROLES), len(_ROLES)), int)
     np.add.at(counts, (_role_index(true), _role_index(predicted)), 1)
     return pd.DataFrame(
         counts,
-        index=pd.Index(roles, name="true_role"),
-        columns=pd.Index(roles, name="predicted_role"),
+        index=pd.Index(_ROLES, name="true_role"),
+        columns=pd.Index(_ROLES, name="predicted_role"),
     )
 
 
 def _role_index(class_names: np.ndarray) -> np.ndarray:
-    """Each class name's position in ``Role``: its own role, else ``other``."""
-    roles = list(Role)
-    index = np.full(len(class_names), roles.index(Role.OTHER))
-    for i, role in enumerate(roles):
+    """Each class name's position in ``_ROLES``: its own role, else ``other``."""
+    index = np.full(len(class_names), _ROLES.index(Role.OTHER))
+    for i, role in enumerate(_ROLES):
         index[class_names == role] = i
     return index
 

@@ -181,7 +181,7 @@ class Dataset:
         )
 
     # ------------------------------------------------------------------- access
-    def __getitem__(self, split: str) -> list[Sample]:
+    def __getitem__(self, split: Split | str) -> list[Sample]:
         """The samples of ``split`` (a new list; empty if the split is missing)."""
         return list(self.splits.get(Split.parse(split), []))
 
@@ -196,7 +196,7 @@ class Dataset:
     def split_names(self) -> list[str]:
         return [s.value for s in Split if self.splits.get(s)]
 
-    def read(self, split: str, index: int) -> tuple[np.ndarray, Annotations]:
+    def read(self, split: Split | str, index: int) -> tuple[np.ndarray, Annotations]:
         """Return ``(image_bgr, annotations)`` of one sample."""
         sample = self.splits.get(Split.parse(split), [])[index]
         return sample.read_image(), sample.annotations.copy()
@@ -225,12 +225,12 @@ class Dataset:
         )
 
     # ------------------------------------------------------ derived datasets
-    def with_split(self, split: str, samples: list[Sample]) -> "Dataset":
+    def with_split(self, split: Split | str, samples: list[Sample]) -> "Dataset":
         """Return a copy where ``split`` holds ``samples``."""
         return replace(self, splits={**self.splits, Split.parse(split): list(samples)})
 
     def subset(
-        self, size: int | float | Mapping[str, int | float], seed: int = 0
+        self, size: int | float | Mapping[Split | str, int | float], seed: int = 0
     ) -> "Dataset":
         """Randomly keep ``size`` images per split.
 

@@ -861,6 +861,15 @@ def test_evaluate_has_no_hand_written_device_flag(capsys):
     assert "--device" in capsys.readouterr().err
 
 
+def test_a_flag_of_an_enum_or_its_string_takes_the_text_as_it_is():
+    from tactifoot_vision.enums import Split
+
+    parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+    tv.cli._add_flags(parser, [("split", Split | str, Split.VALID, None)])
+    assert parser.parse_args(["--split", "1"]).split == "1"
+    assert parser.parse_args(["--split", "val"]).split == "val"
+
+
 def test_flags_of_non_scalar_annotations_take_yaml(monkeypatch):
     from collections.abc import Sequence
 
