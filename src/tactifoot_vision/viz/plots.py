@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from tactifoot_vision.data.dataset import Dataset, Sample
+from tactifoot_vision.enums import ObjectKind, Role, Split
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
@@ -202,7 +203,11 @@ def _split_samples(dataset: Dataset, split: str) -> list[Sample]:
 
 
 def show_samples(
-    dataset: Dataset, split: str = "train", n: int = 6, seed: int = 0, cols: int = 3
+    dataset: Dataset,
+    split: Split | str = Split.TRAIN,
+    n: int = 6,
+    seed: int = 0,
+    cols: int = 3,
 ) -> "Figure":
     """Random images of a split with their ground-truth boxes, classes and keypoints."""
     samples = _split_samples(dataset, split)
@@ -224,7 +229,7 @@ def show_augmentations(
     dataset: Dataset,
     transform: "Transform",
     n: int = 4,
-    split: str = "train",
+    split: Split | str = Split.TRAIN,
     seed: int = 0,
 ) -> "Figure":
     """Original vs augmented image pairs (one row each), labels drawn on both.
@@ -290,11 +295,11 @@ _METRIC_COLORS = {
 def _split_prefix(lower: str) -> tuple[str, str]:
     for prefix in _VALID_PREFIXES:
         if lower.startswith(prefix):
-            return "valid", lower[len(prefix) :]
+            return Split.VALID, lower[len(prefix) :]
     for prefix in _TRAIN_PREFIXES:
         if lower.startswith(prefix):
-            return "train", lower[len(prefix) :]
-    return "train", lower
+            return Split.TRAIN, lower[len(prefix) :]
+    return Split.TRAIN, lower
 
 
 def _numeric(series: pd.Series) -> pd.Series | None:
@@ -419,7 +424,10 @@ def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
             else:
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
             if title.endswith("loss"):
-                for split, color in (("train", _SERIES[0]), ("valid", _SERIES[1])):
+                for split, color in (
+                    (Split.TRAIN, _SERIES[0]),
+                    (Split.VALID, _SERIES[1]),
+                ):
                     if split in series:
                         ax.plot(epochs, series[split], color=color, marker=marker)
             else:
@@ -550,7 +558,9 @@ def _pitch_axes(
 def _positions(result: PipelineResult) -> pd.DataFrame:
     """People (no referees) with finite pitch coordinates, one row per object per frame."""
     table = result.to_dataframe()
-    table = table[(table["object"] == "person") & (table["class_name"] != "referee")]
+    table = table[
+        (table["object"] == ObjectKind.PERSON) & (table["class_name"] != Role.REFEREE)
+    ]
     return table[np.isfinite(table[["pitch_x", "pitch_y"]].to_numpy(float)).all(axis=1)]
 
 

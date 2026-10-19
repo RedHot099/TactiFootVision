@@ -11,7 +11,6 @@ from pathlib import Path
 import numpy as np
 
 from tactifoot_vision.data._files import (
-    check_link_mode,
     check_output_location,
     clipped_box,
     link_file,
@@ -19,7 +18,8 @@ from tactifoot_vision.data._files import (
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations, Task
-from tactifoot_vision.data.dataset import Dataset, LinkMode, Sample, canonical_split
+from tactifoot_vision.data.dataset import Dataset, Sample
+from tactifoot_vision.enums import LinkMode, Split
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def read_dataset(root: Path, flip_idx: tuple[int, ...] | None = None) -> Dataset
     num_keypoints: int | None = None
     for folder in ("train", "valid", "val", "test"):
         path = root / folder / ANNOTATION_FILE
-        split = canonical_split(folder)
+        split = Split.parse(folder)
         if not path.is_file() or split in splits:
             continue
         coco = json.loads(path.read_text())
@@ -146,8 +146,10 @@ def _read_split(
 
 
 # ------------------------------------------------------------------- writing
-def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -> Path:
-    check_link_mode(link)
+def write_dataset(
+    dataset: Dataset, out_dir: Path, link: LinkMode | str = LinkMode.SYMLINK
+) -> Path:
+    link = LinkMode.parse(link, "link")
     splits = dataset.split_names
     managed = [out_dir / s for s in splits]
     check_output_location(out_dir, managed, (s.image_path for s in dataset))

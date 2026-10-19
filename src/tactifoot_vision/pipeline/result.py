@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import supervision as sv
 
+from tactifoot_vision.enums import DetectionKey, ObjectKind, Role
 from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
 from tactifoot_vision.pitch.lines import LineFit
 from tactifoot_vision.pitch.pitch import SoccerPitch
@@ -24,8 +25,6 @@ PERSON_ANCHOR = sv.Position.BOTTOM_CENTER  # where a person's pitch position is 
 BALL_ANCHOR = sv.Position.CENTER
 # StatsBomb's match clock: the minute at which each period kicks off.
 _PERIOD_KICK_OFF_MINUTE = {1: 0, 2: 45, 3: 90, 4: 105}
-# A person's role: their class name when it is one of these, else "other".
-ROLES = ("player", "goalkeeper", "referee", "other")
 _FREEZE_FRAME_COLUMNS = [
     "frame_id", "period", "timestamp", "timestamp_seconds", "minute", "second",
     "homography_matrix", "visible_area", "player_id", "type", "class_name",
@@ -130,17 +129,19 @@ class FrameResult:
 
     @property
     def pitch_xy(self) -> np.ndarray:
-        return _data(self.detections, "pitch_xy", (len(self.detections), 2), np.nan)
+        return _data(
+            self.detections, DetectionKey.PITCH_XY, (len(self.detections), 2), np.nan
+        )
 
     @property
     def team_ids(self) -> np.ndarray:
         return _data(
-            self.detections, "team_id", (len(self.detections),), NO_TEAM
+            self.detections, DetectionKey.TEAM_ID, (len(self.detections),), NO_TEAM
         ).astype(int)
 
     @property
     def ball_xy(self) -> np.ndarray:
-        return _data(self.ball, "pitch_xy", (len(self.ball), 2), np.nan)
+        return _data(self.ball, DetectionKey.PITCH_XY, (len(self.ball), 2), np.nan)
 
 
 def project_detections(
@@ -261,7 +262,7 @@ class PipelineResult:
                 for obj in _object_rows(detections, pitch_xy, team_ids, names):
                     x1, y1, x2, y2 = (float(v) for v in obj["xyxy"])
                     rows.append({
-                        "frame": f.index, "time": f.timestamp, "object": kind,
+                        "frame": f.index, "time": f.timestamp, "object": kind.value,
                         "track_id": obj["track_id"], "class_name": obj["class_name"],
                         "team_id": obj["team_id"], "team_name": obj["team_name"],
                         "confidence": obj["confidence"],
@@ -386,17 +387,17 @@ class PipelineResult:
             for kind, detections, pitch_xy, team_ids in _objects(f):
                 for obj in _object_rows(detections, pitch_xy, team_ids, names):
                     name = obj["class_name"]
-                    if kind == "ball":
-                        kind_type, player_id = "ball", BALL_PLAYER_ID
+                    if kind is ObjectKind.BALL:
+                        kind_type, player_id = kind.value, BALL_PLAYER_ID
                     else:
-                        kind_type = name if name in ROLES else "other"
+                        kind_type = Role.of(name).value
                         player_id = obj["track_id"]
                     rows.append(base | {
                         "player_id": player_id, "type": kind_type, "class_name": name,
                         "location": _json(obj["pitch_xy"]),
                         "frame_bbox": _json(obj["xyxy"].round().astype(int)),
                         "confidence": obj["confidence"],
-                        "keeper": name == "goalkeeper", "team_id": obj["team_id"],
+                        "keeper": name == Role.GOALKEEPER, "team_id": obj["team_id"],
                         "team_name": obj["team_name"],
                         "interpolated": obj["interpolated"],
                     })  # fmt: skip
@@ -539,10 +540,10 @@ def _period_start(period: int, period_start: float | None) -> float:
 
 def _objects(
     f: FrameResult,
-) -> Iterator[tuple[str, sv.Detections, np.ndarray, np.ndarray | None]]:
+) -> Iterator[tuple[ObjectKind, sv.Detections, np.ndarray, np.ndarray | None]]:
     """``(kind, detections, pitch_xy, team_ids)`` of a frame's people and its ball."""
-    yield "person", f.detections, f.pitch_xy, f.team_ids
-    yield "ball", f.ball, f.ball_xy, None
+    yield ObjectKind.PERSON, f.detections, f.pitch_xy, f.team_ids
+    yield ObjectKind.BALL, f.ball, f.ball_xy, None
 
 
 def _object_rows(
@@ -552,8 +553,8 @@ def _object_rows(
     team_names: list[str] | None,
 ) -> Iterator[dict]:
     """The fields every table row of an object shares, one dict per detection."""
-    names = detections.data.get("class_name", [])
-    interpolated = detections.data.get("interpolated", [])
+    names = detections.data.get(DetectionKey.CLASS_NAME, [])
+    interpolated = detections.data.get(DetectionKey.INTERPOLATED, [])
     for i in range(len(detections)):
         team = int(team_ids[i]) if team_ids is not None else NO_TEAM
         yield {

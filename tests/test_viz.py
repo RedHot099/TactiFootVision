@@ -18,6 +18,7 @@ import tactifoot_vision.viz as viz
 from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
+from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.models.base import TrainResult
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
@@ -213,6 +214,15 @@ def test_render_video_draws_masks(
 def test_annotate_rejects_unknown_style() -> None:
     with pytest.raises(ValueError, match="style"):
         viz.FrameAnnotator(style="cartoon")
+    with pytest.raises(ValueError, match="'cartoon'. Available: standard, video_game"):
+        viz.FrameAnnotator(style="cartoon")
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    np.testing.assert_array_equal(
+        viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME).annotate(
+            frame, _frame_result(0)
+        ),
+        viz.FrameAnnotator(style="video_game").annotate(frame, _frame_result(0)),
+    )
 
 
 def test_draw_annotations_hides_unlabelled_keypoints() -> None:
@@ -580,6 +590,12 @@ def test_overlay_blends_and_validates() -> None:
     assert out[50, 50, 0] == 100
     with pytest.raises(ValueError, match="position"):
         viz.overlay(frame, patch, position="middle-left")
+    with pytest.raises(ValueError, match="Available: center, top-left, .*bottom-right"):
+        viz.overlay(frame, patch, position="middle-left")
+    np.testing.assert_array_equal(
+        viz.overlay(frame, patch, position=OverlayPosition.TOP_RIGHT),
+        viz.overlay(frame, patch, position="top-right"),
+    )
     with pytest.raises(ValueError, match="alpha"):
         viz.overlay(frame, patch, alpha=2)
 

@@ -2,10 +2,11 @@
 
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Self
+from typing import Any, Self
 
 import numpy as np
 
+from tactifoot_vision.enums import EmbedderType, Reducer
 from tactifoot_vision.teams.embedders import EMBEDDERS, Embedder
 
 logger = logging.getLogger(__name__)
@@ -42,9 +43,9 @@ class TeamClassifier:
 
     def __init__(
         self,
-        embedder: str | Embedder = "siglip",
+        embedder: str | Embedder = EmbedderType.SIGLIP,
         n_teams: int = 2,
-        reducer: Literal["umap"] | None = "umap",
+        reducer: Reducer | str | None = Reducer.UMAP,
         umap_components: int = 3,
         umap_neighbors: int = 15,
         umap_min_dist: float = 0.1,
@@ -55,8 +56,8 @@ class TeamClassifier:
     ) -> None:
         if n_teams < 2:
             raise ValueError("n_teams must be >= 2")
-        if reducer not in ("umap", None):
-            raise ValueError(f"reducer must be 'umap' or None, got {reducer!r}")
+        if reducer is not None:
+            reducer = Reducer.parse(reducer, "reducer")
         if max_fit_samples is not None and max_fit_samples < n_teams:
             raise ValueError(
                 f"max_fit_samples={max_fit_samples} cannot fit n_teams={n_teams} "
@@ -117,7 +118,7 @@ class TeamClassifier:
                 rng.choice(len(features), self.max_fit_samples, replace=False)
             ]
         self._umap = None
-        if self.reducer == "umap":
+        if self.reducer == Reducer.UMAP:
             if len(features) >= MIN_UMAP_SAMPLES:
                 features = self._fit_umap(features)
             else:

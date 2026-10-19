@@ -2,13 +2,13 @@
 
 import logging
 from collections.abc import Sequence
-from typing import Literal
 
 import cv2
 import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
+from tactifoot_vision.enums import AnnotatorStyle, DetectionKey
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.pitch.projection import project_points
@@ -115,7 +115,7 @@ class FrameAnnotator:
 
     def __init__(
         self,
-        style: Literal["standard", "video_game"] = "standard",
+        style: AnnotatorStyle | str = AnnotatorStyle.STANDARD,
         team_colors: Sequence[ColorLike] = TEAM_COLORS,
         default_color: ColorLike = DEFAULT_COLOR,
         ball_color: ColorLike = BALL_COLOR,
@@ -145,11 +145,9 @@ class FrameAnnotator:
             trail_seconds: draw the ball's path over the last this many seconds,
                 in ``ball_color`` fading to nothing at that age; ``None``: no trail.
         """
-        if style not in ("standard", "video_game"):
-            raise ValueError(f"Unknown style {style!r}; use 'standard' or 'video_game'")
         if trail_seconds is not None and not trail_seconds > 0:
             raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
-        self.style = style
+        self.style = AnnotatorStyle.parse(style, "style")
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
         self.ball_color = as_color(ball_color)
@@ -219,14 +217,14 @@ class FrameAnnotator:
     def _people_annotator(
         self, thickness: int
     ) -> sv.BoxAnnotator | sv.EllipseAnnotator:
-        if self.style == "video_game":
+        if self.style == AnnotatorStyle.VIDEO_GAME:
             return sv.EllipseAnnotator(color=self._palette, thickness=thickness)
         return sv.BoxAnnotator(color=self._palette, thickness=thickness)
 
     def _label_annotator(self, thickness: int, text_scale: float) -> sv.LabelAnnotator:
         position = (
             sv.Position.BOTTOM_CENTER
-            if self.style == "video_game"
+            if self.style == AnnotatorStyle.VIDEO_GAME
             else sv.Position.TOP_LEFT
         )
         return sv.LabelAnnotator(
@@ -240,7 +238,7 @@ class FrameAnnotator:
         )
 
     def _ball_annotator(self, thickness: int) -> sv.BoxAnnotator | sv.TriangleAnnotator:
-        if self.style == "video_game":
+        if self.style == AnnotatorStyle.VIDEO_GAME:
             size = 10 * thickness
             return sv.TriangleAnnotator(
                 color=self.ball_color,
@@ -376,7 +374,7 @@ def _ball_position(frame_result: FrameResult) -> np.ndarray:
 def _labels(detections: sv.Detections) -> list[str]:
     if detections.tracker_id is not None:
         return [f"#{int(t)}" for t in detections.tracker_id]
-    names = detections.data.get("class_name")
+    names = detections.data.get(DetectionKey.CLASS_NAME)
     return [str(n) for n in names] if names is not None else [""] * len(detections)
 
 

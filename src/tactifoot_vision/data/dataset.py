@@ -6,7 +6,6 @@ import random
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal
 
 import cv2
 import numpy as np
@@ -16,23 +15,16 @@ from tactifoot_vision.data._files import clipped_box
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
 from tactifoot_vision.data.video import sequence_images
+from tactifoot_vision.enums import DetectionKey, LinkMode, ObjectKind, Role, Split
 
 logger = logging.getLogger(__name__)
 
-SPLITS = ("train", "valid", "test")
-SPLIT_ALIASES = {"val": "valid", "validation": "valid"}
-LinkMode = Literal["symlink", "hardlink", "copy"]
 # The classes of a dataset built from labelled clips: the package vocabulary.
-_CLIP_CLASSES = ("player", "goalkeeper", "referee", "ball")
+_CLIP_CLASSES = tuple(
+    kind.value for kind in (Role.PLAYER, Role.GOALKEEPER, Role.REFEREE, ObjectKind.BALL)
+)
 # OpenCV's image-sequence reader only finds a first image numbered 0 to 4.
 _LAST_FIRST_IMAGE = 4
-
-
-def canonical_split(name: str) -> str:
-    name = SPLIT_ALIASES.get(name, name)
-    if name not in SPLITS:
-        raise ValueError(f"Unknown split {name!r}; use one of {SPLITS}")
-    return name
 
 
 def check_flip_idx(
@@ -90,7 +82,7 @@ class Dataset:
 
     def __post_init__(self) -> None:
         self.task = Task(self.task)
-        self.splits = {canonical_split(k): list(v) for k, v in self.splits.items()}
+        self.splits = {Split.parse(k): list(v) for k, v in self.splits.items()}
         if self.task is Task.POSE and self.num_keypoints is None:
             raise ValueError("Pose datasets need num_keypoints")
         check_flip_idx(self.flip_idx, self.num_keypoints)
@@ -191,7 +183,7 @@ class Dataset:
     # ------------------------------------------------------------------- access
     def __getitem__(self, split: str) -> list[Sample]:
         """The samples of ``split`` (a new list; empty if the split is missing)."""
-        return list(self.splits.get(canonical_split(split), []))
+        return list(self.splits.get(Split.parse(split), []))
 
     def __len__(self) -> int:
         return sum(len(samples) for samples in self.splits.values())
@@ -202,11 +194,11 @@ class Dataset:
 
     @property
     def split_names(self) -> list[str]:
-        return [s for s in SPLITS if self.splits.get(s)]
+        return [s.value for s in Split if self.splits.get(s)]
 
     def read(self, split: str, index: int) -> tuple[np.ndarray, Annotations]:
         """Return ``(image_bgr, annotations)`` of one sample."""
-        sample = self.splits.get(canonical_split(split), [])[index]
+        sample = self.splits.get(Split.parse(split), [])[index]
         return sample.read_image(), sample.annotations.copy()
 
     def summary(self) -> pd.DataFrame:
@@ -235,9 +227,7 @@ class Dataset:
     # ------------------------------------------------------ derived datasets
     def with_split(self, split: str, samples: list[Sample]) -> "Dataset":
         """Return a copy where ``split`` holds ``samples``."""
-        return replace(
-            self, splits={**self.splits, canonical_split(split): list(samples)}
-        )
+        return replace(self, splits={**self.splits, Split.parse(split): list(samples)})
 
     def subset(
         self, size: int | float | Mapping[str, int | float], seed: int = 0
@@ -251,7 +241,7 @@ class Dataset:
         """
         rng = random.Random(seed)
         sizes = (
-            {canonical_split(k): v for k, v in size.items()}
+            {Split.parse(k): v for k, v in size.items()}
             if isinstance(size, Mapping)
             else {}
         )
@@ -299,17 +289,21 @@ class Dataset:
                 "Can only merge datasets with the same keypoint layout, got flip_idx "
                 f"{self.flip_idx} and {other.flip_idx}"
             )
-        splits = {s: self[s] + other[s] for s in SPLITS if self[s] or other[s]}
+        splits = {s: self[s] + other[s] for s in Split if self[s] or other[s]}
         return replace(self, splits=splits)
 
     # ----------------------------------------------------------------- export
-    def to_yolo(self, out_dir: str | Path, link: LinkMode = "symlink") -> Path:
+    def to_yolo(
+        self, out_dir: str | Path, link: LinkMode | str = LinkMode.SYMLINK
+    ) -> Path:
         """Write the dataset in Ultralytics YOLO layout and return its ``data.yaml``."""
         from tactifoot_vision.data import yolo
 
         return yolo.write_dataset(self, Path(out_dir), link=link)
 
-    def to_coco(self, out_dir: str | Path, link: LinkMode = "symlink") -> Path:
+    def to_coco(
+        self, out_dir: str | Path, link: LinkMode | str = LinkMode.SYMLINK
+    ) -> Path:
         """Write the dataset in Roboflow/RF-DETR COCO layout and return its root folder.
 
         Layout: ``<out_dir>/<split>/_annotations.coco.json`` next to the images.
@@ -334,7 +328,9 @@ def _clip_samples(clip: LabelledClip) -> list[Sample]:
     for frame, image in zip(clip.frames, _frame_images(clip), strict=True):
         objects = [d for d in (frame.detections, frame.ball) if len(d)]
         names = [
-            str(n) for d in objects for n in d.data.get("class_name", [""] * len(d))
+            str(n)
+            for d in objects
+            for n in d.data.get(DetectionKey.CLASS_NAME, [""] * len(d))
         ]
         unknown = sorted(set(names) - set(_CLIP_CLASSES))
         if unknown:
@@ -398,7 +394,7 @@ def _split_by_fractions[T](
     Boundaries are rounded cumulatively and the remainder goes to the last
     split with a non-zero fraction, so a zero fraction stays empty.
     """
-    fractions = {"train": train, "valid": valid, "test": test}
+    fractions = {Split.TRAIN: train, Split.VALID: valid, Split.TEST: test}
     if any(f < 0 for f in fractions.values()):
         raise ValueError(f"Split fractions must not be negative, got {fractions}")
     total = train + valid + test

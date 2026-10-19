@@ -7,7 +7,7 @@ from tactifoot_vision.data.annotations import (
     Annotations,
     Task,
 )
-from tactifoot_vision.data.dataset import SPLITS, Dataset, Sample, load_dataset
+from tactifoot_vision.data.dataset import Dataset, Sample, load_dataset
 from tactifoot_vision.data.labelled_clip import (
     UNKNOWN_TEAM,
     LabelledClip,
@@ -22,7 +22,6 @@ from tactifoot_vision.data.video import VideoReader, extract_frames
 __all__ = [
     "NOT_LABELLED",
     "OCCLUDED",
-    "SPLITS",
     "UNKNOWN_TEAM",
     "VISIBLE",
     "Annotations",

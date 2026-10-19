@@ -7,6 +7,7 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.analysis.space import SpaceControl
+from tactifoot_vision.enums import OverlayPosition
 from tactifoot_vision.pipeline.postprocess import metres_per_unit
 from tactifoot_vision.pipeline.result import FrameResult
 from tactifoot_vision.pitch.homography import visible_area
@@ -581,12 +582,8 @@ def _is_single_color(colors: object) -> bool:
     )
 
 
-_VERTICAL = ("top", "center", "bottom")
-_HORIZONTAL = ("left", "center", "right")
-
-
 def check_overlay(
-    position: str | None = None,
+    position: OverlayPosition | str | None = None,
     width_fraction: float | None = None,
     alpha: float | None = None,
     padding: int | None = None,
@@ -597,12 +594,7 @@ def check_overlay(
     have a frame (``render_video`` does, before it opens the output).
     """
     if position is not None:
-        vertical, _, horizontal = position.partition("-")
-        if vertical not in _VERTICAL or (horizontal or "center") not in _HORIZONTAL:
-            raise ValueError(
-                f"Unknown position {position!r}; use "
-                f"'<{'|'.join(_VERTICAL)}>-<{'|'.join(_HORIZONTAL)}>' or 'center'"
-            )
+        OverlayPosition.parse(position, "position")
     if width_fraction is not None and not 0 < width_fraction <= 1:
         raise ValueError(f"width_fraction must be in (0, 1], got {width_fraction}")
     if alpha is not None and not 0 <= alpha <= 1:
@@ -614,7 +606,7 @@ def check_overlay(
 def overlay(
     frame: np.ndarray,
     image: np.ndarray,
-    position: str = "bottom-center",
+    position: OverlayPosition | str = OverlayPosition.BOTTOM_CENTER,
     width_fraction: float = 0.25,
     alpha: float = 0.8,
     padding: int = 10,
@@ -629,7 +621,7 @@ def overlay(
         padding: distance in pixels from the frame border.
     """
     check_overlay(position, width_fraction, alpha, padding)
-    vertical, _, horizontal = position.partition("-")
+    vertical, _, horizontal = OverlayPosition(position).partition("-")
     horizontal = horizontal or "center"
     frame_h, frame_w = frame.shape[:2]
     image_h, image_w = image.shape[:2]

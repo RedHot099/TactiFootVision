@@ -12,6 +12,7 @@ import numpy as np
 
 from tactifoot_vision.analysis.velocity import velocities
 from tactifoot_vision.data.video import VideoReader
+from tactifoot_vision.enums import OverlayPosition
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.viz.annotate import FrameAnnotator
 from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
@@ -25,7 +26,7 @@ def render_video(
     output: str | Path,
     annotator: FrameAnnotator | None = None,
     radar: PitchRadar | Literal[False] | None = None,
-    overlay_position: str = "bottom-center",
+    overlay_position: OverlayPosition | str = OverlayPosition.BOTTOM_CENTER,
     overlay_width_fraction: float = 0.25,
     overlay_alpha: float = 0.8,
     overlay_padding: int = 10,

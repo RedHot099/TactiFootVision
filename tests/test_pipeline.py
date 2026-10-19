@@ -10,6 +10,7 @@ import supervision as sv
 import tactifoot_vision as tv
 from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.enums import TrackerType
 from tactifoot_vision.evaluation import evaluate_tracking
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult, track_ball
@@ -715,3 +716,25 @@ def test_the_ball_shares_no_memory_with_its_candidates(video):
     frame.ball.data["pitch_xy"][:] = 0
     assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(150, abs=2)
     assert np.isnan(frame.ball_candidates.data["pitch_xy"][0]).all()
+
+
+# ------------------------------------------------------------- enums (ADR 0004)
+def test_saved_files_hold_plain_strings_whatever_the_enum_members(video, tmp_path):
+    detector = ColorDetector(device="cpu")
+    result = Pipeline(detector, tracker=TrackerType.BYTETRACK).run(
+        video, end=3, progress=False
+    )
+    by_name = Pipeline(detector, tracker="bytetrack").run(video, end=3, progress=False)
+    pd.testing.assert_frame_equal(result.to_dataframe(), by_name.to_dataframe())
+
+    path = result.save(tmp_path / "result.pkl")
+    assert b"tactifoot_vision.enums" not in path.read_bytes()
+    for frame in PipelineResult.load(path):
+        assert all(type(key) is str for key in frame.detections.data)
+        assert frame.detections.data["class_name"].dtype.kind == "U"
+    tracks, freeze_frames = result.to_dataframe(), result.to_freeze_frames()
+    assert {type(v) for v in tracks["object"]} == {str}
+    assert {type(v) for v in freeze_frames["type"]} == {str}
+    assert set(freeze_frames["type"]) == {"player", "goalkeeper", "referee", "ball"}
+    parquet = result.to_parquet(tmp_path / "tracks.parquet")
+    pd.testing.assert_frame_equal(pd.read_parquet(parquet), tracks)

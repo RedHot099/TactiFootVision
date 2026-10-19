@@ -6,6 +6,7 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import SpaceModel
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult, PipelineResult
 from tactifoot_vision.pitch import SoccerPitch
 
@@ -417,6 +418,10 @@ def test_space_control_model_options():
         ValueError, match="Unknown model 'voronoi'.*nearest_player, pitch_control"
     ):
         tv.analysis.space_control(result, model="voronoi")
+    np.testing.assert_array_equal(
+        tv.analysis.space_control(result, model=SpaceModel.PITCH_CONTROL).control,
+        tv.analysis.space_control(result, model="pitch_control").control,
+    )
     with pytest.raises(
         ValueError, match="'pitch_control' takes reaction_time, max_speed.*smoothing"
     ):

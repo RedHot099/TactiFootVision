@@ -2,27 +2,17 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.enums import Truth
+
 # The team_id of a person whose team the source does not know, such as a GSR
 # player labelled with a null team. It is below NO_TEAM (-1), which in truth
 # means no team; evaluate_teams leaves these people out of every number.
 UNKNOWN_TEAM = -2
-
-
-class Truth(StrEnum):
-    """A kind of truth a labelled clip carries; each source provides some of them."""
-
-    IDENTITIES = "identities"  # track ids that follow one object through the clip
-    BOXES = "boxes"  # frame-pixel boxes with class names
-    BALL = "ball"  # the ball's box
-    PITCH_POSITIONS = "pitch_positions"
-    CALIBRATION = "calibration"  # a frame -> pitch homography per frame
-    TEAMS = "teams"  # each person's team, or none (referees)
 
 
 @dataclass(frozen=True)

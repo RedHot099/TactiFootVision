@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from tactifoot_vision.enums import Reducer
 from tactifoot_vision.teams import (
     EMBEDDERS,
     Embedder,
@@ -113,6 +114,16 @@ def test_classifier_validation():
         TeamClassifier(MeanColorEmbedder(), color_hist_bins=8)
     with pytest.raises(ValueError, match="reducer"):
         TeamClassifier(MeanColorEmbedder(), reducer="pca")
+    with pytest.raises(ValueError, match="Unknown reducer 'pca'. Available: umap"):
+        TeamClassifier(MeanColorEmbedder(), reducer="pca")
+    assert TeamClassifier(MeanColorEmbedder(), reducer=Reducer.UMAP).reducer == "umap"
+    assert TeamClassifier(MeanColorEmbedder(), reducer="umap").reducer is Reducer.UMAP
+    with pytest.raises(ValueError, match="Unknown pooling 'max'. Available: mean, cls"):
+        SigLIPEmbedder(pooling="max")
+    with pytest.raises(
+        ValueError, match="Unknown color_space 'lab'. Available: rgb, hsv"
+    ):
+        SigLIPEmbedder(color_space="lab")
     with pytest.raises(ValueError, match="n_teams must be >= 2"):
         TeamClassifier(MeanColorEmbedder(), n_teams=1)
     with pytest.raises(ValueError, match="Unknown embedder"):

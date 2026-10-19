@@ -55,6 +55,11 @@ name registry (`tactifoot_vision/registry.py`):
 | Team embedders | `teams.embedders.Embedder` | `EMBEDDERS` | `resnet`, `siglip` |
 
 Adding a backend = subclass + `@REGISTRY.register("name")`; nothing else changes.
+Every fixed vocabulary of the package (roles, `sv.Detections.data` keys,
+splits, modes, built-in registry names, run file sections) is a `StrEnum` in
+`tv.enums`, taken as a member or its plain string and written as the string
+([ADR 0004](adr/0004-fixed-vocabularies-are-str-enums.md)); a built-in
+backend needs a member of its name enum, which a test keeps equal to the registry.
 
 ## Layout
 
@@ -62,6 +67,7 @@ Adding a backend = subclass + `@REGISTRY.register("name")`; nothing else changes
 src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
+  enums.py            StrEnum vocabularies (Role, DetectionKey, Split, modes, registry names)
   utils.py            setup_logging, resolve_device, ensure_dir, cache_dir, next_run_dir
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
@@ -415,7 +421,7 @@ configs/              example run files
   number. `accuracy` is per matched detection,
   `track_accuracy` the per-detection share averaged over the run's tracks
   (`tracker_id`), each counting once. `role_confusion` counts the matched
-  people by true and predicted role (`tv.pipeline.ROLES`: `player`,
+  people by true and predicted role (`tv.enums.Role`: `player`,
   `goalkeeper`, `referee`, `other`), from `class_name`, so a goalkeeper
   absorbed into a team as a player shows; `as_dict()` leaves it out. The clip must carry boxes and teams, and people without a
   `team_id` or `class_name`, in the result or the clip, or a true `team_id`

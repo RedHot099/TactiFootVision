@@ -12,6 +12,7 @@ import supervision as sv
 
 import tactifoot_vision as tv
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.enums import TrackerType
 from tactifoot_vision.models import Model
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import (
@@ -78,6 +79,9 @@ def test_registry():
         registry.create("b")
     with pytest.raises(ValueError, match="already registered"):
         registry.register("a")(A)
+    registry.register(TrackerType.SAM2)(A)
+    assert registry.names() == ["a", "sam2"] and type(registry.names()[1]) is str
+    assert registry.get("sam2") is registry.get(TrackerType.SAM2) is A
 
 
 def test_pitch_vertices_and_scaling():

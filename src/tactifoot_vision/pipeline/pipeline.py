@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.video import VideoReader, check_frame_range
+from tactifoot_vision.enums import DetectionKey, ObjectKind, Role, TrackerType
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline.result import (
     BALL_ANCHOR,
@@ -30,8 +31,6 @@ from tactifoot_vision.teams.crops import extract_crops
 from tactifoot_vision.tracking.base import Tracker, create_tracker
 
 logger = logging.getLogger(__name__)
-
-GOALKEEPER = "goalkeeper"
 
 
 class Pipeline:
@@ -89,14 +88,14 @@ class Pipeline:
         self,
         detector: Model,
         keypoint_model: Model | None = None,
-        tracker: Tracker | str | None = "bytetrack",
+        tracker: Tracker | str | None = TrackerType.BYTETRACK,
         team_classifier: TeamClassifier | None = None,
         refit_teams: bool = True,
         pitch: SoccerPitch | None = None,
         homography: HomographyEstimator | None = None,
-        ball_class: str = "ball",
+        ball_class: str = ObjectKind.BALL,
         include_classes: Sequence[str] | None = None,
-        team_classes: Sequence[str] = ("player", GOALKEEPER),
+        team_classes: Sequence[str] = (Role.PLAYER, Role.GOALKEEPER),
         team_sample_stride: int = 10,
         team_samples_per_track: int = 20,
         crop_scale: float = 0.8,
@@ -124,11 +123,11 @@ class Pipeline:
         self.refit_teams = refit_teams
         self.pitch = pitch or (homography.pitch if homography else SoccerPitch())
         self.homography = homography or HomographyEstimator(self.pitch)
-        self.ball_class = ball_class
+        self.ball_class = str(ball_class)
         self.include_classes = (
             None if include_classes is None else tuple(include_classes)
         )
-        self.team_classes = tuple(team_classes)
+        self.team_classes = tuple(str(name) for name in team_classes)
         self.team_sample_stride = team_sample_stride
         self.team_samples_per_track = team_samples_per_track
         missing = {ball_class, *self.team_classes} - set(detector.class_names)
@@ -218,18 +217,20 @@ class Pipeline:
     # -------------------------------------------------------------- per frame
     def _process_frame(self, index: int, frame: np.ndarray, fps: float) -> FrameResult:
         detections = self.detector.predict(frame)
-        if "class_name" not in detections.data:
+        if DetectionKey.CLASS_NAME not in detections.data:
             if len(detections):
                 raise ValueError(
                     f"{type(self.detector).__name__} must fill data['class_name']"
                 )
-            detections.data["class_name"] = np.zeros(0, dtype=str)
-        is_ball = detections.data["class_name"] == self.ball_class
+            detections.data[DetectionKey.CLASS_NAME] = np.zeros(0, dtype=str)
+        is_ball = detections.data[DetectionKey.CLASS_NAME] == self.ball_class
         candidates = detections[is_ball]
         candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
         people = detections[~is_ball]
         if self.include_classes is not None:
-            people = people[np.isin(people.data["class_name"], self.include_classes)]
+            people = people[
+                np.isin(people.data[DetectionKey.CLASS_NAME], self.include_classes)
+            ]
         if self.tracker is not None:
             people = self.tracker.update(people, frame)
         # Full-frame masks (SAM2) cost ~2 MB per object per 1080p frame: keep crops only.
@@ -243,11 +244,13 @@ class Pipeline:
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
             matrix = self.homography.update(keypoints, frame, people.xyxy)
-        people.data["pitch_xy"] = project_detections(people, PERSON_ANCHOR, matrix)
-        candidates.data["pitch_xy"] = project_detections(
+        people.data[DetectionKey.PITCH_XY] = project_detections(
+            people, PERSON_ANCHOR, matrix
+        )
+        candidates.data[DetectionKey.PITCH_XY] = project_detections(
             candidates, BALL_ANCHOR, matrix
         )
-        people.data["team_id"] = np.full(len(people), NO_TEAM, dtype=int)
+        people.data[DetectionKey.TEAM_ID] = np.full(len(people), NO_TEAM, dtype=int)
         return FrameResult(
             index=index,
             timestamp=index / fps,
@@ -273,7 +276,7 @@ class Pipeline:
         candidates = [
             i
             for i, (key, name) in enumerate(
-                zip(keys, people.data["class_name"], strict=True)
+                zip(keys, people.data[DetectionKey.CLASS_NAME], strict=True)
             )
             if name in self.team_classes and (on_stride or key not in samples.seen)
         ]
@@ -306,7 +309,7 @@ class Pipeline:
         embeddings = samples.embeddings()
         sample_classes = np.array([track_class[k] for k in samples.keys], dtype=str)
         is_player = np.isin(sample_classes, self.team_classes) & (
-            sample_classes != GOALKEEPER
+            sample_classes != Role.GOALKEEPER
         )
         if classifier.is_fitted and not self.refit_teams:
             logger.info("Keeping the team classifier's earlier fit (refit_teams=False)")
@@ -326,13 +329,15 @@ class Pipeline:
         teams = {
             key: votes[key].most_common(1)[0][0]
             for key, cls in track_class.items()
-            if cls in self.team_classes and cls != GOALKEEPER and key in votes
+            if cls in self.team_classes and cls != Role.GOALKEEPER and key in votes
         }
-        if GOALKEEPER in self.team_classes:
-            goalkeepers = [k for k, cls in track_class.items() if cls == GOALKEEPER]
+        if Role.GOALKEEPER in self.team_classes:
+            goalkeepers = [
+                k for k, cls in track_class.items() if cls == Role.GOALKEEPER
+            ]
             teams |= _goalkeeper_teams(goalkeepers, frames, keys, teams, votes)
         for frame, frame_keys in zip(frames, keys, strict=True):
-            frame.detections.data["team_id"] = np.array(
+            frame.detections.data[DetectionKey.TEAM_ID] = np.array(
                 [teams.get(int(k), NO_TEAM) for k in frame_keys], dtype=int
             )
         assigned = sum(team != NO_TEAM for team in teams.values())
@@ -424,7 +429,7 @@ def _majority_classes(
     counts: dict[int, Counter[str]] = defaultdict(Counter)
     for frame, frame_keys in zip(frames, keys, strict=True):
         for key, name in zip(
-            frame_keys, frame.detections.data["class_name"], strict=True
+            frame_keys, frame.detections.data[DetectionKey.CLASS_NAME], strict=True
         ):
             counts[int(key)][str(name)] += 1
     return {key: count.most_common(1)[0][0] for key, count in counts.items()}

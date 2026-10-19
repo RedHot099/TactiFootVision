@@ -16,10 +16,10 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
+from tactifoot_vision.enums import DetectionKey, PostProcessName, Role
 from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, metres_per_unit
 from tactifoot_vision.pipeline.result import (
     NO_TEAM,
-    ROLES,
     UNTRACKED,
     ObjectMasks,
     PipelineResult,
@@ -28,7 +28,6 @@ from tactifoot_vision.pitch.pitch import SoccerPitch
 
 logger = logging.getLogger(__name__)
 
-PLAYER, GOALKEEPER, REFEREE, _ = ROLES
 # fewer player tracks than this give no robust team centre and spread
 _MIN_TEAM_TRACKS = 3
 
@@ -44,7 +43,7 @@ class _Track:
     embedding: np.ndarray | None  # mean of its tracks' team embeddings, by samples
 
 
-@POSTPROCESSES.register("assign_roles")
+@POSTPROCESSES.register(PostProcessName.ASSIGN_ROLES)
 def assign_roles(
     result: PipelineResult,
     outlier_spread: float = 3.0,
@@ -118,7 +117,7 @@ def assign_roles(
     off_pitch = {t.id for t in tracks if _off_pitch(t, size, off_pitch_margin)}
     on_pitch = [t for t in tracks if t.id not in off_pitch]
     outliers = _kit_outliers(on_pitch, outlier_spread)
-    roles = {t.id: (REFEREE, NO_TEAM) for t in outliers}
+    roles = {t.id: (Role.REFEREE, NO_TEAM) for t in outliers}
     keepers = _goalkeepers(outliers, on_pitch, result.pitch, scale, min_box_share)
     if keepers:
         # tv.analysis imports the pipeline, so it is imported only when needed here
@@ -138,7 +137,7 @@ def assign_roles(
             keepers = {}
         for attacks, track in keepers.items():
             # the team attacking towards the other goal defends this one
-            roles[track.id] = (GOALKEEPER, _team_attacking(directions, -attacks))
+            roles[track.id] = (Role.GOALKEEPER, _team_attacking(directions, -attacks))
     for name in sorted({name for name, _ in roles.values()}):
         if name not in result.class_names:
             logger.info(
@@ -149,7 +148,7 @@ def assign_roles(
     logger.info(
         "Roles: %d goalkeepers, %d referees or staff, %d people off the pitch",
         len(keepers),
-        sum(name == REFEREE for name, _ in roles.values()),
+        sum(name == Role.REFEREE for name, _ in roles.values()),
         len(off_pitch),
     )
     return _relabel(result, off_pitch, roles)
@@ -164,12 +163,12 @@ def _tracks(result: PipelineResult, scale: np.ndarray) -> list[_Track]:
         people = frame.detections
         if people.tracker_id is None:
             continue
-        own_ids = people.data.get("original_tracker_id", people.tracker_id)
+        own_ids = people.data.get(DetectionKey.ORIGINAL_TRACKER_ID, people.tracker_id)
         xy = frame.pitch_xy * scale
         for track, original, name, team, point in zip(
             people.tracker_id,
             own_ids,
-            people.data["class_name"],
+            people.data[DetectionKey.CLASS_NAME],
             frame.team_ids,
             xy,
             strict=True,
@@ -213,7 +212,7 @@ def _off_pitch(track: _Track, size: np.ndarray, margin: float) -> bool:
 
 def _kit_outliers(tracks: list[_Track], outlier_spread: float) -> list[_Track]:
     """Player tracks whose embedding is far from every team's centre, by its spread."""
-    players = [t for t in tracks if t.name == PLAYER and t.embedding is not None]
+    players = [t for t in tracks if t.name == Role.PLAYER and t.embedding is not None]
     teams = sorted({t.team for t in players if t.team != NO_TEAM})
     if len(teams) < 2:
         raise ValueError(
@@ -268,7 +267,7 @@ def _goalkeepers(
 
     keepers = {}
     for attacks, goal_x in ((-1, 0.0), (1, length)):
-        if any(t.name == GOALKEEPER and in_box(t, goal_x) for t in tracks):
+        if any(t.name == Role.GOALKEEPER and in_box(t, goal_x) for t in tracks):
             continue
         taken = [keeper.id for keeper in keepers.values()]
         candidates = [t for t in others if t.id not in taken and in_box(t, goal_x)]
@@ -300,15 +299,15 @@ def _relabel(
             continue
         keep = ~np.isin(people.tracker_id, list(off_pitch))
         people = people[keep]  # boolean indexing copies every array
-        names = [str(name) for name in people.data["class_name"]]
+        names = [str(name) for name in people.data[DetectionKey.CLASS_NAME]]
         teams = frame.team_ids[keep]
         for i, track in enumerate(people.tracker_id):
             if (role := roles.get(int(track))) is not None:
                 names[i], teams[i] = role
                 if people.class_id is not None and role[0] in result.class_names:
                     people.class_id[i] = result.class_names.index(role[0])
-        people.data["class_name"] = np.array(names, dtype=str)
-        people.data["team_id"] = teams
+        people.data[DetectionKey.CLASS_NAME] = np.array(names, dtype=str)
+        people.data[DetectionKey.TEAM_ID] = teams
         masks = frame.masks
         if masks is not None:
             masks = ObjectMasks(
