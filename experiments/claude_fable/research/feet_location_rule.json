@@ -1,0 +1,40 @@
+{
+ "name": "feet_t0",
+ "frozen": "2026-10-22",
+ "status": "definition; every number on the 172 held-out matches is descriptive (spent); a confirmatory claim needs a fresh test set",
+ "definition": "research/feet_location_rule.md",
+ "library": {
+  "rule": "xgpoc.detector.location.FEET_T0",
+  "commit": "f21a7803a6a74d00c9c85976f76153f8fd71a5cb",
+  "code_sha256": {
+   "xgpoc/detector/location.py": "cc785ac1300867a2d435e4ab766493084515e4f3254f271d119733f38b549438",
+   "xgpoc/stack_location/inputs.py": "33fad5062423d281fe2650329fc399993676093da55a0f4b4feaba01a5d31b5c",
+   "scripts/feet_e3.py": "8fa7c9d9028fc7ee905ef4057c4dad52995fb5f7b6200e98890e931d2a7a87ac"
+  }
+ },
+ "ball_order_ms": [0, -400, -800],
+ "row_orders_ms": {"0": [0, -400, -800], "-400": [-400, -800]},
+ "shooter": "player whose image box is nearest the image centre of the chosen ball's box (point-to-rectangle, first on a tie); without a ball or player: the player nearest either goal centre",
+ "shot_location": "the shooter's projected feet",
+ "stack_table_e3_flags_at_ms": [0],
+ "stack_table_e3_flag_columns": ["ball_none@0", "ball_own@0", "ball_m400@0", "ball_m800@0", "shot_from_ball@0"],
+ "flags_decision": "keep dd2c's (E3's) t0 ball-source flags: the development ablation puts the gain on the location, not the flags",
+ "frames": {"path": "cache/xgd_full4/E3/frames.parquet", "sha256": "913b1bd9bd3a737a28126308113c44f060d2479a5351ac82bd8cccb666c19e78"},
+ "cache": {
+  "path": "cache/xgd_full4_feet_t0/E3",
+  "features_sha256": "93b4b580dcec76ee2c315440e9b7d069bb5e62f07dc3ebb06db69b328b219a1d",
+  "complete_sha256": "6cbe28896429ab630af9f248b63820a1e498645502029f49df110f4a2593146e",
+  "rows": 22060,
+  "shots": 11030
+ },
+ "evidence": {
+  "patched_cache": {"path": "cache/xgd_full5_feet_t0/E3", "features_sha256": "93b4b580dcec76ee2c315440e9b7d069bb5e62f07dc3ebb06db69b328b219a1d", "byte_identical": true},
+  "patched_tables": {
+   "population": "db05127bc3ca52ac0a152867bf213fba1920f46e59af19843eee003b82f4d858",
+   "heldout": "f3c22b93feec564080e0a93cfee7a733f829cf3a5c257b5d040733d852a7ea36"
+  },
+  "patched_tables_note": "sha256 of the E3_COLUMNS CSV (location_check.table_digest) of the tables feet_rerun --t0 --keep-ball-flags (7,062 training shots) and feet_sweep (3,819 held-out shots) built with feet_patch; the library tables are equal in full, counts included",
+  "decision_log": "err-decomp (99d48d2)"
+ },
+ "spent": "the 172 held-out matches (135 evaluation + 37 gate) are spent for detector-input variants"
+}
