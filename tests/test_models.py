@@ -310,6 +310,49 @@ def test_ultralytics_replaces_a_dangling_amp_probe_link(
     assert not (run_dir / "yolo11n.pt").is_symlink()
 
 
+def test_yolo_annotated_classes_train_with_the_class_masked_trainer(
+    fake_yolo, tmp_path
+):
+    dataset = _tiny_dataset(tmp_path)
+    table = tmp_path / "annotated.csv"
+    table.write_text(
+        f"image,annotated_classes\n{dataset['train'][0].image_path},player\n"
+    )
+    seen = {}
+    fake_train = fake_yolo._yolo.train
+    fake_yolo._yolo.train = lambda **args: seen.update(args) or fake_train(**args)
+    fake_yolo.train(
+        dataset, output_dir=tmp_path / "runs", amp=False, annotated_classes=table
+    )
+    assert "annotated_classes" not in seen
+    assert callable(seen["trainer"])
+
+
+def test_yolo_annotated_classes_table_must_exist_before_the_run(fake_yolo, tmp_path):
+    with pytest.raises(FileNotFoundError, match="annotated_classes"):
+        fake_yolo.train(
+            _tiny_dataset(tmp_path),
+            output_dir=tmp_path / "runs",
+            annotated_classes=tmp_path / "missing.csv",
+        )
+    assert not (tmp_path / "runs").exists()
+
+
+def test_yolo_pose_has_no_annotated_classes_option(monkeypatch, tmp_path):
+    monkeypatch.setattr(YOLOPoseModel, "_load", lambda self, weights: None)
+    model = YOLOPoseModel(device="cpu")
+    with pytest.raises(ValueError, match="annotated_classes"):
+        model._check_options(tv.TrainConfig(annotated_classes="x.csv"))
+
+
+def test_resumed_yolo_run_keeps_its_history(fake_yolo, tmp_path):
+    dataset = _tiny_dataset(tmp_path)
+    options = {"output_dir": tmp_path / "runs", "exist_ok": True, "amp": False}
+    fake_yolo.train(dataset, **options)
+    resumed = fake_yolo.train(dataset, resume=True, **options)
+    assert len(resumed.history) == 2
+
+
 @pytest.mark.parametrize(
     ("backend", "options", "match"),
     [

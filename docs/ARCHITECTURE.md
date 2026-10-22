@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `from_gsr`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -73,12 +73,14 @@ src/tactifoot_vision/
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
-                      load_labelled_clip), soccernet.py, synthetic.py
-                      (synthetic_pitch_clip), video.py, statsbomb.py
+                      load_labelled_clip), soccernet.py (Tracking / GSR clips, GSR
+                      detection dataset), soccernet_v3.py (Labels-v3.json -> 4 detection
+                      classes), synthetic.py (synthetic_pitch_clip), video.py, statsbomb.py
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
-                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
+                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector),
+                      _yolo_class_mask.py (class-masked YOLO training: annotated_classes)
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
@@ -156,7 +158,21 @@ configs/              example run files
 ### Data preparation (`tv.data`)
 
 * `load_dataset(path)` / `Dataset.load`: YOLO `data.yaml` (detection or pose,
-  picked by `kpt_shape`) or a Roboflow/RF-DETR COCO folder.
+  picked by `kpt_shape`), a Roboflow/RF-DETR COCO folder or a SoccerNet GSR
+  folder (every frame of every split).
+* `Dataset.from_gsr(root, splits=..., stride=1)` reads SoccerNet Game State
+  Reconstruction clips as 4-class detection data in SoccerNet's own splits
+  (`ball`, `goalkeeper`, `player`, `referee`, the detector's class order, by
+  GSR role; role `other` dropped, any other role refused; frames without a box
+  kept as negatives, images marked `is_labeled: false` left out). It shares
+  the `Labels-GameState.json` parser of `load_labelled_clip`; `from_clips`
+  instead splits labelled clips at random and keeps only boxed frames.
+  `stride` keeps frames `1, 1 + stride, ...`; a kept
+  frame without its image is an error (partial downloads need their stride),
+  unless `tracking_root` names SoccerNet-Tracking 2023, whose clips are the
+  GSR train/test clips with identical images. Each `Sample.meta` holds
+  `sequence`, `game` (GSR `info.game_id`), `frame`, `image_source` and
+  `other_dropped`; augmented copies keep their source's `meta`, exports drop it.
 * YOLO IO follows Ultralytics path rules (`path:` root, `../` prefixes of
   Roboflow exports, `images/` ↔ `labels/`); detection labels given as polygons
   become their bounding boxes. Writing clips boxes to the image and writes
@@ -341,7 +357,10 @@ configs/              example run files
 
 * `evaluate(model, dataset, split="valid")` dispatches on `model.task`:
   `evaluate_detector` → `DetectionMetrics` (mAP50-95, mAP50, mAP75 and the
-  per-class table `per_class`, via `supervision.metrics`), `evaluate_keypoints` → `KeypointMetrics`
+  per-class table `per_class`, via `supervision.metrics`, plus per-class
+  precision and recall at an operating point: `operating_conf`, default the
+  model's own `conf`, `class_conf` per class, IoU `match_iou`; `input_size`
+  resizes frames before the model, e.g. 1080p labels scored as 720p video), `evaluate_keypoints` → `KeypointMetrics`
   (mean pixel error, PCK at a fraction of the image diagonal).
   Same numbers for every backend, so YOLO and RF-DETR compare fairly.
 * `compare_with_statsbomb(freeze_frames, statsbomb, period=1)` → merged table

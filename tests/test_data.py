@@ -13,6 +13,7 @@ from tactifoot_vision.data import (
     VideoReader,
     extract_frames,
     load_dataset,
+    load_labelled_clip,
     load_statsbomb,
 )
 from tactifoot_vision.enums import LinkMode, Split
@@ -692,3 +693,153 @@ def test_coco_reader_keeps_a_real_class_whose_supercategory_is_none(tmp_path):
     ds = load_dataset(tmp_path)
     assert ds.class_names == ["ball", "player", "referee"]
     assert ds["train"][0].annotations.class_ids.tolist() == [2]
+
+
+# ------------------------------------------------------------ SoccerNet GSR
+def _write_gsr_clip(
+    root, split, name, game_id, frames=(1, 2, 3, 4, 5, 6), unlabelled=()
+):
+    """One GSR clip with an object of every role in frame 1 and a ball in frame 6."""
+    folder = root / split / name
+    for frame in frames:
+        _image(folder / "img1" / f"{frame:06d}.jpg", width=100, height=50)
+    categories = [
+        {"supercategory": "object", "id": 1, "name": "player"},
+        {"supercategory": "object", "id": 2, "name": "goalkeeper"},
+        {"supercategory": "object", "id": 3, "name": "referee"},
+        {"supercategory": "object", "id": 4, "name": "ball"},
+        {"supercategory": "pitch", "id": 5, "name": "pitch"},
+        {"supercategory": "object", "id": 7, "name": "other"},
+    ]
+    images = [
+        {
+            "is_labeled": f not in unlabelled,
+            "image_id": f"{name}-{f}",
+            "file_name": f"{f:06d}.jpg",
+            "width": 100,
+            "height": 50,
+        }
+        for f in range(1, 7)
+    ]
+    roles = {1: "player", 2: "goalkeeper", 3: "referee", 4: "ball", 7: "other"}
+
+    def obj(frame, category, x, y, w, h):
+        return {
+            "id": f"{name}-{frame}-{x}",
+            "image_id": f"{name}-{frame}",
+            "track_id": category,
+            "supercategory": "object",
+            "category_id": category,
+            "attributes": {"role": roles[category], "team": None, "jersey": None},
+            "bbox_image": {
+                "x": x,
+                "y": y,
+                "x_center": x + w / 2,
+                "y_center": y + h / 2,
+                "w": w,
+                "h": h,
+            },
+            "bbox_pitch": None,
+        }
+
+    annotations = [
+        obj(1, 1, 10, 10, 5, 10),
+        obj(1, 2, 20, 10, 5, 10),
+        obj(1, 3, 30, 10, 5, 10),
+        obj(1, 4, 95, 45, 10, 10),  # crosses the image corner: clipped
+        obj(1, 7, 40, 10, 5, 10),  # "other": dropped
+        {"image_id": f"{name}-1", "supercategory": "pitch", "category_id": 5},
+        obj(6, 4, 50, 20, 2, 2),
+    ]
+    labels = {
+        "info": {
+            "name": name,
+            "game_id": game_id,
+            "im_dir": "img1",
+            "frame_rate": 25,
+            "seq_length": 6,
+        },
+        "images": images,
+        "annotations": annotations,
+        "categories": categories,
+    }
+    (folder / "Labels-GameState.json").write_text(json.dumps(labels))
+    return folder
+
+
+def test_gsr_reader_maps_categories_and_keeps_the_clip_and_game(tmp_path):
+    _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    _write_gsr_clip(tmp_path, "test", "SNGS-116", "7")
+    dataset = load_dataset(tmp_path)  # every frame of the splits present
+    assert dataset.class_names == ["ball", "goalkeeper", "player", "referee"]
+    assert dataset.task is Task.DETECT
+    valid = dataset["valid"]
+    assert [s.meta["frame"] for s in valid] == ["1", "2", "3", "4", "5", "6"]
+    assert valid[0].meta == {
+        "sequence": "SNGS-021",
+        "game": "2",
+        "frame": "1",
+        "image_source": "gsr",
+        "other_dropped": "1",
+    }
+    assert valid[5].meta["other_dropped"] == "0"
+    first = valid[0].annotations
+    assert first.class_ids.tolist() == [2, 1, 3, 0]
+    np.testing.assert_array_equal(first.boxes[0], [10, 10, 15, 20])
+    np.testing.assert_array_equal(first.boxes[3], [95, 45, 100, 50])
+    assert len(valid[1].annotations) == 0
+    assert dataset["test"][0].meta["game"] == "7"
+
+
+def test_gsr_reader_stride_and_missing_frames(tmp_path):
+    _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    _write_gsr_clip(tmp_path, "test", "SNGS-116", "7", frames=(1, 6))
+    dataset = Dataset.from_gsr(tmp_path, splits=("valid", "test"), stride=5)
+    assert [s.meta["frame"] for s in dataset["valid"]] == ["1", "6"]
+    assert [s.meta["frame"] for s in dataset["test"]] == ["1", "6"]
+    assert dataset["valid"][1].annotations.class_ids.tolist() == [0]
+    with pytest.raises(FileNotFoundError, match="stride"):
+        Dataset.from_gsr(tmp_path, splits=("test",))
+    with pytest.raises(FileNotFoundError, match="train"):
+        Dataset.from_gsr(tmp_path, splits=("train",))
+    with pytest.raises(ValueError, match="stride"):
+        Dataset.from_gsr(tmp_path, stride=0)
+
+
+def test_gsr_reader_refuses_an_unknown_role(tmp_path):
+    folder = _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    path = folder / "Labels-GameState.json"
+    labels = json.loads(path.read_text())
+    labels["annotations"][0]["attributes"]["role"] = "coach"
+    path.write_text(json.dumps(labels))
+    with pytest.raises(ValueError, match="coach"):
+        Dataset.from_gsr(tmp_path, splits=("valid",))
+
+
+def test_gsr_reader_leaves_out_an_unlabelled_image(tmp_path):
+    # An image GSR marks is_labeled false has no truth: it is no negative either.
+    _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2", unlabelled=(1, 2))
+    dataset = Dataset.from_gsr(tmp_path, splits=("valid",))
+    assert [s.meta["frame"] for s in dataset["valid"]] == ["3", "4", "5", "6"]
+
+
+def test_gsr_dataset_and_labelled_clip_read_the_same_boxes(tmp_path):
+    folder = _write_gsr_clip(tmp_path, "valid", "SNGS-021", "2")
+    sample = Dataset.from_gsr(tmp_path, splits=("valid",))["valid"][5]
+    clip = load_labelled_clip(folder)
+    np.testing.assert_array_equal(sample.annotations.boxes, clip.frames[5].ball.xyxy)
+    assert sample.annotations.class_ids.tolist() == [0]  # ball first: detector order
+
+
+def test_gsr_reader_reads_missing_frames_from_soccernet_tracking(tmp_path):
+    gsr, tracking = tmp_path / "gsr", tmp_path / "tracking"
+    _write_gsr_clip(gsr, "test", "SNGS-116", "7", frames=(1, 6))
+    for frame in (2, 3, 4, 5):
+        _image(tracking / "test" / "SNMOT-116" / "img1" / f"{frame:06d}.jpg")
+    dataset = Dataset.from_gsr(gsr, splits=("test",), tracking_root=tracking)
+    samples = dataset["test"]
+    assert [s.meta["image_source"] for s in samples] == ["gsr"] + ["tracking"] * 4 + [
+        "gsr"
+    ]
+    assert samples[1].image_path == tracking / "test/SNMOT-116/img1/000002.jpg"
+    assert samples[1].meta["sequence"] == "SNGS-116"

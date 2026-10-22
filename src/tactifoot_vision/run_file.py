@@ -3,7 +3,7 @@
 Each section maps onto one package constructor or function, and its keys are
 that callable's keyword arguments::
 
-    detector: {type: yolo, weights: ../models/football_yolo11m.pt, conf: 0.3}
+    detector: {type: yolo, weights: ../models/detector_yolo11l_1280_dd2c.pt, imgsz: 1280}
     keypoints: {type: yolo_pose, weights: ../models/pitch_yolov8n_pose.pt}
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}

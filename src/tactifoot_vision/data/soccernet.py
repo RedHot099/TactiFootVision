@@ -1,22 +1,42 @@
-"""SoccerNet readers: a Tracking or a Game State Reconstruction sequence folder as a labelled clip."""
+"""SoccerNet readers.
+
+A Tracking or a Game State Reconstruction (GSR) sequence folder as a labelled
+clip (:func:`read_tracking`, :func:`read_gamestate`), and the GSR clips of a
+SoccerNet download as a 4-class detection dataset
+(:func:`read_gamestate_dataset`, behind ``Dataset.from_gsr``). Both GSR
+readers share one parser of ``Labels-GameState.json``.
+"""
 
 import configparser
 import json
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.data.annotations import Annotations, Task
+from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.data.labelled_clip import (
+    _GSR_FILE,
     UNKNOWN_TEAM,
     LabelledClip,
     LabelledFrame,
 )
-from tactifoot_vision.enums import DetectionKey, ObjectKind, Role, Truth
+from tactifoot_vision.enums import DetectionKey, ObjectKind, Role, Split, Truth
 from tactifoot_vision.pipeline.result import NO_TEAM
 from tactifoot_vision.pitch.pitch import SoccerPitch
 
+logger = logging.getLogger(__name__)
+
+# The classes of a GSR detection dataset, in the order the package's detector
+# was trained in (its class ids).
+GSR_CLASSES = tuple(
+    kind.value for kind in (ObjectKind.BALL, Role.GOALKEEPER, Role.PLAYER, Role.REFEREE)
+)
 # First word of a gameinfo.ini tracklet label -> package class name. "other"
 # objects (none of the package classes) are left out of the clip.
 _TRACKLET_CLASSES = {
@@ -126,6 +146,88 @@ def read_tracking(folder: Path) -> LabelledClip:
     )
 
 
+@dataclass(frozen=True)
+class _Gamestate:
+    """A ``Labels-GameState.json`` in the package conventions; frames are indices from 0."""
+
+    path: Path
+    name: str
+    game: str  # info.game_id, shared by the clips of one match; "" when absent
+    image_dir: Path
+    extension: str
+    fps: float
+    length: int
+    width: int
+    height: int
+    images: dict[int, dict[str, Any]]  # listed frame -> its ``images`` entry
+    unlabelled: frozenset[int]  # frames whose image has ``is_labeled`` false
+    objects: list[list[dict[str, Any]]]  # per frame, in file order
+    others: list[int]  # per frame, the "other" objects left out
+    homographies: dict[int, np.ndarray]
+
+
+def _parse_gamestate(path: Path) -> _Gamestate:
+    """Parse a GSR labels file; the one parser behind both GSR readers."""
+    labels = _read_json(path)
+    try:
+        info, images = labels["info"], labels["images"]
+        fps, length = float(info["frame_rate"]), int(info["seq_length"])
+        width, height = int(images[0]["width"]), int(images[0]["height"])
+        extension = Path(images[0]["file_name"]).suffix
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise ValueError(
+            f"{path} needs info.frame_rate, info.seq_length and images with "
+            "file_name, width and height"
+        ) from None
+    index_of = _gsr_frame_indices(path, images, length)
+    unlabelled = {
+        str(i.get("image_id")) for i in images if i.get("is_labeled") is False
+    }
+    objects: list[list[dict]] = [[] for _ in range(length)]
+    others = [0] * length
+    homographies: dict[int, np.ndarray] = {}
+    for annotation in labels.get("annotations", []):
+        image_id = str(annotation.get("image_id"))
+        if image_id not in index_of:
+            raise ValueError(
+                f"{path}: annotation {annotation.get('id')} is of image {image_id}, "
+                "which is not in its images"
+            )
+        if image_id in unlabelled:
+            continue
+        index = index_of[image_id]
+        try:
+            if annotation.get("supercategory") == "camera":
+                homographies[index] = _camera_homography(annotation["parameters"])
+            elif annotation.get("supercategory") == "object":
+                row = _gsr_object(annotation)
+                if row is None:
+                    others[index] += 1
+                else:
+                    objects[index].append(row)
+        except (KeyError, TypeError, ValueError, np.linalg.LinAlgError) as error:
+            raise ValueError(
+                f"{path}: annotation {annotation.get('id')} of image {image_id} "
+                f"is not a GSR {annotation.get('supercategory')} annotation: {error}"
+            ) from None
+    return _Gamestate(
+        path=path,
+        name=info.get("name", path.parent.name),
+        game=str(info.get("game_id", "")),
+        image_dir=path.parent / info.get("im_dir", "img1"),
+        extension=extension,
+        fps=fps,
+        length=length,
+        width=width,
+        height=height,
+        images={index_of[str(i.get("image_id"))]: i for i in images},
+        unlabelled=frozenset(index_of[i] for i in unlabelled),
+        objects=objects,
+        others=others,
+        homographies=homographies,
+    )
+
+
 def read_gamestate(path: Path) -> LabelledClip:
     """Read a SoccerNet Game State Reconstruction sequence's ``Labels-GameState.json``.
 
@@ -146,48 +248,15 @@ def read_gamestate(path: Path) -> LabelledClip:
     The clip has teams,
     pitch positions or calibration when some person or frame has them.
     """
-    labels = _read_json(path)
-    try:
-        info, images = labels["info"], labels["images"]
-        fps, length = float(info["frame_rate"]), int(info["seq_length"])
-        width, height = int(images[0]["width"]), int(images[0]["height"])
-        extension = Path(images[0]["file_name"]).suffix
-    except (KeyError, IndexError, TypeError, ValueError):
-        raise ValueError(
-            f"{path} needs info.frame_rate, info.seq_length and images with "
-            "file_name, width and height"
-        ) from None
-    index_of = _gsr_frame_indices(path, images, length)
-    unlabelled = {
-        str(i.get("image_id")) for i in images if i.get("is_labeled") is False
-    }
-    people: list[list[dict]] = [[] for _ in range(length)]
-    balls: list[list[dict]] = [[] for _ in range(length)]
-    homographies: dict[int, np.ndarray] = {}
-    for annotation in labels.get("annotations", []):
-        image_id = str(annotation.get("image_id"))
-        if image_id not in index_of:
-            raise ValueError(
-                f"{path}: annotation {annotation.get('id')} is of image {image_id}, "
-                "which is not in its images"
-            )
-        if image_id in unlabelled:
-            continue
-        index = index_of[image_id]
-        try:
-            if annotation.get("supercategory") == "camera":
-                homographies[index] = _camera_homography(annotation["parameters"])
-            elif annotation.get("supercategory") == "object":
-                row = _gsr_object(annotation)
-                if row is not None:
-                    group = balls if row["class_name"] == ObjectKind.BALL else people
-                    group[index].append(row)
-        except (KeyError, TypeError, ValueError, np.linalg.LinAlgError) as error:
-            raise ValueError(
-                f"{path}: annotation {annotation.get('id')} of image {image_id} "
-                f"is not a GSR {annotation.get('supercategory')} annotation: {error}"
-            ) from None
-
+    gsr = _parse_gamestate(path)
+    people = [
+        [row for row in rows if row["class_name"] != ObjectKind.BALL]
+        for rows in gsr.objects
+    ]
+    balls = [
+        [row for row in rows if row["class_name"] == ObjectKind.BALL]
+        for rows in gsr.objects
+    ]
     frames = tuple(
         LabelledFrame(
             index=index,
@@ -197,9 +266,9 @@ def read_gamestate(path: Path) -> LabelledClip:
                 np.array([row["track_id"] for row in balls[index]], int),
                 np.array([ObjectKind.BALL] * len(balls[index]), dtype=object),
             ),
-            homography=homographies.get(index),
+            homography=gsr.homographies.get(index),
         )
-        for index in range(length)
+        for index in range(gsr.length)
     )
     everyone = [row for rows in people for row in rows]
     truth = {Truth.IDENTITIES, Truth.BOXES, Truth.BALL}
@@ -207,17 +276,134 @@ def read_gamestate(path: Path) -> LabelledClip:
         truth.add(Truth.TEAMS)
     if any(np.isfinite(row["pitch_xy"]).all() for row in everyone):
         truth.add(Truth.PITCH_POSITIONS)
-    if homographies:
+    if gsr.homographies:
         truth.add(Truth.CALIBRATION)
     return LabelledClip(
-        name=info.get("name", path.parent.name),
-        video_path=path.parent / info.get("im_dir", "img1") / f"%06d{extension}",
-        fps=fps,
-        width=width,
-        height=height,
+        name=gsr.name,
+        video_path=gsr.image_dir / f"%06d{gsr.extension}",
+        fps=gsr.fps,
+        width=gsr.width,
+        height=gsr.height,
         frames=frames,
         truth=frozenset(truth),
     )
+
+
+def is_gsr_root(path: Path) -> bool:
+    """Whether ``path`` holds GSR split folders (``<split>/SNGS-*/Labels-GameState.json``)."""
+    return any(
+        next((path / split).glob(f"*/{_GSR_FILE}"), None) is not None
+        for split in Split
+        if (path / split).is_dir()
+    )
+
+
+def read_gamestate_dataset(
+    root: Path,
+    splits: Iterable[Split | str] = tuple(Split),
+    stride: int = 1,
+    tracking_root: Path | None = None,
+) -> Dataset:
+    """Read the GSR clips of a SoccerNet download as a detection :class:`Dataset`.
+
+    Every labelled image of a kept frame is a sample, an image without a box
+    included (a negative). Classes are ``GSR_CLASSES``, the order the
+    package's detector was trained in; ``other`` objects (staff, ball boys,
+    people GSR gives no role) are left out, so a detection on one counts as a
+    false positive. Boxes are in file order, clipped to the image, and a box
+    with no area after clipping is dropped.
+
+    Args:
+        root: folder holding the ``train`` / ``valid`` / ``test`` split folders
+            (``<split>/SNGS-xxx/Labels-GameState.json``).
+        splits: splits to read; a split folder that does not exist is an error.
+        stride: keep 1-based frames ``1, 1 + stride, 1 + 2 * stride, ...`` of
+            every clip (consecutive 25 fps frames are near duplicates).
+        tracking_root: a SoccerNet-Tracking 2023 folder
+            (``<split>/SNMOT-xxx/img1``). GSR train and test are built on the
+            same clips (``SNGS-060`` is ``SNMOT-060``, same images byte for
+            byte, same boxes); a frame whose GSR image is missing is read from
+            there, so a download that kept every 5th GSR image still gives
+            every labelled frame.
+
+    Every :class:`Sample` carries ``meta``: ``sequence`` (clip name, e.g.
+    ``SNGS-021``), ``game`` (GSR's ``info.game_id``, an index shared by the
+    clips of one match; ``""`` when absent), ``frame`` (1-based frame
+    number), ``image_source`` (``gsr`` or ``tracking``) and ``other_dropped``
+    (the frame's ``other`` objects left out), all as strings.
+
+    Raises:
+        FileNotFoundError: a split folder or a kept frame's image is missing
+            (SoccerNet downloads that keep every 5th image need ``stride=5``).
+        ValueError: ``stride`` below 1, or a labels file :func:`read_gamestate`
+            refuses (an unknown role, say).
+    """
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1, got {stride}")
+    dataset_splits: dict[Split, list[Sample]] = {}
+    for split in splits:
+        folder = root / split
+        if not folder.is_dir():
+            raise FileNotFoundError(f"GSR split folder {folder} does not exist")
+        tracking = None if tracking_root is None else tracking_root / split
+        samples = []
+        for labels in sorted(folder.glob(f"*/{_GSR_FILE}")):
+            samples += _gamestate_samples(_parse_gamestate(labels), stride, tracking)
+        dataset_splits[Split.parse(split)] = samples
+        logger.info(
+            "GSR %s: %d frames (stride %d) from %s", split, len(samples), stride, folder
+        )
+    return Dataset(
+        task=Task.DETECT,
+        class_names=list(GSR_CLASSES),
+        splits=dataset_splits,
+        name=f"gsr-{root.name}",
+    )
+
+
+def _gamestate_samples(
+    gsr: _Gamestate, stride: int, tracking: Path | None
+) -> list[Sample]:
+    """One detection sample per labelled image of the kept frames of a GSR clip."""
+    samples = []
+    for index, image in sorted(gsr.images.items()):
+        if index % stride or index in gsr.unlabelled:
+            continue
+        path, source = gsr.image_dir / image["file_name"], "gsr"
+        if not path.is_file() and tracking is not None:
+            clip = tracking / gsr.name.replace("SNGS-", "SNMOT-")
+            path, source = clip / "img1" / image["file_name"], "tracking"
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"GSR image {path} is missing; if the download keeps only some "
+                "frames, read with a stride that selects them (e.g. stride=5) "
+                "or give the SoccerNet-Tracking folder (tracking_root)"
+            )
+        width, height = int(image["width"]), int(image["height"])
+        rows = gsr.objects[index]
+        xyxy = np.array([row["xyxy"] for row in rows], np.float32).reshape(-1, 4)
+        xyxy[:, [0, 2]] = xyxy[:, [0, 2]].clip(0, width)
+        xyxy[:, [1, 3]] = xyxy[:, [1, 3]].clip(0, height)
+        keep = (xyxy[:, 2] > xyxy[:, 0]) & (xyxy[:, 3] > xyxy[:, 1])
+        class_ids = np.array(
+            [GSR_CLASSES.index(row["class_name"]) for row in rows], np.int64
+        )
+        samples.append(
+            Sample(
+                image_path=path,
+                width=width,
+                height=height,
+                annotations=Annotations(boxes=xyxy[keep], class_ids=class_ids[keep]),
+                meta={
+                    "sequence": gsr.name,
+                    "game": gsr.game,
+                    "frame": str(index + 1),
+                    "image_source": source,
+                    "other_dropped": str(gsr.others[index]),
+                },
+            )
+        )
+    return samples
 
 
 def _read_json(path: Path) -> dict:

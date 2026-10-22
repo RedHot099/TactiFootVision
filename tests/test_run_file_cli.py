@@ -1197,3 +1197,16 @@ def test_ball_carriers_are_not_reachable_from_the_render_section(tmp_path):
     data = {"detector": DETECTOR, "render": {"ball_carriers": [1, None]}}
     with pytest.raises(ValueError, match="Unknown key 'ball_carriers'"):
         _load(tmp_path, data)
+
+
+def test_shipped_run_file_uses_the_detector_data_weights_at_their_training_size():
+    # detector-data 05: the retrained YOLO11l won on GSR test; it was trained at 1280, so the run file says so
+    root = Path(__file__).resolve().parents[1]
+    detector = run_file.load(root / "configs" / "pipeline.yaml").sections["detector"]
+    assert detector == {
+        "type": "yolo",
+        "weights": str(root / "models" / "detector_yolo11l_1280_dd2c.pt"),
+        "conf": 0.3,
+        "iou": 0.5,
+        "imgsz": 1280,
+    }

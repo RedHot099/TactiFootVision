@@ -400,7 +400,7 @@ def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
 @pytest.mark.model
 def test_real_video_pipeline(tmp_path):
     video = ROOT / "data" / "videos" / "broadcast_60s.mp4"
-    detector_weights = ROOT / "models" / "football_yolo11m.pt"
+    detector_weights = ROOT / "models" / "detector_yolo11l_1280_dd2c.pt"
     pose_weights = ROOT / "models" / "pitch_yolov8n_pose.pt"
     if not (video.is_file() and detector_weights.is_file() and pose_weights.is_file()):
         pytest.skip("real video or weights not available")

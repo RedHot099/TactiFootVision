@@ -12,7 +12,9 @@ class DetectionMetrics:
     """COCO-style box metrics of a detector on one dataset split.
 
     ``per_class`` is indexed by class name with columns ``map50_95``, ``map50``,
-    ``map75`` and ``instances`` (ground-truth objects of that class).
+    ``map75``, ``instances`` (ground-truth objects of that class), and
+    ``precision`` / ``recall`` of the predictions at the operating threshold
+    ``conf`` of that class (every image counts, also those without objects).
     """
 
     map50_95: float

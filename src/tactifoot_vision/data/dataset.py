@@ -47,12 +47,18 @@ def check_flip_idx(
 
 @dataclass(frozen=True)
 class Sample:
-    """One image on disk with its labels (pixel coordinates)."""
+    """One image on disk with its labels (pixel coordinates).
+
+    ``meta`` holds where the image comes from when a reader knows it, e.g.
+    the GSR reader's ``sequence``, ``game`` and ``frame`` (leak checks group
+    images by them). Exports do not write it.
+    """
 
     image_path: Path
     width: int
     height: int
     annotations: Annotations
+    meta: Mapping[str, str] = field(default_factory=dict)
 
     def read_image(self) -> np.ndarray:
         """Load the image as a BGR ``uint8`` array (OpenCV convention)."""
@@ -70,7 +76,8 @@ class Dataset:
     memory. All operations return new datasets, and ``to_yolo`` / ``to_coco``
     write whatever format a training backend needs.
 
-    Load one with :func:`load_dataset` (YOLO ``data.yaml`` or COCO folder).
+    Load one with :func:`load_dataset` (YOLO ``data.yaml``, COCO folder or
+    SoccerNet GSR folder).
     """
 
     task: Task
@@ -90,7 +97,9 @@ class Dataset:
     # ------------------------------------------------------------------ loading
     @classmethod
     def load(cls, path: str | Path) -> "Dataset":
-        """Load a YOLO (``data.yaml`` or its folder) or COCO (split folders) dataset."""
+        """Load a YOLO (``data.yaml`` or its folder), COCO (split folders) or GSR dataset."""
+        from tactifoot_vision.data import soccernet
+
         path = Path(path)
         if path.is_file() and path.suffix in {".yaml", ".yml"}:
             return cls.from_yolo(path)
@@ -102,8 +111,12 @@ class Dataset:
                 for s in ("train", "valid", "val", "test")
             ):
                 return cls.from_coco(path)
+            if soccernet.is_gsr_root(path):
+                splits = tuple(s for s in Split if (path / s).is_dir())
+                return cls.from_gsr(path, splits=splits)
         raise FileNotFoundError(
-            f"{path} is neither a YOLO data.yaml (or its folder) nor a COCO dataset folder"
+            f"{path} is neither a YOLO data.yaml (or its folder), a COCO dataset "
+            "folder nor a SoccerNet GSR folder"
         )
 
     @classmethod
@@ -178,6 +191,33 @@ class Dataset:
                 split: [sample for _, samples in members for sample in samples]
                 for split, members in splits.items()
             },
+        )
+
+    @classmethod
+    def from_gsr(
+        cls,
+        root: str | Path,
+        splits: Iterable[Split | str] = tuple(Split),
+        stride: int = 1,
+        tracking_root: str | Path | None = None,
+    ) -> "Dataset":
+        """Read a SoccerNet GSR download as 4-class detection data, in its own splits.
+
+        Unlike :meth:`from_clips`, which splits labelled clips at random, this
+        keeps SoccerNet's splits, takes every ``stride``-th frame and keeps
+        frames without a box (negatives); classes are in the detector's
+        order, ``ball``, ``goalkeeper``, ``player``, ``referee``. See
+        :func:`tactifoot_vision.data.soccernet.read_gamestate_dataset` for
+        ``stride``, ``tracking_root`` (missing images read from
+        SoccerNet-Tracking) and the ``meta`` of each sample.
+        """
+        from tactifoot_vision.data import soccernet
+
+        return soccernet.read_gamestate_dataset(
+            Path(root),
+            splits=tuple(splits),
+            stride=stride,
+            tracking_root=None if tracking_root is None else Path(tracking_root),
         )
 
     # ------------------------------------------------------------------- access
@@ -428,5 +468,9 @@ def _subset_count(want: object, available: int) -> int:
 
 
 def load_dataset(path: str | Path) -> Dataset:
-    """Load a YOLO (``data.yaml`` or its folder) or COCO dataset. See :class:`Dataset`."""
+    """Load a YOLO (``data.yaml`` or its folder), COCO or SoccerNet GSR dataset.
+
+    A GSR folder is read whole, every frame; use :meth:`Dataset.from_gsr` for
+    some splits or a frame stride. See :class:`Dataset`.
+    """
     return Dataset.load(path)
