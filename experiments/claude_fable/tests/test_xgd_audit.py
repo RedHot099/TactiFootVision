@@ -308,7 +308,7 @@ def _write_inputs(tmp_path: Path, flip: bool = False) -> tuple[Path, Path, Path]
                      ex.frame_row("m2_b", -800, "/f/m2_b_800.jpg", None)]
         frames_table = ex.frames_table(rows)
         frames_table.to_parquet(folder / "frames.parquet", index=False)
-        features = ex.replay_features(frames_table, ex.CONFIGS[name]).drop(columns=["offset_ms", "gk_x", "gk_y"])
+        features = ex.replay_features(frames_table, ex.CONFIGS[name]).drop(columns=["gk_x", "gk_y"])
         features.to_parquet(folder / "features.parquet", index=False)
         record = {"config": ex.settings(ex.CONFIGS[name]), "identity": {"code": {"digest": "d"}, "git": {"sha": "s"}},
                   "files": {f: sha256_file(folder / f) for f in ("frames.parquet", "features.parquet")}}
