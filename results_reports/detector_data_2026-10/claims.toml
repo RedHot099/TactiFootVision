@@ -1,0 +1,275 @@
+# Sources of every number in REPORT.md (detector-data 06). Checked by scripts/check_report.py; see its docstring.
+# Relative paths are relative to the repository; result folders on /mnt/storage and in the main checkout are absolute.
+# Folders with dev = true hold the choice on development data (GSR valid, Ekstraklasa dev, valid placement, and the
+# xg-detector audits, Data: StatsBomb); folders with confirmatory = true hold the single GSR test read (ticket 05).
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wynik testu"
+# Design constants and names, not results: input sizes and frame formats, the 5 m / 30 m placement thresholds,
+# the 8K / v3D / CC BY 4.0 names, the 172 held-out xG matches, the year of the GSR league, the not-file-backed
+# figures quoted in code spans are skipped as code.
+untagged = ["640 px", "1280 px", "1280", "640", "720p", "1080p", "1920", "16:9", "11m", "11l", "404", "95%", "400 ms", "SHA-256", "5 m", "30 m", "8K", "CC BY 4.0", "CC BY-NC 4.0", "172 meczach"]
+
+[folders]
+res = { path = "research" }
+card = { path = "/home/kuba/projects/tactifoot_vision/models" }
+basew = { path = "/home/kuba/projects/tactifoot_vision/results/project/raw/yolo11m/training/detect_yolo11m" }
+fy = { path = "/home/kuba/projects/tactifoot_vision/data/datasets/football_yolo" }
+synth = { path = "/mnt/storage/tactifoot_research/detector_data/sets/soccersynth" }
+blv = { path = "/mnt/storage/tactifoot_research/detector_data/baseline", dev = true }
+blt = { path = "/mnt/storage/tactifoot_research/detector_data/baseline/test", confirmatory = true }
+r1 = { path = "/mnt/storage/tactifoot_research/detector_data/runs/run1", dev = true }
+r2a = { path = "/mnt/storage/tactifoot_research/detector_data/runs/run2a", dev = true }
+r2b = { path = "/mnt/storage/tactifoot_research/detector_data/runs/run2b", dev = true }
+r2c = { path = "/mnt/storage/tactifoot_research/detector_data/runs/run2c", dev = true }
+cmp = { path = "/mnt/storage/tactifoot_research/detector_data/runs/compare", dev = true }
+cv = { path = "/mnt/storage/tactifoot_research/detector_data/final/candidate_valid", dev = true }
+fin = { path = "/mnt/storage/tactifoot_research/detector_data/final", confirmatory = true }
+a3 = { path = "/home/kuba/projects/tactifoot_vision/.claude/worktrees/research-xg-detector/experiments/claude_fable/results/xgd_audit3", dev = true }
+a4 = { path = "/home/kuba/projects/tactifoot_vision/.claude/worktrees/research-xg-detector/experiments/claude_fable/results/xgd_audit4", dev = true }
+sr = { path = "/home/kuba/projects/tactifoot_vision/.claude/worktrees/research-xg-detector/experiments/claude_fable/results/sweep_report", dev = true }
+
+[claims]
+"bench.test.frames" = { src = "res:detector_bench.json", keys = ["manifest.splits.test.frames"], fmt = "{:,d}" }
+"bench.test.clips" = { src = "res:detector_bench.json", keys = ["manifest.splits.test.sequences"], fmt = "{:d}" }
+"bench.valid.frames" = { src = "res:detector_bench.json", keys = ["manifest.splits.valid.frames"], fmt = "{:,d}" }
+"bench.valid.clips" = { src = "res:detector_bench.json", keys = ["manifest.splits.valid.sequences"], fmt = "{:d}" }
+"op.conf" = { src = "res:detector_bench.json", keys = ["metrics.operating_point.conf"], fmt = "{:.1f}" }
+"op.ball" = { src = "res:detector_bench.json", keys = ["metrics.operating_point.class_conf.ball"], fmt = "{:.2f}" }
+"base.imgsz" = { src = "basew:args.yaml", quote = "imgsz: 640", values = [640], fmt = "{:d}" }
+"base.fy.train" = { src = "fy:train/images", listdir = "*", fmt = "{:,d}" }
+"base.fy.valid" = { src = "fy:valid/images", listdir = "*", fmt = "{:d}" }
+"v.b.640.ball" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.per_class.0.map50"], fmt = "{:.3f}" }
+"v.b.640.gk" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.per_class.1.map50"], fmt = "{:.3f}" }
+"v.b.640.player" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.per_class.2.map50"], fmt = "{:.3f}" }
+"v.b.640.ref" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.per_class.3.map50"], fmt = "{:.3f}" }
+"v.b.640.map" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.map50", "rows.gsr/640.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"v.b.640.ballpr" = { src = "blv:detection_valid.json", keys = ["rows.gsr/640.per_class.0.precision", "rows.gsr/640.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"v.b.1280.ball" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"v.b.1280.gk" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"v.b.1280.player" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.2.map50"], fmt = "{:.3f}" }
+"v.b.1280.ref" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"v.b.1280.map" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"v.b.1280.ballpr" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.0.precision", "rows.gsr/1280.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"v.b.1280.gkr" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.1.recall"], fmt = "{:.3f}" }
+"v.b.1280.refr" = { src = "blv:detection_valid.json", keys = ["rows.gsr/1280.per_class.3.recall"], fmt = "{:.3f}" }
+"v.b.fy.640.map50" = { src = "blv:detection_valid.json", keys = ["rows.roboflow/640.map50"], fmt = "{:.3f}" }
+"vp.b.placed" = { src = "blv:placement/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.b.far" = { src = "blv:placement/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.b.med" = { src = "blv:placement/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"vp.frames" = { src = "blv:placement/placement.json", keys = ["all.frames.value"], fmt = "{:,d}" }
+"pool.run1" = { src = "res:detector_run1_view.json", keys = ["pool_images"], fmt = "{:,d}" }
+"pool.run2" = { src = "res:detector_run2c_view.json", keys = ["pool_images"], fmt = "{:,d}" }
+"src.gsr.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccernet_gsr.images"], fmt = "{:,d}" }
+"src.gsr.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccernet_gsr.boxes.ball"], fmt = "{:,d}" }
+"src.v3.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccernet_v3.images"], fmt = "{:,d}" }
+"src.v3.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccernet_v3.boxes.ball"], fmt = "{:,d}" }
+"src.soccana.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccana.images"], fmt = "{:,d}" }
+"src.soccana.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccana.boxes.ball"], fmt = "{:,d}" }
+"src.tt.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.teamtrack.images"], fmt = "{:,d}" }
+"src.tt.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.teamtrack.boxes.ball"], fmt = "{:,d}" }
+"src.issia.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.issia.images"], fmt = "{:,d}" }
+"src.issia.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.issia.boxes.ball"], fmt = "{:,d}" }
+"src.smot.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.sportsmot.images"], fmt = "{:,d}" }
+"src.spd.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.soccer_player_detection.images"], fmt = "{:,d}" }
+"src.rf.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.roboflow.images"], fmt = "{:,d}" }
+"src.rf.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.roboflow.boxes.ball"], fmt = "{:,d}" }
+"src.fy.img" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.football_yolo.images"], fmt = "{:,d}" }
+"src.fy.ball" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", keys = ["training.per_source.football_yolo.boxes.ball"], fmt = "{:,d}" }
+"src.synth.img" = { src = "res:detector_run2b_view.json", keys = ["train.images"], fmt = "{:,d}" }
+"src.synth.ball" = { src = "res:detector_run2b_view.json", keys = ["train.boxes.ball"], fmt = "{:,d}" }
+"src.synth.blur" = { src = "synth:manifest.json", keys = ["variants_before_thinning.motion_blur"], fmt = "{:,d}" }
+"src.synth.raw" = { src = "synth:manifest.json", keys = ["raw_images"], fmt = "{:,d}" }
+"mask.any" = { src = "res:detector_run1_view.json", keys = ["train.images_with_any_masked_class"], scale = 100, fmt = "{:.1f}%" }
+"mask.gk" = { src = "res:detector_run1_view.json", keys = ["train.masked_share_by_class.goalkeeper"], scale = 100, fmt = "{:.1f}%" }
+"mask.ref" = { src = "res:detector_run1_view.json", keys = ["train.masked_share_by_class.referee"], scale = 100, fmt = "{:.1f}%" }
+"mask.ball" = { src = "res:detector_run1_view.json", keys = ["train.masked_share_by_class.ball"], scale = 100, fmt = "{:.1f}%" }
+"mask.player" = { src = "res:detector_run1_view.json", keys = ["train.masked_share_by_class.player"], scale = 100, fmt = "{:.1f}%" }
+"v1.images" = { src = "res:detector_run1_view.json", keys = ["train.images"], fmt = "{:,d}" }
+"r1.epochs" = { src = "r1:yolo11l_1280/results.csv", cols = [], agg = "count", fmt = "{:d}" }
+"r1.best" = { src = "card:detector_yolo11l_1280_dd2c.pt.json", quote = "best epoch 13", values = [13], fmt = "{:d}" }
+"r1.hours" = { src = "r1:yolo11l_1280/results.csv", cols = ["time"], agg = "max", scale = 0.0002777777777777778, fmt = "{:.1f} h" }
+"v2a.images" = { src = "res:detector_run2a_view.json", keys = ["train.images"], fmt = "{:d}" }
+"r2a.epochs" = { src = "r2a:yolo11l_1280/results.csv", cols = [], agg = "count", fmt = "{:d}" }
+"r2a.min" = { src = "r2a:yolo11l_1280/results.csv", cols = ["time"], agg = "max", scale = 0.016666666666666666, fmt = "{:.0f} min" }
+"r2b.epochs" = { src = "r2b:yolo11l_1280/results.csv", cols = [], agg = "count", fmt = "{:d}" }
+"r2b.hours" = { src = "r2b:yolo11l_1280/results.csv", cols = ["time"], agg = "max", scale = 0.0002777777777777778, fmt = "{:.1f} h" }
+"r2c.epochs" = { src = "r2c:yolo11l_1280/results.csv", cols = [], agg = "count", fmt = "{:d}" }
+"r2c.hours" = { src = "r2c:yolo11l_1280/results.csv", cols = ["time"], agg = "max", scale = 0.0002777777777777778, fmt = "{:.1f} h" }
+"v2c.over" = { src = "res:detector_run2c_view.json", keys = ["rule.oversample.football_yolo"], fmt = "{:d}" }
+"v2c.per_epoch" = { src = "res:detector_run2c_view.json", keys = ["train.images_per_epoch"], fmt = "{:,d}" }
+"v2c.fy.per_epoch" = { src = "res:detector_run2c_view.json", keys = ["train.per_source.football_yolo.images_per_epoch"], fmt = "{:,d}" }
+"r1.val.first" = { src = "r1:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 1 }, fmt = "{:.3f}" }
+"r1.val.max" = { src = "r1:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], agg = "max", fmt = "{:.3f}" }
+"r2a.val.first" = { src = "r2a:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 1 }, fmt = "{:.3f}" }
+"r2a.val.max" = { src = "r2a:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], agg = "max", fmt = "{:.3f}" }
+"r2b.val.first" = { src = "r2b:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 1 }, fmt = "{:.3f}" }
+"r2a.val.last" = { src = "r2a:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 35 }, fmt = "{:.3f}" }
+"r2b.val.last" = { src = "r2b:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 5 }, fmt = "{:.3f}" }
+"r2c.val.e1" = { src = "r2c:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 1 }, fmt = "{:.3f}" }
+"r2c.val.e2" = { src = "r2c:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 2 }, fmt = "{:.3f}" }
+"r2c.val.e3" = { src = "r2c:yolo11l_1280/results.csv", cols = ["metrics/mAP50-95(B)"], row = { epoch = 3 }, fmt = "{:.3f}" }
+"v.r1.ball" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"v.r1.gk" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"v.r1.ref" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"v.r1.map" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"v.r1.map50" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/1280.map50"], fmt = "{:.3f}" }
+"v.r1.640.ball" = { src = "r1:eval/detection_valid.json", keys = ["rows.gsr/640.per_class.0.map50"], fmt = "{:.3f}" }
+"v.2a1.ball" = { src = "cmp:run2a_epoch1/detection_valid.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"v.2a1.gk" = { src = "cmp:run2a_epoch1/detection_valid.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"v.2a1.ref" = { src = "cmp:run2a_epoch1/detection_valid.json", keys = ["rows.gsr/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"v.2a1.map" = { src = "cmp:run2a_epoch1/detection_valid.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"v.2a11.ball" = { src = "cmp:run2a_epoch11/detection_valid.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"v.2a11.gk" = { src = "cmp:run2a_epoch11/detection_valid.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"v.2a11.map" = { src = "cmp:run2a_epoch11/detection_valid.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"v.2c0.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 0, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c0.gk" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 0, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c0.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 0, row = "gsr/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.2c0.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c0.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f} / {:.3f}" }
+"v.2c1.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 1, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c1.gk" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 1, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c1.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 1, row = "gsr/1280" }, fmt = "{:.3f} / {:.3f}" }
+"v.2c1.map50" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50"], row = { epoch = 1, row = "gsr/1280" }, fmt = "{:.3f}" }
+"e.2c1.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c1.gk" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c1.player" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_player"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c1.ref" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_referee"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c1.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.2c1.map50" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"v.2c2.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 2, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c2.gk" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 2, row = "gsr/1280" }, fmt = "{:.3f}" }
+"v.2c2.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 2, row = "gsr/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.2c2.ball" = { src = "r2c:eval_epochs/epochs.csv", cols = ["ap50_ball"], row = { epoch = 2, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2c2.map" = { src = "r2c:eval_epochs/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 2, row = "ekstraklasa/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.b.ball" = { src = "blv:ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"e.b.gk" = { src = "blv:ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"e.b.player" = { src = "blv:ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.per_class.2.map50"], fmt = "{:.3f}" }
+"e.b.ref" = { src = "blv:ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"e.b.map" = { src = "blv:ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.map50", "rows.ekstraklasa/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"e.r1.ball" = { src = "r1:eval/ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"e.r1.map" = { src = "r1:eval/ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.map50", "rows.ekstraklasa/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"e.r1.map50" = { src = "r1:eval/ekstraklasa_dev/detection_valid.json", keys = ["rows.ekstraklasa/1280.map50"], fmt = "{:.3f}" }
+"e.2a1.ball" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_ball"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a1.gk" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a1.player" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_player"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a1.ref" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_referee"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a1.map" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.2a1.map50" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["map50"], row = { epoch = 1, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a11.ball" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_ball"], row = { epoch = 11, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2a11.map" = { src = "r2a:eval_epochs_ekstraklasa/epochs.csv", cols = ["map50", "map50_95"], row = { epoch = 11, row = "ekstraklasa/1280" }, fmt = "{:.3f} / {:.3f}" }
+"e.2b0.ball" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_ball"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b0.gk" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b0.player" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_player"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b0.ref" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_referee"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b0.map50" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["map50"], row = { epoch = 0, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b4.ball" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_ball"], row = { epoch = 4, row = "ekstraklasa/1280" }, fmt = "{:.4f}" }
+"e.2b4.gk" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_goalkeeper"], row = { epoch = 4, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b4.player" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_player"], row = { epoch = 4, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b4.ref" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["ap50_referee"], row = { epoch = 4, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"e.2b4.map50" = { src = "r2b:eval_epochs_ekstraklasa/epochs.csv", cols = ["map50"], row = { epoch = 4, row = "ekstraklasa/1280" }, fmt = "{:.3f}" }
+"vp.r1.placed" = { src = "r1:eval/placement/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.r1.far" = { src = "r1:eval/placement/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.r1.med" = { src = "r1:eval/placement/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"vp.2a11.placed" = { src = "cmp:placement_run2a_epoch11/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2a11.far" = { src = "cmp:placement_run2a_epoch11/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2a11.med" = { src = "cmp:placement_run2a_epoch11/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"vp.2c0.placed" = { src = "cmp:placement_run2c_epoch0/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c0.far" = { src = "cmp:placement_run2c_epoch0/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c0.med" = { src = "cmp:placement_run2c_epoch0/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"vp.2c1.placed" = { src = "cmp:placement_run2c_epoch1/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c1.far" = { src = "cmp:placement_run2c_epoch1/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c1.med" = { src = "cmp:placement_run2c_epoch1/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"vp.2c2.placed" = { src = "cmp:placement_run2c_epoch2/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c2.far" = { src = "cmp:placement_run2c_epoch2/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"vp.2c2.med" = { src = "cmp:placement_run2c_epoch2/placement.json", keys = ["all.median_m.value"], fmt = "{:.2f} m" }
+"t.b.640.ball" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.per_class.0.map50"], fmt = "{:.3f}" }
+"t.b.640.gk" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.per_class.1.map50"], fmt = "{:.3f}" }
+"t.b.640.player" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.per_class.2.map50"], fmt = "{:.3f}" }
+"t.b.640.ref" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.per_class.3.map50"], fmt = "{:.3f}" }
+"t.b.640.map" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.map50", "rows.gsr/640.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.b.640.ballpr" = { src = "blt:detection_test.json", keys = ["rows.gsr/640.per_class.0.precision", "rows.gsr/640.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.c.640.ball" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.per_class.0.map50"], fmt = "{:.3f}" }
+"t.c.640.gk" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.per_class.1.map50"], fmt = "{:.3f}" }
+"t.c.640.player" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.per_class.2.map50"], fmt = "{:.3f}" }
+"t.c.640.ref" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.per_class.3.map50"], fmt = "{:.3f}" }
+"t.c.640.map" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.map50", "rows.gsr/640.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.c.640.ballpr" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/640.per_class.0.precision", "rows.gsr/640.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.b.1280.ball" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"t.b.1280.gk" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"t.b.1280.player" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.per_class.2.map50"], fmt = "{:.3f}" }
+"t.b.1280.ref" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"t.b.1280.map" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.b.1280.map50" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.map50"], fmt = "{:.3f}" }
+"t.b.1280.map5095" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.map50_95"], fmt = "{:.3f}" }
+"t.b.1280.ballpr" = { src = "blt:detection_test.json", keys = ["rows.gsr/1280.per_class.0.precision", "rows.gsr/1280.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.c.1280.ball" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.0.map50"], fmt = "{:.3f}" }
+"t.c.1280.gk" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.1.map50"], fmt = "{:.3f}" }
+"t.c.1280.player" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.2.map50"], fmt = "{:.3f}" }
+"t.c.1280.ref" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.3.map50"], fmt = "{:.3f}" }
+"t.c.1280.map" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.map50", "rows.gsr/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.c.1280.map50" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.map50"], fmt = "{:.3f}" }
+"t.c.1280.map5095" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.map50_95"], fmt = "{:.3f}" }
+"t.c.1280.ballpr" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.0.precision", "rows.gsr/1280.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.c.1280.gkr" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.1.recall"], fmt = "{:.2f}" }
+"t.b.e3.ball" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.per_class.0.map50"], fmt = "{:.3f}" }
+"t.b.e3.gk" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.per_class.1.map50"], fmt = "{:.3f}" }
+"t.b.e3.player" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.per_class.2.map50"], fmt = "{:.3f}" }
+"t.b.e3.ref" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.per_class.3.map50"], fmt = "{:.3f}" }
+"t.b.e3.map" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.map50", "rows.gsr/e3.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.b.e3.ballpr" = { src = "blt:detection_test.json", keys = ["rows.gsr/e3.per_class.0.precision", "rows.gsr/e3.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.c.e3.ball" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.per_class.0.map50"], fmt = "{:.3f}" }
+"t.c.e3.gk" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.per_class.1.map50"], fmt = "{:.3f}" }
+"t.c.e3.player" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.per_class.2.map50"], fmt = "{:.3f}" }
+"t.c.e3.ref" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.per_class.3.map50"], fmt = "{:.3f}" }
+"t.c.e3.map" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.map50", "rows.gsr/e3.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"t.c.e3.ballpr" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/e3.per_class.0.precision", "rows.gsr/e3.per_class.0.recall"], fmt = "{:.2f} / {:.2f}" }
+"t.c.1280.gkp" = { src = "fin:candidate_test/detection_test.json", keys = ["rows.gsr/1280.per_class.1.precision"], fmt = "{:.2f}" }
+"tp.b.placed" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.placed.value", "all.placed.ci_low", "all.placed.ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"tp.b.far" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.far.value", "all.far.ci_low", "all.far.ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"tp.b.med" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.median_m.value", "all.median_m.ci_low", "all.median_m.ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"tp.b.placed.s" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.b.far.s" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.b.lt1" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.lt1.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.b.lt2" = { src = "fin:baseline_placement_test/placement.json", keys = ["all.lt2.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.b.ng.placed" = { src = "fin:baseline_placement_test/placement.json", keys = ["near_goal.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.b.ng.far" = { src = "fin:baseline_placement_test/placement.json", keys = ["near_goal.far.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.placed" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.placed.value", "all.placed.ci_low", "all.placed.ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"tp.c.far" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.far.value", "all.far.ci_low", "all.far.ci_high"], scale = 100, fmt = "{:.1f}% [{:.1f}; {:.1f}]" }
+"tp.c.med" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.median_m.value", "all.median_m.ci_low", "all.median_m.ci_high"], fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"tp.c.placed.s" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.far.s" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.far.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.lt1" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.lt1.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.lt2" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.lt2.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.ng.placed" = { src = "fin:candidate_placement_test/placement.json", keys = ["near_goal.placed.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.c.ng.far" = { src = "fin:candidate_placement_test/placement.json", keys = ["near_goal.far.value"], scale = 100, fmt = "{:.1f}%" }
+"tp.frames" = { src = "fin:candidate_placement_test/placement.json", keys = ["all.frames.value"], fmt = "{:,d}" }
+"tp.ng.frames" = { src = "fin:candidate_placement_test/placement.json", keys = ["near_goal.frames.value"], fmt = "{:,d}" }
+"tp.homographies" = { src = "res:detector_bench.json", keys = ["placement_homographies_test.frames"], fmt = "{:,d}" }
+"tp.d.placed" = { src = "fin:placement_test_paired.txt", quote = "placed 0.1436 [0.1028 0.1854]", values = [0.1436, 0.1028, 0.1854], scale = 100, fmt = "{:+.1f} pp [{:+.1f}; {:+.1f}]" }
+"tp.d.med" = { src = "fin:placement_test_paired.txt", quote = "median_m -0.139 [-0.2281 -0.0611]", values = [-0.139, -0.2281, -0.0611], fmt = "{:+.2f} m [{:+.2f}; {:+.2f}]" }
+"tp.d.far" = { src = "fin:placement_test_paired.txt", quote = "far -0.1248 [-0.1622 -0.092 ]", values = [-0.1248, -0.1622, -0.092], scale = 100, fmt = "{:+.1f} pp [{:+.1f}; {:+.1f}]" }
+"ek.images" = { src = "res:ekstraklasa_dev_split.json", keys = ["images"], fmt = "{:d}" }
+"ek.balls" = { src = "res:ekstraklasa_dev_split.json", keys = ["boxes.ball"], fmt = "{:d}" }
+"fy.valid.images" = { src = "cv:detection_valid.json", keys = ["rows.roboflow/1280.images"], fmt = "{:d}" }
+"fy.b.1280" = { src = "blv:detection_valid.json", keys = ["rows.roboflow/1280.map50", "rows.roboflow/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"fy.b.e3" = { src = "blv:detection_valid.json", keys = ["rows.roboflow/e3.map50", "rows.roboflow/e3.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"fy.c.1280" = { src = "cv:detection_valid.json", keys = ["rows.roboflow/1280.map50", "rows.roboflow/1280.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"fy.c.e3" = { src = "cv:detection_valid.json", keys = ["rows.roboflow/e3.map50", "rows.roboflow/e3.map50_95"], fmt = "{:.3f} / {:.3f}" }
+"a3.cov" = { src = "a3:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "coverage" }, scale = 100, fmt = "{:.1f}%" }
+"a3.med" = { src = "a3:metrics.csv", cols = ["value", "lo", "hi"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, scale = 1, fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"a3.lt5" = { src = "a3:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "lt5" }, scale = 100, fmt = "{:.1f}%" }
+"a3.gkdet" = { src = "a3:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "gk_detected", subset = "all", stat = "coverage" }, scale = 100, fmt = "{:.1f}%" }
+"a3.gkmed" = { src = "a3:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "gk_any", subset = "all", stat = "median" }, scale = 1, fmt = "{:.2f} m" }
+"a4.cov" = { src = "a4:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "coverage" }, scale = 100, fmt = "{:.1f}%" }
+"a4.med" = { src = "a4:metrics.csv", cols = ["value", "lo", "hi"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "median" }, scale = 1, fmt = "{:.2f} m [{:.2f}; {:.2f}]" }
+"a4.lt5" = { src = "a4:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "shot_location", subset = "all", stat = "lt5" }, scale = 100, fmt = "{:.1f}%" }
+"a4.gkdet" = { src = "a4:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "gk_detected", subset = "all", stat = "coverage" }, scale = 100, fmt = "{:.1f}%" }
+"a4.gkmed" = { src = "a4:metrics.csv", cols = ["value"], row = { config = "E3", quantity = "gk_any", subset = "all", stat = "median" }, scale = 1, fmt = "{:.2f} m" }
+"a4.shots" = { src = "a4:complete.json", keys = ["population.shots"], fmt = "{:,d}" }
+"a4.matches" = { src = "a4:complete.json", keys = ["population.matches"], fmt = "{:d}" }
+"a4.gate" = { src = "a4:choice.json", keys = ["gate.checks.shot_location_median_m.max"], fmt = "{:.1f} m" }
+"sr.feet.med" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "all", level = "all" }, agg = "mean", fmt = "{:.2f} m" }
+"sr.seen.goals" = { src = "sr:summary.json", keys = ["seen.share_goals"], scale = 100, fmt = "{:.1f}%" }
+"sr.seen.other" = { src = "sr:summary.json", keys = ["seen.share_other"], scale = 100, fmt = "{:.1f}%" }
