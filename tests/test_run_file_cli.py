@@ -20,7 +20,7 @@ from tactifoot_vision import run_file
 from tactifoot_vision.cli import main
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models import MODELS, Model, TrainConfig, TrainResult
-from tactifoot_vision.pipeline import Pipeline, PipelineResult
+from tactifoot_vision.pipeline import Pipeline, PipelineResult, remap_track_ids
 from tactifoot_vision.pitch import HomographyEstimator, LineRefinerConfig, SoccerPitch
 from tactifoot_vision.teams import EMBEDDERS, Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker
@@ -1013,7 +1013,6 @@ def test_a_new_render_video_parameter_reaches_render_without_edits(
 @pytest.fixture
 def toy_postprocesses(postprocess_registry):
     """Two registered toy post-processes whose order shows in the track ids."""
-    from tactifoot_vision.pipeline import remap_track_ids
 
     @postprocess_registry.register("test_add")
     def add(result: PipelineResult, offset: int = 10) -> PipelineResult:
@@ -1102,8 +1101,6 @@ def test_a_failed_post_process_leaves_the_pipeline_result_saved(
 
 
 def test_post_processes_cannot_change_the_run_file(tmp_path, postprocess_registry):
-    from tactifoot_vision.pipeline import remap_track_ids
-
     @postprocess_registry.register("test_consume")
     def consume(result: PipelineResult, ids: list[int]) -> PipelineResult:
         return remap_track_ids(result, {1: ids.pop()})
