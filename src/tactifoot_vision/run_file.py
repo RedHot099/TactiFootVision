@@ -214,7 +214,7 @@ class RunFile:
         out = result.export(output_dir, **export_options)
         if postprocesses := self._sections.get(RunFileSection.POSTPROCESS):
             for entry in postprocesses:
-                options = dict(entry)
+                options = copy.deepcopy(entry)
                 result = POSTPROCESSES.create(options.pop("type"), result, **options)
             result.export(out, **export_options)
         if render:

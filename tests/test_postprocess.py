@@ -129,9 +129,9 @@ def test_the_result_records_each_post_process_with_its_options_and_defaults(
 
 
 def test_the_record_does_not_change_when_an_option_or_a_later_record_does(
-    registry,
+    postprocess_registry,
 ):
-    @registry.register("test_takes_a_dict")
+    @postprocess_registry.register("test_takes_a_dict")
     def takes_a_dict(result: PipelineResult, gaps: dict[str, int]):
         return remap_track_ids(result, {})
 
@@ -144,6 +144,19 @@ def test_the_record_does_not_change_when_an_option_or_a_later_record_does(
 
     assert once.postprocesses == [
         AppliedPostProcess("test_takes_a_dict", {"gaps": {"max": 25}})
+    ]
+
+
+def test_the_record_keeps_the_options_as_they_were_passed(postprocess_registry):
+    @postprocess_registry.register("test_consume")
+    def consume(result: PipelineResult, mapping: dict[int, int]) -> PipelineResult:
+        mapping.pop(1)
+        return remap_track_ids(result, {})
+
+    after = consume(_result(_frame(0)), {1: 7})
+
+    assert after.postprocesses == [
+        AppliedPostProcess("test_consume", {"mapping": {1: 7}})
     ]
 
 

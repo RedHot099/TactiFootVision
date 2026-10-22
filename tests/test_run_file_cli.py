@@ -1101,6 +1101,24 @@ def test_a_failed_post_process_leaves_the_pipeline_result_saved(
     assert not (out / "annotated.mp4").exists()
 
 
+def test_post_processes_cannot_change_the_run_file(tmp_path, postprocess_registry):
+    from tactifoot_vision.pipeline import remap_track_ids
+
+    @postprocess_registry.register("test_consume")
+    def consume(result: PipelineResult, ids: list[int]) -> PipelineResult:
+        return remap_track_ids(result, {1: ids.pop()})
+
+    loaded = _load(
+        tmp_path,
+        {"detector": DETECTOR, "postprocess": [{"type": "test_consume", "ids": [4]}]},
+    )
+    video = _video(tmp_path / "clip.mp4")
+    for name in ("a", "b"):
+        result = loaded.run(video, tmp_path / name, render=False, progress=False)
+        assert result.track_ids == [4]
+    assert loaded.sections["postprocess"] == [{"type": "test_consume", "ids": [4]}]
+
+
 def test_overrides_edit_append_and_drop_list_entries(tmp_path, toy_postprocesses):
     def postprocess(data, *overrides):
         return _load(tmp_path, data, overrides).sections.get("postprocess")
