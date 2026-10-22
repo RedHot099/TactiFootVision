@@ -33,8 +33,9 @@ def evaluate_detector(
     Predictions are matched to the dataset's classes by name
     (``data["class_name"]``), so models with a different class order score
     correctly; predicted classes the dataset does not have are ignored. The
-    model runs with confidence threshold ``conf`` (restored afterwards) because
-    mAP needs the low-confidence tail of the precision-recall curve.
+    model runs with confidence threshold ``conf`` and without its
+    ``class_conf`` (both restored afterwards) because mAP needs the
+    low-confidence tail of the precision-recall curve.
 
     Args:
         model: a detection model (``model.task == Task.DETECT``).
@@ -46,7 +47,9 @@ def evaluate_detector(
             columns (the pipeline's operating point); ``None`` uses the
             model's own ``conf``, the one it was loaded with. Must be >= ``conf``.
         class_conf: per-class thresholds (by class name) replacing
-            ``operating_conf`` for those classes, e.g. ``{"ball": 0.15}``.
+            ``operating_conf`` for those classes, e.g. ``{"ball": 0.15}``;
+            ``None`` uses the model's own ``class_conf`` (its classes that
+            the dataset has).
         match_iou: IoU at which a kept prediction matches a ground-truth box
             for precision and recall (greedy, most confident first, per class).
         input_size: ``(width, height)`` the image is resized to (area
@@ -72,14 +75,16 @@ def evaluate_detector(
     thresholds = _operating_thresholds(
         dataset.class_names,
         model.conf if operating_conf is None else operating_conf,
-        class_conf or {},
+        _own_class_conf(model, dataset.class_names)
+        if class_conf is None
+        else class_conf,
         conf,
     )
     metric = MeanAveragePrecision()
     counts = np.zeros((len(dataset.class_names), 3), dtype=np.int64)  # tp, fp, fn
     warned: set[str] = set()  # unknown class names already reported
-    previous_conf = model.conf
-    model.conf = conf
+    previous_conf, previous_class_conf = model.conf, model.class_conf
+    model.conf, model.class_conf = conf, {}
     try:
         for sample in samples:
             image = sample.read_image()
@@ -95,7 +100,7 @@ def evaluate_detector(
             metric.update(predictions, targets)
             counts += _match_counts(predictions, targets, thresholds, match_iou)
     finally:
-        model.conf = previous_conf
+        model.conf, model.class_conf = previous_conf, previous_class_conf
     result = metric.compute()
 
     class_ids = np.concatenate([s.annotations.class_ids for s in samples])
@@ -160,6 +165,11 @@ def _operating_thresholds(
             "the evaluation threshold: lower conf"
         )
     return thresholds
+
+
+def _own_class_conf(model: Model, class_names: Sequence[str]) -> dict[str, float]:
+    """The model's ``class_conf`` for the classes the dataset scores."""
+    return {k: v for k, v in model.class_conf.items() if k in class_names}
 
 
 def _match_counts(

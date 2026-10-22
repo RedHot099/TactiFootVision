@@ -359,7 +359,8 @@ configs/              example run files
   `evaluate_detector` → `DetectionMetrics` (mAP50-95, mAP50, mAP75 and the
   per-class table `per_class`, via `supervision.metrics`, plus per-class
   precision and recall at an operating point: `operating_conf`, default the
-  model's own `conf`, `class_conf` per class, IoU `match_iou`; `input_size`
+  model's own `conf`, `class_conf` per class, default the model's own
+  `class_conf`, which mAP ignores, IoU `match_iou`; `input_size`
   resizes frames before the model, e.g. 1080p labels scored as 720p video), `evaluate_keypoints` → `KeypointMetrics`
   (mean pixel error, PCK at a fraction of the image diagonal).
   Same numbers for every backend, so YOLO and RF-DETR compare fairly.

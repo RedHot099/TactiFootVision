@@ -52,7 +52,7 @@ class FakeModel(Model):
         output = self.outputs[int(image[0, 0, 0])]
         if isinstance(output, Exception):
             raise output
-        return output
+        return self._apply_class_conf(output)
 
 
 def _write_image(path: Path, index: int, width: int = 200, height: int = 100) -> Path:
@@ -153,6 +153,27 @@ def test_precision_and_recall_at_the_operating_point(tmp_path):
     assert stricter.per_class.loc["player", "precision"] == 0.5
     assert stricter.per_class.loc["player", "recall"] == 0.5
     assert model.conf == 0.3
+
+
+def test_a_model_class_conf_is_the_default_operating_point_not_an_ap_cut(tmp_path):
+    # A detector loaded with class_conf (the pipeline's ball threshold, say)
+    # still gives mAP its low-confidence ball; its class_conf is the default
+    # operating threshold of that class, and both thresholds are restored.
+    dataset = _detection_dataset(tmp_path, LABELS)
+    outputs = {
+        0: PERFECT[0],
+        1: _detections(LABELS[1].boxes, ["ball", "player"], [0.1, 0.9]),
+    }
+    model = FakeModel(Task.DETECT, outputs, CLASSES)
+    model.class_conf = {"ball": 0.5, "goalkeeper": 0.2}  # no goalkeeper here
+    metrics = evaluate_detector(model, dataset)
+    table = metrics.per_class
+    assert table.loc["ball", "map50"] == pytest.approx(1.0)
+    assert list(table["conf"]) == [0.5, 0.25, 0.25]
+    assert table.loc["ball", "recall"] == 0.0
+    assert model.class_conf == {"ball": 0.5, "goalkeeper": 0.2}
+    explicit = evaluate_detector(model, dataset, class_conf={})
+    assert list(explicit.per_class["conf"]) == [0.25, 0.25, 0.25]
 
 
 def test_operating_thresholds_are_checked(tmp_path):
