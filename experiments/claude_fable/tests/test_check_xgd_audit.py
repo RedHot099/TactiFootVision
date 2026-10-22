@@ -1,6 +1,7 @@
 """The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07), audit 3
 (pitch-keypoints 04), the pitch-keypoints report (pitch-keypoints 06), the xg-compare report (xg-compare 03) and the
-xg-stack report (xg-stack 03) and the xg-stack test report (xg-stack 04): the real documents, and changed copies."""
+xg-stack report (xg-stack 03), the xg-stack test report (xg-stack 04) and the sweep report (sweep-report): the real
+documents, and changed copies."""
 
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ from check_xgd_audit import (  # noqa: E402
     DOCUMENTS,
     PK_REPORT,
     REPORT,
+    SWEEP_REPORT,
     XGC_REPORT,
     XGS_REPORT,
     XGS_TEST,
@@ -83,7 +85,8 @@ def test_without_a_path_the_check_reads_every_document(monkeypatch):
                     [str(PK_REPORT), "--claims", str(PK_REPORT.with_name("report_claims.toml")), "--root", "/x"],
                     [str(XGC_REPORT), "--claims", str(XGC_REPORT.with_name("claims.toml")), "--root", "/x"],
                     [str(XGS_REPORT), "--claims", str(XGS_REPORT.with_name("claims.toml")), "--root", "/x"],
-                    [str(XGS_TEST), "--claims", str(XGS_TEST.with_name("test_claims.toml")), "--root", "/x"]]
+                    [str(XGS_TEST), "--claims", str(XGS_TEST.with_name("test_claims.toml")), "--root", "/x"],
+                    [str(SWEEP_REPORT), "--claims", str(SWEEP_REPORT.with_name("claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -317,3 +320,43 @@ def test_xg_stack_test_numbers_under_a_development_heading_fail(tmp_path):
     copy.write_text(text.replace("## 4. Wynik testu: odczyt główny", "## 4. Odczyt główny (wyniki rozwojowe)"))
     errors = check(copy, XGS_TEST_CLAIMS, EXP)
     assert any("t.g.ci is a confirmatory result under a 'wyniki rozwojowe' heading" in e for e in errors)
+
+
+# --- the sweep report (sweep-report) ---
+
+SWEEP_CLAIMS = SWEEP_REPORT.with_name("claims.toml")
+SWEEP_RESULTS = ("results/sweep_2026_10", "results/sweep_2026_10/statsbomb", "results/sweep_feet_2026_10",
+                 "results/sweep_report", "results/xgs_stack_feet_t0_flags")
+SWEEP_READY = SWEEP_REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in SWEEP_RESULTS)
+needs_sweep_report = pytest.mark.skipif(not SWEEP_READY, reason="needs the sweep report and the sweeps' results")
+
+
+@needs_sweep_report
+def test_the_real_sweep_report_passes():
+    assert DOCUMENTS[SWEEP_REPORT] == SWEEP_CLAIMS
+    assert check(SWEEP_REPORT, SWEEP_CLAIMS, EXP) == []
+
+
+@needs_sweep_report
+@pytest.mark.parametrize("claim", ["sw.all.stack_ALL_new.d", "fs.all.stack_Q_new.d", "sb.paired_primary.sb_vendor.d",
+                                   "sr.loc.all.all.feet_t0_median_m", "d3.ALL", "dl.feet", "sr.seen.pg"])
+def test_a_changed_number_in_the_sweep_report_fails(tmp_path, claim):
+    assert any(f"{claim} expects" in e for e in check(changed_copy(SWEEP_REPORT, tmp_path, claim), SWEEP_CLAIMS, EXP))
+
+
+@needs_sweep_report
+def test_sweep_development_numbers_outside_a_development_heading_fail(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    text = SWEEP_REPORT.read_text()
+    copy.write_text(text.replace("### 6.1 Odczyt na meczach treningowych (wyniki rozwojowe)", "### 6.1 Odczyt na meczach treningowych"))
+    assert any("d3.ALL is a development result outside a 'wyniki rozwojowe' heading" in e
+               for e in check(copy, SWEEP_CLAIMS, EXP))
+
+
+@needs_sweep_report
+def test_an_untagged_number_in_the_sweep_report_fails(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(SWEEP_REPORT.read_text() + "\nDodatkowo ΔLL −0.0031 na 4096 strzałach bez źródła.\n")
+    errors = check(copy, SWEEP_CLAIMS, EXP)
+    assert any("'−0.0031' is not tied to a source" in e for e in errors)
+    assert any("integer '4096'" in e for e in errors)

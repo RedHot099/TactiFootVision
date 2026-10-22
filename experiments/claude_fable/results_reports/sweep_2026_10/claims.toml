@@ -1,0 +1,760 @@
+# Sources of every number in REPORT.md (sweep report, 2026-10-22): the method sweep on the 172 held-out matches
+# (2026-10-18) and the feet_t0 shot-location follow-up (2026-10-22). Both are descriptive readings, not tests.
+# Checked by: ./run.sh --no-sync python scripts/check_xgd_audit.py results_reports/sweep_2026_10/REPORT.md
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# No folder is confirmatory: nothing in this report is a test result. The development read-outs on the 328 training
+# matches (d0-d3, and the paired feet - dd2c development deltas) stand under a "wyniki rozwojowe" heading.
+# results/sweep_report is flattened by scripts/sweep_report.py from existing files only (no fit, no label read); it
+# also holds a verbatim copy of the err-decomp decision-log row, the only file record of the feet vendor-gap share.
+# Every StatsBomb-derived number stands beside "Data: StatsBomb.".
+
+
+[report]
+dev_label = "wyniki rozwojowe"
+confirmatory_label = "wynik testu"
+# Design constants and names, not results: the -400/-800 ms frame offsets and the SHA-256 header.
+untagged = ["400 ms", "800 ms", "SHA-256"]
+
+[folders]
+sw = { path = "results/sweep_2026_10" }
+sb = { path = "results/sweep_2026_10/statsbomb" }
+fs = { path = "results/sweep_feet_2026_10" }
+ed = { path = "results/err_decomp" }
+sr = { path = "results/sweep_report" }
+lk = { path = "results/xgs_stack_dd2c_leak" }
+d0 = { path = "results/xgs_stack_dd2c", dev = true }
+d1 = { path = "results/xgs_stack_feet", dev = true }
+d2 = { path = "results/xgs_stack_feet_t0", dev = true }
+d3 = { path = "results/xgs_stack_feet_t0_flags", dev = true }
+
+[claims]
+"d.R.goals" = { src = "d0:summary.json", keys = ["scores.R.goals"], fmt = "{:d}" }
+"d.R.ll" = { src = "d0:summary.json", keys = ["scores.R.log_loss"], fmt = "{:.4f}" }
+"d.R.n" = { src = "d0:summary.json", keys = ["scores.R.n"], fmt = "{:,d}" }
+"d.boot.draws" = { src = "d0:summary.json", keys = ["deltas.G.draws"], fmt = "{:,d}" }
+"d0.ALL" = { src = "d0:summary.json", keys = ["deltas.ALL.delta_ll", "deltas.ALL.lo95", "deltas.ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d0.ALL.ll" = { src = "d0:summary.json", keys = ["scores.ALL.log_loss"], fmt = "{:.4f}" }
+"d0.G" = { src = "d0:summary.json", keys = ["deltas.G.delta_ll", "deltas.G.lo95", "deltas.G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d0.GS" = { src = "d0:summary.json", keys = ["deltas.GS.delta_ll", "deltas.GS.lo95", "deltas.GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d0.Q" = { src = "d0:summary.json", keys = ["deltas.Q.delta_ll", "deltas.Q.lo95", "deltas.Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d1.ALL" = { src = "d1:summary.json", keys = ["deltas.ALL.delta_ll", "deltas.ALL.lo95", "deltas.ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d1.G" = { src = "d1:summary.json", keys = ["deltas.G.delta_ll", "deltas.G.lo95", "deltas.G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d1.GS" = { src = "d1:summary.json", keys = ["deltas.GS.delta_ll", "deltas.GS.lo95", "deltas.GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d1.Q" = { src = "d1:summary.json", keys = ["deltas.Q.delta_ll", "deltas.Q.lo95", "deltas.Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d2.ALL" = { src = "d2:summary.json", keys = ["deltas.ALL.delta_ll", "deltas.ALL.lo95", "deltas.ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d2.G" = { src = "d2:summary.json", keys = ["deltas.G.delta_ll", "deltas.G.lo95", "deltas.G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d2.GS" = { src = "d2:summary.json", keys = ["deltas.GS.delta_ll", "deltas.GS.lo95", "deltas.GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d2.Q" = { src = "d2:summary.json", keys = ["deltas.Q.delta_ll", "deltas.Q.lo95", "deltas.Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d3.ALL" = { src = "d3:summary.json", keys = ["deltas.ALL.delta_ll", "deltas.ALL.lo95", "deltas.ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d3.ALL.ll" = { src = "d3:summary.json", keys = ["scores.ALL.log_loss"], fmt = "{:.4f}" }
+"d3.G" = { src = "d3:summary.json", keys = ["deltas.G.delta_ll", "deltas.G.lo95", "deltas.G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d3.GS" = { src = "d3:summary.json", keys = ["deltas.GS.delta_ll", "deltas.GS.lo95", "deltas.GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"d3.Q" = { src = "d3:summary.json", keys = ["deltas.Q.delta_ll", "deltas.Q.lo95", "deltas.Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"dl.dd2c" = { src = "sr:summary.json", quote = "~46% of the vendor gap closed (was ~24%", values = [24], fmt = "{:.0f}%" }
+"dl.feet" = { src = "sr:summary.json", quote = "~46% of the vendor gap closed (was ~24%", values = [46], fmt = "{:.0f}%" }
+"ed.dev.xgs_stack_feet.ALL" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet.p_ALL.delta_ll", "xgs_stack_feet.p_ALL.lo95", "xgs_stack_feet.p_ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet.G" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet.p_G.delta_ll", "xgs_stack_feet.p_G.lo95", "xgs_stack_feet.p_G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet.GS" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet.p_GS.delta_ll", "xgs_stack_feet.p_GS.lo95", "xgs_stack_feet.p_GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet.Q" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet.p_Q.delta_ll", "xgs_stack_feet.p_Q.lo95", "xgs_stack_feet.p_Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0.ALL" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0.p_ALL.delta_ll", "xgs_stack_feet_t0.p_ALL.lo95", "xgs_stack_feet_t0.p_ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0.G" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0.p_G.delta_ll", "xgs_stack_feet_t0.p_G.lo95", "xgs_stack_feet_t0.p_G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0.GS" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0.p_GS.delta_ll", "xgs_stack_feet_t0.p_GS.lo95", "xgs_stack_feet_t0.p_GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0.Q" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0.p_Q.delta_ll", "xgs_stack_feet_t0.p_Q.lo95", "xgs_stack_feet_t0.p_Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0_flags.ALL" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0_flags.p_ALL.delta_ll", "xgs_stack_feet_t0_flags.p_ALL.lo95", "xgs_stack_feet_t0_flags.p_ALL.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0_flags.G" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0_flags.p_G.delta_ll", "xgs_stack_feet_t0_flags.p_G.lo95", "xgs_stack_feet_t0_flags.p_G.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0_flags.GS" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0_flags.p_GS.delta_ll", "xgs_stack_feet_t0_flags.p_GS.lo95", "xgs_stack_feet_t0_flags.p_GS.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.dev.xgs_stack_feet_t0_flags.Q" = { src = "ed:feet_minus_dd2c_dev.json", keys = ["xgs_stack_feet_t0_flags.p_Q.delta_ll", "xgs_stack_feet_t0_flags.p_Q.lo95", "xgs_stack_feet_t0_flags.p_Q.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]", dev = true }
+"ed.draws" = { src = "scripts/err_decomp.py", quote = "n=2000, seed=0", values = [2000], fmt = "{:,.0f}" }
+"ed.sb_paired.all.all.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:.4f}" }
+"ed.sb_paired.all.all.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:.4f}" }
+"ed.sb_paired.all.all.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.all.all.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:+.4f}" }
+"ed.sb_paired.all.all.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.all.all.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:all", level = "all" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_depth_err.1-2m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.1-2m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.1-2m.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_depth_err.1-2m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_depth_err.1-2m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_depth_err.1-2m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_depth_err", level = "1-2m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_depth_err.2-5m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.2-5m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.2-5m.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_depth_err.2-5m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_depth_err.2-5m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_depth_err.2-5m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_depth_err", level = "2-5m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_depth_err.ge5m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.ge5m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.ge5m.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_depth_err.ge5m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_depth_err.ge5m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_depth_err.ge5m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_depth_err", level = ">=5m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_depth_err.lt1m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.lt1m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.lt1m.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_depth_err.lt1m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_depth_err.lt1m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_depth_err.lt1m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_depth_err", level = "<1m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_depth_err.missing.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.missing.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_depth_err.missing.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_depth_err.missing.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_depth_err.missing.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_depth_err.missing.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_depth_err", level = "missing" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_detected.0.0.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_detected.0.0.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_detected.0.0.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_detected.0.0.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_detected.0.0.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_detected.0.0.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_detected", level = "0.0" }, fmt = "{:,.0f}" }
+"ed.sb_paired.gk_detected.1.0.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_detected.1.0.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:.4f}" }
+"ed.sb_paired.gk_detected.1.0.d" = { src = "ed:strata.csv", cols = ["d_stack_vs_gcombo", "lo", "hi"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ed.sb_paired.gk_detected.1.0.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:+.4f}" }
+"ed.sb_paired.gk_detected.1.0.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.gk_detected.1.0.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:gk_detected", level = "1.0" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.1-2m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.1-2m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.1-2m.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.1-2m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.1-2m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.1-2m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = "1-2m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.2-3m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.2-3m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.2-3m.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.2-3m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.2-3m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.2-3m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = "2-3m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.3-5m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.3-5m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.3-5m.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.3-5m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.3-5m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.3-5m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = "3-5m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.ge5m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.ge5m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.ge5m.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.ge5m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.ge5m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.ge5m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = ">=5m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.lt1m.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.lt1m.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.lt1m.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.lt1m.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.lt1m.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.lt1m.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = "<1m" }, fmt = "{:,.0f}" }
+"ed.sb_paired.shot_err.missing.LL_g_combo" = { src = "ed:strata.csv", cols = ["LL_g_combo"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.missing.LL_stack_ALL_new" = { src = "ed:strata.csv", cols = ["LL_stack_ALL_new"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.missing.LL_vendor" = { src = "ed:strata.csv", cols = ["LL_vendor"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:.4f}" }
+"ed.sb_paired.shot_err.missing.gap_stack_minus_vendor" = { src = "ed:strata.csv", cols = ["gap_stack_minus_vendor"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:+.4f}" }
+"ed.sb_paired.shot_err.missing.share_of_total_LL_stack" = { src = "ed:strata.csv", cols = ["share_of_total_LL_stack"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:.0f}%", scale = 100 }
+"ed.sb_paired.shot_err.missing.shots" = { src = "ed:strata.csv", cols = ["shots"], row = { split = "sb_paired:shot_err", level = "missing" }, fmt = "{:,.0f}" }
+"fs.all.pos_ALL_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"fs.all.pos_ALL_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"fs.all.pos_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.pos_ALL_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"fs.all.pos_DA_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"fs.all.pos_DA_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"fs.all.pos_DA_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.pos_DA_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"fs.all.stack_ALL_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"fs.all.stack_ALL_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"fs.all.stack_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.stack_ALL_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"fs.all.stack_GS_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"fs.all.stack_GS_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"fs.all.stack_GS_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.stack_GS_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"fs.all.stack_G_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.3f}" }
+"fs.all.stack_G_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.2f}" }
+"fs.all.stack_G_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.stack_G_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.4f}" }
+"fs.all.stack_Q_new.auc" = { src = "fs:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"fs.all.stack_Q_new.cal_slope" = { src = "fs:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"fs.all.stack_Q_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.all.stack_Q_new.log_loss" = { src = "fs:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"fs.evaluation.pos_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.evaluation.pos_DA_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.evaluation.stack_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.evaluation.stack_GS_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.evaluation.stack_G_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.evaluation.stack_Q_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.pos_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.pos_DA_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.stack_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.stack_GS_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.stack_G_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.gate.stack_Q_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.pos_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.pos_DA_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.stack_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.stack_GS_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.stack_G_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.no_v3_game.stack_Q_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.all.pos_ALL_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.all.pos_DA_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.all.stack_ALL_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.all.stack_G_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.all.stack_Q_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.unseen.pos_ALL_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.unseen.pos_DA_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.unseen.stack_ALL_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.unseen.stack_G_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.pair.unseen.stack_Q_new" = { src = "fs:feet_minus_dd2c.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.pos_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.pos_DA_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.stack_ALL_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.stack_GS_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.stack_G_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.unseen.stack_Q_new.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"lk.goal" = { src = "lk:summary.json", keys = ["seen_share_by_outcome.1"], scale = 100, fmt = "{:.0f}%" }
+"lk.other" = { src = "lk:summary.json", keys = ["seen_share_by_outcome.0"], scale = 100, fmt = "{:.0f}%" }
+"r.ci" = { src = "research/sweep_2026_10_rule.md", quote = "percentile 95% interval", values = [95], fmt = "{:.0f}%" }
+"r.draws" = { src = "sw:deltas.csv", cols = ["draws_used"], row = { subset = "all", method = "const" }, fmt = "{:,.0f}" }
+"r.train.matches" = { src = "research/sweep_2026_10_rule.md", quote = "328 training matches", values = [328], fmt = "{:.0f}" }
+"r.train.shots" = { src = "lk:summary.json", keys = ["shots"], fmt = "{:,d}" }
+"sb.paired_primary.a1.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "a1" }, fmt = "{:.3f}" }
+"sb.paired_primary.a1.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "a1" }, fmt = "{:.4f}" }
+"sb.paired_primary.a1.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "a1" }, fmt = "{:.2f}" }
+"sb.paired_primary.a1.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.a1.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "a1" }, fmt = "{:.4f}" }
+"sb.paired_primary.const.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "const" }, fmt = "{:.3f}" }
+"sb.paired_primary.const.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "const" }, fmt = "{:.4f}" }
+"sb.paired_primary.const.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "const" }, fmt = "{:.2f}" }
+"sb.paired_primary.const.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.const.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "const" }, fmt = "{:.4f}" }
+"sb.paired_primary.g_combo.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.3f}" }
+"sb.paired_primary.g_combo.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.4f}" }
+"sb.paired_primary.g_combo.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.2f}" }
+"sb.paired_primary.g_combo.goals" = { src = "sb:scores.csv", cols = ["goals"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.0f}" }
+"sb.paired_primary.g_combo.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.4f}" }
+"sb.paired_primary.g_combo.matches" = { src = "sb:scores.csv", cols = ["matches"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:.0f}" }
+"sb.paired_primary.g_combo.shots" = { src = "sb:scores.csv", cols = ["shots"], row = { subset = "paired_primary", method = "g_combo" }, fmt = "{:,.0f}" }
+"sb.paired_primary.pos_ALL_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.pos_ALL_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.pos_ALL_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.pos_ALL_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.pos_ALL_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.pos_DA_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.pos_DA_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.pos_DA_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.pos_DA_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.pos_DA_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.pos_DA_old.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sb.paired_primary.pos_DA_old.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.pos_DA_old.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sb.paired_primary.pos_DA_old.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.pos_DA_old.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_dist_angle.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "sb_dist_angle" }, fmt = "{:.3f}" }
+"sb.paired_primary.sb_dist_angle.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "sb_dist_angle" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_dist_angle.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "sb_dist_angle" }, fmt = "{:.2f}" }
+"sb.paired_primary.sb_dist_angle.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "sb_dist_angle" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.sb_dist_angle.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "sb_dist_angle" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_events.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "sb_events" }, fmt = "{:.3f}" }
+"sb.paired_primary.sb_events.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "sb_events" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_events.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "sb_events" }, fmt = "{:.2f}" }
+"sb.paired_primary.sb_events.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "sb_events" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.sb_events.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "sb_events" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_positions.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "sb_positions" }, fmt = "{:.3f}" }
+"sb.paired_primary.sb_positions.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "sb_positions" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_positions.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "sb_positions" }, fmt = "{:.2f}" }
+"sb.paired_primary.sb_positions.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "sb_positions" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.sb_positions.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "sb_positions" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_vendor.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "sb_vendor" }, fmt = "{:.3f}" }
+"sb.paired_primary.sb_vendor.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "sb_vendor" }, fmt = "{:.4f}" }
+"sb.paired_primary.sb_vendor.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "sb_vendor" }, fmt = "{:.2f}" }
+"sb.paired_primary.sb_vendor.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "sb_vendor" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.sb_vendor.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "sb_vendor" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_ALL_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_ALL_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_ALL_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_ALL_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_ALL_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_ALL_old.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_ALL_old.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_ALL_old.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_ALL_old.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_ALL_old.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_GS_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_GS_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_GS_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_GS_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_GS_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_GS_old.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_GS_old.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_GS_old.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_GS_old.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_GS_old.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_G_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_G_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_G_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_G_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_G_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_G_old.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_G_old.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_G_old.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_G_old.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_G_old.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_Q_new.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_Q_new.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_Q_new.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_Q_new.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_Q_new.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_R.auc" = { src = "sb:scores.csv", cols = ["auc"], row = { subset = "paired_primary", method = "stack_R" }, fmt = "{:.3f}" }
+"sb.paired_primary.stack_R.brier" = { src = "sb:scores.csv", cols = ["brier"], row = { subset = "paired_primary", method = "stack_R" }, fmt = "{:.4f}" }
+"sb.paired_primary.stack_R.cal_slope" = { src = "sb:scores.csv", cols = ["cal_slope"], row = { subset = "paired_primary", method = "stack_R" }, fmt = "{:.2f}" }
+"sb.paired_primary.stack_R.d" = { src = "sb:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "paired_primary", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sb.paired_primary.stack_R.log_loss" = { src = "sb:scores.csv", cols = ["log_loss"], row = { subset = "paired_primary", method = "stack_R" }, fmt = "{:.4f}" }
+"sr.gap.ALL" = { src = "sr:summary.json", keys = ["vendor_gap_share_dd2c.stack_ALL_new"], scale = 100, fmt = "{:.0f}%" }
+"sr.gap.Q" = { src = "sr:summary.json", keys = ["vendor_gap_share_dd2c.stack_Q_new"], scale = 100, fmt = "{:.0f}%" }
+"sr.gk.depth" = { src = "sr:summary.json", keys = ["goalkeeper.depth_error_median_m"], fmt = "{:.2f} m" }
+"sr.gk.det" = { src = "sr:summary.json", keys = ["goalkeeper.detected_share_paired"], scale = 100, fmt = "{:.0f}%" }
+"sr.gk.det.all" = { src = "sr:summary.json", keys = ["goalkeeper.detected_share_all"], scale = 100, fmt = "{:.0f}%" }
+"sr.loc.all.all.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "all", level = "all" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.all.all.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "all", level = "all" }, fmt = "{:.2f} m" }
+"sr.loc.all.all.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "all", level = "all" }, fmt = "{:,.0f}" }
+"sr.loc.all.all.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "all", level = "all" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.all.all.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "all", level = "all" }, fmt = "{:.2f} m" }
+"sr.loc.all.all.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "all", level = "all" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.all.all.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "all", level = "all" }, fmt = "{:.2f} m" }
+"sr.loc.band.11-16.5m.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.11-16.5m.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.2f} m" }
+"sr.loc.band.11-16.5m.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "band", level = "11-16.5m" }, fmt = "{:,.0f}" }
+"sr.loc.band.11-16.5m.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.11-16.5m.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.2f} m" }
+"sr.loc.band.11-16.5m.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.11-16.5m.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "band", level = "11-16.5m" }, fmt = "{:.2f} m" }
+"sr.loc.band.16.5-25m.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.16.5-25m.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.16.5-25m.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "band", level = "16.5-25m" }, fmt = "{:,.0f}" }
+"sr.loc.band.16.5-25m.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.16.5-25m.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.16.5-25m.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.16.5-25m.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "band", level = "16.5-25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.6-11m.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "band", level = "6-11m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.6-11m.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "band", level = "6-11m" }, fmt = "{:.2f} m" }
+"sr.loc.band.6-11m.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "band", level = "6-11m" }, fmt = "{:,.0f}" }
+"sr.loc.band.6-11m.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "band", level = "6-11m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.6-11m.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "band", level = "6-11m" }, fmt = "{:.2f} m" }
+"sr.loc.band.6-11m.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "band", level = "6-11m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.6-11m.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "band", level = "6-11m" }, fmt = "{:.2f} m" }
+"sr.loc.band.ge25m.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "band", level = ">=25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.ge25m.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "band", level = ">=25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.ge25m.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "band", level = ">=25m" }, fmt = "{:,.0f}" }
+"sr.loc.band.ge25m.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "band", level = ">=25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.ge25m.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "band", level = ">=25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.ge25m.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "band", level = ">=25m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.ge25m.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "band", level = ">=25m" }, fmt = "{:.2f} m" }
+"sr.loc.band.lt6m.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "band", level = "<6m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.lt6m.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "band", level = "<6m" }, fmt = "{:.2f} m" }
+"sr.loc.band.lt6m.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "band", level = "<6m" }, fmt = "{:,.0f}" }
+"sr.loc.band.lt6m.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "band", level = "<6m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.lt6m.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "band", level = "<6m" }, fmt = "{:.2f} m" }
+"sr.loc.band.lt6m.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "band", level = "<6m" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.band.lt6m.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "band", level = "<6m" }, fmt = "{:.2f} m" }
+"sr.loc.body.Head.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "body", level = "Head" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Head.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "body", level = "Head" }, fmt = "{:.2f} m" }
+"sr.loc.body.Head.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "body", level = "Head" }, fmt = "{:,.0f}" }
+"sr.loc.body.Head.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "body", level = "Head" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Head.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "body", level = "Head" }, fmt = "{:.2f} m" }
+"sr.loc.body.Head.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "body", level = "Head" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Head.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "body", level = "Head" }, fmt = "{:.2f} m" }
+"sr.loc.body.Left_Foot.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "body", level = "Left Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Left_Foot.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "body", level = "Left Foot" }, fmt = "{:.2f} m" }
+"sr.loc.body.Left_Foot.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "body", level = "Left Foot" }, fmt = "{:,.0f}" }
+"sr.loc.body.Left_Foot.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "body", level = "Left Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Left_Foot.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "body", level = "Left Foot" }, fmt = "{:.2f} m" }
+"sr.loc.body.Left_Foot.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "body", level = "Left Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Left_Foot.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "body", level = "Left Foot" }, fmt = "{:.2f} m" }
+"sr.loc.body.Other.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "body", level = "Other" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Other.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "body", level = "Other" }, fmt = "{:.2f} m" }
+"sr.loc.body.Other.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "body", level = "Other" }, fmt = "{:,.0f}" }
+"sr.loc.body.Other.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "body", level = "Other" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Other.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "body", level = "Other" }, fmt = "{:.2f} m" }
+"sr.loc.body.Other.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "body", level = "Other" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Other.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "body", level = "Other" }, fmt = "{:.2f} m" }
+"sr.loc.body.Right_Foot.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "body", level = "Right Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Right_Foot.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "body", level = "Right Foot" }, fmt = "{:.2f} m" }
+"sr.loc.body.Right_Foot.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "body", level = "Right Foot" }, fmt = "{:,.0f}" }
+"sr.loc.body.Right_Foot.feet_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_ge5_share"], row = { group = "body", level = "Right Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Right_Foot.feet_median_m" = { src = "sr:location_error.csv", cols = ["feet_median_m"], row = { group = "body", level = "Right Foot" }, fmt = "{:.2f} m" }
+"sr.loc.body.Right_Foot.feet_t0_ge5_share" = { src = "sr:location_error.csv", cols = ["feet_t0_ge5_share"], row = { group = "body", level = "Right Foot" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.body.Right_Foot.feet_t0_median_m" = { src = "sr:location_error.csv", cols = ["feet_t0_median_m"], row = { group = "body", level = "Right Foot" }, fmt = "{:.2f} m" }
+"sr.loc.dd2c_ball_frame.-400ms.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "dd2c_ball_frame", level = "-400ms" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.dd2c_ball_frame.-400ms.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "dd2c_ball_frame", level = "-400ms" }, fmt = "{:.2f} m" }
+"sr.loc.dd2c_ball_frame.-400ms.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "dd2c_ball_frame", level = "-400ms" }, fmt = "{:,.0f}" }
+"sr.loc.dd2c_ball_frame.-800ms.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "dd2c_ball_frame", level = "-800ms" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.dd2c_ball_frame.-800ms.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "dd2c_ball_frame", level = "-800ms" }, fmt = "{:.2f} m" }
+"sr.loc.dd2c_ball_frame.-800ms.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "dd2c_ball_frame", level = "-800ms" }, fmt = "{:,.0f}" }
+"sr.loc.dd2c_ball_frame.no_ball.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "dd2c_ball_frame", level = "no ball" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.dd2c_ball_frame.no_ball.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "dd2c_ball_frame", level = "no ball" }, fmt = "{:.2f} m" }
+"sr.loc.dd2c_ball_frame.no_ball.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "dd2c_ball_frame", level = "no ball" }, fmt = "{:,.0f}" }
+"sr.loc.dd2c_ball_frame.t0.dd2c_ge5_share" = { src = "sr:location_error.csv", cols = ["dd2c_ge5_share"], row = { group = "dd2c_ball_frame", level = "t0" }, fmt = "{:.0f}%", scale = 100 }
+"sr.loc.dd2c_ball_frame.t0.dd2c_median_m" = { src = "sr:location_error.csv", cols = ["dd2c_median_m"], row = { group = "dd2c_ball_frame", level = "t0" }, fmt = "{:.2f} m" }
+"sr.loc.dd2c_ball_frame.t0.dd2c_n" = { src = "sr:location_error.csv", cols = ["dd2c_n"], row = { group = "dd2c_ball_frame", level = "t0" }, fmt = "{:,.0f}" }
+"sr.seen.other" = { src = "sr:summary.json", keys = ["seen.other"], fmt = "{:,d}" }
+"sr.seen.pg" = { src = "sr:summary.json", keys = ["seen.share_goals"], scale = 100, fmt = "{:.0f}%" }
+"sr.seen.po" = { src = "sr:summary.json", keys = ["seen.share_other"], scale = 100, fmt = "{:.0f}%" }
+"sr.seen.seen_goals" = { src = "sr:summary.json", keys = ["seen.seen_goals"], fmt = "{:d}" }
+"sr.seen.seen_other" = { src = "sr:summary.json", keys = ["seen.seen_other"], fmt = "{:,d}" }
+"sr.seen.seen_shots" = { src = "sr:summary.json", keys = ["seen.seen_shots"], fmt = "{:,d}" }
+"sw.all.a1.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "a1" }, fmt = "{:.3f}" }
+"sw.all.a1.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "a1" }, fmt = "{:.4f}" }
+"sw.all.a1.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "a1" }, fmt = "{:.2f}" }
+"sw.all.a1.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.a1.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "a1" }, fmt = "{:.4f}" }
+"sw.all.const.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "const" }, fmt = "{:.3f}" }
+"sw.all.const.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "const" }, fmt = "{:.4f}" }
+"sw.all.const.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "const" }, fmt = "{:.2f}" }
+"sw.all.const.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.const.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "const" }, fmt = "{:.4f}" }
+"sw.all.g_combo.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "g_combo" }, fmt = "{:.3f}" }
+"sw.all.g_combo.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.all.g_combo.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "g_combo" }, fmt = "{:.2f}" }
+"sw.all.g_combo.goals" = { src = "sw:scores.csv", cols = ["goals"], row = { subset = "all", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.all.g_combo.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.all.g_combo.matches" = { src = "sw:scores.csv", cols = ["matches"], row = { subset = "all", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.all.g_combo.shots" = { src = "sw:scores.csv", cols = ["shots"], row = { subset = "all", method = "g_combo" }, fmt = "{:,.0f}" }
+"sw.all.pos_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sw.all.pos_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.all.pos_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sw.all.pos_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.pos_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.all.pos_DA_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sw.all.pos_DA_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.all.pos_DA_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sw.all.pos_DA_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.pos_DA_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.all.pos_DA_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sw.all.pos_DA_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.all.pos_DA_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sw.all.pos_DA_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.pos_DA_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.all.stack_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sw.all.stack_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.all.stack_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sw.all.stack_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.all.stack_ALL_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sw.all.stack_ALL_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.all.stack_ALL_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sw.all.stack_ALL_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_ALL_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.all.stack_GS_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sw.all.stack_GS_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.all.stack_GS_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sw.all.stack_GS_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_GS_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.all.stack_GS_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sw.all.stack_GS_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.all.stack_GS_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sw.all.stack_GS_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_GS_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.all.stack_G_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sw.all.stack_G_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.all.stack_G_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sw.all.stack_G_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_G_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.all.stack_G_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sw.all.stack_G_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.all.stack_G_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sw.all.stack_G_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_G_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.all.stack_Q_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sw.all.stack_Q_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.all.stack_Q_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sw.all.stack_Q_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_Q_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.all.stack_R.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "all", method = "stack_R" }, fmt = "{:.3f}" }
+"sw.all.stack_R.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "all", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.all.stack_R.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "all", method = "stack_R" }, fmt = "{:.2f}" }
+"sw.all.stack_R.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.all.stack_R.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.evaluation.a1.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "a1" }, fmt = "{:.3f}" }
+"sw.evaluation.a1.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "a1" }, fmt = "{:.4f}" }
+"sw.evaluation.a1.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "a1" }, fmt = "{:.2f}" }
+"sw.evaluation.a1.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.a1.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "a1" }, fmt = "{:.4f}" }
+"sw.evaluation.const.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "const" }, fmt = "{:.3f}" }
+"sw.evaluation.const.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "const" }, fmt = "{:.4f}" }
+"sw.evaluation.const.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "const" }, fmt = "{:.2f}" }
+"sw.evaluation.const.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.const.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "const" }, fmt = "{:.4f}" }
+"sw.evaluation.g_combo.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.3f}" }
+"sw.evaluation.g_combo.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.evaluation.g_combo.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.2f}" }
+"sw.evaluation.g_combo.goals" = { src = "sw:scores.csv", cols = ["goals"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.evaluation.g_combo.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.evaluation.g_combo.matches" = { src = "sw:scores.csv", cols = ["matches"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.evaluation.g_combo.shots" = { src = "sw:scores.csv", cols = ["shots"], row = { subset = "evaluation", method = "g_combo" }, fmt = "{:,.0f}" }
+"sw.evaluation.pos_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sw.evaluation.pos_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.evaluation.pos_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sw.evaluation.pos_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.pos_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.evaluation.pos_DA_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sw.evaluation.pos_DA_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.evaluation.pos_DA_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sw.evaluation.pos_DA_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.pos_DA_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.evaluation.pos_DA_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sw.evaluation.pos_DA_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.evaluation.pos_DA_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sw.evaluation.pos_DA_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.pos_DA_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_ALL_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_ALL_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_ALL_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_ALL_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_ALL_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_GS_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_GS_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_GS_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_GS_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_GS_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_GS_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_GS_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_GS_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_GS_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_GS_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_G_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_G_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_G_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_G_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_G_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_G_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_G_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_G_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_G_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_G_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_Q_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_Q_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_Q_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_Q_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_Q_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_R.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "evaluation", method = "stack_R" }, fmt = "{:.3f}" }
+"sw.evaluation.stack_R.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "evaluation", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.evaluation.stack_R.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "evaluation", method = "stack_R" }, fmt = "{:.2f}" }
+"sw.evaluation.stack_R.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "evaluation", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.evaluation.stack_R.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "evaluation", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.gate.a1.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "a1" }, fmt = "{:.3f}" }
+"sw.gate.a1.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "a1" }, fmt = "{:.4f}" }
+"sw.gate.a1.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "a1" }, fmt = "{:.2f}" }
+"sw.gate.a1.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.a1.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "a1" }, fmt = "{:.4f}" }
+"sw.gate.const.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "const" }, fmt = "{:.3f}" }
+"sw.gate.const.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "const" }, fmt = "{:.4f}" }
+"sw.gate.const.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "const" }, fmt = "{:.2f}" }
+"sw.gate.const.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.const.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "const" }, fmt = "{:.4f}" }
+"sw.gate.g_combo.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.3f}" }
+"sw.gate.g_combo.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.gate.g_combo.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.2f}" }
+"sw.gate.g_combo.goals" = { src = "sw:scores.csv", cols = ["goals"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.gate.g_combo.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.gate.g_combo.matches" = { src = "sw:scores.csv", cols = ["matches"], row = { subset = "gate", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.gate.g_combo.shots" = { src = "sw:scores.csv", cols = ["shots"], row = { subset = "gate", method = "g_combo" }, fmt = "{:,.0f}" }
+"sw.gate.pos_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sw.gate.pos_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.gate.pos_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sw.gate.pos_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.pos_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.gate.pos_DA_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sw.gate.pos_DA_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.gate.pos_DA_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sw.gate.pos_DA_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.pos_DA_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.gate.pos_DA_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sw.gate.pos_DA_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.gate.pos_DA_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sw.gate.pos_DA_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.pos_DA_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sw.gate.stack_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sw.gate.stack_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_ALL_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sw.gate.stack_ALL_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_ALL_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sw.gate.stack_ALL_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_ALL_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_GS_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sw.gate.stack_GS_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_GS_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sw.gate.stack_GS_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_GS_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_GS_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sw.gate.stack_GS_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_GS_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sw.gate.stack_GS_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_GS_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_G_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sw.gate.stack_G_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_G_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sw.gate.stack_G_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_G_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_G_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sw.gate.stack_G_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_G_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sw.gate.stack_G_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_G_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.gate.stack_Q_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sw.gate.stack_Q_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_Q_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sw.gate.stack_Q_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_Q_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.gate.stack_R.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "gate", method = "stack_R" }, fmt = "{:.3f}" }
+"sw.gate.stack_R.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "gate", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.gate.stack_R.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "gate", method = "stack_R" }, fmt = "{:.2f}" }
+"sw.gate.stack_R.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "gate", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.gate.stack_R.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "gate", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.no_v3_game.a1.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "a1" }, fmt = "{:.3f}" }
+"sw.no_v3_game.a1.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "a1" }, fmt = "{:.4f}" }
+"sw.no_v3_game.a1.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "a1" }, fmt = "{:.2f}" }
+"sw.no_v3_game.a1.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.a1.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "a1" }, fmt = "{:.4f}" }
+"sw.no_v3_game.const.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "const" }, fmt = "{:.3f}" }
+"sw.no_v3_game.const.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "const" }, fmt = "{:.4f}" }
+"sw.no_v3_game.const.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "const" }, fmt = "{:.2f}" }
+"sw.no_v3_game.const.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.const.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "const" }, fmt = "{:.4f}" }
+"sw.no_v3_game.g_combo.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.3f}" }
+"sw.no_v3_game.g_combo.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.no_v3_game.g_combo.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.2f}" }
+"sw.no_v3_game.g_combo.goals" = { src = "sw:scores.csv", cols = ["goals"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.no_v3_game.g_combo.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.no_v3_game.g_combo.matches" = { src = "sw:scores.csv", cols = ["matches"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.no_v3_game.g_combo.shots" = { src = "sw:scores.csv", cols = ["shots"], row = { subset = "no_v3_game", method = "g_combo" }, fmt = "{:,.0f}" }
+"sw.no_v3_game.pos_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.pos_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.pos_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.pos_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.pos_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.pos_DA_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.pos_DA_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.pos_DA_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.pos_DA_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.pos_DA_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.pos_DA_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sw.no_v3_game.pos_DA_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.pos_DA_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sw.no_v3_game.pos_DA_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.pos_DA_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_ALL_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_ALL_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_ALL_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_ALL_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_ALL_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_GS_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_GS_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_GS_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_GS_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_GS_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_GS_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_GS_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_GS_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_GS_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_GS_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_G_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_G_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_G_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_G_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_G_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_G_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_G_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_G_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_G_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_G_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_Q_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_Q_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_Q_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_Q_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_Q_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_R.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "no_v3_game", method = "stack_R" }, fmt = "{:.3f}" }
+"sw.no_v3_game.stack_R.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "no_v3_game", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.no_v3_game.stack_R.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "no_v3_game", method = "stack_R" }, fmt = "{:.2f}" }
+"sw.no_v3_game.stack_R.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "no_v3_game", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.no_v3_game.stack_R.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "no_v3_game", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.unseen.a1.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "a1" }, fmt = "{:.3f}" }
+"sw.unseen.a1.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "a1" }, fmt = "{:.4f}" }
+"sw.unseen.a1.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "a1" }, fmt = "{:.2f}" }
+"sw.unseen.a1.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "a1" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.a1.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "a1" }, fmt = "{:.4f}" }
+"sw.unseen.const.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "const" }, fmt = "{:.3f}" }
+"sw.unseen.const.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "const" }, fmt = "{:.4f}" }
+"sw.unseen.const.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "const" }, fmt = "{:.2f}" }
+"sw.unseen.const.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "const" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.const.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "const" }, fmt = "{:.4f}" }
+"sw.unseen.g_combo.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.3f}" }
+"sw.unseen.g_combo.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.unseen.g_combo.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.2f}" }
+"sw.unseen.g_combo.goals" = { src = "sw:scores.csv", cols = ["goals"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.unseen.g_combo.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.4f}" }
+"sw.unseen.g_combo.matches" = { src = "sw:scores.csv", cols = ["matches"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:.0f}" }
+"sw.unseen.g_combo.shots" = { src = "sw:scores.csv", cols = ["shots"], row = { subset = "unseen", method = "g_combo" }, fmt = "{:,.0f}" }
+"sw.unseen.pos_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:.3f}" }
+"sw.unseen.pos_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.unseen.pos_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:.2f}" }
+"sw.unseen.pos_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.pos_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "pos_ALL_new" }, fmt = "{:.4f}" }
+"sw.unseen.pos_DA_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:.3f}" }
+"sw.unseen.pos_DA_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.unseen.pos_DA_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:.2f}" }
+"sw.unseen.pos_DA_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.pos_DA_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "pos_DA_new" }, fmt = "{:.4f}" }
+"sw.unseen.pos_DA_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "pos_DA_old" }, fmt = "{:.3f}" }
+"sw.unseen.pos_DA_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.unseen.pos_DA_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "pos_DA_old" }, fmt = "{:.2f}" }
+"sw.unseen.pos_DA_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "pos_DA_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.pos_DA_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "pos_DA_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_ALL_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:.3f}" }
+"sw.unseen.stack_ALL_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_ALL_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:.2f}" }
+"sw.unseen.stack_ALL_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_ALL_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_ALL_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_ALL_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_ALL_old" }, fmt = "{:.3f}" }
+"sw.unseen.stack_ALL_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_ALL_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_ALL_old" }, fmt = "{:.2f}" }
+"sw.unseen.stack_ALL_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_ALL_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_ALL_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_ALL_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_GS_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:.3f}" }
+"sw.unseen.stack_GS_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_GS_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:.2f}" }
+"sw.unseen.stack_GS_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_GS_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_GS_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_GS_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_GS_old" }, fmt = "{:.3f}" }
+"sw.unseen.stack_GS_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_GS_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_GS_old" }, fmt = "{:.2f}" }
+"sw.unseen.stack_GS_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_GS_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_GS_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_GS_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_G_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:.3f}" }
+"sw.unseen.stack_G_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_G_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:.2f}" }
+"sw.unseen.stack_G_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_G_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_G_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_G_old.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_G_old" }, fmt = "{:.3f}" }
+"sw.unseen.stack_G_old.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_G_old.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_G_old" }, fmt = "{:.2f}" }
+"sw.unseen.stack_G_old.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_G_old" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_G_old.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_G_old" }, fmt = "{:.4f}" }
+"sw.unseen.stack_Q_new.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:.3f}" }
+"sw.unseen.stack_Q_new.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_Q_new.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:.2f}" }
+"sw.unseen.stack_Q_new.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_Q_new.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_Q_new" }, fmt = "{:.4f}" }
+"sw.unseen.stack_R.auc" = { src = "sw:scores.csv", cols = ["auc"], row = { subset = "unseen", method = "stack_R" }, fmt = "{:.3f}" }
+"sw.unseen.stack_R.brier" = { src = "sw:scores.csv", cols = ["brier"], row = { subset = "unseen", method = "stack_R" }, fmt = "{:.4f}" }
+"sw.unseen.stack_R.cal_slope" = { src = "sw:scores.csv", cols = ["cal_slope"], row = { subset = "unseen", method = "stack_R" }, fmt = "{:.2f}" }
+"sw.unseen.stack_R.d" = { src = "sw:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "unseen", method = "stack_R" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"sw.unseen.stack_R.log_loss" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "unseen", method = "stack_R" }, fmt = "{:.4f}" }
