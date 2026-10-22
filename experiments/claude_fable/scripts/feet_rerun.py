@@ -1,86 +1,59 @@
-"""xgs_detector_rerun.py (development read-out on the 328 training matches) with the feet_patch features.
+"""`xgs_detector_rerun.py` (development read-out on the 328 training matches) with the E3 table under a shot-location
+rule of `xgpoc.detector.location` (frozen rule: research/feet_location_rule.md). Development only, CPU.
 
-./run.sh --no-sync python scripts/feet_rerun.py [--t0] --e3 cache/xgd_full5_feet[_t0]/E3 --out results/xgs_stack_feet[_t0]
+    ./run.sh --no-sync python scripts/feet_rerun.py --rule feet_t0 --e3 cache/xgd_full4_feet_t0/E3 --out results/<new>
+
+Rules: `feet_t0` (the frozen rule, E3's t0 ball-source columns kept), and the two development ablations of 2026-10-22
+that chose it, `feet_t0_own_flags` (the same cache, the rule's own t0 ball-source columns; results/xgs_stack_feet_t0)
+and `feet_e3_order` (E3's ball order -400, -800, 0 with the feet location; cache/xgd_full5_feet, results/xgs_stack_feet).
+The reference population still replays the frozen E3 (cache/xgd_full3/E3) with the frozen code and must reproduce
+results/xgs_stack/real/summary.json (xgs_detector_rerun). The rule's population is `stack_location.inputs.
+build_population`; the only design difference allowed is `shot_masked@0` dropped for zero variance (the feet location
+is never masked).
+
+Until 2026-10-22 this script monkey-patched `features.situation` (scripts/feet_patch.py, deleted); the library tables
+equal the patched ones exactly (scripts/location_check.py, research/feet_location_rule.json evidence).
 """
 
+import argparse
+import json
 import sys
 
-import feet_patch
+import xgs_detector_rerun as rerun
+from xgpoc.detector import location as loc
+from xgpoc.stack import inputs as si
+from xgpoc.stack_location import inputs as sl
 
-t0 = "--t0" in sys.argv
-if t0:
-    sys.argv.remove("--t0")
-keep_flags = (
-    "--keep-ball-flags" in sys.argv
-)  # ablation: t0 variant's locations, dd2c's ball-source flags at t0
-if keep_flags:
-    sys.argv.remove("--keep-ball-flags")
-FLAG_COLUMNS = [
-    "ball_none@0",
-    "ball_own@0",
-    "ball_m400@0",
-    "ball_m800@0",
-    "shot_from_ball@0",
-]
-import xgs_detector_rerun as rerun  # noqa: E402
-from xgpoc.stack import inputs  # noqa: E402
+RULES = {
+    "feet_t0": loc.FEET_T0,
+    "feet_t0_own_flags": loc.LocationRule("feet_t0_own_flags", loc.FEET_T0.source, loc.feet_situation),
+    "feet_e3_order": loc.LocationRule("feet_e3_order", loc.E3.source, loc.feet_situation),
+}
 
-FROZEN_CONFIG = inputs.E3_CONFIG
-_build = inputs.build_population
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument("--rule", choices=sorted(RULES), required=True)
+known, rest = parser.parse_known_args()
+RULE = RULES[known.rule]
+sys.argv = [sys.argv[0], *rest]
+_frozen_build = si.build_population
 
 
-def build_population(*args, e3=inputs.E3, **kw):
-    """The reference population replays the frozen E3 unpatched; any other cache replays with the patch."""
-    from xgpoc.detector import features as ft
-
-    if e3 == inputs.E3:
-        ft.situation, inputs.situation, inputs.E3_CONFIG = (
-            feet_patch._original,
-            feet_patch._original,
-            FROZEN_CONFIG,
-        )
-        return _build(*args, e3=e3, **kw)
-    if keep_flags:
-        ft.situation, inputs.situation, inputs.E3_CONFIG = (
-            feet_patch._original,
-            feet_patch._original,
-            FROZEN_CONFIG,
-        )
-        dd2c = _build(*args, e3=rerun.ROOT / "cache/xgd_full4/E3", **kw)
-    feet_patch.apply(t0_ball=t0)
-    population = _build(*args, e3=e3, **kw)
-    if keep_flags:
-        population.table[FLAG_COLUMNS] = dd2c.table.loc[
-            population.table.index, FLAG_COLUMNS
-        ]
-    return population
+def build_population(*args, e3=si.E3, **kw):
+    """The reference population replays the frozen E3 with the frozen code; any other cache under `RULE`."""
+    if e3 == si.E3:
+        return _frozen_build(*args, e3=e3, **kw)
+    return sl.build_population(RULE, *args, e3=e3, **kw)
 
 
 def read_out(population, y, frozen):
-    """As `rerun.read_out`, but the only allowed design difference is `shot_masked@0` dropped for zero variance (the
-    feet location is never masked); anything else still stops the run."""
-    import json
-
+    """As `rerun.read_out`, but `shot_masked@0` may be dropped for zero variance; anything else still stops the run."""
     spec = rerun.sf.spec(frozen["design"]["chosen"], population.table)
-    new = json.loads(json.dumps(rerun.pr.design(spec)))
-    strip = lambda d: json.loads(
-        json.dumps(d).replace('"shot_masked@0", ', "").replace(', "shot_masked@0"', "")
-    )  # noqa: E731
-    a, b = strip(new), strip(frozen["design"])
-    if t0:  # the t0 variant changes the E3 ball order on purpose
-        a.pop("e3", None)
-        b.pop("e3", None)
-    if a != b:
-        raise SystemExit(
-            "the population's design differs from the protocol's beyond shot_masked@0 (and the t0 ball order)"
-        )
-    return rerun.sa.analyse(
-        population.table,
-        population.folds,
-        y,
-        rerun.ss.bootstrap_weights(population.games),
-        spec,
-    )
+
+    def strip(d):
+        return json.loads(json.dumps(d).replace('"shot_masked@0", ', "").replace(', "shot_masked@0"', ""))
+    if strip(json.loads(json.dumps(rerun.pr.design(spec)))) != strip(frozen["design"]):
+        raise SystemExit("the population's design differs from the protocol's beyond shot_masked@0")
+    return rerun.sa.analyse(population.table, population.folds, y, rerun.ss.bootstrap_weights(population.games), spec)
 
 
 _frozen_read_out = rerun.read_out
@@ -88,14 +61,13 @@ _calls = []
 
 
 def read_out_switch(population, y, frozen):
+    """The first read-out is the frozen reference (exact design check), the second the rule's."""
     _calls.append(1)
-    return (
-        _frozen_read_out(population, y, frozen)
-        if len(_calls) == 1
-        else read_out(population, y, frozen)
-    )
+    return _frozen_read_out(population, y, frozen) if len(_calls) == 1 else read_out(population, y, frozen)
 
 
 rerun.si.build_population = build_population
 rerun.read_out = read_out_switch
-rerun.main()
+
+if __name__ == "__main__":
+    rerun.main()

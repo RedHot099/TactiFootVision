@@ -1,83 +1,56 @@
-"""The 2026-10-18 method sweep (`sweep_test.py`, rule research/sweep_2026_10_rule.md) repeated with the feet variant
-of the retrained detector's E3 in place of xgd_full4 (2026-10-22, owner-ordered error decomposition; descriptive: the
-172 matches are spent). Variant: shot location = shooter's feet, the t0 ball picks the shooter (`feet_patch`, t0_ball),
-the t0 ball-source flags kept from xgd_full4 (the development ablation). The `*_new` methods are the feet variant.
+"""The 2026-10-18 method sweep (`sweep_test.py`, rule research/sweep_2026_10_rule.md) repeated with the feet_t0 E3 of
+the retrained detector in place of xgd_full4 (2026-10-22, owner-ordered error decomposition; descriptive: the 172
+matches are spent). The `*_new` methods use the frozen shot-location rule `feet_t0` (research/feet_location_rule.md,
+`xgpoc.detector.location.FEET_T0`: shot location = shooter's feet, the t0 ball picks the shooter, E3's t0 ball-source
+columns kept) on cache/xgd_full4_feet_t0/E3.
 
-    ./run.sh --no-sync python scripts/feet_sweep.py
+    ./run.sh --no-sync python scripts/feet_sweep.py --out results/<new>
 
-Writes results/sweep_feet_2026_10/ (as sweep_test) and prints the feet-minus-dd2c paired deltas per arm.
+Writes <out>/ (as sweep_test) and prints the feet-minus-dd2c paired deltas per arm. results/sweep_feet_2026_10 was
+written on 2026-10-22 by the monkey-patched version of this script (scripts/feet_patch.py, deleted); the library
+tables equal the patched ones exactly (scripts/location_check.py), so a re-run reproduces it.
 """
 
+import argparse
 from pathlib import Path
 
-import feet_patch
 import numpy as np
 import pandas as pd
 import sweep_test as st
-from xgpoc.detector import features as ft
+from xgpoc.detector import location as loc
 from xgpoc.stack import inputs as si
 from xgpoc.stack_heldout import rule as tr
 from xgpoc.stack_heldout import testset as ts
+from xgpoc.stack_location import inputs as sl
 from xgs_test import read_test_labels
 
 ROOT = Path(__file__).resolve().parents[1]
-FEET = ROOT / "cache/xgd_full5_feet_t0/E3"
-DD2C = ROOT / "cache/xgd_full4/E3"
-OUT = ROOT / "results/sweep_feet_2026_10"
-FLAGS = ["ball_none@0", "ball_own@0", "ball_m400@0", "ball_m800@0", "shot_from_ball@0"]
-FROZEN_CONFIG = si.E3_CONFIG
-
-
-def unpatched() -> None:
-    ft.situation, si.situation, si.E3_CONFIG = (
-        feet_patch._original,
-        feet_patch._original,
-        FROZEN_CONFIG,
-    )
-
-
-def with_dd2c_flags(build, e3, *args, **kw):
-    """`build` on the feet cache (patched) with xgd_full4's t0 ball-source flags; any other cache unpatched."""
-    unpatched()
-    if Path(e3) != FEET:
-        return (
-            build(*args, e3=e3, **kw)
-            if build is _population
-            else build(*args[:2], e3, *args[2:], **kw)
-        )
-    ref = (
-        build(*args, e3=DD2C, **kw)
-        if build is _population
-        else build(*args[:2], DD2C, *args[2:], **kw)
-    )
-    feet_patch.apply(t0_ball=True)
-    out = (
-        build(*args, e3=e3, **kw)
-        if build is _population
-        else build(*args[:2], e3, *args[2:], **kw)
-    )
-    unpatched()
-    if build is _population:
-        out.table[FLAGS] = ref.table.loc[out.table.index, FLAGS]
-        return out
-    table, wrapped = out
-    table[FLAGS] = ref[0].loc[table.index, FLAGS]
-    return table, wrapped
-
-
+FEET = ROOT / "cache/xgd_full4_feet_t0/E3"
+RULE = loc.FEET_T0
 _population, _heldout = si.build_population, ts.heldout_table
-st.si.build_population = lambda *a, e3=si.E3, **kw: with_dd2c_flags(
-    _population, e3, *a, **kw
-)
-st.ts.heldout_table = lambda shots, z, e3, ann: with_dd2c_flags(
-    _heldout, e3, shots, z, ann
-)
-st.NEW_E3 = FEET
+
+
+def population(*args, e3=si.E3, **kw):
+    """sweep_test's population: the feet cache under `RULE`, any other cache with the frozen code."""
+    return sl.build_population(RULE, *args, e3=e3, **kw) if Path(e3) == FEET else _population(*args, e3=e3, **kw)
+
+
+def heldout(shots, z, e3, annotations):
+    """sweep_test's held-out table: the feet cache under `RULE`, any other cache with the frozen code."""
+    if Path(e3) == FEET:
+        return sl.heldout_table(shots, z, e3, annotations, RULE)
+    return _heldout(shots, z, e3, annotations)
+
+
+st.si.build_population, st.ts.heldout_table, st.NEW_E3 = population, heldout, FEET
 
 
 def main() -> None:
-    st.run_sweep(OUT)
-    feet = pd.read_csv(OUT / "predictions.csv").set_index("shot_id")
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--out", type=Path, required=True)
+    out = parser.parse_args().out
+    st.run_sweep(out)
+    feet = pd.read_csv(out / "predictions.csv").set_index("shot_id")
     base = (
         pd.read_csv(ROOT / "results/sweep_2026_10/predictions.csv")
         .set_index("shot_id")
@@ -113,7 +86,7 @@ def main() -> None:
                 )
             )
     table = pd.DataFrame(rows)
-    table.to_csv(OUT / "feet_minus_dd2c.csv", index=False, float_format="%.6g")
+    table.to_csv(out / "feet_minus_dd2c.csv", index=False, float_format="%.6g")
     print(table.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
 
 
