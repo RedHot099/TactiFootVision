@@ -1,6 +1,6 @@
 # TactiFoot Vision
 
-https://github.com/user-attachments/assets/a8b6f0a2-3cf0-4061-895d-b4ffb92c38c5
+![TactiFoot Vision on one attacking move](docs/media/tactifoot_promo.avif)
 
 TactiFoot Vision turns football match video into tactical data. It finds and follows every player and the ball, works out who plays for which team, and maps the action onto the pitch in metres.
 
