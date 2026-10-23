@@ -2,8 +2,9 @@
 
 Every swappable component family (models, trackers, team embedders) keeps one
 ``Registry``, and so do post-processes, whose entries are functions on a
-``PipelineResult`` rather than factories. Backends register themselves with a decorator, and callers pick a
-backend by name, which is also how YAML configs refer to them::
+``PipelineResult`` rather than factories. Backends register themselves with a
+decorator, and callers pick a backend by name, which is also how YAML configs
+refer to them::
 
     @MODELS.register("yolo")
     class YOLODetector(Model): ...

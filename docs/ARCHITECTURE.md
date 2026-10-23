@@ -509,6 +509,9 @@ configs/              example run files
   signature and makes every call, direct or by name, append an
   `AppliedPostProcess(name, options)` (defaults included) to the returned
   result's `postprocesses`; `save`/`load` and `export` keep that record.
+  The record holds a deep copy of the options, taken before the call, and
+  the history is copied too, so neither the post-process, a caller changing
+  an option afterwards, nor editing a later result's records rewrites it.
   Shared helpers keep a changed result consistent:
   `reproject(result, homographies)` replaces the homographies (one per
   frame, `None` for none) and recomputes `pitch_xy` from the boxes (ball

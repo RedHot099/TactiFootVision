@@ -11,12 +11,12 @@ the parts it leaves unchanged). Register it by name::
     joined = POSTPROCESSES.get("join_tracks")(result)  # by name, as run files do
 
 Registering wraps the function, keeping its signature, so that every call
-appends an :class:`AppliedPostProcess` (the name and every option, defaults
-included) to the returned result's ``postprocesses``. When a registered
-post-process calls another, only the outer call is recorded. A post-process that
-moves positions or changes identities keeps the result consistent with
-:func:`reproject` and :func:`remap_track_ids`, and measures in metres with
-:func:`metres_per_unit`.
+appends an :class:`AppliedPostProcess` (the name and a copy of every option,
+defaults included, taken before the call) to the returned result's
+``postprocesses``. When a registered post-process calls another, only the
+outer call is recorded. A post-process that moves positions or changes
+identities keeps the result consistent with :func:`reproject` and
+:func:`remap_track_ids`, and measures in metres with :func:`metres_per_unit`.
 """
 
 import copy
@@ -55,16 +55,19 @@ class _PostProcessRegistry(Registry[PipelineResult]):
                 bound = signature.bind(*args, **kwargs)
                 bound.apply_defaults()
                 result, *_ = bound.arguments.values()
+                # copied before the call, so neither the post-process nor the
+                # caller changing an option afterwards rewrites the record
+                record = AppliedPostProcess(
+                    name, copy.deepcopy(_options(signature, bound))
+                )
                 output = function(*args, **kwargs)
                 if not isinstance(output, PipelineResult):
                     raise TypeError(
                         f"Post-process {name!r} returned {type(output).__name__}; "
                         "it must return a new PipelineResult"
                     )
-                record = AppliedPostProcess(name, _options(signature, bound))
-                return dataclasses.replace(
-                    output, postprocesses=[*result.postprocesses, record]
-                )
+                history = copy.deepcopy(result.postprocesses)
+                return dataclasses.replace(output, postprocesses=[*history, record])
 
             add(recorded)
             return cast(F, recorded)
