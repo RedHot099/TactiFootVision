@@ -5,6 +5,7 @@
     uv run python scripts/detector_bench.py placement --weights W --split valid --out DIR
     uv run python scripts/detector_bench.py homographies --split test  # freeze GSR test homographies (ticket 05)
     uv run python scripts/detector_bench.py epochs --weights-dir RUN/yolo11l_1280/weights --out DIR  # every epoch
+    uv run python scripts/detector_bench.py dump --weights W --out DIR  # every candidate, for scoring without weights
 
 Benchmark: SoccerNet GSR valid (dev) and test (final, read once per candidate), every `STRIDE`-th frame of every clip
 (frames 1, 6, 11, ...: the frames GSR test is downloaded with and the frames of the pitch-keypoints homography
@@ -26,6 +27,11 @@ reported: the share of frames with a placed ball, its error and the share of pla
 2,000-draw clip-bootstrap intervals. The homographies are fixed so that only the detector changes. `--split test`
 uses the GSR test homographies of the same method (pitch-keypoints 03's single test scoring of its chosen keypoint
 model), frozen by `homographies --split test` and recorded in research/detector_bench.json (ticket 05).
+
+`dump` (ball-detection 01) runs the detector once per row on GSR valid and Ekstraklasa dev at `EVAL_CONF` with the
+row's NMS and writes every candidate box of every class (`candidates.parquet`, boxes in the labels' pixels as
+`evaluate` scores them), the scored images (`images.parquet`) and the settings (`dump.json`: weights sha256, rows,
+`max_det`, classes). `score_dump` and `dump_top_ball` score a dump as `evaluate` and `placement` score the weights.
 """
 
 import argparse
@@ -34,12 +40,14 @@ import json
 import logging
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pandas as pd
+import supervision as sv
 
 import tactifoot_vision as tv
 from tactifoot_vision.data import Dataset
@@ -487,7 +495,33 @@ def ball_truth(labels: dict) -> dict[int, np.ndarray]:
     return {frame: xy[0] for frame, xy in found.items() if len(xy) == 1}
 
 
-def placement_rows(model, homographies: dict, split: str) -> pd.DataFrame:
+def model_top_ball(model) -> Callable[[str, int, Path], np.ndarray | None]:
+    """``(clip, frame, image path) -> centre`` of ``model``'s most confident ball in the frame resized to
+    ``PLACEMENT["input_size"]`` (that frame's pixels), ``None`` without a ball."""
+
+    def top_ball(clip: str, frame: int, path: Path) -> np.ndarray | None:
+        frame_bgr = cv2.imread(str(path))
+        size = PLACEMENT["input_size"]
+        if frame_bgr.shape[1::-1] != size:
+            frame_bgr = cv2.resize(frame_bgr, size, interpolation=cv2.INTER_AREA)
+        detections = model.predict(frame_bgr)
+        balls = detections[detections.data["class_name"] == "ball"]
+        if not len(balls):
+            return None
+        best = int(np.argmax(balls.confidence))
+        return (balls.xyxy[best, :2] + balls.xyxy[best, 2:]) / 2
+
+    return top_ball
+
+
+def placement_rows(
+    top_ball: Callable[[str, int, Path], np.ndarray | None],
+    homographies: dict,
+    split: str,
+) -> pd.DataFrame:
+    """One row per scored frame whose single truth ball lies on the pitch; ``top_ball`` (``model_top_ball``,
+    ``dump_top_ball``) gives the placed ball's centre in ``PLACEMENT["input_size"]`` pixels, asked only for frames
+    with a homography."""
     rows = []
     for labels_path in sorted((GSR / split).glob("*/Labels-GameState.json")):
         labels = json.loads(labels_path.read_text())
@@ -506,20 +540,13 @@ def placement_rows(model, homographies: dict, split: str) -> pd.DataFrame:
             matrix = homographies.get((clip, frame))
             xy = np.full(2, np.nan)
             if matrix is not None:
-                frame_bgr = cv2.imread(
-                    str(labels_path.parent / "img1" / image["file_name"])
+                centre = top_ball(
+                    clip, frame, labels_path.parent / "img1" / image["file_name"]
                 )
-                size = PLACEMENT["input_size"]
-                if frame_bgr.shape[1::-1] != size:
-                    frame_bgr = cv2.resize(
-                        frame_bgr, size, interpolation=cv2.INTER_AREA
-                    )
-                detections = model.predict(frame_bgr)
-                balls = detections[detections.data["class_name"] == "ball"]
-                if len(balls):
-                    best = int(np.argmax(balls.confidence))
-                    centre = (balls.xyxy[best, :2] + balls.xyxy[best, 2:]) / 2
-                    xy = tv.pitch.frame_to_pitch(centre[None], matrix)[0].astype(float)
+                if centre is not None:
+                    xy = tv.pitch.frame_to_pitch(
+                        np.asarray(centre, np.float32)[None], matrix
+                    )[0].astype(float)
             near = (
                 min(true_xy[0], 2 * HALF_LENGTH - true_xy[0])
                 <= PLACEMENT["near_goal_m"]
@@ -606,7 +633,7 @@ def placement(args: argparse.Namespace) -> None:
         device=args.device,
     )
     clock = time.perf_counter()
-    rows = placement_rows(model, homographies, args.split)
+    rows = placement_rows(model_top_ball(model), homographies, args.split)
     summary = {
         "split": args.split,
         "weights": str(args.weights),
@@ -620,6 +647,215 @@ def placement(args: argparse.Namespace) -> None:
     rows.to_parquet(args.out / "placement_frames.parquet", index=False)
     (args.out / "placement.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
+
+
+# ------------------------------------------------------------------ dump
+DUMP_SETS = ("gsr", "ekstraklasa")
+DUMP_ROWS = ("1280", "e3")
+CANDIDATE_COLUMNS = ["x1", "y1", "x2", "y2"]
+
+
+def ekstraklasa_clip(stem: str) -> str:
+    """The LiveTag clip of an Ekstraklasa dev image (``-<clip>-_mp4-0003_jpg`` or ``-<clip>_mp4-0003_jpg``)."""
+    clip = stem.lstrip("-").rsplit("_mp4-", 1)[0]
+    return clip.rstrip("-")
+
+
+def image_key(set_name: str, sample: tv.data.Sample) -> dict:
+    """The dump's identity of a scored image: ``image`` (``SNGS-021/000006`` or the Ekstraklasa file stem), ``clip``,
+    ``game`` and the 1-based GSR ``frame`` (-1 off GSR)."""
+    if set_name == "gsr":
+        clip, frame = sample.meta["sequence"], int(sample.meta["frame"])
+        return {
+            "image": f"{clip}/{frame:06d}",
+            "clip": clip,
+            "game": sample.meta["game"],
+            "frame": frame,
+        }
+    stem = sample.image_path.stem
+    return {"image": stem, "clip": ekstraklasa_clip(stem), "game": "", "frame": -1}
+
+
+def row_predictions(model, samples: list, input_size: tuple[int, int] | None):
+    """``(sample, detections)`` per sample, the boxes in the sample's pixels: `evaluate_detector`'s inference."""
+    for sample in samples:
+        image = sample.read_image()
+        if input_size is not None:
+            image = cv2.resize(image, tuple(input_size), interpolation=cv2.INTER_AREA)
+        detections = model.predict(image)
+        if input_size is not None and len(detections):
+            scale = [sample.width / input_size[0], sample.height / input_size[1]]
+            detections.xyxy = np.asarray(detections.xyxy, np.float32) * np.float32(
+                scale * 2
+            )
+        yield sample, detections
+
+
+def dump(args: argparse.Namespace) -> None:
+    from ultralytics.cfg import DEFAULT_CFG_DICT
+
+    sets = evaluation_sets("valid", list(DUMP_SETS))
+    images, candidates = [], []
+    seconds = {}
+    for row in args.rows:
+        settings = ROWS[row]
+        model = tv.load_model(
+            "yolo",
+            args.weights,
+            conf=EVAL_CONF,
+            iou=settings["iou"],
+            imgsz=settings["imgsz"],
+            device=args.device,
+        )
+        for name, (dataset, split) in sets.items():
+            clock = time.perf_counter()
+            for sample, found in row_predictions(
+                model, dataset[split], settings["input_size"]
+            ):
+                key = image_key(name, sample)
+                if row == args.rows[0]:
+                    images.append(
+                        {"set": name}
+                        | key
+                        | {
+                            "path": str(sample.image_path),
+                            "width": sample.width,
+                            "height": sample.height,
+                        }
+                    )
+                table = pd.DataFrame(
+                    np.asarray(found.xyxy, np.float32).reshape(-1, 4),
+                    columns=CANDIDATE_COLUMNS,
+                )
+                table["conf"] = np.asarray(found.confidence, np.float32)
+                table["class_id"] = np.asarray(found.class_id, np.int8)
+                table.insert(0, "image", key["image"])
+                table.insert(0, "row", row)
+                table.insert(0, "set", name)
+                candidates.append(table)
+            seconds[f"{name}/{row}"] = round(time.perf_counter() - clock, 1)
+            logger.info("%s/%s dumped in %.0f s", name, row, seconds[f"{name}/{row}"])
+    class_names = model.class_names
+    frame = pd.concat(candidates, ignore_index=True)
+    frame["class_name"] = pd.Categorical.from_codes(frame.class_id, class_names)
+    for column in ("set", "row"):
+        frame[column] = frame[column].astype("category")
+    args.out.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(args.out / "candidates.parquet", index=False)
+    pd.DataFrame(images).to_parquet(args.out / "images.parquet", index=False)
+    record = {
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "weights": str(args.weights),
+        "weights_sha256": sha256_file(args.weights),
+        "conf": EVAL_CONF,
+        "rows": {r: ROWS[r] for r in args.rows},
+        "max_det": DEFAULT_CFG_DICT["max_det"],
+        "agnostic_nms": DEFAULT_CFG_DICT["agnostic_nms"],
+        "half": DEFAULT_CFG_DICT["half"],
+        "classes": dict(enumerate(class_names)),
+        "sets": {
+            name: {
+                "split": split,
+                "images": len(dataset[split]),
+                "resolutions": sorted(
+                    {f"{s.width}x{s.height}" for s in dataset[split]}
+                ),
+            }
+            for name, (dataset, split) in sets.items()
+        },
+        "boxes": "xyxy in the image's own pixels (images.parquet width x height): a row's input_size boxes are "
+        "scaled back, as evaluate scores them",
+        "image_key": "GSR: <clip>/<frame:06d> (1-based frame, every STRIDE-th); Ekstraklasa dev: the file stem",
+        "seconds": seconds,
+        "candidates": len(frame),
+    }
+    (args.out / "dump.json").write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps(record, indent=2))
+
+
+def read_dump(folder: Path) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+    """``(dump.json, images, candidates)`` of a `dump` folder."""
+    record = json.loads((folder / "dump.json").read_text())
+    images = pd.read_parquet(folder / "images.parquet")
+    candidates = pd.read_parquet(folder / "candidates.parquet")
+    return record, images, candidates
+
+
+def dump_detections(candidates: pd.DataFrame) -> dict[str, sv.Detections]:
+    """``image -> sv.Detections`` (with ``data["class_name"]``) of one set and row of a dump, in the model's order."""
+    found = {}
+    for image, group in candidates.groupby("image", sort=False, observed=True):
+        found[image] = sv.Detections(
+            xyxy=group[CANDIDATE_COLUMNS].to_numpy(np.float32),
+            confidence=group["conf"].to_numpy(np.float32),
+            class_id=group["class_id"].to_numpy(int),
+            data={"class_name": group["class_name"].astype(str).to_numpy()},
+        )
+    return found
+
+
+def score_dump(
+    dataset: Dataset, split: str, found: dict[str, sv.Detections], set_name: str
+) -> dict:
+    """`evaluate`'s metrics of one set from dumped predictions (``dump_detections``): mAP and per-class AP50 /
+    AP50-95 / precision / recall at ``OPERATING`` with IoU >= ``MATCH_IOU``."""
+    from supervision.metrics import MeanAveragePrecision
+
+    from tactifoot_vision.evaluation import detection
+
+    samples = dataset[split]
+    thresholds = detection._operating_thresholds(
+        dataset.class_names, OPERATING["conf"], OPERATING["class_conf"], EVAL_CONF
+    )
+    metric = MeanAveragePrecision()
+    counts = np.zeros((len(dataset.class_names), 3), dtype=np.int64)
+    for sample in samples:
+        image = image_key(set_name, sample)["image"]
+        predictions = detection._to_dataset_classes(
+            found.get(image, sv.Detections.empty()), dataset.class_names, set()
+        )
+        targets = sample.annotations.to_detections()
+        metric.update(predictions, targets)
+        counts += detection._match_counts(predictions, targets, thresholds, MATCH_IOU)
+    result = metric.compute()
+    ap = dict(zip(result.matched_classes.tolist(), result.ap_per_class, strict=True))
+    per_class = {}
+    for class_id, name in enumerate(dataset.class_names):
+        tp, fp, fn = counts[class_id]
+        per_class[name] = {
+            "map50": float(ap[class_id][0]) if class_id in ap else np.nan,
+            "map50_95": float(ap[class_id].mean()) if class_id in ap else np.nan,
+            "precision": float(tp / (tp + fp)) if tp + fp else np.nan,
+            "recall": float(tp / (tp + fn)) if tp + fn else np.nan,
+        }
+    return {
+        "map50": float(result.map50),
+        "map50_95": float(result.map50_95),
+        "images": len(samples),
+        "per_class": per_class,
+    }
+
+
+def dump_top_ball(
+    found: dict[str, sv.Detections], scale: tuple[float, float]
+) -> Callable[[str, int, Path], np.ndarray | None]:
+    """`model_top_ball` from dumped predictions of the placement row: the most confident ball >= ``ball_conf``,
+    its centre divided by ``scale`` (source over ``PLACEMENT["input_size"]`` pixels)."""
+
+    def top_ball(clip: str, frame: int, path: Path) -> np.ndarray | None:
+        detections = found.get(f"{clip}/{frame:06d}")
+        if detections is None:
+            return None
+        keep = (detections.data["class_name"] == "ball") & (
+            detections.confidence >= PLACEMENT["ball_conf"]
+        )
+        if not keep.any():
+            return None
+        balls = detections[keep]
+        best = int(np.argmax(balls.confidence))
+        return (balls.xyxy[best, :2] + balls.xyxy[best, 2:]) / 2 / np.asarray(scale)
+
+    return top_ball
 
 
 def main() -> None:
@@ -653,6 +889,11 @@ def main() -> None:
         default=4,
         help="GSR valid frames: every Nth bench frame (4 = the training validation subset, 1 = full)",
     )
+    d = commands.add_parser("dump", help="every candidate box of the dump rows")
+    d.add_argument("--weights", type=Path, required=True)
+    d.add_argument("--out", type=Path, required=True)
+    d.add_argument("--device", default=None)
+    d.add_argument("--rows", nargs="*", choices=list(ROWS), default=list(DUMP_ROWS))
     args = parser.parse_args()
     tv.setup_logging("INFO")
     {
@@ -661,6 +902,7 @@ def main() -> None:
         "placement": placement,
         "epochs": epochs,
         "homographies": homographies,
+        "dump": dump,
     }[args.command](args)
 
 

@@ -250,7 +250,11 @@ def test_bench_placement_test_split_uses_frozen_test_homographies_and_test_clips
                 data={"class_name": np.array(["ball"])},
             )
 
-    rows = detector_bench.placement_rows(Ball(), found, "test")
+    rows = detector_bench.placement_rows(
+        detector_bench.model_top_ball(Ball()), found, "test"
+    )
     assert rows["clip"].tolist() == ["SNGS-116"] and rows["game"].tolist() == ["7"]
     assert rows["error_m"].iloc[0] == pytest.approx(0.0)  # centre (52.5, 34) = truth
-    assert detector_bench.placement_rows(Ball(), found, "valid").empty
+    assert detector_bench.placement_rows(
+        detector_bench.model_top_ball(Ball()), found, "valid"
+    ).empty
