@@ -67,15 +67,19 @@ def assign_roles(
     2. The ``player`` tracks are grouped into ``n_kits`` kits by k-means on
        their embeddings, each weighted by its rows. A match has five kits
        on the pitch (two teams, two goalkeepers, the officials); one more
-       lets a team split in two without taking an official's kit. Each
-       team's kit is the kit holding most rows of the tracks voted into it, and its spread its tracks' mean distance to its centre. A
-       kit whose centre lies farther than ``outlier_spread`` times the
-       spread from both teams' kits is of neither team: its tracks are
-       outliers. Other kits are parts of a team. The team vote cannot do
-       this: it puts every official into a team, and a team centre and
-       spread taken over them would count them in. Measuring against each
-       team's own spread keeps the rule free of colour thresholds that would
-       hold for one match only.
+       lets a team split in two without taking an official's kit. There
+       are at most half as many kits as tracks, as a kit of one track has
+       no spread. Each team's kit is the kit holding most rows of the
+       tracks voted into it, and its spread its tracks' mean distance to
+       its centre, at least the teams' mean spread by rows (a part of a
+       team k-means split off measures less than the team has). A kit
+       whose centre lies farther than ``outlier_spread`` times the spread
+       from both teams' kits is of neither team: its tracks are outliers.
+       Other kits are parts of a team. The team vote cannot do this: it
+       puts every official into a team, and a team centre and spread taken
+       over them would count them in. Measuring against the teams' spreads
+       keeps the rule free of colour thresholds that would hold for one
+       match only.
     3. For each goal, the outlier kit with most positioned rows inside its
        penalty area is that goal's goalkeeper kit (detector goalkeepers are
        grouped too, and a goal with one in its penalty area takes its kit,
@@ -270,7 +274,8 @@ def _outlier_kits(
             )
     embeddings = np.stack([t.embedding for t in embedded]).astype(np.float64)
     weights = np.array([t.rows for t in embedded], dtype=float)
-    k = min(n_kits, len(embedded))
+    # a kit of one track has no spread: at least two tracks a kit on average
+    k = min(n_kits, max(2, len(embedded) // 2))
     kmeans = KMeans(n_clusters=k, n_init=10, random_state=0)
     labels = kmeans.fit_predict(embeddings, sample_weight=weights)
     teams = {
@@ -295,14 +300,22 @@ def _outlier_kits(
     # Grow each team from its kit: the kit nearest a team, by that team's
     # spread, joins it while within outlier_spread; a team's centre and spread
     # follow its kits, so a team k-means split in parts is put back together.
+    # Such a part measures a smaller spread than its team has, so neither
+    # team's spread is taken below the teams' mean spread, by rows.
     members = {team: labels == kit for team, kit in teams.items()}
     rest = set(labels.tolist()) - team_kits
     while rest:
+        shapes = {
+            team: _centre_and_spread(embeddings[member], weights[member])
+            for team, member in members.items()
+        }
+        rows = {team: weights[member].sum() for team, member in members.items()}
+        mean_spread = sum(rows[team] * shapes[team][1] for team in shapes) / sum(
+            rows.values()
+        )
         nearest = None
-        for team, member in members.items():
-            centre = np.average(embeddings[member], axis=0, weights=weights[member])
-            distances = np.linalg.norm(embeddings[member] - centre, axis=1)
-            spread = np.average(distances, weights=weights[member])
+        for team, (centre, spread) in shapes.items():
+            spread = max(spread, mean_spread)
             for kit in rest:
                 inside = labels == kit
                 kit_centre = np.average(
@@ -331,6 +344,15 @@ def _outlier_kits(
         [t for t, label in zip(embedded, labels, strict=True) if label == kit]
         for kit in sorted(rest)
     ]
+
+
+def _centre_and_spread(
+    embeddings: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, float]:
+    """Weighted centre and mean distance to it of a team's tracks."""
+    centre = np.average(embeddings, axis=0, weights=weights)
+    distances = np.linalg.norm(embeddings - centre, axis=1)
+    return centre, float(np.average(distances, weights=weights))
 
 
 def _goalkeepers(

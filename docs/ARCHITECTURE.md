@@ -576,15 +576,17 @@ configs/              example run files
   `player` and detector `goalkeeper` tracks are grouped into `n_kits` kits
   by k-means on their mean embeddings (`track_embeddings` of the tracks they
   join, weighted by their samples), each track weighted by its rows: five
-  kits on a pitch (two teams, two goalkeepers, the officials) and a spare.
-  Each team's kit holds most rows of its voted player tracks; a team grows
-  from it by the kit nearest it, while within `outlier_spread` of its
-  spread (mean distance to its centre), so a team k-means split is put back
-  together. The kits left are of neither team, with no colour threshold:
-  the team vote puts every official into a team, so a voted team's centre
-  and spread would count them in. The rule compares the embedder's raw
-  embeddings, not the team classifier's UMAP space, and needs teams of
-  several tracks (with five a team, a spare kit can split one). For each
+  kits on a pitch (two teams, two goalkeepers, the officials) and a spare,
+  but at most one kit per two tracks. Each team's kit holds most rows of
+  its voted player tracks; a team grows from it by the kit nearest it,
+  while within `outlier_spread` of its spread (mean distance to its
+  centre, at least the teams' mean spread by rows, as a part k-means split
+  off measures less), so a team k-means split is put back together. The
+  kits left are of neither team, with no colour threshold: the team vote
+  puts every official into a team, so a voted team's centre and spread
+  would count them in. The rule compares the embedder's raw embeddings,
+  not the team classifier's UMAP space; with fewer than three tracks a
+  team it warns that kits may be missed. For each
   goal, the kit with most rows in its penalty area (among the kits of the
   detector goalkeepers there, when any) is its goalkeeper's: its player
   tracks in the area for at least `min_box_share` (above 0) of their

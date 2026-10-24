@@ -516,3 +516,27 @@ def test_teams_in_one_kit_leave_no_kit_of_neither_team(caplog):
 
     assert "one kit for every team" in caplog.text
     assert all(roles[t] == {("player", team)} for t, _, team, *_ in red + officials)
+
+
+def test_five_tracks_a_team_are_enough():
+    # a short clip: k-means splits a team of five, and the part it splits off
+    # is no kit of neither team
+    scene = [*PLAYERS[:5], *PLAYERS[10:15], KEEPER_LEFT, KEEPER_RIGHT, REFEREE]
+    roles = _roles(assign_roles(_result(scene)))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[22] == {("goalkeeper", 1)}
+    assert roles[23] == {("referee", NO_TEAM)}
+    for tracker_id, _, team, *_ in [*PLAYERS[:5], *PLAYERS[10:15]]:
+        assert roles[tracker_id] == {("player", team)}
+
+
+@pytest.mark.parametrize("n_kits", [12, 30])
+def test_more_kits_than_pairs_of_tracks_split_no_team_into_officials(n_kits):
+    # a kit of one track has no spread to measure its team by
+    roles = _roles(assign_roles(_result(SCENE), n_kits=n_kits))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[22] == {("goalkeeper", 1)}
+    assert roles[23] == {("referee", NO_TEAM)}
+    assert all(roles[t] == {("player", team)} for t, _, team, *_ in PLAYERS)
