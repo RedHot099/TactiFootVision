@@ -246,13 +246,13 @@ def _outlier_kits(
     """
     from sklearn.cluster import KMeans
 
-    players = [
+    embedded = [
         t
         for t in tracks
         if t.name in (Role.PLAYER, Role.GOALKEEPER) and t.embedding is not None
     ]
     voted = Counter(
-        t.team for t in players if t.team != NO_TEAM and t.name == Role.PLAYER
+        t.team for t in embedded if t.team != NO_TEAM and t.name == Role.PLAYER
     )
     if len(voted) < 2:
         raise ValueError(
@@ -268,9 +268,9 @@ def _outlier_kits(
                 team,
                 count,
             )
-    embeddings = np.stack([t.embedding for t in players]).astype(np.float64)
-    weights = np.array([t.rows for t in players], dtype=float)
-    k = min(n_kits, len(players))
+    embeddings = np.stack([t.embedding for t in embedded]).astype(np.float64)
+    weights = np.array([t.rows for t in embedded], dtype=float)
+    k = min(n_kits, len(embedded))
     kmeans = KMeans(n_clusters=k, n_init=10, random_state=0)
     labels = kmeans.fit_predict(embeddings, sample_weight=weights)
     teams = {
@@ -279,7 +279,7 @@ def _outlier_kits(
                 np.bincount(
                     labels,
                     weights=weights
-                    * [t.team == team and t.name == Role.PLAYER for t in players],
+                    * [t.team == team and t.name == Role.PLAYER for t in embedded],
                     minlength=k,
                 )
             )
@@ -319,7 +319,7 @@ def _outlier_kits(
         ratio, team, kit = nearest
         logger.debug(
             "Kit of tracks %s: %.1f team spreads from team %d",
-            [t.id for t, label in zip(players, labels, strict=True) if label == kit],
+            [t.id for t, label in zip(embedded, labels, strict=True) if label == kit],
             ratio,
             team,
         )
@@ -328,7 +328,7 @@ def _outlier_kits(
         members[team] = members[team] | (labels == kit)
         rest.remove(kit)
     return [
-        [t for t, label in zip(players, labels, strict=True) if label == kit]
+        [t for t, label in zip(embedded, labels, strict=True) if label == kit]
         for kit in sorted(rest)
     ]
 

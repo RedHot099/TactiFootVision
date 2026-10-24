@@ -38,7 +38,8 @@ class TeamClassifier:
             At least ``n_teams``.
         device: torch device for an embedder created by name.
         **embedder_options: passed to an embedder created by name, e.g.
-            ``color_hist_bins=16`` for SigLIP.
+            ``color_hist_bins=0`` for SigLIP without
+            colour histograms.
     """
 
     def __init__(

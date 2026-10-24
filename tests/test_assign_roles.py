@@ -504,3 +504,15 @@ def test_the_analysis_package_imports_first():
     # assign_roles uses tv.analysis, which imports the pipeline
     code = "import tactifoot_vision.analysis.direction"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_teams_in_one_kit_leave_no_kit_of_neither_team(caplog):
+    # both teams in red: no kit tells them apart, so nobody's role changes
+    red = [(t, name, team, "red", path) for t, name, team, _, path in PLAYERS]
+    officials = [(31 + i, "player", 0, "black", _at(20 + 15 * i, 40)) for i in range(5)]
+
+    with caplog.at_level("WARNING", logger="tactifoot_vision.pipeline.roles"):
+        roles = _roles(assign_roles(_result([*red, *officials]), n_kits=2))
+
+    assert "one kit for every team" in caplog.text
+    assert all(roles[t] == {("player", team)} for t, _, team, *_ in red + officials)
