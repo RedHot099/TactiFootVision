@@ -37,7 +37,6 @@ from tactifoot_vision.models.ultralytics import (
 from tactifoot_vision.utils import next_run_dir
 
 ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = ROOT / "models"
 FOOTBALL = ROOT / "data" / "datasets" / "football_yolo"
 KEYPOINTS = ROOT / "data" / "keypoints"
 FOOTBALL_CLASSES = ["ball", "goalkeeper", "player", "referee"]
@@ -480,16 +479,16 @@ def _check_detections(detections: sv.Detections, class_names: list[str]) -> None
 
 
 @pytest.mark.model
-def test_yolo_predicts_named_detections(football):
-    model = tv.load_model("yolo", MODELS_DIR / "football_yolo11m.pt")
+def test_yolo_predicts_named_detections(football, detector_weights):
+    model = tv.load_model("yolo", detector_weights)
     assert model.class_names == FOOTBALL_CLASSES
     image, _ = football.read("valid", 0)
     _check_detections(model(image), FOOTBALL_CLASSES)
 
 
 @pytest.mark.model
-def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch):
-    model = tv.load_model("yolo_pose", MODELS_DIR / "pitch_yolov8n_pose.pt")
+def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch, pitch_weights):
+    model = tv.load_model("yolo_pose", pitch_weights)
     keypoints = model(pitch.read("valid", 0)[0])
     assert isinstance(keypoints, sv.KeyPoints) and len(keypoints) >= 1
     assert keypoints.xy.shape[1:] == (32, 2)
@@ -499,8 +498,10 @@ def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch):
 
 
 @pytest.mark.model
-def test_rfdetr_finetuned_checkpoint_names_its_classes(football):
-    model = tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth")
+def test_rfdetr_finetuned_checkpoint_names_its_classes(
+    football, rfdetr_football_weights
+):
+    model = tv.load_model("rfdetr", rfdetr_football_weights)
     assert model.class_names == FOOTBALL_CLASSES
     image, annotations = football.read("valid", 0)
     detections = model(image)
@@ -513,8 +514,8 @@ def test_rfdetr_finetuned_checkpoint_names_its_classes(football):
 
 
 @pytest.mark.model
-def test_rfdetr_coco_weights_use_coco_names(football):
-    model = tv.load_model("rfdetr", MODELS_DIR / "rfdetr_base.pth")
+def test_rfdetr_coco_weights_use_coco_names(football, rfdetr_coco_weights):
+    model = tv.load_model("rfdetr", rfdetr_coco_weights)
     assert len(model.class_names) == 80 and model.class_names[0] == "person"
     detections = model(football.read("valid", 0)[0])
     _check_detections(detections, model.class_names)
@@ -522,15 +523,17 @@ def test_rfdetr_coco_weights_use_coco_names(football):
 
 
 @pytest.mark.model
-def test_checkpoints_of_the_wrong_kind_are_rejected():
+def test_checkpoints_of_the_wrong_kind_are_rejected(
+    detector_weights, pitch_weights, rfdetr_sample_weights
+):
     with pytest.raises(ValueError, match="'pose' checkpoint"):
-        tv.load_model("yolo", MODELS_DIR / "pitch_yolov8n_pose.pt")
+        tv.load_model("yolo", pitch_weights)
     with pytest.raises(ValueError, match="'detect' checkpoint"):
-        tv.load_model("yolo_pose", MODELS_DIR / "football_yolo11m.pt")
+        tv.load_model("yolo_pose", detector_weights)
     with pytest.raises(ValueError, match="pass size='base'"):
-        tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth", size="nano")
+        tv.load_model("rfdetr", rfdetr_sample_weights, size="nano")
     with pytest.raises(FileNotFoundError):
-        tv.load_model("yolo", MODELS_DIR / "missing.pt")
+        tv.load_model("yolo", detector_weights.with_name("missing.pt"))
 
 
 def _check_train_result(
@@ -544,13 +547,13 @@ def _check_train_result(
 
 
 @pytest.mark.model
-def test_train_yolo_for_one_epoch(football, tmp_path, monkeypatch):
+def test_train_yolo_for_one_epoch(football, detector_weights, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # anything Ultralytics drops lands here
     tiny = football.subset({"train": 16, "valid": 8})
     result = tv.train(
         "yolo",
         tiny,
-        weights=MODELS_DIR / "football_yolo11m.pt",
+        weights=detector_weights,
         epochs=1,
         batch_size=4,
         imgsz=320,
@@ -568,10 +571,10 @@ def test_train_yolo_for_one_epoch(football, tmp_path, monkeypatch):
 
 
 @pytest.mark.model
-def test_train_yolo_pose_for_one_epoch(pitch, tmp_path, monkeypatch):
+def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     tiny = pitch.subset({"train": 16, "valid": 8, "test": 0})
-    model = tv.load_model("yolo_pose", MODELS_DIR / "pitch_yolov8n_pose.pt")
+    model = tv.load_model("yolo_pose", pitch_weights)
     result = model.train(
         tiny,
         epochs=1,
@@ -589,13 +592,15 @@ def test_train_yolo_pose_for_one_epoch(pitch, tmp_path, monkeypatch):
 
 
 @pytest.mark.model
-def test_train_rfdetr_for_one_epoch(football, tmp_path, monkeypatch):
+def test_train_rfdetr_for_one_epoch(
+    football, rfdetr_coco_weights, tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
     tiny = football.subset({"train": 8, "valid": 4})
     result = tv.train(
         "rfdetr",
         tiny,
-        weights=MODELS_DIR / "rfdetr_base.pth",
+        weights=rfdetr_coco_weights,
         epochs=1,
         batch_size=2,
         imgsz=336,
@@ -614,18 +619,19 @@ def test_train_rfdetr_for_one_epoch(football, tmp_path, monkeypatch):
 
 
 @pytest.mark.model
-def test_yolo_and_rfdetr_score_on_the_same_scale(football):
-    # Measured on the fixture's 20 validation images: YOLO11m mAP50 0.84,
-    # the RF-DETR base checkpoint 0.88.
-    expected_map50 = {"football_yolo11m.pt": 0.7, "football_rfdetr_base.pth": 0.7}
+def test_yolo_and_rfdetr_score_on_the_same_scale(
+    football, detector_weights, rfdetr_football_weights
+):
+    # Measured on the fixture's 20 validation images: the RF-DETR base
+    # checkpoint mAP50 0.88.
     models = [
-        tv.load_model("yolo", MODELS_DIR / "football_yolo11m.pt"),
-        tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth"),
+        tv.load_model("yolo", detector_weights),
+        tv.load_model("rfdetr", rfdetr_football_weights),
     ]
     for model in models:
         metrics = tv.evaluate(model, football)
         assert metrics.num_images == len(football["valid"])
-        assert expected_map50[Path(model.weights).name] < metrics.map50 <= 1.0
+        assert 0.7 < metrics.map50 <= 1.0
         assert list(metrics.per_class.index) == FOOTBALL_CLASSES
         assert model.conf != 0.01  # evaluation threshold was restored
 

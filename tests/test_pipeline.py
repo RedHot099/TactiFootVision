@@ -398,17 +398,15 @@ def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
 
 # ----------------------------------------------------------------- real models
 @pytest.mark.model
-def test_real_video_pipeline(tmp_path):
+def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
     video = ROOT / "data" / "videos" / "broadcast_60s.mp4"
-    detector_weights = ROOT / "models" / "football_yolo11m.pt"
-    pose_weights = ROOT / "models" / "pitch_yolov8n_pose.pt"
-    if not (video.is_file() and detector_weights.is_file() and pose_weights.is_file()):
-        pytest.skip("real video or weights not available")
+    if not video.is_file():
+        pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model("yolo_pose", pose_weights),
+        keypoint_model=tv.load_model("yolo_pose", pitch_weights),
         team_classifier=TeamClassifier("siglip"),
     )
     result = pipeline.run(video, end=50, progress=False)
