@@ -438,9 +438,14 @@ configs/              example run files
   overlapping a tracked box never become new tracks; a track whose mask is
   empty on a re-seed frame loses its id.
 * `TeamClassifier(embedder="siglip" | "resnet" | Embedder, n_teams=2, reducer="umap" | None)`:
-  `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
+  `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=0.8, center_ratio=0.6)`.
   Fits on at most `max_fit_samples` embeddings (at least `n_teams`, checked
-  before the embedder is built) and skips UMAP below 30 crops.
+  before the embedder is built) and skips UMAP below 30 crops. Crops are the
+  torso and shorts by default (`Pipeline(crop_center_ratio=0.6)`), and
+  `siglip` appends 16-bin colour histograms of them (`color_hist_bins=16`):
+  SigLIP alone barely tells a referee's or goalkeeper's kit from a team's,
+  and histograms of the full box measure the grass. Both are what
+  `assign_roles` needs to tell the kits apart.
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
@@ -563,25 +568,37 @@ configs/              example run files
   `remap_track_ids`, so the tracker's id stays in
   `data["original_tracker_id"]`. No rows are added: tables keep measured
   positions only. Metres and seconds, as in `track_ball`.
-* `assign_roles(result, outlier_spread=3.0, min_box_share=0.5, off_pitch_margin=1.5)`
+* `assign_roles(result, n_kits=6, outlier_spread=3.0, min_box_share=0.5, off_pitch_margin=1.5)`
   (`pipeline/roles.py`, registered as `assign_roles`) finds the goalkeepers
   and referees the detector called players, track by track (player tracks
   after `join_tracks`). A track whose median pitch position is more than
-  `off_pitch_margin` m outside the pitch is dropped, rows and masks. A
-  `player` track whose mean embedding (`track_embeddings` of the tracks it
-  joins, weighted by their samples) is more than `outlier_spread` team spreads from every team's
-  centre (median embedding of the team's player tracks; spread: their
-  median distance to it) is an outlier, with no colour threshold. The rule
-  compares the embedder's raw embeddings, not the team classifier's UMAP
-  space. The outlier nearest each goal, in its penalty area for at least
-  `min_box_share` (above 0) of its positioned rows, becomes the
-  `goalkeeper` of the team defending that goal (`attack_direction`, so one
-  period per result), unless a detector goalkeeper stands in that area; one
-  track keeps one goal at most. When the sides cannot be told, a warning is
-  logged and the candidates stay players of their voted team. The other
-  outliers become `referee` with `NO_TEAM`. Detector `goalkeeper` and
-  `referee` tracks keep their class and team; a role class missing from
-  `class_names` keeps the player's `class_id` (logged).
+  `off_pitch_margin` m outside the pitch is dropped, rows and masks. The
+  `player` and detector `goalkeeper` tracks are grouped into `n_kits` kits
+  by k-means on their mean embeddings (`track_embeddings` of the tracks they
+  join, weighted by their samples), each track weighted by its rows: five
+  kits on a pitch (two teams, two goalkeepers, the officials) and a spare,
+  but two fewer than tracks (at least two). Each team's kit holds most rows
+  of its voted player tracks; a team grows from it by the kit nearest it,
+  while within `outlier_spread` of its spread (mean distance to its
+  centre, at least the teams' mean spread by rows and the mean spread of
+  the kits of two or more tracks, as a part k-means split off measures
+  less, one track nothing), so a team k-means split is put back together. The
+  kits left are of neither team, with no colour threshold: the team vote
+  puts every official into a team, so a voted team's centre and spread
+  would count them in. The rule compares the embedder's raw embeddings,
+  not the team classifier's UMAP space; with fewer than three tracks a
+  team it warns that kits may be missed. For each
+  goal, the kit with most rows in its penalty area that has a player track
+  mostly there (among the kits of the detector goalkeepers there with an
+  embedding, when any) is its goalkeeper's: its player
+  tracks in the area for at least `min_box_share` (above 0) of their
+  positioned rows, often one keeper in pieces, become the `goalkeeper` of
+  the team defending that goal (`attack_direction`, so one period per
+  result); one track keeps one goal at most. When the sides cannot be told,
+  a warning is logged and the candidates stay players of their voted team.
+  The other tracks of those kits become `referee` with `NO_TEAM`. Detector
+  `goalkeeper` and `referee` tracks keep their class and team; a role class
+  missing from `class_names` keeps the player's `class_id` (logged).
 * `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
   half the position jitter of no smoothing, ~2 px more line lag on pans) and
   restarts the average after a gap. `used_indices` lists the confident

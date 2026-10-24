@@ -99,7 +99,7 @@ class Pipeline:
         team_sample_stride: int = 10,
         team_samples_per_track: int = 20,
         crop_scale: float = 0.8,
-        crop_center_ratio: float = 1.0,
+        crop_center_ratio: float = 0.6,
         keep_masks: bool = False,
     ) -> None:
         if detector.task != Task.DETECT:

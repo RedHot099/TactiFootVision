@@ -52,17 +52,19 @@ def test_extract_crops_geometry():
             [190, 90, 230, 130],  # partly outside: clipped
         ]
     )
-    crops = extract_crops(frame, boxes, scale=0.6)
+    crops = extract_crops(frame, boxes, scale=0.6, center_ratio=1.0)
     assert crops[1] is None and crops[2] is None
     assert crops[0].shape == (30, 12, 3)  # 0.6 of the box around its centre
     np.testing.assert_array_equal(crops[0], frame[20:50, 24:36])
     np.testing.assert_array_equal(crops[3], frame[98:100, 198:200])
     crops[0][:] = 0
     assert frame[20:50, 24:36].any()  # crops are copies
-    full = extract_crops(frame, boxes[:1], scale=1.0)[0]
+    full = extract_crops(frame, boxes[:1], scale=1.0, center_ratio=1.0)[0]
     centre = extract_crops(frame, boxes[:1], scale=1.0, center_ratio=0.5)[0]
     assert full.shape == (50, 20, 3) and centre.shape == (25, 10, 3)
     np.testing.assert_array_equal(centre, full[12:37, 5:15])
+    # by default the torso and shorts: 0.8 then 0.6 of the box, little grass
+    assert extract_crops(frame, boxes[:1])[0].shape == (24, 10, 3)
     with pytest.raises(ValueError):
         extract_crops(frame, boxes, scale=0)
 
@@ -131,13 +133,26 @@ def test_classifier_validation():
     assert {"resnet", "siglip"} <= set(EMBEDDERS.names())
 
 
+def test_the_default_crops_and_siglip_compare_kits_by_colour():
+    # assign_roles tells a referee's kit from a team's by the torso's colours
+    import inspect
+
+    from tactifoot_vision.pipeline import Pipeline
+
+    siglip = inspect.signature(SigLIPEmbedder).parameters
+    assert siglip["color_hist_bins"].default == 16
+    pipeline = inspect.signature(Pipeline).parameters
+    assert pipeline["crop_center_ratio"].default == 0.6
+
+
 # ------------------------------------------------------------- real embedders
 @pytest.mark.model
 @pytest.mark.parametrize(
     ("name", "options", "dim"),
     [
         ("resnet", {}, 512),
-        ("siglip", {}, 768),
+        ("siglip", {}, 768 + 48),  # 16-bin histograms by default
+        ("siglip", {"color_hist_bins": 0}, 768),
         (
             "siglip",
             {"color_hist_bins": 8, "color_space": "hsv", "pooling": "cls"},

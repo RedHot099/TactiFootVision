@@ -7,7 +7,7 @@ def extract_crops(
     frame: np.ndarray,
     boxes: np.ndarray,
     scale: float = 0.8,
-    center_ratio: float = 1.0,
+    center_ratio: float = 0.6,
 ) -> list[np.ndarray | None]:
     """Cut the central part of each box out of ``frame``.
 

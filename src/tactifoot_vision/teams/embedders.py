@@ -83,7 +83,9 @@ class SigLIPEmbedder(Embedder):
         batch_size: crops per forward pass.
         pooling: ``"mean"`` averages the patch tokens; ``"cls"`` uses SigLIP's
             attention-pooled output (SigLIP has no class token).
-        color_hist_bins: bins per channel of the appended colour histograms (0 = none).
+        color_hist_bins: bins per channel of the appended colour histograms
+            (0 = none). They let ``assign_roles`` tell referees' and
+            goalkeepers' kits from the teams', which SigLIP alone barely does.
         color_hist_weight: factor applied to the histograms; the SigLIP part is
             L2-normalised, so the weight is relative to a unit vector.
         color_space: ``"rgb"`` or ``"hsv"`` histograms.
@@ -97,7 +99,7 @@ class SigLIPEmbedder(Embedder):
         model_name: str = "google/siglip-base-patch16-224",
         batch_size: int = 32,
         pooling: Pooling | str = Pooling.MEAN,
-        color_hist_bins: int = 0,
+        color_hist_bins: int = 16,
         color_hist_weight: float = 1.0,
         color_space: ColorSpace | str = ColorSpace.RGB,
         device: str | None = None,
