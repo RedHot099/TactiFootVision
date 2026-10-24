@@ -577,11 +577,12 @@ configs/              example run files
   by k-means on their mean embeddings (`track_embeddings` of the tracks they
   join, weighted by their samples), each track weighted by its rows: five
   kits on a pitch (two teams, two goalkeepers, the officials) and a spare,
-  but at most one kit per two tracks. Each team's kit holds most rows of
-  its voted player tracks; a team grows from it by the kit nearest it,
+  but two fewer than tracks (at least two). Each team's kit holds most rows
+  of its voted player tracks; a team grows from it by the kit nearest it,
   while within `outlier_spread` of its spread (mean distance to its
-  centre, at least the teams' mean spread by rows, as a part k-means split
-  off measures less), so a team k-means split is put back together. The
+  centre, at least the teams' mean spread by rows and the mean spread of
+  the kits of two or more tracks, as a part k-means split off measures
+  less, one track nothing), so a team k-means split is put back together. The
   kits left are of neither team, with no colour threshold: the team vote
   puts every official into a team, so a voted team's centre and spread
   would count them in. The rule compares the embedder's raw embeddings,

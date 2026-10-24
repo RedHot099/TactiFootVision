@@ -33,6 +33,7 @@ KITS = {  # embedding centre of each kit
     "yellow": [0.0, 0.0, 1.0, 0.0],
     "black": [0.0, 0.0, 0.0, 1.0],
     "green": [0.0, 0.0, 0.7, 0.7],
+    "grey": [0.7, 0.0, 0.0, 0.3],  # nearer red than black
 }
 
 
@@ -531,7 +532,7 @@ def test_five_tracks_a_team_are_enough():
         assert roles[tracker_id] == {("player", team)}
 
 
-@pytest.mark.parametrize("n_kits", [12, 30])
+@pytest.mark.parametrize("n_kits", [8, 30])
 def test_more_kits_than_pairs_of_tracks_split_no_team_into_officials(n_kits):
     # a kit of one track has no spread to measure its team by
     roles = _roles(assign_roles(_result(SCENE), n_kits=n_kits))
@@ -540,3 +541,19 @@ def test_more_kits_than_pairs_of_tracks_split_no_team_into_officials(n_kits):
     assert roles[22] == {("goalkeeper", 1)}
     assert roles[23] == {("referee", NO_TEAM)}
     assert all(roles[t] == {("player", team)} for t, _, team, *_ in PLAYERS)
+
+
+def test_a_keeper_near_a_teams_kit_in_a_short_shot_keeps_a_kit_of_its_own():
+    # six tracks, four kits: a kit each, or the grey keeper joins red's kit
+    scene = [
+        *PLAYERS[:2],
+        *PLAYERS[10:12],
+        (21, "player", 1, "grey", _at(3, 34)),
+        REFEREE,
+    ]
+    roles = _roles(assign_roles(_result(scene)))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[23] == {("referee", NO_TEAM)}
+    for tracker_id, _, team, *_ in [*PLAYERS[:2], *PLAYERS[10:12]]:
+        assert roles[tracker_id] == {("player", team)}

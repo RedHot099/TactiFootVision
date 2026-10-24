@@ -68,11 +68,12 @@ def assign_roles(
        their embeddings, each weighted by its rows. A match has five kits
        on the pitch (two teams, two goalkeepers, the officials); one more
        lets a team split in two without taking an official's kit. There
-       are at most half as many kits as tracks, as a kit of one track has
-       no spread. Each team's kit is the kit holding most rows of the
-       tracks voted into it, and its spread its tracks' mean distance to
-       its centre, at least the teams' mean spread by rows (a part of a
-       team k-means split off measures less than the team has). A kit
+       are at least two kits and two fewer than tracks, so some kits hold
+       two tracks and have a spread. Each team's kit is the kit holding
+       most rows of the tracks voted into it, and its spread its tracks'
+       mean distance to its centre, at least the teams' mean spread by rows
+       and a kit's spread (a part of a team k-means split off measures
+       less than the team has, and one track none). A kit
        whose centre lies farther than ``outlier_spread`` times the spread
        from both teams' kits is of neither team: its tracks are outliers.
        Other kits are parts of a team. The team vote cannot do this: it
@@ -274,8 +275,8 @@ def _outlier_kits(
             )
     embeddings = np.stack([t.embedding for t in embedded]).astype(np.float64)
     weights = np.array([t.rows for t in embedded], dtype=float)
-    # a kit of one track has no spread: at least two tracks a kit on average
-    k = min(n_kits, max(2, len(embedded) // 2))
+    # two tracks fewer than kits: some kits hold two tracks and have a spread
+    k = min(n_kits, max(2, len(embedded) - 2))
     kmeans = KMeans(n_clusters=k, n_init=10, random_state=0)
     labels = kmeans.fit_predict(embeddings, sample_weight=weights)
     teams = {
@@ -300,8 +301,10 @@ def _outlier_kits(
     # Grow each team from its kit: the kit nearest a team, by that team's
     # spread, joins it while within outlier_spread; a team's centre and spread
     # follow its kits, so a team k-means split in parts is put back together.
-    # Such a part measures a smaller spread than its team has, so neither
-    # team's spread is taken below the teams' mean spread, by rows.
+    # Such a part measures a smaller spread than its team has (none for one
+    # track), so neither team's spread is taken below the teams' mean spread,
+    # by rows, nor below a kit's.
+    kit_spread = _kit_spread(embeddings, weights, labels)
     members = {team: labels == kit for team, kit in teams.items()}
     rest = set(labels.tolist()) - team_kits
     while rest:
@@ -315,7 +318,7 @@ def _outlier_kits(
         )
         nearest = None
         for team, (centre, spread) in shapes.items():
-            spread = max(spread, mean_spread)
+            spread = max(spread, mean_spread, kit_spread)
             for kit in rest:
                 inside = labels == kit
                 kit_centre = np.average(
@@ -353,6 +356,27 @@ def _centre_and_spread(
     centre = np.average(embeddings, axis=0, weights=weights)
     distances = np.linalg.norm(embeddings - centre, axis=1)
     return centre, float(np.average(distances, weights=weights))
+
+
+def _kit_spread(
+    embeddings: np.ndarray, weights: np.ndarray, labels: np.ndarray
+) -> float:
+    """Spread of a kit: rows-weighted mean distance of tracks to their kit's centre.
+
+    Kits of one track are left out; a kit of ``n`` tracks has its distances
+    scaled by ``sqrt(n / (n - 1))``, as its own centre lies nearer them than
+    the kit's true centre. 0 when no kit holds two tracks.
+    """
+    total = rows = 0.0
+    for kit in np.unique(labels):
+        inside = labels == kit
+        n = int(inside.sum())
+        if n < 2:
+            continue
+        _, spread = _centre_and_spread(embeddings[inside], weights[inside])
+        total += weights[inside].sum() * spread * np.sqrt(n / (n - 1))
+        rows += weights[inside].sum()
+    return total / rows if rows else 0.0
 
 
 def _goalkeepers(
