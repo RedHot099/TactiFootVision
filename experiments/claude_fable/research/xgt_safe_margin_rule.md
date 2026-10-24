@@ -1,6 +1,9 @@
 # Sprawdzenie marginesu o_max = −600 ms: reguła zamrożona (xg-temporal 02)
 
-Zapisana i zacommitowana 2026-10-25, przed jakimkolwiek oznaczaniem. sha256 tego pliku jest w
+Zapisana i zacommitowana 2026-10-25, przed jakimkolwiek oznaczaniem (pierwsza wersja 999fcec). Poprawka
+z 2026-10-25, nadal przed oznaczaniem, decyzją orkiestratora: tabela dowodów bierze tylko kontakty v1.5 z meczów
+`training`, a GSR jest opisany jako osobny zbiór. Próbka, definicja naruszenia, reguła decyzji, materiał i
+instrukcja dla oznaczającego są bez zmian. sha256 tego pliku jest w
 `research/xgt_safe_margin_rule.md.sha256` (ten sam commit), a `scripts/xgt_safe_margin.py` odmawia pracy, gdy plik się
 nie zgadza. Spec: `.scratch/xg-temporal/spec.md` („Dowody → Kiedy jest kontakt”, „Kontrola przecieku” 2, decyzje
 właściciela z 2026-10-24 D1, D2, D6). Kod: `scripts/xgt_safe_margin.py`, testy `tests/test_xgt_safe_margin.py`.
@@ -130,14 +133,17 @@ wyniku.
 `evaluate` zapisuje jedną tabelę z pochodzeniem (`evidence.csv`):
 - 11 kopnięć GSR z `results/pk_ball_evidence/timing.csv` (czytane kolumny `split`, `clip`, `kick_ms`; bez
   `action_class`). Kopnięcia ≤ −600 ms (−880, −840, −640) mają adnotację „może być poprzedzającym podaniem: kick.py bierze
-  pierwsze kopnięcie w oknie, niesprawdzone”.
-- 17 ograniczonych kontaktów AI v1.5 z `cache/v15/canonical_data_v1/shots.csv` (czytane wyłącznie kolumny `shot_id`,
-  `game`, `contact_status`, `contact_quality`, `contact_lower_ms`, `contact_upper_ms`; żadnej kolumny wyniku ani
-  `ai_outcome`). Rola xgv meczu jest dopisana: 12 z 17 kontaktów leży w meczach roli `training`, 5 w meczach roli
-  `evaluation`. To wyłącznie zapisane wcześniej czasy kontaktu (bez wyniku), użyte opisowo, jak wymaga ticket; nic z
-  tych meczów nie wchodzi do próbki ani do reguły.
+  pierwsze kopnięcie w oknie, niesprawdzone”. GSR to osobny zbiór (SoccerNet Game State Reconstruction 2024,
+  `data/SoccerNetGS`, 30-sekundowe sekwencje `SNGS-*` z własną numeracją meczów), a nie mecze SoccerNet z
+  `plan.csv`, więc żadne z tych kopnięć nie pochodzi ze 172 meczów wstrzymanych.
+- 12 ograniczonych kontaktów AI v1.5 z meczów roli `training`, z `cache/v15/canonical_data_v1/shots.csv` (czytane
+  wyłącznie kolumny `shot_id`, `game`, `contact_status`, `contact_quality`, `contact_lower_ms`, `contact_upper_ms`;
+  żadnej kolumny wyniku ani `ai_outcome`). Kontrola przecieku 4: żaden wiersz 172 meczów nie wchodzi do odczytu.
+  Pozostałe 5 ograniczonych kontaktów v1.5 leży w meczach roli `evaluation`. Są tylko policzone po kolumnie `game`;
+  ich linie są pomijane przy parsowaniu, więc ich czasy nie są wczytywane. Tabela i `complete.json` zapisują
+  wyłącznie liczbę („5 kontaktów z meczów evaluation pominiętych”).
 
-Te 28 kontaktów nie wchodzi do reguły: 0 z 28 dawałoby U = 10,1%.
+Te 23 kontakty nie wchodzą do reguły: 0 z 23 dawałoby U = 12,2% (0 z pierwotnych 28: 10,1%).
 
 ## Walidacja rozrzutu (D6)
 

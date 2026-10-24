@@ -114,3 +114,18 @@ def test_no_frame_after_the_anchor_is_decoded():
     with pytest.raises(ValueError, match="<= 0"):
         sm.decode_until_anchor(Path("unused.mp4"), (-600, 0, 40))
     assert max(sm.SHEET_OFFSETS) == 0 and set(sm.QUESTIONS) <= set(sm.SHEET_OFFSETS)
+
+
+def test_v15_evidence_keeps_training_contacts_only(tmp_path):
+    shots = tmp_path / "shots.csv"
+    shots.write_text("shot_id,game,contact_status,contact_quality,contact_lower_ms,contact_upper_ms,source_goal\n"
+                     "t1,gT,bounded,ai_provisional,-40,40,1\n"
+                     "e1,gE,bounded,ai_provisional,-999,-900,0\n"
+                     "t2,gT,uncertain,unresolved,,,0\n"
+                     "t3,gT2,bounded,ai_provisional,-80,0,0\n"
+                     "x1,gX,bounded,ai_provisional,-700,-650,1\n")
+    plan = pd.DataFrame({"game": ["gT", "gT2", "gE", "gX"], "role": ["training", "training", "evaluation", "gate"]})
+    times, skipped = sm.v15_training_contacts(shots, plan)
+    assert times.shot_id.tolist() == ["t1", "t3"]
+    assert skipped == 2  # held-out (evaluation, gate) contacts are only counted
+    assert -999 not in times.contact_lower_ms.tolist() and "source_goal" not in times.columns

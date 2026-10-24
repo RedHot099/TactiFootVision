@@ -19,8 +19,8 @@ native frames of one sheet at several offsets (<= 0), each scaled to 640x360.
 
 `evaluate` reads the two independent answer runs (sheet_id, struck_at_m800, struck_at_m600, struck_at_m400 in
 {yes, no, unknown}, optional note), applies the worst-case rule, the one-sided 95% Clopper-Pearson bound and the
-agreement statistics, adds the descriptive evidence table (GSR kicks, v1.5 contacts: time columns only) and the D6
-spread check (the aggregated share in `timing_verdict.json`, no per-shot residual), and writes `<out>/answers.csv`,
+agreement statistics, adds the descriptive evidence table (GSR kicks; v1.5 contacts of training matches only, time
+columns only) and the D6 spread check (the aggregated share in `timing_verdict.json`, no per-shot residual), and writes `<out>/answers.csv`,
 `evidence.csv`, `result.json` and `complete.json` (input and output hashes), last.
 """
 
@@ -415,8 +415,25 @@ def evaluate_runs(a: pd.DataFrame, b: pd.DataFrame) -> tuple[pd.DataFrame, dict]
     return table.reset_index(), result
 
 
-def evidence_table() -> pd.DataFrame:
-    """Existing contact evidence, descriptive: GSR kick times and v1.5 AI contacts (time columns only)."""
+def v15_training_contacts(path: Path, plan: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Bounded v1.5 AI contacts of xgv `training` matches (time columns only) and the count of bounded contacts of
+    other roles. Leak control 4: rows of the 172 held-out matches are counted from `game` alone; their contact times
+    are never loaded (those lines are skipped while parsing)."""
+    head = pd.read_csv(path, usecols=["shot_id", "game", "contact_status"])
+    role = head.game.map(plan.drop_duplicates("game").set_index("game").role)
+    bounded = head.contact_status == "bounded"
+    keep = (bounded & (role == "training")).to_numpy()
+    lines = {int(i) + 1 for i in np.flatnonzero(keep)}  # +1: the header is line 0
+    times = pd.read_csv(path, usecols=["shot_id", "contact_quality", "contact_lower_ms", "contact_upper_ms"],
+                        skiprows=lambda i: i > 0 and i not in lines)
+    if times.shot_id.tolist() != head.shot_id[keep].tolist():
+        raise ValueError(f"{path}: line-based selection does not match the training rows")
+    return times, int((bounded & (role != "training")).sum())
+
+
+def evidence_table() -> tuple[pd.DataFrame, int]:
+    """Existing contact evidence, descriptive: GSR kick times (a separate dataset, not SoccerNet matches of the xgv
+    plan) and the v1.5 AI contacts of training matches (time columns only). Also returns the skipped v1.5 count."""
     rows = []
     gsr = pd.read_csv(GSR_TIMING, usecols=["split", "clip", "kick_ms"]).dropna(subset=["kick_ms"])
     for r in gsr.itertuples():
@@ -425,19 +442,20 @@ def evidence_table() -> pd.DataFrame:
                      "note": ("may be a preceding pass: kick.py takes the first kick in its window (unchecked)"
                               if r.kick_ms <= GSR_POSSIBLE_PASS_MS else ""),
                      "provenance": f"{GSR_TIMING.relative_to(ROOT)} sha256 {sha256_file(GSR_TIMING)[:12]}"})
-    v15 = pd.read_csv(V15_SHOTS, usecols=["shot_id", "game", "contact_status", "contact_quality",
-                                          "contact_lower_ms", "contact_upper_ms"])
-    plan = pd.read_csv(PLAN, usecols=["game", "role"])
-    v15 = v15[v15.contact_status == "bounded"].merge(plan, on="game", how="left")
+    v15, skipped = v15_training_contacts(V15_SHOTS, pd.read_csv(PLAN, usecols=["game", "role"]))
+    provenance = f"{V15_SHOTS.relative_to(ROOT)} sha256 {sha256_file(V15_SHOTS)[:12]}"
     for r in v15.itertuples():
         rows.append({"source": "v15_ai_contact", "item": r.shot_id, "contact_lower_ms": r.contact_lower_ms,
                      "contact_upper_ms": r.contact_upper_ms, "before_o_max": r.contact_upper_ms <= O_MAX,
-                     "note": f"{r.contact_quality}; xgv role {r.role}",
-                     "provenance": f"{V15_SHOTS.relative_to(ROOT)} sha256 {sha256_file(V15_SHOTS)[:12]}"})
+                     "note": f"{r.contact_quality}; xgv role training", "provenance": provenance})
+    rows.append({"source": "v15_ai_contact_skipped", "item": f"{skipped} contacts from non-training matches skipped",
+                 "contact_lower_ms": None, "contact_upper_ms": None, "before_o_max": None,
+                 "note": f"{skipped} kontaktów z meczów evaluation pominiętych (kontrola przecieku 4); czasy nie czytane",
+                 "provenance": provenance})
     table = pd.DataFrame(rows)
     if bad := [c for c in table.columns if any(w in c.lower() for w in OUTCOME_WORDS)]:
         raise AssertionError(f"outcome-like columns in the evidence table: {bad}")
-    return table
+    return table, skipped
 
 
 def spread_check() -> dict:
@@ -455,14 +473,17 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
     sheet_ids = sample.sheet_id.tolist()
     a, b = read_answers(args.run_a, sheet_ids), read_answers(args.run_b, sheet_ids)
     table, result = evaluate_runs(a, b)
-    evidence = evidence_table()
+    evidence, v15_skipped = evidence_table()
     result["evidence"] = {"rows": len(evidence),
                           "gsr_kicks": int((evidence.source == "gsr_kick_rule").sum()),
                           "gsr_possible_pass": int(evidence.note.str.startswith("may be").sum()),
-                          "v15_bounded": int((evidence.source == "v15_ai_contact").sum()),
+                          "v15_bounded_training": int((evidence.source == "v15_ai_contact").sum()),
                           "v15_before_o_max": int(evidence[evidence.source == "v15_ai_contact"].before_o_max.sum()),
-                          "note": "descriptive only; 0 of 28 would give a 10.1% bound, so it is not part of the rule",
-                          "cp_upper_0_of_28": cp_upper(0, 28)}
+                          "v15_skipped_evaluation": v15_skipped,
+                          "v15_skipped_note": f"{v15_skipped} kontaktów z meczów evaluation pominiętych",
+                          "note": "descriptive only; 0 of the 23 kept contacts would give a 12.2% bound (0 of the "
+                                  "original 28: 10.1%), so existing evidence is not part of the rule",
+                          "cp_upper_0_of_23": cp_upper(0, 23), "cp_upper_0_of_28": cp_upper(0, 28)}
     result["spread_check_d6"] = spread_check()
     args.out.mkdir(parents=True, exist_ok=True)
     table.to_csv(args.out / "answers.csv", index=False)
@@ -475,6 +496,8 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
                 "runs": {"a": [str(p) for p in args.run_a], "b": [str(p) for p in args.run_b]},
                 "inputs": inputs,
                 "code": {str(Path(__file__).resolve().relative_to(ROOT)): sha256_file(Path(__file__).resolve())},
+                "evidence_skipped": {"v15_contacts_from_evaluation_matches": v15_skipped,
+                                     "note": f"{v15_skipped} kontaktów z meczów evaluation pominiętych"},
                 "outputs": {n: sha256_file(args.out / n) for n in ("answers.csv", "evidence.csv", "result.json")}}
     (args.out / "complete.json").write_text(json.dumps(complete, indent=1) + "\n")
     print(json.dumps({k: result[k] for k in ("verdict", "violations", "n", "cp_upper_95")}))
