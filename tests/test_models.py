@@ -579,7 +579,7 @@ def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypat
         tiny,
         epochs=1,
         batch_size=4,
-        imgsz=320,
+        imgsz=960,  # the checkpoint's size: one epoch at 320 leaves it finding nothing
         workers=2,
         output_dir=tmp_path / "runs",
         amp=False,
@@ -587,7 +587,7 @@ def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypat
     )
     _check_train_result(result, "yolo_pose", tmp_path, "best.pt")
     assert model.weights == result.weights  # the instance now holds the new weights
-    keypoints = result.load()(pitch.read("valid", 0)[0])
+    keypoints = result.load(conf=0.05)(pitch.read("valid", 0)[0])
     assert isinstance(keypoints, sv.KeyPoints) and keypoints.xy.shape[1] == 32
 
 
