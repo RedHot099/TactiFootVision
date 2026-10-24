@@ -25,5 +25,5 @@ def frame_with(players, ball=None, *, homography=None, fallback=None, keypoint_c
     keypoints = None
     if keypoint_conf is not None:
         keypoints = sv.KeyPoints(xy=np.zeros((1, 32, 2), np.float32), confidence=np.asarray(keypoint_conf, np.float32)[None])
-    return FrameResult(index=0, timestamp=0.0, detections=people, ball=balls, keypoints=keypoints,
+    return FrameResult(index=0, timestamp=0.0, detections=people, ball=balls, ball_candidates=balls, keypoints=keypoints,
                        homography=np.eye(3) if homography is None else homography)

@@ -1,19 +1,35 @@
-"""Backend-independent evaluation: detection mAP, keypoint error and StatsBomb comparison."""
+"""Backend-independent evaluation: detection mAP, keypoint error, tracking, homography error, team accuracy, role confusion and StatsBomb comparison."""
 
 import inspect
 from typing import Any
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation.detection import evaluate_detector
+from tactifoot_vision.evaluation.homography import (
+    evaluate_homography,
+    evaluate_homography_clips,
+)
 from tactifoot_vision.evaluation.keypoints import evaluate_keypoints
-from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
+from tactifoot_vision.evaluation.metrics import (
+    DetectionMetrics,
+    HomographyMetrics,
+    KeypointMetrics,
+    TeamMetrics,
+    TrackingMetrics,
+)
 from tactifoot_vision.evaluation.statsbomb import compare_with_statsbomb
+from tactifoot_vision.evaluation.teams import evaluate_teams, evaluate_teams_clips
+from tactifoot_vision.evaluation.tracking import (
+    evaluate_tracking,
+    evaluate_tracking_clips,
+)
 from tactifoot_vision.models.base import Model
 
 
 def evaluate(
-    model: Model, dataset: Dataset, split: str = "valid", **kwargs: Any
+    model: Model, dataset: Dataset, split: Split | str = Split.VALID, **kwargs: Any
 ) -> DetectionMetrics | KeypointMetrics:
     """Score ``model`` on a dataset split with the metrics matching its task.
 
@@ -42,9 +58,18 @@ def evaluate(
 
 __all__ = [
     "DetectionMetrics",
+    "HomographyMetrics",
     "KeypointMetrics",
+    "TeamMetrics",
+    "TrackingMetrics",
     "compare_with_statsbomb",
     "evaluate",
     "evaluate_detector",
+    "evaluate_homography",
+    "evaluate_homography_clips",
     "evaluate_keypoints",
+    "evaluate_teams",
+    "evaluate_teams_clips",
+    "evaluate_tracking",
+    "evaluate_tracking_clips",
 ]

@@ -20,8 +20,8 @@ from tactifoot_vision import run_file
 from tactifoot_vision.cli import main
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models import MODELS, Model, TrainConfig, TrainResult
-from tactifoot_vision.pipeline import Pipeline, PipelineResult
-from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
+from tactifoot_vision.pipeline import Pipeline, PipelineResult, remap_track_ids
+from tactifoot_vision.pitch import HomographyEstimator, LineRefinerConfig, SoccerPitch
 from tactifoot_vision.teams import EMBEDDERS, Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker
 
@@ -128,7 +128,7 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
             "teams": {"n_teams": 3, "reducer": None},
             "pitch": {"length": 120, "width": 80},
             "homography": {"smoothing_window": 5},
-            "pipeline": {"ball_max_speed": None, "include_classes": ["player"]},
+            "pipeline": {"team_sample_stride": 5, "include_classes": ["player"]},
         },
     ).build_pipeline()
     assert (pipeline.detector.conf, pipeline.detector.iou) == (0.4, 0.3)
@@ -138,9 +138,28 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
     assert pipeline.team_classifier.reducer is None
     assert pipeline.pitch == SoccerPitch(120, 80) == pipeline.homography.pitch
     assert pipeline.homography._history.maxlen == 5
-    assert pipeline.ball_max_speed is None
+    assert pipeline.team_sample_stride == 5
     assert pipeline.include_classes == ("player",)
     assert pipeline.keypoint_model is None
+
+
+def test_the_run_file_switches_line_refinement_on(tmp_path):
+    pipeline = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "homography": {
+                "refine_with_lines": True,
+                "min_line_points": 120,
+                "line_options": {"tophat_px": 11, "stages": [[30, 6], [8, 2]]},
+            },
+        },
+    ).build_pipeline()
+    assert pipeline.homography.refine_with_lines is True
+    assert pipeline.homography.min_line_points == 120
+    assert pipeline.homography.line_options == LineRefinerConfig(
+        tophat_px=11, stages=((30, 6), (8, 2))
+    )
 
 
 def test_null_sections_turn_components_off(tmp_path):
@@ -163,6 +182,11 @@ def _homography_settings(estimator):
         estimator.ransac_threshold,
         estimator.max_age,
         estimator._history.maxlen,
+        estimator.refine_with_lines,
+        estimator.min_line_points,
+        estimator.line_inlier_px,
+        estimator.min_line_inlier_share,
+        estimator.line_options,
     )
 
 
@@ -244,6 +268,22 @@ def test_unknown_keys_fail_at_load(tmp_path, section, value, bad, valid):
     message = str(error.value)
     assert f"Unknown key {bad!r} in section {section!r}" in message
     assert valid in message
+
+
+@pytest.mark.parametrize("backend", ["yolo", "rfdetr"])
+def test_the_ball_threshold_reaches_run_files_by_signature(
+    tmp_path, monkeypatch, backend
+):
+    model = MODELS.get(backend)
+    monkeypatch.setattr(model, "_load", lambda self, weights: None)
+    monkeypatch.setattr(model, "class_names", property(lambda self: ["ball", "player"]))
+    data = {"detector": {"type": backend, "class_conf": {"ball": 0.05}}}
+    detector = _load(tmp_path, data).build_pipeline().detector
+    assert detector.class_conf == {"ball": 0.05}
+    overridden = _load(
+        tmp_path, {"detector": {"type": backend}}, ["detector.class_conf.ball=0.1"]
+    )
+    assert overridden.build_pipeline().detector.class_conf == {"ball": 0.1}
 
 
 def test_teams_keys_are_checked_against_the_classifier_and_its_embedder(tmp_path):
@@ -403,7 +443,9 @@ def test_export_writes_the_run_folder_data_files(tmp_path):
     out = result.export(tmp_path / "new" / "run", period=2, period_start=60.0)
     assert out == tmp_path / "new" / "run"
     assert sorted(p.name for p in out.iterdir()) == [
+        "carriers.csv",
         "freeze_frames.csv",
+        "passes.csv",
         "result.pkl",
         "tracks.csv",
     ]
@@ -447,6 +489,60 @@ def test_cli_run_passes_run_inputs_and_overrides(tmp_path):
     assert (frames["period"] == 2).all() and frames["minute"].iloc[0] == 1
 
 
+def test_cli_run_names_the_teams(tmp_path, fake_siglip, monkeypatch):
+    # A distinct embedding per crop, so the team classifier finds two kits.
+    count = iter(range(1000))
+    monkeypatch.setattr(
+        FakeEmbedder,
+        "embed",
+        lambda self, crops: np.float32([[next(count), 0] for _ in crops]),
+    )
+    config = _write(
+        tmp_path / "run.yaml",
+        {
+            "detector": DETECTOR,
+            "teams": {"reducer": None},
+            "pipeline": {"team_sample_stride": 1},  # enough crops to fit the teams
+        },
+    )
+    out = tmp_path / "out"
+    args = ["run", str(config), "--video", str(_video(tmp_path / "clip.mp4"))]
+    args += ["--output-dir", str(out), "--no-video"]
+    assert main([*args, "--team-names", "[Home, Away]"]) == 0
+    for table in ("tracks.csv", "freeze_frames.csv"):
+        rows = pd.read_csv(out / table)
+        players = rows[rows["class_name"] == "player"]
+        assert len(players) == 6 and players["team_id"].isin([0, 1]).all()
+        names = players["team_id"].map({0: "Home", 1: "Away"})
+        assert (players["team_name"] == names).all()
+
+
+def test_carrier_options_reach_the_run_folder_tables(tmp_path, monkeypatch):
+    from tactifoot_vision.analysis import carriers
+
+    calls = []
+
+    def spy(result, **options):
+        calls.append(options)
+        return [None] * len(result)
+
+    monkeypatch.setattr(carriers, "ball_carriers", spy)
+    loaded = _load(tmp_path, {"detector": DETECTOR})
+    video = _video(tmp_path / "clip.mp4")
+    loaded.run(video, tmp_path / "plain", render=False, progress=False)
+    loaded.run(
+        video, tmp_path / "set", render=False, progress=False, carrier_hysteresis=0.5
+    )
+    assert calls == [{}, {"hysteresis": 0.5}]
+    calls.clear()
+    config = _write(tmp_path / "run.yaml", {"detector": DETECTOR})
+    args = ["run", str(config), "--video", str(video), "--no-video"]
+    args += ["--output-dir", str(tmp_path / "cli")]
+    flags = ["--carrier-max-distance", "0.5", "--carrier-hysteresis", "0.2"]
+    assert main([*args, *flags, "--carrier-max-gap", "2"]) == 0
+    assert calls == [{"max_distance": 0.5, "hysteresis": 0.2, "max_gap": 2.0}]
+
+
 def test_cli_reports_errors_without_a_traceback(tmp_path, capsys):
     config = _write(tmp_path / "run.yaml", {"detector": {**DETECTOR, "bogus": 1}})
     video = _video(tmp_path / "clip.mp4")
@@ -488,7 +584,7 @@ def test_every_run_parameter_has_a_flag(capsys):
     export = inspect.signature(PipelineResult.export).parameters
     names = [n for n in run if n not in ("self", "video", "progress")]
     names += [n for n in export if n not in ("self", "out_dir")]
-    assert len(names) == 5
+    assert len(names) == 9
     for name in names:
         assert f"--{name.replace('_', '-')}" in out
 
@@ -623,7 +719,9 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
     assert isinstance(result, PipelineResult) and len(result) == 4
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
         "annotated.mp4",
+        "carriers.csv",
         "freeze_frames.csv",
+        "passes.csv",
         "result.pkl",
         "tracks.csv",
     ]
@@ -645,6 +743,7 @@ def test_run_file_run_writes_the_run_folder(tmp_path, predictions):
         {"overlay_position": "bottom-middle"},
         {"overlay_alpha": 2},
         {"fps": 0},
+        {"radar": None, "birds_eye": True},
     ],
 )
 def test_run_file_run_checks_render_values_before_the_first_frame(
@@ -762,6 +861,15 @@ def test_evaluate_has_no_hand_written_device_flag(capsys):
     assert "--device" in capsys.readouterr().err
 
 
+def test_a_flag_of_an_enum_or_its_string_takes_the_text_as_it_is():
+    from tactifoot_vision.enums import Split
+
+    parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+    tv.cli._add_flags(parser, [("split", Split | str, Split.VALID, None)])
+    assert parser.parse_args(["--split", "1"]).split == "1"
+    assert parser.parse_args(["--split", "val"]).split == "val"
+
+
 def test_flags_of_non_scalar_annotations_take_yaml(monkeypatch):
     from collections.abc import Sequence
 
@@ -807,6 +915,22 @@ def test_run_file_render_video_lets_per_call_options_win(tmp_path, capsys):
     )
     with pytest.raises(ValueError, match="width_px"):
         bad_radar.render_video(result, video, tmp_path / "d.mp4", progress=False)
+
+
+def test_run_file_renders_a_birds_eye_video(tmp_path):
+    loaded = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "render": {"birds_eye": True, "radar": {"width_px": 200}},
+        },
+    )
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    capture = cv2.VideoCapture(str(tmp_path / "out" / "annotated.mp4"))
+    ok, frame = capture.read()
+    capture.release()
+    width, height = tv.viz.PitchRadar(width_px=200).size
+    assert ok and frame.shape == (height + height % 2, width + width % 2, 3)
 
 
 # ------------------------------------------------------- review round 3 (Fable)
@@ -883,3 +1007,208 @@ def test_a_new_render_video_parameter_reaches_render_without_edits(
     loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
     assert received == [5]
     assert (tmp_path / "out" / "annotated.mp4").is_file()
+
+
+# ------------------------------------------------------------- post-processes
+@pytest.fixture
+def toy_postprocesses(postprocess_registry):
+    """Two registered toy post-processes whose order shows in the track ids."""
+
+    @postprocess_registry.register("test_add")
+    def add(result: PipelineResult, offset: int = 10) -> PipelineResult:
+        return remap_track_ids(result, {i: i + offset for i in result.track_ids})
+
+    @postprocess_registry.register("test_double")
+    def double(result: PipelineResult) -> PipelineResult:
+        return remap_track_ids(result, {i: 2 * i for i in result.track_ids})
+
+
+@pytest.mark.parametrize(
+    ("postprocess", "match"),
+    [
+        ([{"type": "test_ad"}], r"Section 'postprocess\.0': Unknown post-process 'test_ad'.*test_add, test_double"),
+        ([{"type": "test_add"}, {"type": "test_add", "ofset": 1}], r"Unknown key 'ofset' in section 'postprocess\.1'; valid keys: type, offset"),
+        ([{"offset": 1}], r"Section 'postprocess\.0' needs a 'type' key, one of: .*test_add"),
+        ([{"type": "test_double", "result": 1}], r"Unknown key 'result' in section 'postprocess\.0'"),
+        (["test_add"], r"Section 'postprocess\.0' must be a mapping, got 'test_add'"),
+        ({"type": "test_add"}, r"Section 'postprocess' must be a list or null"),
+    ],
+)  # fmt: skip
+def test_postprocess_typos_fail_at_load(
+    tmp_path, toy_postprocesses, postprocess, match
+):
+    with pytest.raises(ValueError, match=match):
+        _load(tmp_path, {"detector": DETECTOR, "postprocess": postprocess})
+
+
+def _run_postprocessed(tmp_path, postprocess, name):
+    """``RunFile.run`` with a ``postprocess`` section; checks the run folder agrees."""
+    loaded = _load(tmp_path, {"detector": DETECTOR, "postprocess": postprocess})
+    out = tmp_path / name
+    result = loaded.run(
+        _video(tmp_path / "clip.mp4"), out, render=False, progress=False
+    )
+    assert PipelineResult.load(out / "result.pkl").postprocesses == (
+        result.postprocesses
+    )
+    tracks = pd.read_csv(out / "tracks.csv")
+    players = tracks[tracks["class_name"] == "player"]
+    assert sorted(players["track_id"].unique()) == result.track_ids
+    return result
+
+
+def test_run_file_run_applies_post_processes_in_order(tmp_path, toy_postprocesses):
+    from tactifoot_vision.pipeline import AppliedPostProcess
+
+    add_then_double = _run_postprocessed(
+        tmp_path, [{"type": "test_add", "offset": 3}, {"type": "test_double"}], "a"
+    )
+    double_then_add = _run_postprocessed(
+        tmp_path, [{"type": "test_double"}, {"type": "test_add"}], "b"
+    )
+
+    assert add_then_double.track_ids == [8]  # (1 + 3) * 2
+    assert double_then_add.track_ids == [12]  # 1 * 2 + 10
+    assert add_then_double.postprocesses == [
+        AppliedPostProcess("test_add", {"offset": 3}),
+        AppliedPostProcess("test_double", {}),
+    ]
+    assert double_then_add.postprocesses == [
+        AppliedPostProcess("test_double", {}),
+        AppliedPostProcess("test_add", {"offset": 10}),
+    ]
+    # an empty or null section is no post-process at all
+    empty = _run_postprocessed(tmp_path, [], "c")
+    assert empty.postprocesses == []
+    assert empty.track_ids == [1]
+    assert _run_postprocessed(tmp_path, None, "d").postprocesses == []
+
+
+def test_a_failed_post_process_leaves_the_pipeline_result_saved(
+    tmp_path, toy_postprocesses
+):
+    loaded = _load(
+        tmp_path,
+        {"detector": DETECTOR, "postprocess": [{"type": "test_add", "offset": "x"}]},
+    )
+    out = tmp_path / "out"
+    with pytest.raises(TypeError):
+        loaded.run(_video(tmp_path / "clip.mp4"), out, progress=False)
+    saved = PipelineResult.load(out / "result.pkl")
+    assert len(saved) == 6 and saved.track_ids == [1]
+    assert saved.postprocesses == []
+    assert not (out / "annotated.mp4").exists()
+
+
+def test_post_processes_cannot_change_the_run_file(tmp_path, postprocess_registry):
+    @postprocess_registry.register("test_consume")
+    def consume(result: PipelineResult, ids: list[int]) -> PipelineResult:
+        return remap_track_ids(result, {1: ids.pop()})
+
+    loaded = _load(
+        tmp_path,
+        {"detector": DETECTOR, "postprocess": [{"type": "test_consume", "ids": [4]}]},
+    )
+    video = _video(tmp_path / "clip.mp4")
+    for name in ("a", "b"):
+        result = loaded.run(video, tmp_path / name, render=False, progress=False)
+        assert result.track_ids == [4]
+    assert loaded.sections["postprocess"] == [{"type": "test_consume", "ids": [4]}]
+
+
+def test_overrides_edit_append_and_drop_list_entries(tmp_path, toy_postprocesses):
+    def postprocess(data, *overrides):
+        return _load(tmp_path, data, overrides).sections.get("postprocess")
+
+    one = {"detector": DETECTOR, "postprocess": [{"type": "test_add"}]}
+    add, double = {"type": "test_add"}, {"type": "test_double"}
+
+    assert postprocess(one, "postprocess.0.offset=3") == [add | {"offset": 3}]
+    assert postprocess(one, "postprocess.1={type: test_double}") == [add, double]
+    assert postprocess(
+        one, "postprocess.1.type=test_double", "postprocess.2.type=test_add"
+    ) == [add, double, add]
+    assert postprocess(one, "postprocess.0={type: test_double}") == [double]
+    assert postprocess(one, "postprocess=[]") == []
+    assert postprocess(one, "postprocess=null") is None
+    # a missing or null list is created by appending at index 0
+    for data in ({"detector": DETECTOR}, {"detector": DETECTOR, "postprocess": None}):
+        assert postprocess(data, "postprocess.0.type=test_double") == [double]
+
+
+@pytest.mark.parametrize(
+    ("override", "match"),
+    [
+        ("postprocess.2.type=test_add", r"'postprocess' is a list of length 1; .*0 to 1"),
+        ("postprocess.-1.offset=3", r"'postprocess' is a list of length 1; .*0 to 1"),
+        ("postprocess.first.offset=3", r"'postprocess' is a list of length 1; .*0 to 1"),
+        ("postprocess.0.offset.x=3", r"'postprocess\.0\.offset' is 10, not a mapping"),
+        ("postprocess.1.offset=3", r"needs a 'type' key"),
+    ],
+)  # fmt: skip
+def test_list_override_errors(tmp_path, toy_postprocesses, override, match):
+    data = {"detector": DETECTOR, "postprocess": [{"type": "test_add", "offset": 10}]}
+    with pytest.raises(ValueError, match=match):
+        _load(tmp_path, data, [override])
+
+
+def test_cli_run_applies_post_processes_from_set(tmp_path, toy_postprocesses):
+    out = _cli_run(
+        tmp_path,
+        "--no-video",
+        *("--set", "postprocess.0.type=test_add", "--set", "postprocess.0.offset=4"),
+    )
+    assert PipelineResult.load(out / "result.pkl").track_ids == [5]
+
+
+# ------------------------------------------------------------ showcase overlays
+def test_the_ball_trail_length_reaches_the_render_section(tmp_path):
+    data = {"detector": DETECTOR, "render": {"annotator": {"trail_seconds": 0.5}}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.annotator.trail_seconds=0"])
+    with pytest.raises(ValueError, match="trail_seconds"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
+
+
+def test_the_radar_tail_length_reaches_the_render_section(tmp_path):
+    data = {"detector": DETECTOR, "render": {"radar": {"trail_seconds": 0.5}}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.radar.trail_seconds=0"])
+    with pytest.raises(ValueError, match="trail_seconds"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
+
+
+def test_the_radar_visible_area_reaches_the_render_section(tmp_path):
+    radar = {"draw_visible_area": True, "visible_area_color": "#00FF00"}
+    data = {"detector": DETECTOR, "render": {"radar": radar}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.radar.visible_area_color=nope"])
+    with pytest.raises(ValueError, match="color"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
+
+
+def test_the_radar_velocity_arrows_reach_the_render_section(tmp_path):
+    data = {"detector": DETECTOR, "render": {"radar": {"velocity_seconds": 1.0}}}
+    loaded = _load(tmp_path, data)
+    loaded.run(_video(tmp_path / "clip.mp4"), tmp_path / "out", progress=False)
+    assert (tmp_path / "out" / "annotated.mp4").is_file()
+    bad = _load(tmp_path, data, ["render.radar.velocity_seconds=0"])
+    with pytest.raises(ValueError, match="velocity_seconds"):
+        bad.run(_video(tmp_path / "clip.mp4"), tmp_path / "bad", progress=False)
+    assert not (tmp_path / "bad").exists()  # refused before the run
+
+
+def test_ball_carriers_are_not_reachable_from_the_render_section(tmp_path):
+    # A run does not compute carriers, so a run file cannot pass them.
+    data = {"detector": DETECTOR, "render": {"ball_carriers": [1, None]}}
+    with pytest.raises(ValueError, match="Unknown key 'ball_carriers'"):
+        _load(tmp_path, data)

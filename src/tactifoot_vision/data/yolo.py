@@ -9,7 +9,6 @@ import yaml
 
 from tactifoot_vision.data._files import (
     IMAGE_SUFFIXES,
-    check_link_mode,
     check_output_location,
     clipped_box,
     image_size,
@@ -18,13 +17,8 @@ from tactifoot_vision.data._files import (
     unique_names,
 )
 from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
-from tactifoot_vision.data.dataset import (
-    Dataset,
-    LinkMode,
-    Sample,
-    canonical_split,
-    check_flip_idx,
-)
+from tactifoot_vision.data.dataset import Dataset, Sample, check_flip_idx
+from tactifoot_vision.enums import LinkMode, Split
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +52,7 @@ def read_dataset(data_yaml: Path) -> Dataset:
     for key in ("train", "val", "valid", "test"):
         if not config.get(key):
             continue
-        split = canonical_split(key)
+        split = Split.parse(key)
         if split in splits:
             continue
         images = tuple(_list_images(config[key], root))
@@ -181,8 +175,10 @@ def _read_sample(
 
 
 # ------------------------------------------------------------------- writing
-def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -> Path:
-    check_link_mode(link)
+def write_dataset(
+    dataset: Dataset, out_dir: Path, link: LinkMode | str = LinkMode.SYMLINK
+) -> Path:
+    link = LinkMode.parse(link, "link")
     splits = dataset.split_names
     managed = [
         out_dir / split / sub for split in splits for sub in ("images", "labels")
@@ -204,7 +200,11 @@ def write_dataset(dataset: Dataset, out_dir: Path, link: LinkMode = "symlink") -
             label_path(target).write_text(_format_labels(sample))
 
     config: dict = {"path": str(out_dir.resolve())}
-    for split, key in (("train", "train"), ("valid", "val"), ("test", "test")):
+    for split, key in (
+        (Split.TRAIN, "train"),
+        (Split.VALID, "val"),
+        (Split.TEST, "test"),
+    ):
         if split in splits:
             config[key] = f"{split}/images"
     config |= {"nc": len(dataset.class_names), "names": list(dataset.class_names)}

@@ -4,7 +4,9 @@
 
     image = tv.viz.FrameAnnotator(style="video_game").annotate(frame, result[0])
     image = tv.viz.overlay(image, tv.viz.PitchRadar().draw(result[0]))
+    top_down = tv.viz.warp_to_pitch(frame, result[0].homography, result.pitch)
     tv.viz.render_video(result, "match.mp4", "annotated.mp4")
+    tv.viz.render_video(result, "match.mp4", "top.mp4", birds_eye=True)
     tv.viz.plot_heatmap(result, team=0)
 
 OpenCV drawing returns BGR ``uint8`` images; the plotting helpers return
@@ -12,6 +14,7 @@ matplotlib figures (matplotlib is imported on first use).
 """
 
 from tactifoot_vision.viz.annotate import FrameAnnotator, draw_annotations
+from tactifoot_vision.viz.birds_eye import pitch_to_birds_eye, warp_to_pitch
 from tactifoot_vision.viz.plots import (
     draw_pitch,
     plot_distance_histogram,
@@ -23,7 +26,12 @@ from tactifoot_vision.viz.plots import (
     show_augmentations,
     show_samples,
 )
-from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
+from tactifoot_vision.viz.radar import (
+    PitchRadar,
+    check_overlay,
+    draw_space_control,
+    overlay,
+)
 from tactifoot_vision.viz.video import render_video
 
 __all__ = [
@@ -32,7 +40,9 @@ __all__ = [
     "check_overlay",
     "draw_annotations",
     "draw_pitch",
+    "draw_space_control",
     "overlay",
+    "pitch_to_birds_eye",
     "plot_distance_histogram",
     "plot_heatmap",
     "plot_metrics",
@@ -42,4 +52,5 @@ __all__ = [
     "show",
     "show_augmentations",
     "show_samples",
+    "warp_to_pitch",
 ]

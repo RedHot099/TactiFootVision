@@ -1,87 +1,246 @@
-"""Refining a frame -> pitch homography on the painted lines of the frame.
+"""Refine a frame -> pitch homography by fitting the pitch markings to the painted lines of the frame.
 
-A keypoint homography can be metres off: pitch-landmark models place their
-keypoints tens of pixels from the landmarks on footage unlike their training
-data. The painted lines are visible in most frames, so the fit is refined by
-pulling the projected pitch markings onto them (a chamfer fit):
-
-* a white-line mask: thin bright structures (a top-hat on the HSV value) of
-  low saturation, on the grass, with the people's boxes removed;
-* its distance transform, capped, gives every pixel its distance to the
-  nearest painted line;
-* samples along every marking of the pitch are projected into the frame, and
-  the eight pixel offsets of four control points (which define the
-  homography) move them onto the lines by robust least squares, coarse to
-  fine.
-
-Only samples inside the frame and on the grass count. With fewer than
-``min_points`` of them the start is kept. So it is when the result puts fewer
-than ``min_inliers`` of the samples on a line, or no more than the start: a
-fit that ends between lines has snapped partly onto the wrong ones (on
-SoccerNet frames such fits had a worse scale than the keypoint fit they
-started from). So it is, too, when the result is no camera's view of the
-grass: a mirror image (far and near touchline swapped), which fits the
-symmetric markings perfectly, or a view whose horizon cuts the grass, where
-the fit shrank the markings into a corner of the frame. And so it is when the
-visible markings shrank onto one painted line (across it, a quarter of the
-start's spread or less), which also puts them all on a line. :class:`LineFit` reports the share of samples within
-``inlier_px`` of a painted line (``inliers``), before and after.
+The pitch model's markings are sampled densely, projected into the frame and
+pulled onto the nearest white-line pixel (a chamfer fit on the distance
+transform of a line mask). The unknowns are the pixel offsets of four control
+points spread over the frame, which keeps the problem well conditioned; a
+robust least squares fits them coarse to fine. The image thresholds, in
+:class:`LineRefinerConfig`, are tuned on 1080p broadcast footage.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from scipy.ndimage import map_coordinates
+from scipy.optimize import least_squares
 
-from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
+from tactifoot_vision.pitch.projection import project_points
 
-# Pixel sizes are for a 720-pixel-high frame and scale with the frame height.
-_REFERENCE_HEIGHT = 720
-_FINEST_PX = 5.0  # distance cap of the last stage
-_STAGE_RATIO = 2.5  # caps shrink by about this much per stage
-# A refined view whose markings are thinner than this share of the start's has
-# shrunk them onto one painted line.
-_MIN_THICKNESS_RATIO = 0.25
-# Frame positions (fractions of width and height) of the four control points.
-_CONTROL = ((0.15, 0.35), (0.85, 0.35), (0.85, 0.9), (0.15, 0.9))
+# Control points as fractions of the frame (width, height), below the stands.
+_CONTROLS = np.array([[0.15, 0.35], [0.85, 0.35], [0.85, 0.9], [0.15, 0.9]])
+
+
+@dataclass(frozen=True)
+class LineRefinerConfig:
+    """Image thresholds of the line refinement, in pixels unless stated; defaults tuned on 1080p.
+
+    Attributes:
+        grass_hsv_low, grass_hsv_high: grass in OpenCV HSV (hue 0-180):
+            green, saturated, not dark.
+        grass_open_px, grass_close_px: square kernels that drop specks from
+            the grass mask, then close it over lines and players; the largest
+            region left is the pitch.
+        tophat_px: lines narrower than this stand out of the grass (top-hat
+            kernel on the HSV value).
+        min_tophat: grey levels a line pixel is brighter than the grass around.
+        max_line_saturation: lines are white, kits often are not.
+        line_erode_px: line pixels are kept this far inside the grass.
+        seen_erode_px: markings are looked for this far inside the grass.
+        box_margin_side, box_margin_top, box_margin_bottom: the margin cut
+            around each person box, as fractions of its width (side) and
+            height (top, bottom), for the limbs and shadow the box misses.
+        stages: ``(distance cap, robust loss scale)`` per least-squares stage,
+            coarse to fine: the first pulls lines up to its cap off, the last
+            ignores what is beyond its cap, which bounds ``line_inlier_px``.
+        max_evaluations: residual evaluations per stage.
+        good_inlier_share: a fit from the first start at least this good
+            needs no second start.
+        model_step: pitch units between model points along the markings.
+    """
+
+    grass_hsv_low: tuple[int, int, int] = (30, 60, 40)
+    grass_hsv_high: tuple[int, int, int] = (90, 255, 255)
+    grass_open_px: int = 5
+    grass_close_px: int = 31
+    tophat_px: int = 15
+    min_tophat: float = 22
+    max_line_saturation: float = 110
+    line_erode_px: int = 9
+    seen_erode_px: int = 15
+    box_margin_side: float = 1 / 3
+    box_margin_top: float = 1 / 4
+    box_margin_bottom: float = 1 / 6
+    stages: tuple[tuple[float, float], ...] = ((40.0, 8.0), (12.0, 2.5), (6.0, 1.2))
+    max_evaluations: int = 200
+    good_inlier_share: float = 0.85
+    model_step: float = 0.4
+
+    def __post_init__(self) -> None:
+        # Run files give lists; keep the config hashable and immutable.
+        for name in ("grass_hsv_low", "grass_hsv_high"):
+            value = tuple(getattr(self, name))
+            if len(value) != 3:
+                raise ValueError(f"{name} must be 3 HSV values, got {value}")
+            object.__setattr__(self, name, value)
+        stages = tuple(tuple(float(v) for v in stage) for stage in self.stages)
+        if not stages or any(len(s) != 2 or min(s) <= 0 for s in stages):
+            raise ValueError(
+                f"stages must be (cap, scale) pairs above 0, got {self.stages}"
+            )
+        object.__setattr__(self, "stages", stages)
+        for name in (
+            "grass_open_px", "grass_close_px", "tophat_px", "line_erode_px",
+            "seen_erode_px", "max_evaluations",
+        ):  # fmt: skip
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be >= 1, got {getattr(self, name)}")
+        for name in ("box_margin_side", "box_margin_top", "box_margin_bottom"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} must be >= 0, got {getattr(self, name)}")
+        if self.min_tophat < 0 or self.max_line_saturation <= 0:
+            raise ValueError("min_tophat must be >= 0 and max_line_saturation > 0")
+        if not 0 < self.good_inlier_share <= 1:
+            raise ValueError(
+                f"good_inlier_share must be in (0, 1], got {self.good_inlier_share}"
+            )
+        if self.model_step <= 0:
+            raise ValueError(f"model_step must be > 0, got {self.model_step}")
+
+    @property
+    def distance_cap_px(self) -> float:
+        """The distance the final stage measures up to: the fit's distances are capped there."""
+        return self.stages[-1][0]
 
 
 @dataclass(frozen=True)
 class LineFit:
-    """Outcome of :func:`refine_homography`.
+    """How well a refined homography lays the pitch markings on its frame's painted lines.
 
-    ``matrix`` is the refined frame -> pitch homography, or the start when the
-    refinement was not used (``refined`` False). ``inliers`` is the share of
-    the visible marking samples within ``inlier_px`` of a painted line under
-    ``matrix``, ``start_inliers`` the same for the start (NaN when fewer than
-    ``min_points`` samples are visible); ``points`` counts those samples.
+    ``points`` model points along the markings were visible on the grass;
+    ``inlier_share`` of them lie within the estimator's ``line_inlier_px`` of
+    a painted-line pixel, and ``median_px`` is their median distance to one
+    (capped at the final stage's cap; a point the fit moved out of view
+    counts as further off). A low share means the fit found few lines to hold on to.
     """
 
-    matrix: np.ndarray
-    refined: bool
-    inliers: float
-    start_inliers: float
     points: int
+    inlier_share: float
+    median_px: float
 
 
-def marking_samples(pitch: SoccerPitch, step: float) -> np.ndarray:
-    """``(N, 2)`` points every ``step`` pitch units along every painted marking."""
+class LineRefiner:
+    """Fits frame -> pitch homographies to the painted lines of their frames.
+
+    Holds the model points of ``pitch`` and the settings of
+    :class:`~tactifoot_vision.pitch.HomographyEstimator`'s ``refine_with_lines``,
+    which validates them.
+    """
+
+    def __init__(
+        self,
+        pitch: SoccerPitch,
+        config: LineRefinerConfig,
+        *,
+        min_points: int,
+        inlier_px: float,
+        min_inlier_share: float,
+    ) -> None:
+        self.config = config
+        self.model = model_points(pitch, config.model_step)
+        self.min_points = min_points
+        self.inlier_px = inlier_px
+        self.min_inlier_share = min_inlier_share
+
+    def refine(
+        self,
+        frame: np.ndarray,
+        starts: Sequence[np.ndarray | None],
+        boxes: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, LineFit] | None:
+        """The best fit among those from each of ``starts``: most inliers, then most points.
+
+        ``None`` starts are skipped, and so are the rest once a fit reaches
+        ``good_inlier_share``. Returns ``None`` when no start gives a fit with
+        at least ``min_inlier_share`` inliers (see :func:`refine_homography`
+        for the other ways a start gives none).
+        """
+        line, seen = line_masks(frame, boxes, self.config)
+        best = None
+        for start in starts:
+            if start is None:
+                continue
+            refined = refine_homography(
+                start,
+                self.model,
+                line,
+                seen,
+                self.config,
+                min_points=self.min_points,
+                inlier_px=self.inlier_px,
+            )
+            if refined is None or refined[1].inlier_share < self.min_inlier_share:
+                continue
+            if best is None or _rank(refined[1]) > _rank(best[1]):
+                best = refined
+            if best[1].inlier_share >= self.config.good_inlier_share:
+                break
+        return best
+
+
+def _rank(fit: LineFit) -> tuple[float, int]:
+    return fit.inlier_share, fit.points
+
+
+def model_points(pitch: SoccerPitch, step: float) -> np.ndarray:
+    """Points every ``step`` pitch units along the painted lines, circle and arcs of ``pitch``."""
     lines, _ = pitch_markings(pitch, samples=256)
     points = []
     for line in lines:
-        for a, b in zip(line[:-1], line[1:], strict=True):
-            n = max(1, int(np.ceil(np.hypot(*(b - a)) / step)))
-            points.append(a + (b - a) * (np.arange(n)[:, None] / n))
+        segments = np.diff(line, axis=0)
+        for start, segment in zip(line[:-1], segments, strict=True):
+            n = max(1, int(np.ceil(np.hypot(*segment) / step)))
+            points.append(start + np.arange(n)[:, None] / n * segment)
     return np.vstack(points)
 
 
-def grass_mask(frame: np.ndarray) -> np.ndarray:
-    """``uint8`` mask (0/255) of the pitch: green pixels closed over lines and players, largest region."""
+def line_masks(
+    frame: np.ndarray,
+    boxes: np.ndarray | None = None,
+    config: LineRefinerConfig | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The painted lines of a BGR frame and where the pitch can be seen, as uint8 0/255 masks.
+
+    Returns ``(line, seen)``: ``line`` holds thin, bright, unsaturated pixels on
+    the grass, ``seen`` the grass away from its edges, where a marking would
+    show if it were there. Both leave out the people ``boxes`` (xyxy, frame
+    pixels) with a margin for limbs and shadow, so white kits are no lines and
+    the markings they hide count for nothing.
+    """
+    config = config or LineRefinerConfig()
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    green = cv2.inRange(hsv, (30, 60, 40), (90, 255, 255))
-    green = cv2.morphologyEx(green, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-    closed = cv2.morphologyEx(green, cv2.MORPH_CLOSE, np.ones((31, 31), np.uint8))
+    grass = _grass_mask(hsv, config)
+    people = np.zeros(grass.shape, np.uint8)
+    boxes = np.asarray(boxes if boxes is not None else [], float).reshape(-1, 4)
+    for x1, y1, x2, y2 in boxes:
+        w, h = x2 - x1, y2 - y1
+        # Clipped at both ends: a negative end would count from the far edge.
+        top = max(0, int(y1 - h * config.box_margin_top))
+        bottom = max(0, int(y2 + h * config.box_margin_bottom))
+        left = max(0, int(x1 - w * config.box_margin_side))
+        right = max(0, int(x2 + w * config.box_margin_side))
+        people[top:bottom, left:right] = 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (config.tophat_px,) * 2)
+    tophat = cv2.morphologyEx(hsv[..., 2], cv2.MORPH_TOPHAT, kernel)
+    line = (tophat > config.min_tophat) & (hsv[..., 1] < config.max_line_saturation)
+    line = line.astype(np.uint8) * 255 & _erode(grass, config.line_erode_px)
+    seen = _erode(grass, config.seen_erode_px)
+    return line & ~people, seen & ~people
+
+
+def _erode(mask: np.ndarray, size: int) -> np.ndarray:
+    return cv2.erode(mask, np.ones((size, size), np.uint8))
+
+
+def _grass_mask(hsv: np.ndarray, config: LineRefinerConfig) -> np.ndarray:
+    """The pitch's grass, lines included: the largest green region of an HSV frame."""
+    grass = cv2.inRange(hsv, config.grass_hsv_low, config.grass_hsv_high)
+    open_kernel = np.ones((config.grass_open_px,) * 2, np.uint8)
+    close_kernel = np.ones((config.grass_close_px,) * 2, np.uint8)
+    grass = cv2.morphologyEx(grass, cv2.MORPH_OPEN, open_kernel)
+    closed = cv2.morphologyEx(grass, cv2.MORPH_CLOSE, close_kernel)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(closed)
     if count <= 1:
         return closed
@@ -89,217 +248,146 @@ def grass_mask(frame: np.ndarray) -> np.ndarray:
     return np.where(labels == largest, 255, 0).astype(np.uint8)
 
 
-def line_mask(
-    frame: np.ndarray, boxes: np.ndarray | None = None, grass: np.ndarray | None = None
-) -> np.ndarray:
-    """``uint8`` mask (0/255) of painted-line pixels, without the area around ``boxes`` (people)."""
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-    tophat = cv2.morphologyEx(hsv[..., 2], cv2.MORPH_TOPHAT, kernel)
-    mask = ((tophat > 22) & (hsv[..., 1] < 110)).astype(np.uint8) * 255
-    grass = grass_mask(frame) if grass is None else grass
-    mask &= cv2.erode(grass, np.ones((9, 9), np.uint8))
-    if boxes is not None:
-        for x1, y1, x2, y2 in np.asarray(boxes, dtype=float).reshape(-1, 4):
-            w, h = x2 - x1, y2 - y1
-            top, bottom = int(max(0, y1 - h / 4)), int(max(0, y2 + h / 6))
-            left, right = int(max(0, x1 - w / 3)), int(max(0, x2 + w / 3))
-            mask[top:bottom, left:right] = 0
-    return mask
-
-
 def refine_homography(
-    frame: np.ndarray,
     homography: np.ndarray,
-    pitch: SoccerPitch | None = None,
-    boxes: np.ndarray | None = None,
+    model: np.ndarray,
+    line: np.ndarray,
+    seen: np.ndarray,
+    config: LineRefinerConfig,
     *,
-    min_points: int = 80,
-    min_inliers: float = 0.5,
-    inlier_px: float = 3.0,
-    search_px: float = 120.0,
-    step: float = 0.4,
-) -> LineFit:
-    """Refine a frame -> pitch ``homography`` on the painted lines of ``frame`` (BGR).
+    min_points: int,
+    inlier_px: float,
+) -> tuple[np.ndarray, LineFit] | None:
+    """Fit the frame -> pitch ``homography`` to a frame's painted lines.
 
-    Args:
-        pitch: pitch model (units of ``homography``); defaults to ``SoccerPitch()``.
-        boxes: ``(N, 4)`` people boxes in frame pixels, removed from the line mask
-            (white kits are not lines).
-        min_points: fewest visible marking samples to refine on.
-        min_inliers: least share of samples on a line for the refined matrix
-            to replace the start.
-        inlier_px: distance to a painted line (pixels at 720 p, scaled with the
-            frame height) under which a sample counts as on the line.
-        search_px: how far (pixels at 720 p) the projected markings may be from
-            their lines. The fit runs in stages from this distance cap down to
-            5 px, each with a robust loss scaled to its cap; a wider search
-            corrects starts that are further off but can snap onto a wrong line.
-        step: spacing of the marking samples in pitch units.
+    ``model`` holds the :func:`model_points` of the pitch, ``line`` and
+    ``seen`` the :func:`line_masks` of the frame. Returns the refined matrix
+    (normalised, frame -> pitch) and its fit, or ``None`` when:
+
+    * no painted line is in view;
+    * the start puts part of the control points (from 35 % of the frame
+      height down) beyond the horizon, as on a view looking far up the pitch;
+    * fewer than ``min_points`` model points fall where the pitch is seen at
+      some stage;
+    * the fit degenerates: it folds the control quadrilateral over or puts a
+      control point beyond the horizon.
+
+    Model points the fit moves beyond the horizon count as the stage's
+    distance cap, and those it moves out of the frame as the distance at the
+    frame's edge plus how far out they are, so the fit cannot gain by pushing
+    the markings out of view.
     """
-    if not 0 <= min_inliers <= 1:
-        raise ValueError(f"min_inliers must be in [0, 1], got {min_inliers}")
-    for name, value in (
-        ("inlier_px", inlier_px),
-        ("search_px", search_px),
-        ("step", step),
-    ):
-        if value <= 0:
-            raise ValueError(f"{name} must be > 0, got {value}")
-    pitch = pitch or SoccerPitch()
-    height, width = frame.shape[:2]
-    scale = height / _REFERENCE_HEIGHT
-    grass = grass_mask(frame)
-    lines = line_mask(frame, boxes, grass)
-    field = cv2.erode(grass, np.ones((15, 15), np.uint8)) > 0
-    samples = marking_samples(pitch, step)
-    start = np.asarray(homography, dtype=float)
-    start = start / start[2, 2]
+    height, width = line.shape
+    if not line.any():
+        return None
+    image_to_pitch = np.asarray(homography, float)
+    centre = (width / 2, height / 2)
+    frame_controls = _CONTROLS * (width, height)
+    controls, valid = project_points(frame_controls, image_to_pitch, centre)
+    if not valid.all():
+        return None
+    pitch_to_image = np.linalg.inv(image_to_pitch)
+    front = tuple(project_points([centre], image_to_pitch, centre)[0][0])
+    controls_px, _ = project_points(controls, pitch_to_image, front)
+    on_grass = seen > 0
 
-    distance = cv2.distanceTransform(255 - lines, cv2.DIST_L2, 5)
+    def to_image(offsets: np.ndarray) -> np.ndarray | None:
+        try:
+            return _four_point_homography(controls, controls_px + offsets.reshape(4, 2))
+        except np.linalg.LinAlgError:
+            return None
 
-    def visible(to_frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """``(indices, frame pixels)`` of the samples on the visible grass under a pitch -> frame matrix."""
-        none = np.zeros(0, int), np.zeros((0, 2))
-        to_pitch = _invert(to_frame)
-        if to_pitch is None:
-            return none
-        centre = to_pitch @ np.array([width / 2, height / 2, 1.0])
-        if abs(centre[2]) < 1e-12:
-            return none
-        xy, front = project_points(samples, to_frame, tuple(centre[:2] / centre[2]))
-        inside = (
-            front
-            & (xy[:, 0] > 2)
-            & (xy[:, 0] < width - 3)
-            & (xy[:, 1] > 2)
-            & (xy[:, 1] < height - 3)
+    def in_frame(xy: np.ndarray, margin: float) -> np.ndarray:
+        return (
+            (xy[:, 0] >= margin)
+            & (xy[:, 0] < width - margin)
+            & (xy[:, 1] >= margin)
+            & (xy[:, 1] < height - margin)
         )
-        index = np.flatnonzero(inside)
-        on_grass = field[xy[index, 1].astype(int), xy[index, 0].astype(int)]
-        return index[on_grass], xy[index[on_grass]]
 
-    def inliers(to_frame: np.ndarray) -> tuple[float, int]:
-        _, xy = visible(to_frame)
-        if len(xy) < min_points:
-            return np.nan, len(xy)
-        near = _sample(distance, xy) <= inlier_px * scale
-        return float(near.mean()), len(xy)
+    def visible(matrix: np.ndarray) -> np.ndarray:
+        xy, ahead = project_points(model, matrix, front)
+        index = np.flatnonzero(ahead & in_frame(xy, 2))
+        # Frame pixel i covers [i, i + 1).
+        cells = np.floor(xy[index]).astype(int)
+        return index[on_grass[cells[:, 1], cells[:, 0]]]
 
-    to_frame = _invert(start)
-    if to_frame is None:
-        return LineFit(start, False, np.nan, np.nan, 0)
-    start_inliers, points = inliers(to_frame)
-    unchanged = LineFit(start, False, start_inliers, start_inliers, points)
-    if points < min_points:
-        return unchanged
+    def distances(
+        offsets: np.ndarray, points: np.ndarray, field: np.ndarray, cap: float
+    ) -> np.ndarray:
+        # float32 like the distance field: float64 residuals change where the
+        # finite-difference steps land and with them the fit.
+        result = np.full(len(points), cap, np.float32)
+        matrix = to_image(offsets)
+        if matrix is None:
+            return result
+        xy, ahead = project_points(points, matrix, front)
+        xy = xy[ahead]
+        # Pixel centres sit at i + 0.5 in frame coordinates, at i in the array.
+        # A point off the frame scores the edge's distance plus how far off it
+        # is, which keeps the cost continuous as the fit pushes points out.
+        inside = np.clip(xy, 0, [width - 1e-6, height - 1e-6])
+        off = np.hypot(*(xy - inside).T)
+        sampled = map_coordinates(
+            field, [inside[:, 1] - 0.5, inside[:, 0] - 0.5], order=1, mode="nearest"
+        )
+        result[ahead] = np.minimum(sampled + off, cap)
+        return result
 
-    # The homography as four control points: frame positions of four pitch
-    # points spread over the view, moved by eight pixel offsets.
-    control_px = np.array(_CONTROL) * np.array([width, height])
-    control = _project(control_px, start)
-
-    def matrix(offsets: np.ndarray) -> np.ndarray | None:
-        moved, _ = cv2.findHomography(control, control_px + offsets.reshape(4, 2))
-        return moved
-
-    stages = 1 + int(np.ceil(np.log(search_px / _FINEST_PX) / np.log(_STAGE_RATIO)))
     offsets = np.zeros(8)
-    for cap in np.geomspace(max(search_px, _FINEST_PX), _FINEST_PX, max(stages, 1)):
-        loss_scale = cap / 5  # residuals well inside the cap count fully
-        capped = np.minimum(distance, cap * scale).astype(np.float32)
-        current = matrix(offsets)
-        if current is None:
-            return unchanged
-        index, _ = visible(current)
-        if len(index) < min_points:
-            return unchanged
-
-        def residuals(d: np.ndarray, points=samples[index], dist=capped) -> np.ndarray:
-            moved = matrix(d)
-            if moved is None:
-                return np.full(len(points), float(dist.max()))
-            return _sample(dist, _project(points, moved))
-
-        offsets = _least_squares(residuals, offsets, loss_scale * scale)
-
-    refined_to_frame = matrix(offsets)
-    refined = None if refined_to_frame is None else _invert(refined_to_frame)
-    if refined is None:
-        return unchanged
-    refined_inliers, refined_points = inliers(refined_to_frame)
-    if not (refined_inliers >= min_inliers and refined_inliers > start_inliers):
-        return unchanged
-    _, seen = visible(refined_to_frame)
-    if not _faces_camera(refined, grass, seen):
-        return unchanged
-    if _thickness(seen) < _MIN_THICKNESS_RATIO * _thickness(visible(to_frame)[1]):
-        return unchanged
-    return LineFit(refined, True, refined_inliers, start_inliers, refined_points)
-
-
-def _faces_camera(
-    to_pitch: np.ndarray, grass: np.ndarray, seen: np.ndarray, every: int = 16
-) -> bool:
-    """Whether a frame -> pitch homography is a camera's view of the pitch it sees.
-
-    With the far touchline at y = 0 (the keypoint dataset's landmark order,
-    which :class:`SoccerPitch` follows) a camera above the pitch sees x and y
-    as the frame does, so the homography keeps the orientation on the visible
-    pitch. It reverses it everywhere for a mirror image, which fits the
-    symmetric markings perfectly, and beyond its horizon, which a fit that
-    shrinks the markings into a corner of the view puts inside the frame.
-    Checked at the ``seen`` marking pixels and on a grid (``every`` pixels) of
-    the grass in the lower half of the frame, which a broadcast camera looking
-    down always sees in front of it; the top of a grass mask can hold boards.
-    The Jacobian determinant of a homography at a point has the sign of
-    ``det(H) * w``, ``w`` the point's homogeneous scale.
-    """
-    half = grass.shape[0] // 2
-    rows, cols = np.nonzero(grass[half::every, ::every])
-    points = np.vstack([np.column_stack([cols * every, half + rows * every]), seen])
-    if len(points) == 0:
-        return True
-    w = np.column_stack([points, np.ones(len(points))]) @ to_pitch[2]
-    return bool((np.linalg.det(to_pitch) * w > 0).all())
-
-
-def _thickness(points: np.ndarray) -> float:
-    """Spread (pixels, standard deviation) of ``(N, 2)`` points across their main direction; 0 for fewer than 3."""
-    if len(points) < 3:
-        return 0.0
-    return float(
-        np.linalg.svd(points - points.mean(axis=0), compute_uv=False)[1]
-    ) / np.sqrt(len(points))
-
-
-def _least_squares(residuals, start: np.ndarray, loss_scale: float) -> np.ndarray:
-    # SciPy is not a direct dependency yet; scikit-learn requires it.
-    from scipy.optimize import least_squares
-
-    fit = least_squares(
-        residuals, start, loss="soft_l1", f_scale=loss_scale, x_scale=5.0, max_nfev=200
+    raw_distance = cv2.distanceTransform(255 - line, cv2.DIST_L2, 5)
+    for cap, scale in config.stages:
+        field = np.minimum(raw_distance, cap).astype(np.float32)
+        matrix = to_image(offsets)
+        if matrix is None:
+            return None
+        points = model[visible(matrix)]
+        if len(points) < min_points:
+            return None
+        offsets = least_squares(
+            distances,
+            offsets,
+            loss="soft_l1",
+            f_scale=scale,
+            x_scale=5.0,
+            max_nfev=config.max_evaluations,
+            args=(points, field, cap),
+        ).x
+    matrix = to_image(offsets)
+    if matrix is None or _folded(controls_px, controls_px + offsets.reshape(4, 2)):
+        return None
+    refined = np.linalg.inv(matrix)
+    if not project_points(frame_controls, refined, centre)[1].all():
+        return None
+    residuals = distances(offsets, points, field, config.stages[-1][0])
+    fit = LineFit(
+        points=len(points),
+        inlier_share=float(np.mean(residuals < inlier_px)),
+        median_px=float(np.median(residuals)),
     )
-    return fit.x
+    return refined / refined[2, 2], fit
 
 
-def _project(points: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    homogeneous = np.column_stack([points, np.ones(len(points))]) @ matrix.T
-    return homogeneous[:, :2] / homogeneous[:, 2:3]
+def _folded(before: np.ndarray, after: np.ndarray) -> bool:
+    """Whether the quadrilateral ``after`` no longer turns the way ``before`` does at every corner."""
+
+    def turns(quad: np.ndarray) -> np.ndarray:
+        edges = np.roll(quad, -1, axis=0) - quad
+        following = np.roll(edges, -1, axis=0)
+        return np.sign(edges[:, 0] * following[:, 1] - edges[:, 1] * following[:, 0])
+
+    return not np.array_equal(turns(before), turns(after))
 
 
-def _sample(image: np.ndarray, xy: np.ndarray) -> np.ndarray:
-    """Bilinear samples of ``image`` at ``(N, 2)`` pixel positions (clamped to the image)."""
-    from scipy.ndimage import map_coordinates
+def _four_point_homography(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+    """The homography taking four ``src`` points to ``dst``, in float64.
 
-    return map_coordinates(image, [xy[:, 1], xy[:, 0]], order=1, mode="nearest")
-
-
-def _invert(matrix: np.ndarray) -> np.ndarray | None:
-    try:
-        inverse = np.linalg.inv(matrix)
-    except np.linalg.LinAlgError:
-        return None
-    if not np.isfinite(inverse).all() or abs(inverse[2, 2]) < 1e-12:
-        return None
-    return inverse / inverse[2, 2]
+    ``cv2.getPerspectiveTransform`` takes float32, which would round away the
+    small steps the least squares differentiates with.
+    """
+    rows = []
+    for (x, y), (u, v) in zip(src, dst, strict=True):
+        rows.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        rows.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+    h = np.linalg.solve(np.array(rows), dst.reshape(-1))
+    return np.append(h, 1.0).reshape(3, 3)

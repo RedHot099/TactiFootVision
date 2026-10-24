@@ -1,6 +1,7 @@
 """Reading video frames and turning a video into an image folder."""
 
 import logging
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,9 +10,15 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# The frame number in an OpenCV image-sequence pattern: %d, %6d, %06d.
+_FRAME_NUMBER = re.compile(r"%0?\d*d")
+
 
 class VideoReader:
-    """Frame access for a video file.
+    """Frame access for a video file or an image sequence.
+
+    An image sequence is an OpenCV pattern such as ``img1/%06d.jpg``; its
+    first image is frame 0.
 
     >>> video = VideoReader("match.mp4")
     >>> for index, frame in video.frames(start=100, end=200, stride=5): ...
@@ -20,7 +27,12 @@ class VideoReader:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         if not self.path.is_file():
-            raise FileNotFoundError(f"Video not found: {self.path}")
+            try:
+                images = sequence_images(self.path)
+            except ValueError:
+                raise FileNotFoundError(f"Video not found: {self.path}") from None
+            if not images:
+                raise FileNotFoundError(f"No image matches {self.path}")
         capture = self._open()
         try:
             self.fps = float(capture.get(cv2.CAP_PROP_FPS))
@@ -101,6 +113,21 @@ class VideoReader:
             f"VideoReader({str(self.path)!r}, {self.width}x{self.height}, "
             f"{self.fps:.2f} fps, {self.frame_count} frames)"
         )
+
+
+def sequence_images(pattern: Path) -> list[tuple[int, Path]]:
+    """The images of the image sequence ``pattern`` as ``(number, path)``, by number.
+
+    A path that is a file, or has no single frame number, is a ``ValueError``.
+    """
+    parts = _FRAME_NUMBER.split(pattern.name)
+    if len(parts) != 2 or pattern.is_file():
+        raise ValueError(f"{pattern} is not an image-sequence pattern such as %06d.jpg")
+    if not pattern.parent.is_dir():
+        return []
+    name = re.compile(r"(\d+)".join(map(re.escape, parts)))
+    found = ((name.fullmatch(p.name), p) for p in pattern.parent.iterdir())
+    return sorted((int(match.group(1)), path) for match, path in found if match)
 
 
 def check_frame_range(start: int, end: int | None, stride: int) -> None:

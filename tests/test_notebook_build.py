@@ -1,5 +1,6 @@
 """The notebook builder (``notebooks/build/build.py``) without running a kernel."""
 
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -51,3 +52,29 @@ def test_a_failed_timed_out_or_dead_notebook_is_reported_not_raised(
     assert not ok and seconds >= 0
     assert type(error).__name__ in message
     assert node.cells[0].outputs[0].text == "partial"  # kept for saving
+
+
+def _visualisation_keywords() -> set[str]:
+    """The keyword arguments the visualisation notebook's code cells pass."""
+    from nb05_visualisation import notebook
+
+    sources = [
+        "\n".join(line for line in cell.source.splitlines() if line[:1] != "%")
+        for cell in notebook().cells
+        if cell.cell_type == "code"
+    ]  # without IPython magics
+    return {
+        keyword.arg
+        for source in sources
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+    }
+
+
+def test_the_visualisation_notebook_shows_the_ball_carrier_ring(build):
+    assert {"ball_carrier", "ball_carriers"} <= _visualisation_keywords()
+
+
+def test_the_visualisation_notebook_shows_the_velocity_arrows(build):
+    assert {"velocity_seconds", "velocities"} <= _visualisation_keywords()

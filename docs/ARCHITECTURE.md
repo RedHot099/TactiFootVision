@@ -36,12 +36,13 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult`, `FrameAnalyzer` → `FrameResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `compare_with_statsbomb` |
-| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `render_video`, `draw_annotations`, `show`, plotting helpers |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
+| Match analysis | `tv.analysis` | `attack_direction`, `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`, `velocities`, `space_control` → `SpaceControl` |
+| Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
 
 Swappable component families sit behind one abstract base class and a
@@ -54,6 +55,11 @@ name registry (`tactifoot_vision/registry.py`):
 | Team embedders | `teams.embedders.Embedder` | `EMBEDDERS` | `resnet`, `siglip` |
 
 Adding a backend = subclass + `@REGISTRY.register("name")`; nothing else changes.
+Every fixed vocabulary of the package (roles, `sv.Detections.data` keys,
+splits, modes, built-in registry names, run file sections) is a `StrEnum` in
+`tv.enums`, taken as a member or its plain string and written as the string
+([ADR 0004](adr/0004-fixed-vocabularies-are-str-enums.md)); a built-in
+backend needs a member of its name enum, which a test keeps equal to the registry.
 
 ## Layout
 
@@ -61,22 +67,36 @@ Adding a backend = subclass + `@REGISTRY.register("name")`; nothing else changes
 src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
+  enums.py            StrEnum vocabularies (Role, DetectionKey, Split, modes, registry names)
   utils.py            setup_logging, resolve_device, ensure_dir, cache_dir, next_run_dir
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
   cli.py              `tactifoot` command (run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
-                      yolo.py, coco.py (format IO), video.py, statsbomb.py
+                      yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
+                      load_labelled_clip), soccernet.py, synthetic.py
+                      (synthetic_pitch_clip), video.py, statsbomb.py
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
                       ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
-  evaluation/         detection.py, keypoints.py, statsbomb.py, __init__ (evaluate dispatcher)
-  pitch/              pitch.py (SoccerPitch), homography.py (HomographyEstimator), lines.py (line refinement)
-  tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py, ball.py
-  teams/              crops.py, embedders.py, classifier.py
+  evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
+                      homography.py, statsbomb.py, __init__ (evaluate dispatcher)
+  pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
+                      lines.py (line refinement, LineFit, LineRefinerConfig), projection.py (project_points),
+                      frame_lines.py (single-frame line refinement of HomographyEstimator.fit)
+  tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
+  teams/              crops.py, embedders.py, classifier.py, frame.py (assign_frame_teams)
   pipeline/           pipeline.py (Pipeline), frame.py (FrameAnalyzer, fill_ball),
-                      result.py (FrameResult, PipelineResult)
-  viz/                annotate.py, radar.py, video.py, plots.py
+                      result.py (FrameResult, PipelineResult),
+                      postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
+                      ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
+                      homographies.py (smooth_homographies)
+  analysis/           direction.py (attack_direction), carriers.py (ball_carriers,
+                      possession, passes, pass_counts, carrier_table),
+                      velocity.py (velocities), space.py (space_control)
+  viz/                annotate.py, radar.py, birds_eye.py, video.py, plots.py,
+                      subpixel.py (fixed-point coordinates for cv2 drawing),
+                      trail.py (fading trails from history: ball trail, radar tails)
 tests/                pytest; model/GPU tests are marked `model` and skipped by default
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
@@ -86,7 +106,8 @@ configs/              example run files
 
 ## Conventions
 
-* **Images** are `np.ndarray` `uint8` BGR `H×W×3` (OpenCV convention) everywhere.
+* **Images** are `np.ndarray` `uint8` BGR `H×W×3` (OpenCV convention) everywhere;
+  `warp_to_pitch` adds an alpha channel (BGRA) for what the frame does not show.
   Convert to RGB only at the matplotlib boundary (`viz.show`).
 * **Boxes** are `xyxy` float pixels. **Detections** are `sv.Detections`;
   every producer fills `data["class_name"]` so consumers never rely on class-id maps.
@@ -115,10 +136,22 @@ configs/              example run files
 
 * `data/annotations.py`: `Task`, `Annotations` (pixel boxes, class ids, keypoints, flip_idx)
 * `data/dataset.py`: `Sample`, `Dataset` (splits `train`/`valid`/`test`)
+* `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`
-* `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, save/load)
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`, `LineRefinerConfig`,
+  `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
+  without a homography or when part of the frame lies beyond the horizon;
+  freeze frames and the radar use it)
+* `pipeline/result.py`: `FrameResult`, `PipelineResult` (tables, freeze frames, frame windows, save/load)
+* `pipeline/postprocess.py`: `POSTPROCESSES`, `AppliedPostProcess`, `reproject`, `remap_track_ids`, `metres_per_unit`
+* `pipeline/ball.py`: `track_ball`
+* `pipeline/tracks.py`: `join_tracks`
+* `pipeline/roles.py`: `assign_roles`
+* `analysis/direction.py`: `attack_direction`
+* `analysis/carriers.py`: `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`
+* `analysis/velocity.py`: `velocities`
+* `analysis/space.py`: `SpaceControl`, `space_control`
 
 ## Module specifications
 
@@ -154,10 +187,30 @@ configs/              example run files
   every link mode and loses nothing else. A marker entry that does not
   resolve inside the export folder (an absolute path, `..`, a symlinked
   folder) is refused, so a corrupt marker deletes nothing.
+* `Dataset.from_clips(clips, train, valid, test, seed)` builds a detection
+  dataset from one or more labelled clips with box truth. The fractions
+  count clips and round as in `resplit`, so every frame of a clip lands in
+  the clip's split. Each frame with a box is a sample whose image is that
+  frame's file of the clip's image sequence, referenced in place; the
+  sequence must hold one image per frame, numbered without a gap, its
+  lowest-numbered image being frame 0 as `VideoReader` reads it, so a
+  missing or extra image cannot move the labels onto other frames. That
+  first number must be 0 to 4, the numbers OpenCV looks for; SoccerNet
+  folders start at 1 (image `n` is frame `n - 1`). No clip at all is
+  refused; a clip without a boxed frame warns and still takes a clip's
+  share of its split. A frame
+  without a box is left out, since a clip cannot tell an empty frame from
+  an unlabelled one. Boxes are clipped to the image, as both exporters
+  write them. Classes are `player`, `goalkeeper`, `referee`, `ball`. A clip
+  without box truth or with another class, one read from a video file and
+  the same clip given twice (paths resolved) are refused. Only `to_yolo` /
+  `to_coco` with `link="copy"` copy frames.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
-* `VideoReader(path)`: `fps`, `width`, `height`, `frame_count`, `duration`,
+* `VideoReader(path)` (a video file, or an OpenCV image-sequence pattern
+  such as `img1/%06d.jpg` whose first image is frame 0; `FileNotFoundError`
+  when no file or image matches): `fps`, `width`, `height`, `frame_count`, `duration`,
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
   `stride >= 1`); `read` refuses negative indices.
@@ -173,6 +226,60 @@ configs/              example run files
   that is neither a box nor a polygon (an odd number of values) fails with
   its file and line, and a `flip_idx` without one entry per keypoint fails
   when the dataset is loaded or constructed.
+* `load_labelled_clip(path)` → `LabelledClip`: a continuous clip with
+  per-frame truth, read from a folder whose layout it detects. A `Dataset`
+  holds independent images; a labelled clip keeps its frames in order.
+  `clip.frames` (also `iter(clip)`) is a tuple with one `LabelledFrame` per
+  frame of the clip, unlabelled frames included; `clip.frame(index)` reads
+  one. A clip is frozen.
+  A `LabelledFrame` is shaped like a `FrameResult`: `index` is the
+  `FrameResult.index` of that frame when the pipeline runs on the clip,
+  `detections` holds the people and `ball` the ball (`sv.Detections` with
+  `xyxy` pixels, the source's `tracker_id` and `data["class_name"]` in the
+  package vocabulary: `player`, `goalkeeper`, `referee`, `ball`), and
+  `homography` the frame → pitch calibration when known. A source with
+  pitch positions puts them in `detections.data["pitch_xy"]` (NaN where
+  unknown), in `SoccerPitch` units like `FrameResult`'s, and a source with
+  teams puts them in `detections.data["team_id"]` (`NO_TEAM` for people
+  without a team), like `FrameResult`'s, and `tv.data.UNKNOWN_TEAM` (-2) for
+  people whose team the source does not know; truth `NO_TEAM` never means
+  unknown. SoccerNet's team labels `left` and `right` (the team on that
+  side of the main camera's picture) are teams 0 and 1. `clip.truth` is the
+  set of `Truth` kinds the source provides (`identities`, `boxes`, `ball`,
+  `pitch_positions`, `calibration`, `teams`), so a consumer can refuse a clip
+  that lacks one. The clip also carries `name`, `fps`, `width`, `height` and
+  `video_path`, which the frames are read from in place: readers never copy
+  or re-encode a frame. A folder in no known layout, or missing a file of
+  its layout, is a `ValueError` naming the path and the expected layout.
+  * SoccerNet Tracking (`gt/gt.txt`, `gameinfo.ini`, `seqinfo.ini`): MOT
+    boxes with track ids, classes from the `gameinfo.ini` tracklet labels
+    (`other` tracklets are left out). MOT frame `n` is `img1/<n:06d>.jpg`,
+    frame index `n - 1`; `video_path` is the OpenCV image-sequence pattern
+    `img1/%06d.jpg`, which `VideoReader` and `Pipeline.run` read. Teams
+    from the tracklet labels (`player team left;7`); a player or
+    goalkeeper label without one is `UNKNOWN_TEAM`. Truth: identities,
+    boxes, ball, and teams when some label names one.
+  * SoccerNet GSR (`Labels-GameState.json`, v1.3): image `<n:06d>.jpg` of
+    `info.im_dir` is frame `n - 1`; an image with `is_labeled` false keeps
+    an empty, uncalibrated frame. Boxes from `bbox_image`, classes from
+    `attributes.role` (`other` left out), teams from `attributes.team` (null
+    is `UNKNOWN_TEAM` for players and goalkeepers), jersey numbers in
+    `data["jersey"]` (`""` when null), pitch positions from the
+    `bbox_pitch` bottom middle. GSR pitch coordinates are centre-origin
+    metres, shifted by half the pitch into `SoccerPitch` coordinates. A camera
+    annotation becomes the frame's homography: the pinhole part of the
+    SoccerNet camera (distortion left out), inverted and shifted likewise.
+    Truth: identities, boxes, ball, and pitch positions, teams and
+    calibration when some person or frame has them.
+* `synthetic_pitch_clip(path, homographies, frame_size=(1280, 720), *,
+  pitch=None, fps=25, line_width=0.12, noise=0, occluders=0, seed=0)` → `LabelledClip`:
+  renders `pitch_markings(pitch)` on striped grass through one frame → pitch
+  homography per frame (repeat one for a static camera, vary it for a pan),
+  writes the MPEG-4 video to `path` and returns a clip whose only truth is
+  that exact calibration. Beyond the grass margin and the horizon the frame
+  is a flat stand colour. `line_width` is in metres; `noise` (Gaussian, grey
+  levels) and `occluders` (player-sized boxes per frame) are drawn from
+  `seed`, so the same arguments give the same video. Frame sizes must be even.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)
@@ -199,6 +306,11 @@ configs/              example run files
 ### Training and inference behind one interface (`tv.models`)
 
 * `load_model(name, weights, conf=..., device=..., **options)`; `available_models()`.
+* Detectors (`yolo`, `rfdetr`) take `class_conf`, a minimum confidence per
+  class name that replaces `conf` for those classes (`{ball: 0.05}` keeps weak
+  ball candidates while people keep `conf`). The backend runs once at the
+  lowest threshold and each detection is then held to its class's. Values
+  outside `[0, 1]` and names the model does not have are a `ValueError`.
 * `Model.predict(image)` / `model(image)`; `Model.train(dataset, config=None, **overrides) -> TrainResult`;
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
@@ -270,6 +382,80 @@ configs/              example run files
   `PipelineResult` is accepted too and goes through `to_freeze_frames(period)`,
   like the exported CSV, so both routes agree.
 * `evaluate` refuses options its evaluator does not take.
+* `evaluate_tracking(result, clip, iou_threshold=0.5, hota=True)` → `TrackingMetrics`:
+  HOTA (with DetA and AssA), IDF1, MOTA, ID switches, false positives and false negatives of a
+  `PipelineResult` against a `LabelledClip`, per class (`per_class`, the
+  clip's class names) and overall (the class counts added up). Only the
+  processed frames are scored, so a strided run is not charged for skipped
+  frames. Identities are the people's `tracker_id`, after any remap by a
+  post-process; an untracked ball is one identity. Definitions follow
+  TrackEval: frame-by-frame Hungarian matching on IoU that keeps last frame's
+  matches (CLEAR MOT), and a one-to-one pairing of identities over the run
+  (IDF1). HOTA is computed by TrackEval itself (`evaluation/hota.py`), from
+  the optional `eval` extra (`uv sync --extra eval`), imported only when
+  HOTA is asked for; without it `evaluate_tracking` raises an `ImportError`
+  that says how to install it or to pass `hota=False` (HOTA is then NaN).
+  The overall HOTA adds up the detections of every class, like TrackEval's
+  detection-averaged combination. A test checks the native IDF1 and MOTA
+  against TrackEval; it is skipped without the extra.
+* `evaluate_tracking_clips(pairs, iou_threshold=0.5, hota=True)` combines
+  several `(result, clip)` pairs as TrackEval combines sequences: the counts
+  (for HOTA, the detections) of every clip are added up, which gives the
+  numbers of one clip holding them all with their identities kept apart.
+  Every clip is scored on the classes of all the clips, so predictions of a
+  class a clip has no labels of are false positives there.
+* `evaluate_homography(result, clip, margin_m=3.0)` → `HomographyMetrics`: the
+  pitch position error in metres of a `PipelineResult`'s homographies against the
+  clip's calibration or, without one, its pitch positions (`truth` names
+  which), on the processed frames that have that truth. With calibration, the
+  pitch's landmarks and a fixed 22 x 15 grid over the pitch that the true
+  homography shows inside the frame go to their pixels and back to the pitch
+  through the run's homography. With pitch positions, each labelled person
+  with a known position within `margin_m` (3 m) of the pitch's lines has
+  their box foot (bottom centre) put on the pitch through the run's
+  homography; the ball is left out, as its box foot is not on the ground in
+  the air. A frame's error is the mean distance, with pitch
+  units scaled to a 105 x 68 m pitch (`metres_per_unit`) and the truth taken
+  in `result.pitch` units; the result's frame size must be the clip's. A
+  point put beyond the run's horizon makes its frame an infinite error:
+  `beyond_horizon` is the share of such frames, the median and p90 rank them
+  last and the mean leaves them out. Median, mean and p90 over the frames
+  with a homography, the share of them under 1, 2 and 5 m, and `jitter_m`
+  (the mean change of each point's error from one processed frame to the
+  next, per processed step; on pitch positions a point is one `tracker_id`,
+  unique in its frame: repeated and negative ids are not matched) are
+  given on the grid (on pitch positions, the people) and, in `per_points`, on
+  every point set. A frame without a homography lowers `availability` and is
+  not an error.
+* `evaluate_homography_clips(pairs, draws=2000, seed=0, margin_m=3.0)` pools
+  the scored frames of several `(result, clip)` pairs, as one clip holding them all
+  (jitter is not measured across clips), and adds `intervals`: a 95%
+  interval of each top-level number from a bootstrap that resamples whole
+  clips, deterministic under `seed`; `None` for a single clip, whose
+  resampling has no spread. Every clip must be scored against the same truth.
+* `evaluate_teams(result, clip, iou_threshold=0.5)` → `TeamMetrics`: the
+  team accuracy of a `PipelineResult`'s `team_id` against a `LabelledClip`'s
+  teams, on the processed frames. In each frame the true people are matched
+  one to one to the detected ones by Hungarian matching on IoU, whatever
+  their classes, and `recall` is the share matched; only matched people are
+  scored. The run's team ids are mapped onto the true teams by the
+  one-to-one assignment that agrees on the most matched people
+  (`team_mapping`), so a swapped labelling scores 1; a run team id left
+  unmapped is wrong. `NO_TEAM` is right for someone without a true team (a
+  referee) and wrong for a player. A true person of `UNKNOWN_TEAM` is
+  matched, so their detection goes to nobody else, but left out of every
+  number. `accuracy` is per matched detection,
+  `track_accuracy` the per-detection share averaged over the run's tracks
+  (`tracker_id`), each counting once. `role_confusion` counts the matched
+  people by true and predicted role (`tv.enums.Role`: `player`,
+  `goalkeeper`, `referee`, `other`), from `class_name`, so a goalkeeper
+  absorbed into a team as a player shows; `as_dict()` leaves it out. The clip must carry boxes and teams, and people without a
+  `team_id` or `class_name`, in the result or the clip, or a true `team_id`
+  below `UNKNOWN_TEAM` are a `ValueError`.
+* `evaluate_teams_clips(pairs, iou_threshold=0.5)` maps each clip's team ids
+  on its own, then pools the matched people of several `(result, clip)`
+  pairs, as one clip holding them all with its tracks and teams kept apart;
+  `team_mapping` is `None` over several clips.
 
 ### Inference (`tv.tracking`, `tv.teams`, `tv.pipeline`)
 
@@ -277,9 +463,6 @@ configs/              example run files
   camera predictor with detector-driven re-seeding of new objects). Detections
   overlapping a tracked box never become new tracks; a track whose mask is
   empty on a re-seed frame loses its id.
-* `clean_ball_path(positions, max_jump)` drops ball positions further than
-  `max_jump` pitch units per elapsed frame from the last accepted one
-  (the pipeline's `ball_max_speed` is the same limit in units per second).
 * `TeamClassifier(embedder="siglip" | "resnet" | Embedder, n_teams=2, reducer="umap" | None)`:
   `fit(crops)`, `predict(crops)`, `fit_predict(crops)`; `extract_crops(frame, boxes, scale=...)`.
   Fits on at most `max_fit_samples` embeddings (at least `n_teams`, checked
@@ -294,15 +477,36 @@ configs/              example run files
 * `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
-  `PipelineResult.export(out_dir, *, period=1, period_start=None)` writes the
-  run folder's data files (`result.pkl`, `tracks.csv`, `freeze_frames.csv`,
-  with headers even for an empty result).
-  `to_freeze_frames(period, period_start=None)`: `period_start=None` is the
+  `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None,
+  carrier_max_distance=None, carrier_hysteresis=None, carrier_max_gap=None)`
+  writes the run folder's data files (`result.pkl`, `tracks.csv`,
+  `freeze_frames.csv`, `carriers.csv`, `passes.csv`, with headers even for
+  an empty result). It is the only writer of the run folder: the analysis
+  tables (`carriers.csv`, `passes.csv`) join it through `export`, which
+  computes them with `tv.analysis.ball_carriers`. The `carrier_*` options
+  are its `max_distance`, `hysteresis` and `max_gap`, passed on only when
+  given, so the defaults stay in `tv.analysis` and `tactifoot run` gets
+  `--carrier-*` flags. The tables need team ids: without a team classifier
+  (`teams: null`) they hold no carrier. `team_names`
+  (one per team id from 0, e.g. `["Home", "Away"]`) fill the tables'
+  `team_name` column (empty without names or a team): each object's own
+  team, unlike the event team's `team_name` of `load_statsbomb`. A name
+  missing for a team of the result, an empty or non-text name (quote
+  `"1860"` in YAML) or a repeated one is a `ValueError`; `export` checks
+  the names, the period and the carrier options once, before anything is
+  written.
+  `to_dataframe(team_names=None)`, `to_csv(path, team_names=None)`,
+  `to_parquet(path, team_names=None)`, `to_mot(path)` (MOT text, as
+  MOTChallenge and SoccerNet Tracking read it: 1-based frames, no class
+  column, the ball as one track after the people's largest id; TrackEval
+  reads it as tracker output) and
+  `to_freeze_frames(period, period_start=None, team_names=None)`:
+  `period_start=None` is the
   period's kick-off on StatsBomb's clock (0', 45', 90', 105'); `minute` /
   `second` follow that match clock, `timestamp` is that match clock too
   (StatsBomb's event timestamp restarts every period), and `visible_area` is
-  StatsBomb's flat `[x1, y1, x2, y2, ...]` polygon (`None` when part of the
-  frame lies beyond the horizon).
+  StatsBomb's flat `[x1, y1, x2, y2, ...]` polygon of `tv.pitch.visible_area`
+  (`None` when part of the frame lies beyond the horizon).
   With `keep_masks=True` the tracker's segmentation masks (SAM2) are kept in
   `FrameResult.masks` as `ObjectMasks`: each mask cropped to the pixels it
   covers, so memory grows with the people's area, not the frame area.
@@ -313,14 +517,111 @@ configs/              example run files
   the pitch; referees get `NO_TEAM`. Each run fits the team classifier on
   its own player crops, also when an earlier run (another match) fitted it;
   `Pipeline(refit_teams=False)` keeps a classifier that is already fitted.
-  The ball filter (`ball_max_speed`) also runs at the end of the pass for
-  now; the `ball-tracking` feature moves it into a post-process.
+  With a tracker, `PipelineResult.track_embeddings` keeps the mean of each
+  track's sampled embeddings (float16) by the tracker's own id, and
+  `track_embedding_samples` their number, so a post-process
+  (`assign_roles`) can compare kits without the video. `PipelineResult.load`
+  refuses a result saved before results kept them.
+  `FrameResult.ball_candidates` keeps every ball detection of the frame,
+  best confidence first, with its `pitch_xy`; `ball` is the chosen one: the
+  best candidate, until `track_ball` chooses another. The tables and
+  freeze frames export `ball` only, so they keep one ball row per frame,
+  with an `interpolated` flag.
+  `PipelineResult.load` refuses a result saved before frames kept their
+  ball candidates.
+  `PipelineResult.window(video_index, seconds)` returns the results of the
+  frames before video frame `video_index` whose `timestamp` is at most
+  `seconds` earlier, oldest first: the `history` a drawing takes (ADR 0003).
+  A stride changes how many frames it holds, not the time it covers. A
+  frame the result does not hold is a `KeyError`, as in `frame()`. Both
+  rely on `frames` being in video order, which every post-process keeps,
+  and raise a `ValueError` on a result out of that order.
+* Post-processes (ADR 0002) are functions `(PipelineResult, **options) -> PipelineResult`
+  registered with `@POSTPROCESSES.register("name")`. They return a new
+  result and never change their input. Registering keeps the function's
+  signature and makes every call, direct or by name, append an
+  `AppliedPostProcess(name, options)` (defaults included) to the returned
+  result's `postprocesses`; `save`/`load` and `export` keep that record.
+  The record holds a deep copy of the options, taken before the call, and
+  the history is copied too, so neither the post-process, a caller changing
+  an option afterwards, nor editing a later result's records rewrites it.
+  Shared helpers keep a changed result consistent:
+  `reproject(result, homographies)` replaces the homographies (one per
+  frame, `None` for none) and recomputes `pitch_xy` from the boxes (ball
+  candidates included) as the pipeline does, without choosing the ball
+  again (run `track_ball` after it), and
+  `remap_track_ids(result, mapping)` renames tracks, keeping the tracker's id
+  in `data["original_tracker_id"]`. `metres_per_unit(pitch)` scales pitch
+  units to metres of a 105 x 68 m pitch.
+* `track_ball(result, ...)` (`pipeline/ball.py`, registered as
+  `track_ball`) chooses one ball per frame among the candidates: it drops
+  candidates that are weak, static, on a painted spot of `result.pitch` or
+  matching a person's box (RF-DETR scores every box in every class), follows
+  the ball with a constant-velocity gate on the pitch, restarts only on a
+  confident candidate after `restart_after`, removes outliers (far from the
+  balls on both sides, or weak and alone) and fills gaps of up to `max_gap`,
+  flagged `data["interpolated"]` (box on the projected position,
+  `confidence` NaN). Every threshold is an option, in metres and seconds:
+  pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
+  Frames with no ball chosen get an empty `ball`. Positions are on the pitch
+  plane; an airborne ball's is displaced (no ball height).
+* `smooth_homographies(result, window=0.36, order=2)`
+  (`pipeline/homographies.py`, registered as `smooth_homographies`) smooths
+  the homographies over time with a centred Savitzky-Golay filter (a
+  polynomial of degree `order` below the frames of `window` seconds, 9 at
+  25 fps) on the matrices scaled to map the frame centre with a homogeneous
+  coordinate of 1, so a steady pan moves the entries in a straight line and
+  is not lagged, then re-projects `pitch_xy` with `reproject`. A frame
+  without a homography keeps none and splits the stretches smoothed. A frame
+  whose centre lands more than a pitch length beyond the pitch, or whose
+  scaled matrix has over 10 times its stretch's median norm, keeps its
+  matrix and splits them too. A camera cut is split only where frames carry
+  no homography (`HomographyEstimator` reuses its last matrix for up to
+  `max_age` frames). A stretch shorter than the window is smoothed over
+  itself. Frames must be in time order. Use it with
+  `HomographyEstimator(smoothing_window=1)`: the causal average lags a pan
+  and this filter cannot remove that lag. Run it before `track_ball`,
+  `join_tracks` and `assign_roles`, which read pitch positions; it logs a
+  warning when one of them already ran. `line_fit` still describes the
+  pass's fit.
+* `join_tracks(result, max_gap, max_speed, slack, same_team)`
+  (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
+  player tracks: it links each track end to a later track start at most
+  `max_gap` s later, within `slack + max_speed * dt` m and, with
+  `same_team`, of the same `team_id` (`NO_TEAM` joins only `NO_TEAM` of the
+  same `class_name`, so a referee never takes a player's id),
+  cheapest first (distance plus 1.25 m per second of gap, one successor and
+  one predecessor per track; tracks without a pitch position are not
+  linked). A player track takes its earliest track's id through
+  `remap_track_ids`, so the tracker's id stays in
+  `data["original_tracker_id"]`. No rows are added: tables keep measured
+  positions only. Metres and seconds, as in `track_ball`.
+* `assign_roles(result, outlier_spread=3.0, min_box_share=0.5, off_pitch_margin=1.5)`
+  (`pipeline/roles.py`, registered as `assign_roles`) finds the goalkeepers
+  and referees the detector called players, track by track (player tracks
+  after `join_tracks`). A track whose median pitch position is more than
+  `off_pitch_margin` m outside the pitch is dropped, rows and masks. A
+  `player` track whose mean embedding (`track_embeddings` of the tracks it
+  joins, weighted by their samples) is more than `outlier_spread` team spreads from every team's
+  centre (median embedding of the team's player tracks; spread: their
+  median distance to it) is an outlier, with no colour threshold. The rule
+  compares the embedder's raw embeddings, not the team classifier's UMAP
+  space. The outlier nearest each goal, in its penalty area for at least
+  `min_box_share` (above 0) of its positioned rows, becomes the
+  `goalkeeper` of the team defending that goal (`attack_direction`, so one
+  period per result), unless a detector goalkeeper stands in that area; one
+  track keeps one goal at most. When the sides cannot be told, a warning is
+  logged and the candidates stay players of their voted team. The other
+  outliers become `referee` with `NO_TEAM`. Detector `goalkeeper` and
+  `referee` tracks keep their class and team; a role class missing from
+  `class_names` keeps the player's `class_id` (logged).
 * `FrameAnalyzer(detector, keypoint_model=None, team_classifier=None, ...)`
   `(frame) -> FrameResult` analyses one frame on its own (one frame per
   shot, frames of different matches): no tracker and no state between
   calls, the homography is `HomographyEstimator.fit` of this frame, teams
-  come from `assign_frame_teams` with pitch positions. Ball and people are
-  split as in `Pipeline` (the most confident ball). `fill_ball(result,
+  come from `assign_frame_teams` with pitch positions. Ball candidates and
+  people are split as in `Pipeline`: `ball_candidates` holds every ball
+  detection, best first, and `ball` the best one. `fill_ball(result,
   earlier)` is the ball fallback: a frame without a ball on the pitch takes
   the ball of the first earlier frame that has one (positioned by that
   frame's own homography), marked in `ball.data["fallback"]` (0 own, `k`
@@ -334,7 +635,33 @@ configs/              example run files
   old matrix), leaving the estimator unchanged, for frames that are not
   consecutive. Tests pin the metre convention: a perfect fit maps frame
   points back with 0 m error, and landmarks shifted on the pitch move every
-  position by exactly that shift. Pitch
+  position by exactly that shift.
+  `refine_with_lines` (off by default) then fits each frame's matrix to its
+  painted lines (`pitch/lines.py`, a chamfer fit): model points along
+  `pitch_markings` are projected and pulled onto a white-line mask (a top-hat
+  on the HSV value inside the largest grass region) by a robust least squares
+  over the pixel offsets of four control points, coarse to fine. Points the
+  fit pushes beyond the horizon cost the stage's distance cap, and points it
+  pushes off the frame cost more the further out they go, so a fit cannot
+  score by moving the markings out of view. The people boxes the pipeline
+  passes to `update(keypoints, frame, boxes)` are cut from the mask and from
+  where markings are looked for, so white kits do not pull the fit. The fit
+  starts from the previous returned matrix and from the keypoint one and
+  keeps the one with more inliers (then more points), so it holds a pan
+  through poor keypoints; the returned matrix is that fit, and
+  `smoothing_window` only averages the keypoint start. The keypoint matrix is
+  kept when the best fit has under `min_line_inlier_share` inliers (0.5),
+  fewer than `min_line_points` model points are in view (close-ups), the
+  start puts the frame from 35 % of its height down partly beyond the
+  horizon, or the fit folds the control quadrilateral or turns a control
+  point beyond the horizon. `line_fit` (`LineFit`: visible points, inlier
+  share within `line_inlier_px`, median distance) tells how the frame's fit
+  went and `FrameResult.line_fit` keeps it; `None` when not refined. The
+  image thresholds sit in `line_options` (`LineRefinerConfig`, a mapping in
+  run files), with defaults tuned on 1080p broadcast footage; the line
+  settings are read-only. The gain in metres is so far shown on synthetic
+  clips only. `fit` refines with the single-frame refinement below instead.
+  Pitch
   vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
   how the keypoint dataset labels them. Circles and arcs use
   `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
@@ -344,13 +671,17 @@ configs/              example run files
   spots; `viz` draws them and the pitch module uses them itself, so it does
   not import `viz`. A fit whose landmarks (RANSAC inliers) all but one lie on
   one pitch line gives no homography: OpenCV returns a singular matrix there.
-* `HomographyEstimator(refine_with_lines=True)` refines each frame's keypoint
-  fit on the painted lines (`pitch.lines.refine_homography`, a chamfer fit of
-  the projected `pitch_markings` to a white-line mask without the people's
-  boxes, coarse to fine over four control points); `fit` / `update` then take
-  `(keypoints, frame, boxes)`, which `Pipeline` and `FrameAnalyzer` pass. The
-  refined matrix replaces the keypoint fit only when at least half of the
-  visible marking samples land on a line (3 px at 720 p), more than before,
+* `HomographyEstimator(refine_with_lines=True).fit(keypoints, frame, boxes)`
+  refines the frame's keypoint fit on its painted lines with the single-frame
+  refinement (`pitch.frame_lines.refine_homography`, a chamfer fit of the
+  projected `pitch_markings` to a white-line mask without the people's boxes,
+  coarse to fine over four control points), which `FrameAnalyzer` uses. It was
+  written on `research/xg-detector` apart from `pitch.lines.LineRefiner`, which
+  `update` uses, and the research caches were built with it; the merge of
+  `master` (xg-teams 00) keeps both, and which one stays is decided when the
+  single-frame mode goes to `master`. The refined matrix replaces the keypoint
+  fit only when at least half of the visible marking samples land on a line
+  (3 px at 720 p), more than before,
   and it is a camera's view of the pitch it sees: not a mirror image (far and
   near touchline swapped; the markings are symmetric, so a mirrored view fits
   them perfectly) and no horizon across the seen markings or the lower half's
@@ -363,32 +694,189 @@ configs/              example run files
   model's keypoints are ~7 px off on the same frames: 79% of them get such a
   fit from the keypoints alone and 85% with the refinement.
 
+### Match analysis (`tv.analysis`)
+
+Pure functions over a `PipelineResult`; they change nothing and write
+nothing (`PipelineResult.export` writes their tables).
+
+* `attack_direction(result, min_separation=1.0)` → `{team_id: 1 | -1}`: `1` attacks the goal at
+  `x = pitch.length`, `-1` the goal at `x = 0`. A run is one period, so call
+  it on each period's result. The team whose players and goalkeeper stand
+  nearer `x = 0` on average (every frame, pitch positions only) attacks
+  towards `x = length`. The two teams are compared with each other, not with
+  the halfway line, so a camera that stays in one half still gives opposite
+  directions. Anything but two teams with pitch positions, or two means
+  less than `min_separation` (1 m by default, along a 105 m length) apart,
+  is a `ValueError`.
+* `ball_carriers(result, max_distance=0.7, hysteresis=0.12, max_gap=1.0)` → one `tracker_id`
+  or `None` per frame (the shape `render_video`'s `ball_carriers` takes). In a frame with
+  a ball (filled in by `track_ball` too), the candidate is the person with a
+  team and a tracker id (players and goalkeepers; referees and staff have
+  `NO_TEAM` after `assign_roles`) whose box foot is nearest the ball's
+  centre in image pixels over their box height, under `max_distance`; else
+  the ball is loose. The image is used because the ball's height is
+  unknown. The carrier changes, to another person or to nobody, once a
+  candidate other than the carrier has been seen for `hysteresis` seconds
+  in frames with a ball in a row (0.12 s: three frames at 25 fps; each frame
+  counts one median time step, so any stride waits the same time and a
+  coarse one at least one frame; another candidate in between starts the
+  count again). The spec's "3-frame hysteresis" is this, in seconds like
+  every other duration option. A frame without a ball neither confirms nor
+  breaks it, so the carrier is held while the ball is unseen, for up to
+  `max_gap` s (1.0) after the ball was last seen; then nobody carries it.
+  A person without a finite box is never the carrier; carriers that are
+  nobody of the result with a team and a tracker id are a `ValueError` in
+  the functions below.
+* `possession(result, carriers, frames=None)` → `{team_id: share}`: each
+  team's share of the frames with a carrier (every team of the result; they
+  add up to 1), over every frame, a position or a slice of `result.frames`
+  (carriers come from the whole result, so the hysteresis holds at the
+  range's edges); a range without a carrier is a `ValueError`.
+* `passes(result, carriers)` → a table `team_id, from_track_id,
+  to_track_id, from_frame, to_frame` (video indices: the passer's last frame
+  as carrier, the receiver's first), one row per change of carrier between
+  two players of the same team, skipping frames without a carrier in
+  between: a teammate taking a loose ball counts, a long pass whose receiver
+  never becomes the carrier is missed, and a carrier of the other team in
+  between breaks it. `pass_counts(result, carriers)` → `{team_id: count}`.
+* `carrier_table(result, carriers)` → `frame, time, track_id, team_id`, one
+  row per frame (empty without a carrier); a carrier's team is their
+  track's most frequent one.
+* `velocities(result, window=0.5, max_speed=12.0)` → one `(N, 2)` array per
+  frame, row for row with its `detections`: each person's pitch velocity in
+  m/s (pitch units scaled to 105 x 68 m), NaN without one. It is the slope
+  of the least-squares line through the pitch positions of the person's
+  `tracker_id` (a player track after `join_tracks`) within `window` s
+  centred on the frame, from the frames' timestamps, so any stride gives the
+  same velocities; a window shorter than two median time steps is widened
+  to them. A velocity needs three positions in its window (so the ends of a
+  track at a coarse stride have none) and is dropped above `max_speed`
+  (`np.inf` keeps all): a bad homography's jump, not a run. 12 m/s is a
+  sprint's top speed, not measured on this package's data. No tracker id or
+  no pitch position means no velocity; a tracker id twice in one frame is a
+  `ValueError`.
+* `space_control(result, frames=None, cell_size=1.0, *, model="nearest_player",
+  **options)` → `SpaceControl(control, pitch)`: team 0's control against
+  team 1 per cell, in `[0, 1]` (`0.5`: shared). Everyone with a team and a
+  pitch position counts. Rows run along `y` and columns along `x`
+  (`SpaceControl.y`, `.x`: cell centres in pitch units), so the array reads
+  like the radar; cells are about `cell_size` metres and tile the pitch
+  exactly, the same grid for every model. `frames` is a position in
+  `result.frames` (as `result[i]`, not the video frame index), a slice or
+  `None` (every frame); over several frames the control is the mean,
+  leaving out frames without a positioned player in each team. No such
+  frame is a `ValueError`. `SpaceControl` refuses a control that is not a
+  non-empty 2-D array of values in `[0, 1]`. `options` are the model's own
+  (another model's option, or an unknown model, is a `ValueError`):
+  * `"nearest_player"`, a smoothed Voronoi partition: the sigmoid of how much
+    nearer team 0's nearest player is than team 1's, over `smoothing`
+    (1.2) m; `0` gives the hard partition.
+  * `"pitch_control"`, Spearman's (2017) model without the ball: a player
+    keeps their `velocities(result, velocity_window)` velocity (0.5 s, read
+    from the frames near the selected ones only; none counts as standing)
+    for `reaction_time` (0.7 s), then runs straight at `max_speed` (5 m/s);
+    they arrive by time `T` with a logistic probability of spread
+    `intercept_sigma` (0.45 s) around that time to intercept, and take a
+    free cell at `control_rate` (4.3 per s). The control is team 0's share
+    once 99 % of the cell is taken, integrated in 0.04 s steps from shortly
+    before the cell's first arrival (at most 20 s, with one warning a call,
+    for a very low `control_rate`). Options are finite. Everyone shares the
+    parameters (goalkeepers too); a cell is contested as if the ball were
+    already there. The defaults are Spearman's, not tuned here. About 0.1 s
+    a frame on 1 m cells with 22 players.
+
 ### Results visualisation (`tv.viz`)
 
-* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result)`.
+* `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result, history=None,
+  ball_carrier=None)`.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
-* `PitchRadar(pitch, ...)`: `draw(frame_result)` → top-down pitch image;
+  `trail_seconds` (off by default) draws the ball trail from `history`, the
+  results before the frame, oldest first (ADR 0003): each earlier ball
+  `pitch_xy` within `trail_seconds` projected through the current frame's
+  homography (none without one; no pixel fallback), broken at frames without
+  a ball position (filled-in `interpolated` ones draw like any other), in
+  `ball_color` with opacity falling linearly to zero at `trail_seconds`.
+  `ball_carrier` (a `tracker_id`) rings that person at their feet in
+  `ball_color`, over any mask and under the boxes; `None` or an id nobody in the frame has
+  draws nothing. No label and no panel.
+* `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
+  frame_size=None, velocities=None)`
+  → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
+  pitch under the lines and players with `draw_space_control`, at `space_control_alpha` (0.5)
+  opacity; a `frame` (the video frame of `frame_result`) is the background,
+  warped through `frame_result.homography` straight into the radar's canvas
+  (the bird's-eye view at the radar's scale, no resampled `warp_to_pitch`
+  image), the pitch colour where the frame shows nothing or there is no
+  homography. `trail_seconds` (off by default) draws motion tails from
+  `history`, as the ball trail does: each person's tail joins the earlier
+  `pitch_xy` of the same `tracker_id` within `trail_seconds`, in the dot's
+  colour (`default_color` without a team), broken at frames where the track
+  is missing or has no pitch position, fading linearly to zero at
+  `trail_seconds`, under the dots. `draw_visible_area` (off by default)
+  outlines `tv.pitch.visible_area` in `visible_area_color` (gold, apart from
+  the white markings) under the tails and dots,
+  cut to the image, and needs `frame_size` (default the size of `frame`);
+  nothing without a homography or when part of the frame lies beyond the horizon.
+  `velocity_seconds` (off by default) draws each person's velocity from
+  `velocities`, the frame's `(N, 2)` m/s array of `tv.analysis.velocities`
+  (row for row with `detections`; with arrows on, another shape is a
+  `ValueError`), as an
+  arrow in the dot's colour from the dot to where the velocity takes them in
+  `velocity_seconds`, converted to the radar's pitch units, under the dots;
+  none for a NaN row or without `velocities`. Drawing stays stateless: the
+  radar takes the velocities, it does not fit them from `history`, which
+  holds only earlier frames while `velocities` fits a window centred on the
+  frame;
   `draw_points(xy, colors=None, radius=None, image=None)` draws arbitrary pitch
   points (e.g. StatsBomb positions). Radii and line thickness are at least
   1 pixel (`None`: scaled with `width_px`), checked by the constructor and,
   for a `radius` override, by `draw_points`;
   `tv.viz.overlay(frame, image, position=..., width_fraction=..., alpha=...)` pastes it onto a frame;
   `tv.viz.check_overlay(...)` checks those settings without a frame.
+* `draw_space_control(image, space_control, pitch_to_image, team_colors=TEAM_COLORS,
+  alpha=0.5)` → a copy of a top-down image (radar or bird's-eye view) with
+  the pitch tinted from team 1's colour (control `0`) to team 0's (`1`).
+  `pitch_to_image` is the 3x3 pitch → pixel homography (pixel centres at
+  integers); off the pitch the image is unchanged. A BGRA image keeps its
+  alpha and is tinted only where it is not transparent.
+* `warp_to_pitch(frame, homography, pitch=None, px_per_m=10.0)` → the bird's-eye
+  view: the frame warped onto the whole pitch as BGRA, `105 * px_per_m` by
+  `68 * px_per_m` pixels (other pitch units scaled, as on the radar), pixels
+  tiling the pitch. Pitch outside the visible area, or behind the camera
+  (beyond the horizon), is transparent and black; the frame centre must lie
+  on the pitch side of the horizon, as in `FrameAnnotator`. Two
+  `cv2.warpPerspective` calls (frame and frame-sized mask) and the horizon's
+  half-plane. `pitch_to_birds_eye(pitch=None, px_per_m=10.0)` is its pitch →
+  pixel homography, e.g. for `draw_space_control`.
 * Colours (`ColorLike`) are hex strings, `sv.Color`s or BGR tuples or lists
   (what YAML gives).
 * `draw_annotations(image, annotations, class_names=None)` draws dataset ground truth.
 * `render_video(result, source, output, annotator=None, radar=None,
   overlay_position="bottom-center", overlay_width_fraction=0.25,
-  overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True)` → output
-  path; `source=None` uses `result.video_path`. Checks its settings and
+  overlay_alpha=0.8, overlay_padding=10, fps=None, progress=True,
+  birds_eye=False, ball_carriers=None)` → output path; `source=None` uses `result.video_path`.
+  The annotator and the radar get `history=result.window(index, seconds)` for
+  the longest `trail_seconds` among them, `None` without a trail; the overlay
+  radar gets `frame_size=result.frame_size`. A radar with `velocity_seconds`
+  gets each frame's `velocities` from `tv.analysis.velocities(result)` (its
+  defaults), computed once before `output` is opened, so
+  `render.radar.velocity_seconds` in a run file draws the arrows.
+  `ball_carriers`, one `tracker_id` or `None` per frame of `result.frames` as
+  `tv.analysis.ball_carriers` returns them (another length is a
+  `ValueError`, with `birds_eye` too), gives the annotator each frame's
+  `ball_carrier`. Run files cannot set it: a run computes no carriers.
+  `birds_eye=True` writes the bird's-eye video: each frame is
+  `radar.draw(frame_result, frame=frame, history=history, velocities=...)`,
+  padded to even pixel sizes for the encoder; the annotator and overlay
+  settings are not used, and `radar=False` is an error. Checks its settings and
   refuses an `output` that is the source file (same path, symlink or hard
   link) before opening anything, checks that the source video (header and
   decoded frame size) and the drawing pitch match the result, raises
   `RuntimeError` when the source lacks a result frame, and deletes the
   partial output when rendering fails. `viz.video.check_render_options(**options)`
-  takes any `render_video` keyword arguments and checks the overlay settings
-  and `fps` among them, so a new `render_video` parameter reaches run files
-  without edits.
+  takes any `render_video` keyword arguments and checks the overlay settings,
+  `fps` and `birds_eye` without a radar among them, so a new `render_video`
+  parameter reaches run files without edits.
 * `show(images, titles=None, cols=...)`, `show_samples(dataset, split, n)`,
   `show_augmentations(dataset, transform, n)`, `plot_training(train_result)`,
   `plot_heatmap(result, team=None, smoothing=1.5)` (0: no blur), `plot_tracks(result)`, `plot_metrics(metrics)`,
@@ -397,7 +885,8 @@ configs/              example run files
 ### Run files and the CLI (`tv.run_file`, `tactifoot`)
 
 A **run file** is YAML that says how to process video; it holds no run inputs
-(video, output folder, frame range, period), so one file serves many matches.
+(video, output folder, frame range, period, team names), so one file serves
+many matches.
 Each section maps onto exactly one package call:
 
 | Section | Call | Notes |
@@ -412,6 +901,7 @@ Each section maps onto exactly one package call:
 | `render.annotator` | `FrameAnnotator(pitch=result.pitch, **section)` | |
 | `render.radar` | `PitchRadar(pitch=result.pitch, **section)` | `null`: no radar |
 | other `render` keys | `tv.viz.render_video(...)` keyword arguments | `overlay_position`, `fps`, ... |
+| `postprocess` | `POSTPROCESSES.get(type)(result, **rest)` per entry | a list, applied in order; absent, `null` or `[]`: none; keys checked against the registered function |
 
 Backend options sit flat next to `type`:
 
@@ -419,6 +909,7 @@ Backend options sit flat next to `type`:
 detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
+postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
@@ -429,9 +920,13 @@ render: {annotator: {style: video_game}, radar: null}
 * `RunFile.run(video, output_dir, *, render=True, **run_inputs)` is one run:
   it builds the pipeline and the render objects (constructors and
   `render_video` settings check every value before the first frame), runs
-  the pipeline, exports the data files and renders `annotated.mp4` unless
-  `render=False`. `run_inputs` are the `Pipeline.run` and
-  `PipelineResult.export` arguments; it returns the `PipelineResult`.
+  the pipeline and exports the data files. With a `postprocess` list it then
+  applies the entries in order and exports again, so the run folder holds
+  the post-processed result and its record. Post-process option values are
+  checked by the functions, after the pipeline: when one fails, the run
+  folder keeps the pipeline's result to post-process again. Last, it renders
+  `annotated.mp4` unless `render=False`. `run_inputs` are the `Pipeline.run`
+  and `PipelineResult.export` arguments; it returns the `PipelineResult`.
   `RunFile.render_video(result, source, output, **options)` re-renders a
   saved result; `options` (`fps=30`, `progress=False`, `radar=False`, ...)
   take precedence over the `render` section for that call.
@@ -444,11 +939,20 @@ render: {annotator: {style: video_game}, radar: null}
   created (a `null` section counts as empty, so `tracker.type=sam2` works on
   `tracker: null`), and `./` / `../` paths in the value are relative to the current
   directory. Overrides are applied before the key check.
+* **List overrides**: a number in the key indexes a list, and the index one
+  past the end appends. With `postprocess: [{type: join_tracks}]`,
+  `postprocess.0.max_gap=1.2` edits the entry,
+  `postprocess.1.type=track_ball` (or `postprocess.1={type: track_ball}`)
+  appends one, `postprocess.0={type: ...}` replaces it, and `postprocess=[]`
+  (or `null`) drops them all for this run. A missing or `null` list is created
+  by `postprocess.0...`. Any other index is an error, and dropping one entry
+  means replacing the whole list (`postprocess=[{type: join_tracks}]`).
 
 ```
 tactifoot [--log-level LEVEL] run RUN_FILE --video V --output-dir D
           [--start N] [--end N] [--stride N] [--period N] [--period-start S]
-          [--no-video] [--set KEY=VALUE ...]
+          [--team-names "[HOME, AWAY]"] [--carrier-max-distance R]
+          [--carrier-hysteresis S] [--carrier-max-gap S] [--no-video] [--set KEY=VALUE ...]
 tactifoot train MODEL --data D [--weights W] [--epochs N --batch-size N ... (one flag per TrainConfig field)]
           [--set KEY=VALUE ...]
 tactifoot evaluate MODEL --weights W --data D [--split S] [--set KEY=VALUE ...]

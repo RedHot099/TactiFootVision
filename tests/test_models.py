@@ -37,7 +37,6 @@ from tactifoot_vision.models.ultralytics import (
 from tactifoot_vision.utils import next_run_dir
 
 ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = ROOT / "models"
 FOOTBALL = ROOT / "data" / "datasets" / "football_yolo"
 KEYPOINTS = ROOT / "data" / "keypoints"
 FOOTBALL_CLASSES = ["ball", "goalkeeper", "player", "referee"]
@@ -339,6 +338,127 @@ def test_bad_backend_options_fail_before_the_run_folder_exists(
     assert not (tmp_path / "runs").exists()
 
 
+# ---------------------------------------------------- per-class confidence
+# (class, confidence) of what a detector finds in the image, best first
+FOUND = [("player", 0.6), ("player", 0.1), ("ball", 0.1), ("ball", 0.03)]
+
+
+class _ThresholdingYOLO:
+    """Predicts ``FOUND`` like Ultralytics, keeping what reaches ``conf``."""
+
+    names = dict(enumerate(FOOTBALL_CLASSES))
+
+    def __init__(self):
+        self.thresholds: list[float] = []
+
+    def predict(self, image, conf, **options):
+        import torch
+        from ultralytics.engine.results import Results
+
+        self.thresholds.append(conf)
+        rows = [
+            [10 * i, 0, 10 * i + 5, 5, score, FOOTBALL_CLASSES.index(name)]
+            for i, (name, score) in enumerate(FOUND)
+            if score >= conf
+        ]
+        boxes = torch.tensor(rows, dtype=torch.float32).reshape(-1, 6)
+        return [Results(image, path="", names=self.names, boxes=boxes)]
+
+
+class _ThresholdingRFDETR:
+    """Predicts ``FOUND`` like RF-DETR, keeping what reaches ``threshold``."""
+
+    def __init__(self):
+        self.thresholds: list[float] = []
+
+    def predict(self, image, threshold):
+        self.thresholds.append(threshold)
+        kept = [(i, n, c) for i, (n, c) in enumerate(FOUND) if c >= threshold]
+        return sv.Detections(
+            xyxy=np.array(
+                [[10 * i, 0, 10 * i + 5, 5] for i, _, _ in kept], np.float32
+            ).reshape(-1, 4),
+            confidence=np.array([c for _, _, c in kept], np.float32),
+            class_id=np.array([FOOTBALL_CLASSES.index(n) for _, n, _ in kept], int),
+        )
+
+
+def _load_thresholding_yolo(self, weights):
+    self._yolo = _ThresholdingYOLO()
+
+
+def _load_thresholding_rfdetr(self, weights):
+    self._rf = _ThresholdingRFDETR()
+    self._class_names = list(FOOTBALL_CLASSES)
+    self._label_to_index = np.arange(len(FOOTBALL_CLASSES))
+
+
+@pytest.fixture(params=["yolo", "rfdetr"])
+def thresholding_detector(request, monkeypatch):
+    """A registered detector class whose backend predicts ``FOUND``."""
+    model = MODELS.get(request.param)
+    load = {"yolo": _load_thresholding_yolo, "rfdetr": _load_thresholding_rfdetr}
+    monkeypatch.setattr(model, "_load", load[request.param])
+    return model
+
+
+def _backend_thresholds(model) -> list[float]:
+    return (model._yolo if isinstance(model, YOLODetector) else model._rf).thresholds
+
+
+def test_class_conf_keeps_weak_balls_and_drops_weak_players(thresholding_detector):
+    model = thresholding_detector(device="cpu", conf=0.25, class_conf={"ball": 0.05})
+    detections = model.predict(np.zeros((48, 64, 3), np.uint8))
+    names = detections.data["class_name"].tolist()
+    assert list(zip(names, detections.confidence.tolist(), strict=True)) == [
+        ("player", pytest.approx(0.6)),
+        ("ball", pytest.approx(0.1)),
+    ]
+    # the backend is asked once, at the lowest threshold
+    assert _backend_thresholds(model) == [0.05]
+
+
+def test_without_class_conf_one_threshold_applies(thresholding_detector):
+    model = thresholding_detector(device="cpu", conf=0.25)
+    detections = model.predict(np.zeros((48, 64, 3), np.uint8))
+    assert detections.data["class_name"].tolist() == ["player"]
+    assert _backend_thresholds(model) == [0.25]
+
+
+@pytest.mark.parametrize(
+    ("class_conf", "match"),
+    [
+        ({"ball": 1.5}, r"class_conf\['ball'\] must be in \[0, 1\], got 1.5"),
+        ({"bal": 0.05}, "Unknown class 'bal' in class_conf.*ball, goalkeeper"),
+    ],
+)
+def test_class_conf_is_checked(thresholding_detector, class_conf, match):
+    with pytest.raises(ValueError, match=match):
+        thresholding_detector(device="cpu", class_conf=class_conf)
+
+
+def test_class_conf_is_checked_again_after_training(tmp_path, monkeypatch):
+    def load(self, weights):
+        self._yolo = _ThresholdingYOLO()
+        if weights == "retrained.pt":  # trained without a ball class
+            self._yolo.names = {0: "player"}
+
+    def train(self, dataset, config, run_dir):
+        return TrainResult(self.name, "retrained.pt", run_dir, pd.DataFrame(), {})
+
+    monkeypatch.setattr(YOLODetector, "_load", load)
+    monkeypatch.setattr(YOLODetector, "_train", train)
+    model = YOLODetector(device="cpu", class_conf={"ball": 0.05})
+    with pytest.raises(ValueError, match="Unknown class 'ball' in class_conf"):
+        model.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs", amp=False)
+
+
+def test_repr_shows_class_conf_only_when_set(thresholding_detector):
+    assert "class_conf" not in repr(thresholding_detector(device="cpu"))
+    model = thresholding_detector(device="cpu", class_conf={"ball": 0.05})
+    assert "class_conf={'ball': 0.05}" in repr(model)
+
+
 # ======================================================= real weights / GPU
 @pytest.fixture(scope="module")
 def football() -> tv.Dataset:
@@ -359,16 +479,16 @@ def _check_detections(detections: sv.Detections, class_names: list[str]) -> None
 
 
 @pytest.mark.model
-def test_yolo_predicts_named_detections(football):
-    model = tv.load_model("yolo", MODELS_DIR / "football_yolo11m.pt")
+def test_yolo_predicts_named_detections(football, detector_weights):
+    model = tv.load_model("yolo", detector_weights)
     assert model.class_names == FOOTBALL_CLASSES
     image, _ = football.read("valid", 0)
     _check_detections(model(image), FOOTBALL_CLASSES)
 
 
 @pytest.mark.model
-def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch):
-    model = tv.load_model("yolo_pose", MODELS_DIR / "pitch_yolov8n_pose.pt")
+def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch, pitch_weights):
+    model = tv.load_model("yolo_pose", pitch_weights)
     keypoints = model(pitch.read("valid", 0)[0])
     assert isinstance(keypoints, sv.KeyPoints) and len(keypoints) >= 1
     assert keypoints.xy.shape[1:] == (32, 2)
@@ -378,8 +498,10 @@ def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch):
 
 
 @pytest.mark.model
-def test_rfdetr_finetuned_checkpoint_names_its_classes(football):
-    model = tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth")
+def test_rfdetr_finetuned_checkpoint_names_its_classes(
+    football, rfdetr_football_weights
+):
+    model = tv.load_model("rfdetr", rfdetr_football_weights)
     assert model.class_names == FOOTBALL_CLASSES
     image, annotations = football.read("valid", 0)
     detections = model(image)
@@ -392,8 +514,8 @@ def test_rfdetr_finetuned_checkpoint_names_its_classes(football):
 
 
 @pytest.mark.model
-def test_rfdetr_coco_weights_use_coco_names(football):
-    model = tv.load_model("rfdetr", MODELS_DIR / "rfdetr_base.pth")
+def test_rfdetr_coco_weights_use_coco_names(football, rfdetr_coco_weights):
+    model = tv.load_model("rfdetr", rfdetr_coco_weights)
     assert len(model.class_names) == 80 and model.class_names[0] == "person"
     detections = model(football.read("valid", 0)[0])
     _check_detections(detections, model.class_names)
@@ -401,15 +523,17 @@ def test_rfdetr_coco_weights_use_coco_names(football):
 
 
 @pytest.mark.model
-def test_checkpoints_of_the_wrong_kind_are_rejected():
+def test_checkpoints_of_the_wrong_kind_are_rejected(
+    detector_weights, pitch_weights, rfdetr_sample_weights
+):
     with pytest.raises(ValueError, match="'pose' checkpoint"):
-        tv.load_model("yolo", MODELS_DIR / "pitch_yolov8n_pose.pt")
+        tv.load_model("yolo", pitch_weights)
     with pytest.raises(ValueError, match="'detect' checkpoint"):
-        tv.load_model("yolo_pose", MODELS_DIR / "football_yolo11m.pt")
+        tv.load_model("yolo_pose", detector_weights)
     with pytest.raises(ValueError, match="pass size='base'"):
-        tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth", size="nano")
+        tv.load_model("rfdetr", rfdetr_sample_weights, size="nano")
     with pytest.raises(FileNotFoundError):
-        tv.load_model("yolo", MODELS_DIR / "missing.pt")
+        tv.load_model("yolo", detector_weights.with_name("missing.pt"))
 
 
 def _check_train_result(
@@ -423,13 +547,13 @@ def _check_train_result(
 
 
 @pytest.mark.model
-def test_train_yolo_for_one_epoch(football, tmp_path, monkeypatch):
+def test_train_yolo_for_one_epoch(football, detector_weights, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # anything Ultralytics drops lands here
     tiny = football.subset({"train": 16, "valid": 8})
     result = tv.train(
         "yolo",
         tiny,
-        weights=MODELS_DIR / "football_yolo11m.pt",
+        weights=detector_weights,
         epochs=1,
         batch_size=4,
         imgsz=320,
@@ -447,15 +571,15 @@ def test_train_yolo_for_one_epoch(football, tmp_path, monkeypatch):
 
 
 @pytest.mark.model
-def test_train_yolo_pose_for_one_epoch(pitch, tmp_path, monkeypatch):
+def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     tiny = pitch.subset({"train": 16, "valid": 8, "test": 0})
-    model = tv.load_model("yolo_pose", MODELS_DIR / "pitch_yolov8n_pose.pt")
+    model = tv.load_model("yolo_pose", pitch_weights)
     result = model.train(
         tiny,
         epochs=1,
         batch_size=4,
-        imgsz=320,
+        imgsz=960,  # the checkpoint's size: one epoch at 320 leaves it finding nothing
         workers=2,
         output_dir=tmp_path / "runs",
         amp=False,
@@ -463,18 +587,20 @@ def test_train_yolo_pose_for_one_epoch(pitch, tmp_path, monkeypatch):
     )
     _check_train_result(result, "yolo_pose", tmp_path, "best.pt")
     assert model.weights == result.weights  # the instance now holds the new weights
-    keypoints = result.load()(pitch.read("valid", 0)[0])
+    keypoints = result.load(conf=0.05)(pitch.read("valid", 0)[0])
     assert isinstance(keypoints, sv.KeyPoints) and keypoints.xy.shape[1] == 32
 
 
 @pytest.mark.model
-def test_train_rfdetr_for_one_epoch(football, tmp_path, monkeypatch):
+def test_train_rfdetr_for_one_epoch(
+    football, rfdetr_coco_weights, tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
     tiny = football.subset({"train": 8, "valid": 4})
     result = tv.train(
         "rfdetr",
         tiny,
-        weights=MODELS_DIR / "rfdetr_base.pth",
+        weights=rfdetr_coco_weights,
         epochs=1,
         batch_size=2,
         imgsz=336,
@@ -493,18 +619,19 @@ def test_train_rfdetr_for_one_epoch(football, tmp_path, monkeypatch):
 
 
 @pytest.mark.model
-def test_yolo_and_rfdetr_score_on_the_same_scale(football):
-    # Measured on the fixture's 20 validation images: YOLO11m mAP50 0.84,
-    # the RF-DETR base checkpoint 0.88.
-    expected_map50 = {"football_yolo11m.pt": 0.7, "football_rfdetr_base.pth": 0.7}
+def test_yolo_and_rfdetr_score_on_the_same_scale(
+    football, detector_weights, rfdetr_football_weights
+):
+    # Measured on the fixture's 20 validation images: the RF-DETR base
+    # checkpoint mAP50 0.88.
     models = [
-        tv.load_model("yolo", MODELS_DIR / "football_yolo11m.pt"),
-        tv.load_model("rfdetr", MODELS_DIR / "football_rfdetr_base.pth"),
+        tv.load_model("yolo", detector_weights),
+        tv.load_model("rfdetr", rfdetr_football_weights),
     ]
     for model in models:
         metrics = tv.evaluate(model, football)
         assert metrics.num_images == len(football["valid"])
-        assert expected_map50[Path(model.weights).name] < metrics.map50 <= 1.0
+        assert 0.7 < metrics.map50 <= 1.0
         assert list(metrics.per_class.index) == FOOTBALL_CLASSES
         assert model.conf != 0.01  # evaluation threshold was restored
 
@@ -621,13 +748,6 @@ def test_class_conf_can_also_raise_a_threshold(monkeypatch):
     detections = model(np.zeros((48, 64, 3), np.uint8))
     assert model._yolo.calls[-1]["conf"] == 0.15
     assert detections.data["class_name"].tolist() == ["ball", "player", "player"]
-
-
-def test_class_conf_is_checked(monkeypatch):
-    with pytest.raises(ValueError, match=r"class_conf\['ball'\] must be in \[0, 1\]"):
-        _yolo_with(monkeypatch, _BOXES, class_conf={"ball": 1.5})
-    with pytest.raises(ValueError, match="unknown class.*bal.*the model has ball"):
-        _yolo_with(monkeypatch, _BOXES, class_conf={"bal": 0.1})
 
 
 # ------------------------------------------------- resized input (pitch models)

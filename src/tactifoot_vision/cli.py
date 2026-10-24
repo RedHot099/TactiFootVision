@@ -43,9 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         "run",
         help="run the pipeline on a video",
         description="Run a run file on a video and write the run folder "
-        "(RunFile.run). --start, --end and --stride go to Pipeline.run, --period "
-        "and --period-start to PipelineResult.export; an option left out keeps "
-        "the package default.",
+        "(RunFile.run). --start, --end and --stride go to Pipeline.run, --period, "
+        "--period-start, --team-names and --carrier-* to PipelineResult.export; "
+        "an option left out keeps the package default.",
         argument_default=_SUPPRESS,
     )
     run.add_argument("run_file", type=Path, help="run file (YAML)")
@@ -220,6 +220,8 @@ def _unwrap_optional(annotation: Any) -> Any:
         args = [a for a in get_args(annotation) if a is not type(None)]
         if len(args) == 1:
             return args[0]
+        if all(isinstance(a, type) and issubclass(a, str) for a in args):
+            return str  # an enum or its string (ADR 0004): the flag's text as it is
     return annotation
 
 

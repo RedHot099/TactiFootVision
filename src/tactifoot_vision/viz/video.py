@@ -2,6 +2,7 @@
 
 import inspect
 import logging
+from collections.abc import Sequence
 from math import gcd
 from pathlib import Path
 from typing import Any, Literal
@@ -9,7 +10,9 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
+from tactifoot_vision.analysis.velocity import velocities
 from tactifoot_vision.data.video import VideoReader
+from tactifoot_vision.enums import OverlayPosition
 from tactifoot_vision.pipeline.result import PipelineResult
 from tactifoot_vision.viz.annotate import FrameAnnotator
 from tactifoot_vision.viz.radar import PitchRadar, check_overlay, overlay
@@ -23,12 +26,14 @@ def render_video(
     output: str | Path,
     annotator: FrameAnnotator | None = None,
     radar: PitchRadar | Literal[False] | None = None,
-    overlay_position: str = "bottom-center",
+    overlay_position: OverlayPosition | str = OverlayPosition.BOTTOM_CENTER,
     overlay_width_fraction: float = 0.25,
     overlay_alpha: float = 0.8,
     overlay_padding: int = 10,
     fps: float | None = None,
     progress: bool = True,
+    birds_eye: bool = False,
+    ball_carriers: Sequence[int | None] | None = None,
 ) -> Path:
     """Re-read ``source`` and write the frames in ``result`` annotated to an mp4.
 
@@ -43,12 +48,30 @@ def render_video(
             must hold every frame of the result (``RuntimeError`` otherwise).
         output: ``.mp4`` path to write (parent folders are created).
         annotator: frame drawing; default ``FrameAnnotator(pitch=result.pitch)``.
+            Each frame is drawn, by the annotator and the radar, with
+            ``history=result.window(index, seconds)`` for the longest
+            ``trail_seconds`` among the drawers (ADR 0003).
         radar: pitch overlay; default ``PitchRadar(pitch=result.pitch)``,
-            ``False`` for none.
+            ``False`` for none. With ``velocity_seconds`` it is drawn with
+            each frame's :func:`tv.analysis.velocities(result)
+            <tactifoot_vision.analysis.velocities>` (default window and
+            ``max_speed``), computed once before ``output`` is opened.
         overlay_position, overlay_width_fraction, overlay_alpha, overlay_padding:
             see :func:`overlay`.
         fps: output frame rate; default derived from the source and the stride.
         progress: show a progress bar.
+        birds_eye: write the bird's-eye video instead: each frame is the radar
+            drawn on the frame warped onto the pitch (``radar.draw(frame_result,
+            frame=frame, history=history, velocities=...)``), at the radar's
+            size rounded up to even numbers of pixels (the encoder needs
+            them). The annotator and the overlay settings are not used;
+            ``radar=False`` is an error.
+        ball_carriers: one ``tracker_id`` or ``None`` per frame of
+            ``result.frames``, as :func:`tv.analysis.ball_carriers
+            <tactifoot_vision.analysis.ball_carriers>` returns; each frame's
+            goes to ``annotator.annotate(..., ball_carrier=...)``, which rings
+            that person. Not drawn with ``birds_eye``, but its length is
+            still checked.
 
     Returns:
         The written path. Settings are checked before ``output`` is opened, an
@@ -70,7 +93,14 @@ def render_video(
         overlay_alpha=overlay_alpha,
         overlay_padding=overlay_padding,
         fps=fps,
+        radar=radar,
+        birds_eye=birds_eye,
     )
+    if ball_carriers is not None and len(ball_carriers) != len(result.frames):
+        raise ValueError(
+            f"ball_carriers has {len(ball_carriers)} entries but the result has "
+            f"{len(result.frames)} frames; pass one per frame of result.frames"
+        )
     reader = VideoReader(source)
     if reader.size != tuple(result.frame_size):
         raise ValueError(
@@ -85,6 +115,11 @@ def render_video(
             result.fps,
         )
     by_index = {f.index: f for f in result.frames}
+    carriers = (
+        dict.fromkeys(by_index)
+        if ball_carriers is None
+        else {f.index: c for f, c in zip(result.frames, ball_carriers, strict=True)}
+    )
     indices = sorted(by_index)
     step = _stride(indices)
     if len(set(np.diff(indices))) > 1:
@@ -93,7 +128,10 @@ def render_video(
         )
     if fps is None:
         fps = reader.fps / step
-    annotator = annotator or FrameAnnotator(pitch=result.pitch)
+    if birds_eye:
+        annotator = None  # not drawn, so not built or checked
+    else:
+        annotator = annotator or FrameAnnotator(pitch=result.pitch)
     if radar is None:
         radar = PitchRadar(pitch=result.pitch)
     for part in (annotator, radar):
@@ -102,11 +140,16 @@ def render_video(
                 f"{type(part).__name__} draws {part.pitch} but the result uses "
                 f"{result.pitch}; pass pitch=result.pitch"
             )
+    trail_seconds = _longest_trail(annotator, radar)
+    velocities_by_index = (
+        {f.index: v for f, v in zip(result.frames, velocities(result), strict=True)}
+        if radar and radar.velocity_seconds
+        else dict.fromkeys(by_index)
+    )
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(
-        str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, reader.size
-    )
+    size = _even_size(radar.size) if birds_eye and radar else reader.size
+    writer = cv2.VideoWriter(str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
     if not writer.isOpened():
         raise RuntimeError(f"OpenCV cannot write {output}")
 
@@ -130,16 +173,34 @@ def render_video(
             frame_result = by_index.get(index)
             if frame_result is None:
                 continue
-            image = annotator.annotate(frame, frame_result)
-            if radar:
-                image = overlay(
-                    image,
-                    radar.draw(frame_result),
-                    position=overlay_position,
-                    width_fraction=overlay_width_fraction,
-                    alpha=overlay_alpha,
-                    padding=overlay_padding,
+            history = result.window(index, trail_seconds) if trail_seconds else None
+            if birds_eye:  # check_render_options: there is a radar
+                image = radar.draw(
+                    frame_result, frame=frame, history=history,
+                    velocities=velocities_by_index[index],
+                )  # fmt: skip
+                image = cv2.copyMakeBorder(
+                    image, 0, size[1] - image.shape[0], 0, size[0] - image.shape[1],
+                    cv2.BORDER_REPLICATE,
+                )  # fmt: skip
+            else:
+                image = annotator.annotate(
+                    frame, frame_result, history=history, ball_carrier=carriers[index]
                 )
+                if radar:
+                    image = overlay(
+                        image,
+                        radar.draw(
+                            frame_result,
+                            history=history,
+                            frame_size=result.frame_size,
+                            velocities=velocities_by_index[index],
+                        ),
+                        position=overlay_position,
+                        width_fraction=overlay_width_fraction,
+                        alpha=overlay_alpha,
+                        padding=overlay_padding,
+                    )
             writer.write(image)
             written.add(index)
             if bar is not None:
@@ -169,10 +230,11 @@ def check_render_options(**options: Any) -> None:
     """Raise ``ValueError`` for a :func:`render_video` setting it would reject.
 
     Takes any :func:`render_video` keyword arguments (a name it does not take
-    is a ``ValueError``) and checks the values it knows: the overlay settings
-    and ``fps``. The others pass unchecked, so a new ``render_video``
-    parameter needs no change here. A run file uses this to fail before the
-    first frame instead of after the whole run.
+    is a ``ValueError``) and checks the values it knows: the overlay settings,
+    ``fps``, and ``birds_eye`` with ``radar=False``. The others pass
+    unchecked, so a new ``render_video`` parameter needs no change here. A
+    run file uses this to fail before the first frame instead of after the
+    whole run.
     """
     valid = inspect.signature(render_video).parameters
     unknown = [name for name in options if name not in valid]
@@ -189,6 +251,17 @@ def check_render_options(**options: Any) -> None:
     fps = options.get("fps")
     if fps is not None and fps <= 0:
         raise ValueError(f"fps must be > 0, got {fps}")
+    if options.get("birds_eye") and options.get("radar") is False:
+        raise ValueError(
+            "birds_eye=True draws the radar on the warped frame; "
+            "give it a radar or leave radar unset"
+        )
+
+
+def _longest_trail(*drawers: object) -> float:
+    """The longest ``trail_seconds`` among the drawers that have one (0: none)."""
+    lengths = [getattr(d, "trail_seconds", None) for d in drawers if d]
+    return max((s for s in lengths if s), default=0.0)
 
 
 def _same_file(output: Path, source: Path) -> bool:
@@ -198,6 +271,11 @@ def _same_file(output: Path, source: Path) -> bool:
     not only the same path.
     """
     return output.exists() and source.exists() and output.samefile(source)
+
+
+def _even_size(size: tuple[int, int]) -> tuple[int, int]:
+    """``size`` rounded up to even numbers: the encoder drops an odd last row or column."""
+    return size[0] + size[0] % 2, size[1] + size[1] % 2
 
 
 def _stride(indices: list[int]) -> int:

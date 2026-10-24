@@ -2,16 +2,16 @@
 
 import logging
 from collections.abc import Sequence
-from typing import Literal
 
 import cv2
 import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
+from tactifoot_vision.enums import AnnotatorStyle, DetectionKey
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
-from tactifoot_vision.pitch.homography import project_points
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
+from tactifoot_vision.pitch.projection import project_points
 from tactifoot_vision.viz.radar import (
     BALL_COLOR,
     DEFAULT_COLOR,
@@ -21,6 +21,8 @@ from tactifoot_vision.viz.radar import (
     team_color_index,
     text_color_for,
 )
+from tactifoot_vision.viz.subpixel import SUBPIXEL, to_fixed
+from tactifoot_vision.viz.trail import draw_trail, trail_frames
 
 # Ground-truth class colours: bright hues that stand out on grass, checked for
 # colour-blind separation (labels always accompany them).
@@ -29,6 +31,10 @@ KEYPOINT_COLOR = "#FFA500"  # confident keypoint that agrees with the homography
 KEYPOINT_OUTLIER_COLOR = "#FF0000"  # confident keypoint the homography disagrees with
 PITCH_LINE_COLOR = "#FFFFFF"
 MASK_OPACITY = 0.45
+# The ball-carrier ring's half-width over the box width (the video-game
+# ellipse's is 1.0, so the ring lies outside it) and its height over its width.
+RING_WIDTH = 1.3
+RING_ASPECT = 0.35
 
 logger = logging.getLogger(__name__)
 
@@ -97,14 +103,19 @@ class FrameAnnotator:
     (``style="video_game"``, with a triangle over the ball). With a homography,
     the pitch model is projected into the frame; confident pitch keypoints are
     orange when the homography agrees with them and red when it does not.
+    With ``trail_seconds``, the ball's path over that many seconds is drawn
+    from the ``history`` passed to :meth:`annotate` (ADR 0003). A
+    ``ball_carrier`` passed to :meth:`annotate` gets a ring at their feet.
 
-    >>> annotator = FrameAnnotator(style="video_game")
-    >>> image = annotator.annotate(frame, result.frame(index))
+    >>> annotator = FrameAnnotator(style="video_game", trail_seconds=1.0)
+    >>> image = annotator.annotate(
+    ...     frame, result.frame(index), history=result.window(index, 1.0)
+    ... )
     """
 
     def __init__(
         self,
-        style: Literal["standard", "video_game"] = "standard",
+        style: AnnotatorStyle | str = AnnotatorStyle.STANDARD,
         team_colors: Sequence[ColorLike] = TEAM_COLORS,
         default_color: ColorLike = DEFAULT_COLOR,
         ball_color: ColorLike = BALL_COLOR,
@@ -116,6 +127,7 @@ class FrameAnnotator:
         keypoint_threshold: float = 0.5,
         pitch: SoccerPitch | None = None,
         pitch_line_color: ColorLike = PITCH_LINE_COLOR,
+        trail_seconds: float | None = None,
     ) -> None:
         """
         Args:
@@ -129,10 +141,13 @@ class FrameAnnotator:
             draw_keypoints: pitch keypoints with confidence ``>= keypoint_threshold``.
             draw_pitch_lines: pitch markings projected with the inverse homography.
             pitch: pitch model the homography maps to (default ``SoccerPitch()``).
+            ball_color: the ball marker, the ball trail and the ball-carrier ring.
+            trail_seconds: draw the ball's path over the last this many seconds,
+                in ``ball_color`` fading to nothing at that age; ``None``: no trail.
         """
-        if style not in ("standard", "video_game"):
-            raise ValueError(f"Unknown style {style!r}; use 'standard' or 'video_game'")
-        self.style = style
+        if trail_seconds is not None and not trail_seconds > 0:
+            raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
+        self.style = AnnotatorStyle.parse(style, "style")
         self.team_colors = [as_color(c) for c in team_colors]
         self.default_color = as_color(default_color)
         self.ball_color = as_color(ball_color)
@@ -144,14 +159,31 @@ class FrameAnnotator:
         self.keypoint_threshold = keypoint_threshold
         self.pitch = pitch or SoccerPitch()
         self.pitch_line_color = as_color(pitch_line_color)
+        self.trail_seconds = trail_seconds
         colors = [*self.team_colors, self.default_color]
         self._palette = sv.ColorPalette(colors)
         self._text_palette = sv.ColorPalette([text_color_for(c) for c in colors])
         self._markings = pitch_markings(self.pitch)
         self._warned_no_masks = False
 
-    def annotate(self, frame: np.ndarray, frame_result: FrameResult) -> np.ndarray:
-        """Return an annotated copy of ``frame`` (BGR ``uint8``)."""
+    def annotate(
+        self,
+        frame: np.ndarray,
+        frame_result: FrameResult,
+        history: Sequence[FrameResult] | None = None,
+        ball_carrier: int | None = None,
+    ) -> np.ndarray:
+        """Return an annotated copy of ``frame`` (BGR ``uint8``).
+
+        ``history``: the results of the frames before ``frame_result``, oldest
+        first, e.g. ``result.window(index, trail_seconds)``; only the ball
+        trail uses it, and it ignores frames older than ``trail_seconds``.
+        ``ball_carrier``: the ``tracker_id`` of the frame's ball carrier, e.g.
+        from :func:`tv.analysis.ball_carriers
+        <tactifoot_vision.analysis.ball_carriers>`, ringed at their feet in
+        ``ball_color`` over any mask and under the boxes; ``None`` or an id
+        nobody in the frame has draws no ring.
+        """
         image = frame.copy()
         thickness, text_scale = _scaled_sizes(image)
         homography = frame_result.homography
@@ -159,12 +191,16 @@ class FrameAnnotator:
             self._draw_pitch(image, homography, thickness)
         if self.draw_keypoints and frame_result.keypoints is not None:
             self._draw_keypoints(image, frame_result.keypoints, homography, text_scale)
+        if self.trail_seconds and history and homography is not None:
+            self._draw_trail(image, frame_result, history, homography, thickness)
 
         people = frame_result.detections
         lookup = team_color_index(frame_result.team_ids, len(self.team_colors))
+        if len(people) and self.draw_masks:
+            self._draw_masks(image, frame_result.masks, lookup)
+        if ball_carrier is not None:
+            self._draw_ring(image, people, ball_carrier, thickness)
         if len(people):
-            if self.draw_masks:
-                self._draw_masks(image, frame_result.masks, lookup)
             if self.draw_boxes:
                 image = self._people_annotator(thickness).annotate(
                     image, people, custom_color_lookup=lookup
@@ -181,14 +217,14 @@ class FrameAnnotator:
     def _people_annotator(
         self, thickness: int
     ) -> sv.BoxAnnotator | sv.EllipseAnnotator:
-        if self.style == "video_game":
+        if self.style == AnnotatorStyle.VIDEO_GAME:
             return sv.EllipseAnnotator(color=self._palette, thickness=thickness)
         return sv.BoxAnnotator(color=self._palette, thickness=thickness)
 
     def _label_annotator(self, thickness: int, text_scale: float) -> sv.LabelAnnotator:
         position = (
             sv.Position.BOTTOM_CENTER
-            if self.style == "video_game"
+            if self.style == AnnotatorStyle.VIDEO_GAME
             else sv.Position.TOP_LEFT
         )
         return sv.LabelAnnotator(
@@ -202,7 +238,7 @@ class FrameAnnotator:
         )
 
     def _ball_annotator(self, thickness: int) -> sv.BoxAnnotator | sv.TriangleAnnotator:
-        if self.style == "video_game":
+        if self.style == AnnotatorStyle.VIDEO_GAME:
             size = 10 * thickness
             return sv.TriangleAnnotator(
                 color=self.ball_color,
@@ -231,6 +267,51 @@ class FrameAnnotator:
             region[crop] = (
                 (1 - MASK_OPACITY) * region[crop] + MASK_OPACITY * tints[index]
             ).astype(np.uint8)
+
+    # --------------------------------------------------------------- trail
+    def _draw_trail(
+        self,
+        image: np.ndarray,
+        frame_result: FrameResult,
+        history: Sequence[FrameResult],
+        homography: np.ndarray,
+        thickness: int,
+    ) -> None:
+        """The ball's earlier pitch positions, projected into this frame.
+
+        Opacity falls linearly with age along the line, from full now to none
+        at ``trail_seconds``. A frame without a ball position breaks the line;
+        filled-in (``interpolated``) positions draw like any other.
+        """
+        seconds = self.trail_seconds or 0.0  # set: annotate checked it
+        frames, ages = trail_frames(history, frame_result, seconds)
+        points = np.array([_ball_position(f) for f in frames])
+        xy, valid = project_to_frame(
+            points, homography, (image.shape[1], image.shape[0])
+        )
+        valid &= np.isfinite(points).all(axis=1)
+        draw_trail(image, xy, valid, ages, seconds, self.ball_color, thickness)
+
+    def _draw_ring(
+        self,
+        image: np.ndarray,
+        people: sv.Detections,
+        tracker_id: int,
+        thickness: int,
+    ) -> None:
+        """A closed ellipse at the feet of ``tracker_id``, over any mask."""
+        if people.tracker_id is None:
+            return
+        for x1, _, x2, y2 in people.xyxy[people.tracker_id == tracker_id]:
+            if not np.isfinite([x1, x2, y2]).all():
+                continue
+            width = RING_WIDTH * float(x2 - x1)
+            centre = to_fixed([(x1 + x2) / 2, y2])
+            axes = to_fixed([width, RING_ASPECT * width])
+            cv2.ellipse(
+                image, tuple(centre), tuple(axes), 0, 0, 360,
+                self.ball_color.as_bgr(), 2 * thickness, cv2.LINE_AA, SUBPIXEL,
+            )  # fmt: skip
 
     # --------------------------------------------------------------- pitch
     def _draw_pitch(
@@ -284,10 +365,16 @@ class FrameAnnotator:
             _put_text(image, str(i), org, text_scale * 0.8, sv.Color.WHITE)
 
 
+def _ball_position(frame_result: FrameResult) -> np.ndarray:
+    """The pitch position of the frame's ball; NaN without a ball."""
+    xy = frame_result.ball_xy
+    return xy[0] if len(xy) else np.full(2, np.nan)
+
+
 def _labels(detections: sv.Detections) -> list[str]:
     if detections.tracker_id is not None:
         return [f"#{int(t)}" for t in detections.tracker_id]
-    names = detections.data.get("class_name")
+    names = detections.data.get(DetectionKey.CLASS_NAME)
     return [str(n) for n in names] if names is not None else [""] * len(detections)
 
 

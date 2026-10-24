@@ -22,8 +22,10 @@ except PackageNotFoundError:  # running from a source tree without installation
     __version__ = "0.0.0"
 
 _SUBMODULES = (
+    "analysis",
     "augment",
     "data",
+    "enums",
     "evaluation",
     "models",
     "pipeline",
@@ -53,8 +55,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
 
 __all__ = [
     "__version__",
+    "analysis",
     "augment",
     "data",
+    "enums",
     "evaluation",
     "models",
     "pipeline",
@@ -80,8 +84,10 @@ __all__ = [
 
 if TYPE_CHECKING:
     from tactifoot_vision import (
+        analysis,
         augment,
         data,
+        enums,
         evaluation,
         models,
         pipeline,

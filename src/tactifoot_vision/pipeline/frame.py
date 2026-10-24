@@ -1,5 +1,6 @@
 """One frame on its own: the single-frame counterpart of the video pipeline."""
 
+import copy
 import dataclasses
 from collections.abc import Iterable, Sequence
 
@@ -7,13 +8,16 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.enums import DetectionKey, Role
 from tactifoot_vision.models.base import Model
-from tactifoot_vision.pipeline.pipeline import (
-    GOALKEEPER,
-    _detect_ball_and_people,
-    _project,
+from tactifoot_vision.pipeline.pipeline import _detect_ball_and_people
+from tactifoot_vision.pipeline.result import (
+    BALL_ANCHOR,
+    NO_TEAM,
+    PERSON_ANCHOR,
+    FrameResult,
+    project_detections,
 )
-from tactifoot_vision.pipeline.result import NO_TEAM, FrameResult
 from tactifoot_vision.pitch.homography import HomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.teams.classifier import TeamClassifier
@@ -33,9 +37,9 @@ class FrameAnalyzer:
     :meth:`~tactifoot_vision.pitch.HomographyEstimator.fit` of this frame's
     keypoints, and teams come from this frame's crops
     (:func:`~tactifoot_vision.teams.assign_frame_teams`, goalkeepers by pitch
-    position). As in the pipeline, the most confident ``ball_class``
-    detection is the ball, people are placed at the bottom centre of their
-    box and the ball at its centre.
+    position). As in the pipeline, every ``ball_class`` detection is a ball
+    candidate and the most confident one is the ball, people are placed at
+    the bottom centre of their box and the ball candidates at their centre.
 
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
@@ -69,7 +73,7 @@ class FrameAnalyzer:
         ball_class: str = "ball",
         include_classes: Sequence[str] | None = None,
         player_class: str = "player",
-        goalkeeper_class: str = GOALKEEPER,
+        goalkeeper_class: str = Role.GOALKEEPER,
         crop_scale: float = 0.8,
         crop_center_ratio: float = 1.0,
     ) -> None:
@@ -105,7 +109,7 @@ class FrameAnalyzer:
         self, frame: np.ndarray, index: int = 0, timestamp: float = 0.0
     ) -> FrameResult:
         """Analyse one BGR frame; ``index`` and ``timestamp`` only label the result."""
-        ball, people = _detect_ball_and_people(
+        candidates, people = _detect_ball_and_people(
             self.detector, frame, self.ball_class, self.include_classes
         )
         people.mask = None  # full-frame masks (~2 MB per object at 1080p) are not kept
@@ -114,26 +118,31 @@ class FrameAnalyzer:
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
             matrix = self.homography.fit(keypoints, frame, people.xyxy)
-        people.data["pitch_xy"] = _project(people, sv.Position.BOTTOM_CENTER, matrix)
-        ball.data["pitch_xy"] = _project(ball, sv.Position.CENTER, matrix)
+        people.data[DetectionKey.PITCH_XY] = project_detections(
+            people, PERSON_ANCHOR, matrix
+        )
+        candidates.data[DetectionKey.PITCH_XY] = project_detections(
+            candidates, BALL_ANCHOR, matrix
+        )
         if self.team_classifier is not None and len(people):
-            people.data["team_id"] = assign_frame_teams(
+            people.data[DetectionKey.TEAM_ID] = assign_frame_teams(
                 frame,
                 people,
                 self.team_classifier,
-                positions=people.data["pitch_xy"],
+                positions=people.data[DetectionKey.PITCH_XY],
                 player_class=self.player_class,
                 goalkeeper_class=self.goalkeeper_class,
                 crop_scale=self.crop_scale,
                 crop_center_ratio=self.crop_center_ratio,
             )
         else:
-            people.data["team_id"] = np.full(len(people), NO_TEAM, dtype=int)
+            people.data[DetectionKey.TEAM_ID] = np.full(len(people), NO_TEAM, dtype=int)
         return FrameResult(
             index=index,
             timestamp=timestamp,
             detections=people,
-            ball=ball,
+            ball=copy.deepcopy(candidates[:1]),  # a slice would share their arrays
+            ball_candidates=candidates,
             keypoints=keypoints,
             homography=matrix,
         )
@@ -171,6 +180,6 @@ def _has_pitch_ball(result: FrameResult) -> bool:
 
 
 def _with_fallback(ball: sv.Detections, source: int) -> sv.Detections:
-    copy = ball[np.ones(len(ball), dtype=bool)]
-    copy.data["fallback"] = np.full(len(copy), source, dtype=int)
-    return copy
+    filled = ball[np.ones(len(ball), dtype=bool)]
+    filled.data["fallback"] = np.full(len(filled), source, dtype=int)
+    return filled

@@ -1,4 +1,4 @@
-"""Pitch model: the 32 landmark vertices the keypoint models predict, and the line layout."""
+"""Pitch model: the 32 landmark vertices the keypoint models predict, the line layout and the painted markings."""
 
 from dataclasses import dataclass
 from functools import cached_property

@@ -6,11 +6,13 @@ import sys
 
 import cv2
 import numpy as np
+import pandas as pd
 import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.enums import TrackerType
 from tactifoot_vision.models import Model
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import (
@@ -19,6 +21,7 @@ from tactifoot_vision.pitch import (
     frame_to_pitch,
     pitch_markings,
     pitch_to_frame,
+    visible_area,
 )
 from tactifoot_vision.registry import Registry
 
@@ -26,8 +29,27 @@ from tactifoot_vision.registry import Registry
 def test_import_is_lazy_and_light():
     code = (
         "import sys, tactifoot_vision as tv; "
-        "heavy = [m for m in ('torch', 'ultralytics', 'rfdetr', 'transformers', 'matplotlib') "
-        "if m in sys.modules]; print(heavy)"
+        "heavy = [m for m in ('torch', 'ultralytics', 'rfdetr', 'transformers', "
+        "'matplotlib', 'trackeval') if m in sys.modules]; print(heavy)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "[]"
+
+
+def test_evaluation_imports_trackeval_only_for_hota():
+    code = "import sys, tactifoot_vision.evaluation; print('trackeval' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "False"
+
+
+def test_pitch_does_not_import_viz():
+    code = (
+        "import sys, tactifoot_vision.pitch; "
+        "print([m for m in sys.modules if m.startswith('tactifoot_vision.viz')])"
     )
     out = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
@@ -57,6 +79,15 @@ def test_registry():
         registry.create("b")
     with pytest.raises(ValueError, match="already registered"):
         registry.register("a")(A)
+    registry.register(TrackerType.SAM2)(A)
+    assert registry.names() == ["a", "sam2"] and type(registry.names()[1]) is str
+    assert registry.get("sam2") is registry.get(TrackerType.SAM2) is A
+    assert TrackerType.SAM2 in registry and TrackerType.BYTETRACK not in registry
+    assert registry.create(TrackerType.SAM2, x=4).x == registry.create("sam2", x=4).x
+    with pytest.raises(
+        ValueError, match="Unknown thing 'bytetrack'. Available: a, sam2"
+    ):
+        registry.create(TrackerType.BYTETRACK)
 
 
 def test_pitch_vertices_and_scaling():
@@ -156,13 +187,19 @@ def _result():
         data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[60, 20]])},
     )
     frame = FrameResult(
-        index=4, timestamp=65.2, detections=detections, ball=ball, homography=np.eye(3)
+        index=4,
+        timestamp=65.2,
+        detections=detections,
+        ball=ball,
+        ball_candidates=ball,
+        homography=np.eye(3),
     )
     empty = FrameResult(
         index=5,
         timestamp=65.24,
         detections=sv.Detections.empty(),
         ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     return PipelineResult(
         frames=[frame, empty],
@@ -195,9 +232,71 @@ def test_result_tables(tmp_path):
     assert frames["type"].tolist() == ["player", "goalkeeper", "ball"]
 
 
+def _timed_result(indices, fps=4.0):
+    """An empty result of the video frames ``indices``, each at ``index / fps``."""
+    frames = [
+        FrameResult(
+            i,
+            i / fps,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
+        for i in indices
+    ]
+    return PipelineResult(frames, fps, (100, 50), ["ball"])
+
+
+def test_window_holds_the_earlier_frames_within_the_seconds_oldest_first():
+    result = _timed_result(range(10))  # a frame every 0.25 s
+    assert [f.index for f in result.window(8, 1.0)] == [4, 5, 6, 7]
+    assert [f.index for f in result.window(8, 0.6)] == [6, 7]
+    assert result.window(8, 0.0) == []
+
+
+def test_window_with_a_stride_covers_the_same_seconds_with_fewer_frames():
+    result = _timed_result(range(0, 20, 2))  # stride 2: a frame every 0.5 s
+    assert [f.index for f in result.window(12, 1.0)] == [8, 10]
+    assert [f.index for f in result.window(12, 1.2)] == [8, 10]
+    skipped = _timed_result([0, 2, 4, 8, 10, 12])  # frame 6 was skipped
+    assert [f.index for f in skipped.window(12, 2.0)] == [4, 8, 10]
+
+
+def test_window_keeps_the_frame_exactly_the_seconds_back_at_any_frame_rate():
+    result = _timed_result(range(200), fps=25.0)  # index / 25 is not exact
+    assert all(len(result.window(i, 0.4)) == 10 for i in range(10, 200))
+
+
+def test_window_at_the_start_of_the_result_is_shorter_or_empty():
+    result = _timed_result(range(10, 20))
+    assert [f.index for f in result.window(11, 1.0)] == [10]
+    assert result.window(10, 1.0) == []
+
+
+def test_window_of_a_frame_not_in_the_result_says_so():
+    result = _timed_result(range(0, 20, 2))
+    with pytest.raises(KeyError, match="Frame 3 was not processed"):
+        result.window(3, 1.0)
+
+
+def test_lookup_in_a_result_out_of_video_order_says_so():
+    result = _timed_result(range(10))
+    result.frames.reverse()
+    with pytest.raises(ValueError, match="video order"):
+        result.frame(7)
+    with pytest.raises(ValueError, match="video order"):
+        result.window(7, 1.0)
+
+
 def test_freeze_frames_of_the_second_half_roll_over_the_minute():
     frames = [
-        FrameResult(i, i / 25, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / 25,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in (0, 1499, 1500)
     ]
     ball = sv.Detections(
@@ -206,7 +305,7 @@ def test_freeze_frames_of_the_second_half_roll_over_the_minute():
         data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[1, 1]])},
     )
     for frame in frames:
-        frame.ball = ball
+        frame.ball = frame.ball_candidates = ball
     result = PipelineResult(frames, 25.0, (100, 50), ["ball"])
     table = result.to_freeze_frames(period=2, period_start=45 * 60)
     assert table[["minute", "second"]].values.tolist() == [[45, 0], [45, 59], [46, 0]]
@@ -220,6 +319,50 @@ def test_result_save_load(tmp_path):
     path = _result().save(tmp_path / "result.pkl")
     loaded = PipelineResult.load(path)
     assert len(loaded) == 2 and loaded[0].detections.tracker_id.tolist() == [7, 8]
+
+
+def _with_spare_ball(result: PipelineResult) -> PipelineResult:
+    """``result`` whose first frame also has a spare ball, more confident than its ball."""
+    frame = result[0]
+    spare = sv.Detections(
+        xyxy=np.float32([[90, 5, 93, 8]]),
+        confidence=np.float32([0.7]),
+        class_id=np.array([0]),
+        data={"class_name": np.array(["ball"]), "pitch_xy": np.float32([[100, 5]])},
+    )
+    frame.ball_candidates = sv.Detections.merge([spare, frame.ball])
+    return result
+
+
+def test_ball_candidates_survive_save_and_load(tmp_path):
+    result = _with_spare_ball(_result())
+    for path in (
+        result.save(tmp_path / "result.pkl"),
+        result.export(tmp_path / "run") / "result.pkl",
+    ):
+        candidates = PipelineResult.load(path)[0].ball_candidates
+        assert candidates.xyxy.tolist() == [[90, 5, 93, 8], [5, 5, 8, 8]]
+        assert candidates.confidence.tolist() == pytest.approx([0.7, 0.5])
+        assert candidates.data["pitch_xy"].tolist() == [[100, 5], [60, 20]]
+        assert len(PipelineResult.load(path)[1].ball_candidates) == 0
+
+
+def test_a_result_saved_before_ball_candidates_is_refused(tmp_path):
+    result = _result()
+    del result[1].__dict__["ball_candidates"]  # as pickled by the older FrameResult
+    path = result.save(tmp_path / "result.pkl")
+    with pytest.raises(ValueError, match="ball candidates.*run the pipeline again"):
+        PipelineResult.load(path)
+
+
+def test_tables_keep_one_row_for_the_chosen_ball_whatever_the_candidates():
+    alone, with_spare = _result(), _with_spare_ball(_result())
+    pd.testing.assert_frame_equal(with_spare.to_dataframe(), alone.to_dataframe())
+    pd.testing.assert_frame_equal(
+        with_spare.to_freeze_frames(), alone.to_freeze_frames()
+    )
+    balls = with_spare.to_freeze_frames().query("type == 'ball'")
+    assert [json.loads(b) for b in balls["frame_bbox"]] == [[5, 5, 8, 8]]
 
 
 def test_homography_restarts_its_average_after_a_gap():
@@ -330,16 +473,20 @@ def test_freeze_frames_of_an_unknown_period_need_a_period_start():
 
 def test_export_uses_the_kick_off_clock(tmp_path):
     out = _result().export(tmp_path / "run", period=2)
-    import pandas as pd
-
     assert pd.read_csv(out / "freeze_frames.csv")["minute"].iloc[0] == 46
 
 
 def test_an_empty_result_exports_tables_with_headers(tmp_path):
-    import pandas as pd
-
     empty = PipelineResult(
-        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        [
+            FrameResult(
+                0,
+                0.0,
+                sv.Detections.empty(),
+                sv.Detections.empty(),
+                ball_candidates=sv.Detections.empty(),
+            )
+        ],
         25.0,
         (64, 48),
         [],
@@ -350,6 +497,43 @@ def test_an_empty_result_exports_tables_with_headers(tmp_path):
     assert len(tracks) == 0 and "pitch_x" in tracks
     assert len(frames) == 0
     assert list(frames.columns) == list(_result().to_freeze_frames().columns)
+
+
+def test_exported_tables_name_the_teams_when_given(tmp_path):
+    out = _result().export(tmp_path / "run", team_names=["Home", "Away"])
+    for table in ("tracks.csv", "freeze_frames.csv"):
+        rows = pd.read_csv(out / table, keep_default_na=False)
+        # The player is in team 1; the goalkeeper and the ball have no team.
+        assert rows["team_id"].tolist() == [1, NO_TEAM, NO_TEAM]
+        assert rows["team_name"].tolist() == ["Away", "", ""]
+    unnamed = _result().export(tmp_path / "unnamed")
+    assert pd.read_csv(unnamed / "tracks.csv")["team_name"].isna().all()
+    # A tuple or a NumPy array of names works too.
+    names = np.array(["Home", "Away"])
+    assert _result().to_dataframe(names)["team_name"][0] == "Away"
+    assert _result().to_freeze_frames(team_names=("H", "A"))["team_name"][0] == "A"
+
+
+@pytest.mark.parametrize(
+    ("team_names", "message"),
+    [
+        (["Home"], "no name for team 1"),
+        ("Home", "list of names"),
+        (["Home", ""], "empty"),
+        ([1860, "Bayern"], 'quote names such as "1860"'),  # YAML [1860, Bayern]
+        (["Home", "Home"], "twice"),
+    ],
+)
+def test_export_refuses_team_names_before_writing(tmp_path, team_names, message):
+    with pytest.raises(ValueError, match=message):
+        _result().export(tmp_path / "run", team_names=team_names)
+    assert not (tmp_path / "run").exists()
+
+
+def test_export_checks_the_period_before_writing(tmp_path):
+    with pytest.raises(ValueError, match="period_start"):
+        _result().export(tmp_path / "run", period=5)
+    assert not (tmp_path / "run").exists()
 
 
 def test_freeze_frame_rows_share_one_builder_and_named_constants():
@@ -402,6 +586,20 @@ def test_visible_area_is_none_when_a_corner_lies_beyond_the_horizon():
     assert result.to_freeze_frames()["visible_area"].iloc[0] is None
     result.frames[0].homography = np.array([[1, 0, 0], [0, 1, 0], [0, 0.001, 1.0]])
     assert json.loads(result.to_freeze_frames()["visible_area"].iloc[0])
+
+
+def test_visible_area_is_the_frame_outline_on_the_pitch():
+    # frame -> pitch: 8 px a metre, the frame's top-left corner at (20, 15)
+    homography = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
+    np.testing.assert_allclose(
+        visible_area(homography, (320, 240)),
+        [[20, 15], [60, 15], [60, 45], [20, 45]],
+    )
+    # The horizon at y = 33 of a 100 x 50 frame: no outline.
+    beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
+    assert visible_area(beyond, (100, 50)) is None
+    assert visible_area(None, (100, 50)) is None
+    assert tv.pitch.visible_area is visible_area
 
 
 # ------------------------------------------------------- review round 3 (Fable)

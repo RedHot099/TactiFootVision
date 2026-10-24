@@ -15,6 +15,7 @@ from tactifoot_vision.data import (
     load_dataset,
     load_statsbomb,
 )
+from tactifoot_vision.enums import LinkMode, Split
 
 FLIP = (1, 0, 2)
 
@@ -192,6 +193,12 @@ def test_subset_resplit_merge(tmp_path):
     assert len(small["train"]) == 3 and len(small["valid"]) == 2
     assert len(ds.subset(0.5)["train"]) == 4
     assert small.subset(3, seed=1)["train"] == small.subset(3, seed=1)["train"]
+    assert ds[Split.VALID] == ds["valid"] == ds["val"]
+    assert (
+        small.subset({Split.TRAIN: 2})["train"] == small.subset({"train": 2})["train"]
+    )
+    with pytest.raises(ValueError, match="Unknown split 'dev'. Available: train"):
+        ds["dev"]
     resplit = ds.resplit(train=0.6, valid=0.2, test=0.2)
     assert [len(resplit[s]) for s in ("train", "valid", "test")] == [6, 2, 2]
     with pytest.raises(ValueError):
@@ -378,6 +385,20 @@ def test_video_frame_ranges_are_checked_when_called(
     assert list(video.frames(start=3, end=3)) == []  # an empty range is not an error
 
 
+@pytest.mark.parametrize(
+    ("name", "match"),
+    [
+        ("100%.mp4", "Video not found"),  # a % that is no image-sequence pattern
+        ("img_%06d.jpg", "No image matches"),
+    ],
+)
+def test_video_reader_refuses_a_missing_video_or_image_sequence(tmp_path, name, match):
+    _image(tmp_path / "other_000001.jpg")
+
+    with pytest.raises(FileNotFoundError, match=match):
+        VideoReader(tmp_path / name)
+
+
 def test_video_read_rejects_negative_indices(tmp_path):
     video = VideoReader(_video(tmp_path / "v.mp4"))
     with pytest.raises(IndexError, match="-1"):
@@ -482,8 +503,12 @@ def test_switching_the_export_format_removes_the_old_format(tmp_path):
 def test_export_checks_its_arguments_before_deleting_anything(tmp_path):
     ds = load_dataset(_write_yolo(tmp_path / "src"))
     ds.to_yolo(tmp_path / "out", link="copy")
-    with pytest.raises(ValueError, match="link must be"):
+    with pytest.raises(ValueError, match="Unknown link"):
         ds.to_yolo(tmp_path / "out", link="copi")
+    with pytest.raises(ValueError, match="'copi'. Available: symlink, hardlink, copy"):
+        ds.to_coco(tmp_path / "out", link="copi")
+    ds.to_yolo(tmp_path / "member", link=LinkMode.COPY)
+    assert not (tmp_path / "member" / "train" / "images" / "a.jpg").is_symlink()
     assert (tmp_path / "out" / "train" / "images" / "a.jpg").is_file()
     missing = Sample(tmp_path / "gone.jpg", 64, 48, Annotations.empty())
     with pytest.raises(FileNotFoundError, match="gone.jpg"):

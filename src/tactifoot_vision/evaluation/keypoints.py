@@ -7,6 +7,7 @@ import pandas as pd
 
 from tactifoot_vision.data.annotations import NOT_LABELLED, Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation.metrics import KeypointMetrics
 from tactifoot_vision.models.base import Model
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 def evaluate_keypoints(
     model: Model,
     dataset: Dataset,
-    split: str = "valid",
+    split: Split | str = Split.VALID,
     pck_threshold: float = 0.05,
     max_images: int | None = None,
 ) -> KeypointMetrics:
@@ -40,6 +41,7 @@ def evaluate_keypoints(
         raise ValueError(
             f"evaluate_keypoints needs a keypoint model, got a {model.task.value} model"
         )
+    split = Split.parse(split)
     num_keypoints = dataset.num_keypoints
     if num_keypoints is None:
         raise ValueError(f"{dataset!r} has no keypoints")

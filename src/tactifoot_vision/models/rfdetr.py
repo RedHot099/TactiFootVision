@@ -19,7 +19,14 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
-from tactifoot_vision.models.base import MODELS, Model, TrainConfig, TrainResult
+from tactifoot_vision.enums import DetectionKey, ModelType, Split
+from tactifoot_vision.models.base import (
+    MODELS,
+    Model,
+    TrainConfig,
+    TrainResult,
+    check_class_conf,
+)
 from tactifoot_vision.utils import cache_dir
 
 logger = logging.getLogger(__name__)
@@ -46,7 +53,7 @@ _ARCHITECTURE_FIELDS = (
 )
 
 
-@MODELS.register("rfdetr")
+@MODELS.register(ModelType.RFDETR)
 class RFDETRDetector(Model):
     """RF-DETR box detector (sizes nano, small, medium, base, large).
 
@@ -60,7 +67,7 @@ class RFDETRDetector(Model):
         detections = model(frame)  # data["class_name"]: "player", "ball", ...
     """
 
-    name = "rfdetr"
+    name = ModelType.RFDETR.value
     task = Task.DETECT
     _train_config_aliases = {
         "num_workers": "workers",
@@ -74,6 +81,7 @@ class RFDETRDetector(Model):
         *,
         size: str | None = None,
         conf: float = 0.5,
+        class_conf: Mapping[str, float] | None = None,
         resolution: int | None = None,
         device: str | None = None,
     ) -> None:
@@ -84,6 +92,9 @@ class RFDETRDetector(Model):
             size: architecture: nano, small, medium, base or large. ``None`` reads
                 it from a fine-tuned checkpoint and means base for pretrained weights.
             conf: minimum confidence of returned objects.
+            class_conf: minimum confidence per class name, replacing ``conf``
+                for those classes, e.g. ``{"ball": 0.05}`` so that weak ball
+                candidates are kept.
             resolution: square input size; ``None`` uses the checkpoint's training
                 resolution. Must be a multiple of patch size x windows (56 for
                 base/large, 32 for the others).
@@ -93,6 +104,7 @@ class RFDETRDetector(Model):
             raise ValueError(f"Unknown RF-DETR size {size!r}; use one of {list(SIZES)}")
         self.size = size
         self.resolution = resolution
+        self.class_conf = check_class_conf(class_conf)
         super().__init__(weights, conf=conf, device=device)
 
     # ---------------------------------------------------------------- loading
@@ -142,7 +154,7 @@ class RFDETRDetector(Model):
         import cv2
 
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        detections = self._rf.predict(rgb, threshold=self.conf)
+        detections = self._rf.predict(rgb, threshold=self._lowest_conf)
         labels = detections.class_id.astype(int)
         index = np.full(len(labels), -1, dtype=int)
         known = (labels >= 0) & (labels < len(self._label_to_index))
@@ -152,10 +164,10 @@ class RFDETRDetector(Model):
             logger.debug("Dropping %d detections without a class", (index < 0).sum())
         detections = detections[index >= 0]
         detections.class_id = index[index >= 0]
-        detections.data["class_name"] = np.asarray(self._class_names, dtype=str)[
-            detections.class_id
-        ]
-        return detections
+        detections.data[DetectionKey.CLASS_NAME] = np.asarray(
+            self._class_names, dtype=str
+        )[detections.class_id]
+        return self._apply_class_conf(detections)
 
     # --------------------------------------------------------------- training
     def _check_options(self, config: TrainConfig) -> None:
@@ -171,8 +183,12 @@ class RFDETRDetector(Model):
         # history must describe this run only.
         (run_dir / "log.txt").unlink(missing_ok=True)
         # RF-DETR always builds a test loader; reuse the validation images if needed.
-        has_test = bool(dataset["test"])
-        export = dataset if has_test else dataset.with_split("test", dataset["valid"])
+        has_test = bool(dataset[Split.TEST])
+        export = (
+            dataset
+            if has_test
+            else dataset.with_split(Split.TEST, dataset[Split.VALID])
+        )
         coco_root = export.to_coco(run_dir / "dataset")
 
         model_config = self._rf.model_config

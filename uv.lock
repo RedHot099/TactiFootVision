@@ -2365,6 +2365,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tabulate"
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814 },
+]
+
+[[package]]
 name = "tactifoot-vision"
 version = "0.2.0"
 source = { editable = "." }
@@ -2389,6 +2398,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+eval = [
+    { name = "tabulate" },
+    { name = "trackeval" },
+]
 sam2 = [
     { name = "hydra-core" },
     { name = "iopath" },
@@ -2418,14 +2431,16 @@ requires-dist = [
     { name = "rfdetr", specifier = ">=1.0.8,<2.0.0" },
     { name = "scikit-learn", specifier = ">=1.5.2,<1.6.0" },
     { name = "supervision", specifier = ">=0.25.1,<0.26.0" },
+    { name = "tabulate", marker = "extra == 'eval'", specifier = ">=0.9.0" },
     { name = "torch", specifier = ">=2.6.0,<3.0.0" },
     { name = "torchvision", specifier = ">=0.21.0,<0.22.0" },
     { name = "tqdm", specifier = ">=4.67.1,<5.0.0" },
+    { name = "trackeval", marker = "extra == 'eval'", git = "https://github.com/JonathonLuiten/TrackEval?rev=12c8791b303e0a0b50f753af204249e622d0281a" },
     { name = "transformers", specifier = ">=4.48.0,<5.0.0" },
     { name = "ultralytics", specifier = ">=8.3.98,<9.0.0" },
     { name = "umap-learn", specifier = ">=0.5.7,<0.6.0" },
 ]
-provides-extras = ["sam2"]
+provides-extras = ["sam2", "eval"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2575,6 +2590,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2", size = 78540 },
+]
+
+[[package]]
+name = "trackeval"
+version = "1.0.dev1"
+source = { git = "https://github.com/JonathonLuiten/TrackEval?rev=12c8791b303e0a0b50f753af204249e622d0281a#12c8791b303e0a0b50f753af204249e622d0281a" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
 ]
 
 [[package]]

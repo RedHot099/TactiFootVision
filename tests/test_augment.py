@@ -24,6 +24,7 @@ from tactifoot_vision.data import (
     Sample,
     load_dataset,
 )
+from tactifoot_vision.enums import Split
 
 W, H = 100, 80
 
@@ -354,6 +355,12 @@ def test_augment_dataset_fills_flip_idx_and_rejects_bad_arguments(tmp_path):
 
     with pytest.raises(ValueError, match="test"):
         augment_dataset(dataset, HorizontalFlip(), tmp_path / "x", splits=("test",))
+    with pytest.raises(ValueError, match="Unknown split 'dev'"):
+        augment_dataset(dataset, HorizontalFlip(), tmp_path / "x", splits=("dev",))
+    by_member = augment_dataset(
+        dataset, HorizontalFlip(p=1), tmp_path / "member", splits=(Split.TRAIN,)
+    )
+    assert len(by_member["train"]) == len(out["train"])
     with pytest.raises(ValueError, match="copies"):
         augment_dataset(dataset, HorizontalFlip(), tmp_path / "x", copies=0)
 

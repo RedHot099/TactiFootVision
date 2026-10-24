@@ -1,4 +1,4 @@
-"""Line refinement of the homography (tv.pitch.lines) on frames rendered through a known homography."""
+"""Single-frame line refinement of the homography (tv.pitch.frame_lines, HomographyEstimator.fit) on frames rendered through a known homography."""
 
 import cv2
 import numpy as np
@@ -8,11 +8,11 @@ import supervision as sv
 from tactifoot_vision.pitch import (
     HomographyEstimator,
     SoccerPitch,
+    frame_lines,
     frame_to_pitch,
-    lines,
     pitch_markings,
 )
-from tactifoot_vision.pitch.lines import line_mask, refine_homography
+from tactifoot_vision.pitch.frame_lines import line_mask, refine_homography
 
 SIZE = (1280, 720)
 
@@ -158,8 +158,10 @@ def test_the_estimator_refines_its_keypoint_fit_on_the_frame():
     assert (
         _metres_off(pitch, refined, to_frame) < 0.2 < _metres_off(pitch, raw, to_frame)
     )
+    # update (video mode) refines with tv.pitch.lines.LineRefiner instead: its
+    # own fit of the same lines, not the same matrix.
     smoothed = estimator.update(keypoints, frame, boxes=np.zeros((0, 4)))
-    np.testing.assert_allclose(smoothed, refined)
+    assert _metres_off(pitch, smoothed, to_frame) < 0.2
     with pytest.raises(ValueError, match="needs the frame"):
         estimator.fit(keypoints)
 
@@ -182,11 +184,11 @@ def test_a_refinement_that_ends_in_a_mirror_image_keeps_the_start(monkeypatch):
     frame = _render(pitch, to_frame)
     start = _shifted(to_frame, 1.5, -1.0, 1.02)
     flip = np.array([[1, 0, 0], [0, -1, pitch.width], [0, 0, 1.0]])
-    control_px = np.array(lines._CONTROL) * SIZE
+    control_px = np.array(frame_lines._CONTROL) * SIZE
     control = cv2.perspectiveTransform(control_px.reshape(-1, 1, 2), start)
     mirror_px = cv2.perspectiveTransform(control, to_frame @ flip).reshape(-1, 2)
     monkeypatch.setattr(
-        lines, "_least_squares", lambda *args: (mirror_px - control_px).ravel()
+        frame_lines, "_least_squares", lambda *args: (mirror_px - control_px).ravel()
     )
     fit = refine_homography(frame, start, pitch)
     assert not fit.refined
@@ -199,35 +201,36 @@ def test_a_camera_view_faces_the_camera_where_the_pitch_is_seen():
     view = np.linalg.inv(to_frame)
     grass = np.ones((SIZE[1], SIZE[0]), np.uint8)
     seen = np.array([[640.0, 200.0], [300.0, 600.0]])
-    assert lines._faces_camera(view, grass, seen)
+    assert frame_lines._faces_camera(view, grass, seen)
     flip = np.array([[1, 0, 0], [0, -1, pitch.width], [0, 0, 1.0]])
-    assert not lines._faces_camera(flip @ view, grass, seen)
+    assert not frame_lines._faces_camera(flip @ view, grass, seen)
     # A horizon across the lower half: the frame's bottom rows lie beyond it.
     horizon = view.copy()
     horizon[2] = [0, -1 / 500, 1.0]
-    assert not lines._faces_camera(horizon, grass, seen[:1])
+    assert not frame_lines._faces_camera(horizon, grass, seen[:1])
     grass[500:] = 0  # ... unless neither grass nor markings are seen there
-    assert lines._faces_camera(horizon, grass, seen[:1])
-    assert not lines._faces_camera(horizon, grass, seen)
+    assert frame_lines._faces_camera(horizon, grass, seen[:1])
+    assert not frame_lines._faces_camera(horizon, grass, seen)
 
 
 def test_markings_shrunk_onto_one_line_have_no_thickness():
     rng = np.random.default_rng(0)
     view = rng.uniform([0, 0], [1280, 720], (500, 2))
     line = np.column_stack([np.linspace(0, 1280, 500), 300 + rng.normal(0, 2, 500)])
-    assert lines._thickness(view) > 150
-    assert lines._thickness(line) < 3
-    assert lines._thickness(line) < lines._MIN_THICKNESS_RATIO * lines._thickness(view)
-    assert lines._thickness(view[:2]) == 0.0
+    assert frame_lines._thickness(view) > 150
+    assert frame_lines._thickness(line) < 3
+    ratio = frame_lines._MIN_THICKNESS_RATIO
+    assert frame_lines._thickness(line) < ratio * frame_lines._thickness(view)
+    assert frame_lines._thickness(view[:2]) == 0.0
 
 
 def _refined_to(monkeypatch, start, target_to_frame):
     """Make the optimiser end exactly at ``target_to_frame`` (pitch -> frame)."""
-    control_px = np.array(lines._CONTROL) * SIZE
+    control_px = np.array(frame_lines._CONTROL) * SIZE
     control = cv2.perspectiveTransform(control_px.reshape(-1, 1, 2), start)
     target = cv2.perspectiveTransform(control, target_to_frame).reshape(-1, 2)
     monkeypatch.setattr(
-        lines, "_least_squares", lambda *args: (target - control_px).ravel()
+        frame_lines, "_least_squares", lambda *args: (target - control_px).ravel()
     )
 
 
@@ -253,7 +256,7 @@ def test_markings_squashed_onto_one_painted_line_keep_the_start(monkeypatch):
     squash = np.array([[1, 0, 0], [0, 0.01, 0.99 * 360], [0, 0, 1.0]])
     start = _shifted(to_frame, 1.5, -1.0, 1.02)
     _refined_to(monkeypatch, start, squash @ to_frame)
-    monkeypatch.setattr(lines, "_MIN_THICKNESS_RATIO", 0.0)
+    monkeypatch.setattr(frame_lines, "_MIN_THICKNESS_RATIO", 0.0)
     assert refine_homography(frame, start, pitch).refined  # what the check stops
     monkeypatch.undo()
     _refined_to(monkeypatch, start, squash @ to_frame)
@@ -266,5 +269,5 @@ def test_a_horizon_across_the_top_of_the_grass_is_allowed():
     to_pitch = np.array([[1, 0, 0], [0, -1, 0], [0, 1, -100.0]])  # horizon at y = 100
     grass = np.ones((SIZE[1], SIZE[0]), np.uint8)
     seen = np.array([[640.0, 600.0]])
-    assert lines._faces_camera(to_pitch, grass, seen)
-    assert not lines._faces_camera(to_pitch, grass, seen - [0, 550])
+    assert frame_lines._faces_camera(to_pitch, grass, seen)
+    assert not frame_lines._faces_camera(to_pitch, grass, seen - [0, 550])

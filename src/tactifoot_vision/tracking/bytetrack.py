@@ -6,12 +6,13 @@ import logging
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.enums import TrackerType
 from tactifoot_vision.tracking.base import TRACKERS, Tracker
 
 logger = logging.getLogger(__name__)
 
 
-@TRACKERS.register("bytetrack")
+@TRACKERS.register(TrackerType.BYTETRACK)
 class ByteTrackTracker(Tracker):
     """Box-only multi-object tracking with ``sv.ByteTrack``.
 
@@ -23,7 +24,7 @@ class ByteTrackTracker(Tracker):
         minimum_consecutive_frames: frames a track must be seen before it gets an id.
     """
 
-    name = "bytetrack"
+    name = TrackerType.BYTETRACK.value
 
     def __init__(
         self,

@@ -19,15 +19,59 @@ standard = tv.viz.FrameAnnotator().annotate(frame, frame_result)
 game = tv.viz.FrameAnnotator(style="video_game", draw_keypoints=False).annotate(
     frame, frame_result
 )
+# The ball's last second, from the frames before this one (ADR 0003).
+trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=1.0).annotate(
+    frame, frame_result, history=result.window(frame_result.index, 1.0)
+)
+# A ring at the feet of the ball carrier, one tracker id or None per frame.
+carriers = tv.analysis.ball_carriers(result)
+ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+    frame, frame_result, ball_carrier=carriers[120]
+)
 radar = tv.viz.PitchRadar(draw_ids=True).draw(frame_result)
+# Each person's last two seconds as a tail on the radar.
+tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(
+    frame_result, history=result.window(frame_result.index, 2.0)
+)
+# The part of the pitch the camera shows, outlined under the players.
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(
+    frame_result, frame_size=result.frame_size
+)
+# Each person's velocity as an arrow: where it takes them in one second.
+velocities = tv.analysis.velocities(result)  # one array per frame of result.frames
+arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(
+    frame_result, velocities=velocities[120]
+)
 tv.show(
-    [standard, game, radar], titles=["standard", "video game", "radar"], cols=1
+    [standard, game, trail, ring, radar, tails, visible, arrows],
+    titles=[
+        "standard",
+        "video game",
+        "ball trail",
+        "ball carrier",
+        "radar",
+        "radar tails",
+        "visible area",
+        "velocity arrows",
+    ],
+    cols=1,
 ).savefig(OUT / "frame_views.png")
 tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
     OUT / "overlay.png"
 )
 
-video_path = tv.viz.render_video(result, VIDEO, OUT / "annotated.mp4")
+# render_video fills each frame's history and velocities itself and rings
+# each frame's carrier.
+video_path = tv.viz.render_video(
+    result,
+    VIDEO,
+    OUT / "annotated.mp4",
+    annotator=tv.viz.FrameAnnotator(trail_seconds=1.0),
+    radar=tv.viz.PitchRadar(
+        trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0
+    ),
+    ball_carriers=carriers,
+)
 print("video:", video_path)
 
 tv.viz.plot_heatmap(result, team=0).savefig(OUT / "heatmap_team0.png")

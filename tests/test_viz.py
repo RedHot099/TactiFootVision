@@ -1,4 +1,5 @@
 import ast
+import dataclasses
 import os
 from pathlib import Path
 
@@ -10,14 +11,23 @@ import pytest
 import supervision as sv
 from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
+from matplotlib.path import Path as MplPath
 
+import tactifoot_vision.analysis as tv_analysis
 import tactifoot_vision.viz as viz
+from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
+from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition, Split
 from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
 from tactifoot_vision.models.base import TrainResult
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
-from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
+from tactifoot_vision.pitch import (
+    SoccerPitch,
+    frame_to_pitch,
+    pitch_to_frame,
+    visible_area,
+)
 
 matplotlib.use("Agg")
 
@@ -67,7 +77,9 @@ def _frame_result(index: int) -> FrameResult:
         xy=pitch_to_frame(PITCH.vertices, HOMOGRAPHY)[None].astype(np.float32),
         confidence=confidence[None],
     )
-    return FrameResult(index, index / FPS, people, ball, keypoints, HOMOGRAPHY)
+    return FrameResult(
+        index, index / FPS, people, ball, keypoints, HOMOGRAPHY, ball_candidates=ball
+    )
 
 
 @pytest.fixture
@@ -202,6 +214,15 @@ def test_render_video_draws_masks(
 def test_annotate_rejects_unknown_style() -> None:
     with pytest.raises(ValueError, match="style"):
         viz.FrameAnnotator(style="cartoon")
+    with pytest.raises(ValueError, match="'cartoon'. Available: standard, video_game"):
+        viz.FrameAnnotator(style="cartoon")
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    np.testing.assert_array_equal(
+        viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME).annotate(
+            frame, _frame_result(0)
+        ),
+        viz.FrameAnnotator(style="video_game").annotate(frame, _frame_result(0)),
+    )
 
 
 def test_draw_annotations_hides_unlabelled_keypoints() -> None:
@@ -216,6 +237,229 @@ def test_draw_annotations_hides_unlabelled_keypoints() -> None:
     assert image.shape == frame.shape and (image != frame).any()
     assert (image[200, 200] == frame[200, 200]).all()
     assert (image[50, 50] != frame[50, 50]).any()
+
+
+# ---------------------------------------------------------------- ball trail
+RED = "#FF0000"
+BACKGROUND_RED = 40  # the red channel of _frame()
+
+
+def _pan(dx: float) -> np.ndarray:
+    """``HOMOGRAPHY`` for a camera panned so that the pitch moves ``dx`` pixels left."""
+    return HOMOGRAPHY @ np.array([[1.0, 0, dx], [0, 1, 0], [0, 0, 1]])
+
+
+def _ball_at(
+    index: int,
+    pixel: tuple[float, float] | None,
+    homography: np.ndarray | None = HOMOGRAPHY,
+    pitch_xy: np.ndarray | None = None,
+    interpolated: bool = False,
+) -> FrameResult:
+    """A frame with only a ball at ``pixel`` (``None``: no ball) under ``homography``."""
+    ball = sv.Detections.empty()
+    if pixel is not None:
+        x, y = pixel
+        ball = sv.Detections(
+            xyxy=np.array([[x - 3, y - 3, x + 3, y + 3]], dtype=np.float32),
+            confidence=np.array([0.8], dtype=np.float32),
+            class_id=np.array([0]),
+        )
+        ball.data["class_name"] = np.array(["ball"])
+        ball.data["pitch_xy"] = (
+            frame_to_pitch(np.array([pixel], dtype=float), homography)
+            if pitch_xy is None
+            else pitch_xy
+        )
+        ball.data["interpolated"] = np.array([interpolated])
+    return FrameResult(
+        index, index / FPS, sv.Detections.empty(), ball, None, homography,
+        ball_candidates=ball,
+    )  # fmt: skip
+
+
+def _trail_annotator(trail_seconds: float | None = 1.0) -> viz.FrameAnnotator:
+    """Draws the ball trail only."""
+    return viz.FrameAnnotator(
+        trail_seconds=trail_seconds, ball_color=RED, draw_boxes=False,
+        draw_labels=False, draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+
+
+def _redness(image: np.ndarray, x: int, y: int) -> int:
+    return int(image[y, x, 2]) - BACKGROUND_RED
+
+
+def _straight_run(*gaps: FrameResult) -> list[FrameResult]:
+    """Frames 0-4 with the ball moving right along ``y = 120``, 40 px a frame.
+
+    ``gaps`` replace the frames with their index.
+    """
+    frames = [_ball_at(i, (40.0 + 40 * i, 120.0)) for i in range(5)]
+    for gap in gaps:
+        frames[gap.index] = gap
+    return frames
+
+
+def test_the_ball_trail_passes_through_the_earlier_positions_and_fades() -> None:
+    *history, now = _straight_run()
+    image = _trail_annotator(1.0).annotate(_frame(), now, history=history)
+    # Segment midpoints, oldest first; opacity is 1 - age / trail_seconds at
+    # ages 0.35, 0.25, 0.15 and 0.05 s.
+    reds = [_redness(image, x, 120) for x in (60, 100, 140, 180)]
+    assert reds[0] > 0 and reds == sorted(reds)
+    expected = [0.65, 0.75, 0.85, 0.95]
+    np.testing.assert_allclose(
+        np.array(reds) / reds[-1], np.array(expected) / expected[-1], atol=0.03
+    )
+    # Next to the ball the trail is ball_color at full opacity (antialiasing
+    # leaves a 1 px line just short of covering its pixels), ...
+    np.testing.assert_allclose(image[120, 198], (0, 0, 255), atol=25)
+    # ... and it fades to nothing at trail_seconds (the 0.4 s old frame 0).
+    faded = _trail_annotator(0.4).annotate(_frame(), now, history=history)
+    assert _redness(faded, 41, 120) < 8 < _redness(faded, 60, 120)
+    assert tuple(image[120, 230]) == tuple(_frame()[120, 230])  # past the ball
+    assert tuple(image[60, 100]) == tuple(_frame()[60, 100])  # off the line
+
+
+def test_the_ball_trail_stays_on_the_pitch_when_the_camera_pans() -> None:
+    # The ball moved down at x = 100 while the camera panned 60 px right, so
+    # the earlier positions are now at x = 40.
+    history = [_ball_at(0, (100.0, 60.0)), _ball_at(1, (100.0, 100.0))]
+    now = _ball_at(2, (40.0, 140.0), homography=_pan(60.0))
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert _redness(image, 40, 80) > 100 and _redness(image, 40, 120) > 100
+    assert tuple(image[80, 100]) == tuple(_frame()[80, 100])
+
+
+@pytest.mark.parametrize(
+    ("gap", "drawn"),
+    [
+        (_ball_at(2, None), False),  # no ball
+        (_ball_at(2, (120.0, 120.0), pitch_xy=np.full((1, 2), np.nan)), False),
+        (_ball_at(2, (120.0, 120.0), interpolated=True), True),  # like any other
+    ],
+    ids=["no ball", "no pitch position", "interpolated"],
+)
+def test_the_ball_trail_breaks_where_there_is_no_ball_position(
+    gap: FrameResult, drawn: bool
+) -> None:
+    *history, now = _straight_run(gap)
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert _redness(image, 60, 120) > 0 and _redness(image, 180, 120) > 0
+    assert (_redness(image, 100, 120) > 0) == drawn  # frames 1-2
+    assert (_redness(image, 140, 120) > 0) == drawn  # frames 2-3
+
+
+def test_no_ball_trail_without_a_homography_in_the_current_frame() -> None:
+    *history, now = _straight_run()
+    now = dataclasses.replace(now, homography=None)
+    image = _trail_annotator().annotate(_frame(), now, history=history)
+    assert (image == _frame()).all()
+
+
+def test_the_ball_trail_ignores_history_older_than_its_length() -> None:
+    *history, now = _straight_run()
+    annotator = _trail_annotator(0.25)
+    image = annotator.annotate(_frame(), now, history=history)
+    assert (image == annotator.annotate(_frame(), now, history=history[2:])).all()
+    assert _redness(image, 140, 120) > 0  # 0.1-0.2 s old
+    assert tuple(image[120, 60]) == tuple(_frame()[120, 60])  # 0.3-0.4 s old
+
+
+def test_the_ball_trail_is_off_by_default(result: PipelineResult) -> None:
+    frame, now = _frame(), result[-1]
+    today = viz.FrameAnnotator().annotate(frame, now)
+    history = result.frames[:-1]
+    assert (viz.FrameAnnotator().annotate(frame, now, history=history) == today).all()
+    with_trail = viz.FrameAnnotator(trail_seconds=1.0)
+    assert (with_trail.annotate(frame, now) == today).all()
+    assert (with_trail.annotate(frame, now, history=history) != today).any()
+
+
+@pytest.mark.parametrize("seconds", [0, -1.0])
+def test_the_ball_trail_length_must_be_positive(seconds: float) -> None:
+    with pytest.raises(ValueError, match="trail_seconds"):
+        viz.FrameAnnotator(trail_seconds=seconds)
+
+
+# --------------------------------------------------------- ball-carrier ring
+def _ring_annotator(**options) -> viz.FrameAnnotator:
+    """Draws the ball-carrier ring only."""
+    return viz.FrameAnnotator(
+        ball_color=RED, draw_boxes=False, draw_labels=False, draw_keypoints=False,
+        draw_pitch_lines=False, **options,
+    )  # fmt: skip
+
+
+def _ringed(image: np.ndarray, frame_result: FrameResult, tracker_id: int) -> bool:
+    """Whether ``ball_color`` lies right below the feet of ``tracker_id``."""
+    people = frame_result.detections
+    x1, _, x2, y2 = people.xyxy[list(people.tracker_id).index(tracker_id)]
+    x, y = round((x1 + x2) / 2), round(y2)
+    below = image[y + 1 : y + 12, x]
+    return bool(((below[:, 2] > 200) & (below[:, :2] < 60).all(axis=1)).any())
+
+
+@pytest.mark.parametrize("style", ["standard", "video_game"])
+def test_the_ball_carrier_gets_a_ring(result: PipelineResult, style: str) -> None:
+    now = result[0]
+    image = _ring_annotator(style=style).annotate(_frame(), now, ball_carrier=2)
+    assert _ringed(image, now, 2)
+    assert not any(_ringed(image, now, t) for t in (1, 3, 4))
+    assert not _ringed(_ring_annotator(style=style).annotate(_frame(), now), now, 2)
+    # Everything but the ring, around the carrier's feet, is drawn as without it.
+    full = viz.FrameAnnotator(style=style, ball_color=RED)
+    ringed = full.annotate(_frame(), now, ball_carrier=2)
+    changed = (ringed != full.annotate(_frame(), now)).any(axis=2)
+    ys, xs = np.nonzero(changed)
+    carrier = list(now.detections.tracker_id).index(2)
+    x1, y1, x2, y2 = now.detections.xyxy[carrier]
+    assert len(xs) and xs.min() >= x1 - 2 * (y2 - y1) and xs.max() <= x2 + 2 * (y2 - y1)
+    assert ys.min() >= y1 and ys.max() <= y2 + (y2 - y1)
+
+
+def test_the_ball_carrier_ring_lies_under_the_boxes(result: PipelineResult) -> None:
+    now = result[0]
+    x1, y1, _, y2 = now.detections.xyxy[list(now.detections.tracker_id).index(2)]
+    ring = _ring_annotator().annotate(_frame(), now, ball_carrier=2)
+    boxed = viz.FrameAnnotator(
+        ball_color=RED, team_colors=("#0000FF", "#00FF00"), draw_labels=False,
+        draw_keypoints=False, draw_pitch_lines=False,
+    )  # fmt: skip
+    image = boxed.annotate(_frame(), now, ball_carrier=2)
+    # The ring crosses the box's left edge; there the edge (team 1, green) is on top.
+    column = slice(round(y1), round(y2))
+    crossing = ring[column, round(x1), 2] > 200
+    assert crossing.any()
+    assert (image[column, round(x1)][crossing] == (0, 255, 0)).all()
+
+
+def test_the_ball_carrier_ring_lies_over_the_masks(result: PipelineResult) -> None:
+    now = dataclasses.replace(result[0])
+    now.masks = ObjectMasks.from_dense(np.ones((len(now.detections), H, W), bool))
+    image = _ring_annotator(draw_masks=True).annotate(_frame(), now, ball_carrier=2)
+    assert _ringed(image, now, 2)
+
+
+@pytest.mark.parametrize("carrier", [None, 99], ids=["None", "unknown id"])
+def test_no_ball_carrier_ring_for_none_or_an_unknown_id(
+    result: PipelineResult, carrier: int | None
+) -> None:
+    annotator = viz.FrameAnnotator()
+    today = annotator.annotate(_frame(), result[0])
+    image = annotator.annotate(_frame(), result[0], ball_carrier=carrier)
+    assert (image == today).all()
+
+
+def test_no_ball_carrier_ring_in_a_frame_without_tracker_ids(
+    result: PipelineResult,
+) -> None:
+    untracked = dataclasses.replace(result[0].detections, tracker_id=None)
+    now = dataclasses.replace(result[0], detections=untracked)
+    annotator = viz.FrameAnnotator()
+    image = annotator.annotate(_frame(), now, ball_carrier=1)
+    assert (image == annotator.annotate(_frame(), now)).all()
 
 
 # --------------------------------------------------------------------- radar
@@ -238,6 +482,87 @@ def test_radar_draw_points_and_nan() -> None:
     assert (radar.draw_points(xy, colors="#FF0000") == image).all()
     with pytest.raises(ValueError, match="colours"):
         radar.draw_points(xy, colors=["#FF0000"])
+
+
+def test_radar_draws_space_control_under_the_lines_and_players(
+    result: PipelineResult,
+) -> None:
+    radar = viz.PitchRadar(width_px=400, padding_px=20)
+    grid = _halves()
+    empty = radar.draw()
+    image = radar.draw(space_control=grid)
+    assert image.shape == empty.shape and image.dtype == np.uint8
+    left, right = radar.to_pixels([[20, 50], [85, 50]]).round().astype(int)
+    pitch_bgr = np.array(radar.pitch_color.as_bgr())
+    for (x, y), team in ((left, 0), (right, 1)):
+        tint = image[y, x].astype(int) - pitch_bgr  # towards the team's colour
+        team_bgr = np.array(radar.team_colors[team].as_bgr()) - pitch_bgr
+        assert (np.sign(tint) == np.sign(team_bgr)).all() and np.abs(tint).sum() > 60
+    assert (image[:20] == empty[:20]).all()  # the padding stays the pitch colour
+    x, y = radar.to_pixels([[52.5, 50]]).round().astype(int)[0]
+    assert (image[y, x] > 200).all()  # the white halfway line is drawn on top
+    players = radar.draw(result[0], space_control=grid)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(players[y, x]) == sv.Color.from_hex("#00BFFF").as_bgr()
+    assert (radar.draw() == empty).all()  # the plain radar is unchanged
+
+
+def _halves() -> SpaceControl:
+    """Team 0 holds the left half of the pitch, team 1 the right half."""
+    control = np.zeros((68, 105))
+    control[:, :52] = 1
+    return SpaceControl(control, PITCH)
+
+
+def test_draw_space_control_on_any_top_down_image() -> None:
+    image = np.full((160, 250, 3), 50, dtype=np.uint8)
+    # 2 px per metre, the pitch's corner at pixel (20, 10).
+    pitch_to_image = np.array([[2.0, 0, 20], [0, 2.0, 10], [0, 0, 1]])
+    out = viz.draw_space_control(
+        image, _halves(), pitch_to_image, ("#FF0000", "#0000FF"), alpha=0.5
+    )
+    assert out.shape == image.shape and out.dtype == np.uint8 and (image == 50).all()
+    assert tuple(out[78, 60]) == (25, 25, 152)  # pitch (20, 34): team 0, red
+    assert tuple(out[78, 190]) == (152, 25, 25)  # pitch (85, 34): team 1, blue
+    outside = np.ones(image.shape[:2], bool)
+    outside[10:147, 20:231] = False
+    assert (out[outside] == 50).all()  # nothing drawn off the pitch
+
+
+def test_draw_space_control_through_a_perspective() -> None:
+    # A bird's-eye view that narrows towards the far touchline.
+    corners = np.float32([[0, 0], [105, 0], [105, 68], [0, 68]])
+    pixels = np.float32([[80, 20], [240, 20], [310, 220], [10, 220]])
+    pitch_to_image = cv2.getPerspectiveTransform(corners, pixels)
+    image = np.zeros((240, 320, 3), dtype=np.uint8)
+    out = viz.draw_space_control(image, _halves(), pitch_to_image, alpha=1.0)
+    team0, team1 = (sv.Color.from_hex(c).as_bgr() for c in viz.radar.TEAM_COLORS)
+    for xy, color in (([20, 60], team0), ([85, 10], team1)):
+        x, y = cv2.perspectiveTransform(np.float32([[xy]]), pitch_to_image)[0, 0]
+        assert tuple(out[round(y), round(x)]) == color
+    assert (out[:15] == 0).all() and (out[225:] == 0).all()
+
+
+def test_draw_space_control_checks_its_settings() -> None:
+    image = np.zeros((10, 10, 3), dtype=np.uint8)
+    grid, matrix = _halves(), np.eye(3)
+    with pytest.raises(ValueError, match="alpha must be in"):
+        viz.draw_space_control(image, grid, matrix, alpha=1.5)
+    with pytest.raises(ValueError, match="two team colours"):
+        viz.draw_space_control(image, grid, matrix, team_colors=["#FF0000"])
+    with pytest.raises(ValueError, match="3 x 3"):
+        viz.draw_space_control(image, grid, np.eye(2))
+
+
+def test_radar_space_control_needs_the_radar_pitch_and_two_colours() -> None:
+    grid = SpaceControl(np.full((68, 105), 0.5), SoccerPitch(120, 80))
+    with pytest.raises(ValueError, match="pitch"):
+        viz.PitchRadar().draw(space_control=grid)
+    grid = SpaceControl(np.full((68, 105), 0.5), PITCH)
+    with pytest.raises(ValueError, match="two team colours"):
+        viz.PitchRadar(team_colors=["#FF0000"]).draw(space_control=grid)
+    with pytest.raises(ValueError, match="space_control_alpha"):
+        viz.PitchRadar(space_control_alpha=1.5)
 
 
 @pytest.mark.parametrize(
@@ -265,8 +590,563 @@ def test_overlay_blends_and_validates() -> None:
     assert out[50, 50, 0] == 100
     with pytest.raises(ValueError, match="position"):
         viz.overlay(frame, patch, position="middle-left")
+    with pytest.raises(ValueError, match="Available: center, top-left, .*bottom-right"):
+        viz.overlay(frame, patch, position="middle-left")
+    np.testing.assert_array_equal(
+        viz.overlay(frame, patch, position=OverlayPosition.TOP_RIGHT),
+        viz.overlay(frame, patch, position="top-right"),
+    )
     with pytest.raises(ValueError, match="alpha"):
         viz.overlay(frame, patch, alpha=2)
+
+
+# ------------------------------------------------------------- motion tails
+BLUE, GREEN, BLACK = "#0000FF", "#00FF00", "#000000"
+
+
+def _people_at(
+    index: int, *people: tuple[int, int, tuple[float, float]]
+) -> FrameResult:
+    """A frame with only people: ``(tracker_id, team_id, pitch_xy)`` each."""
+    n = len(people)
+    detections = sv.Detections(
+        xyxy=np.zeros((n, 4), dtype=np.float32),
+        class_id=np.full(n, 2),
+        tracker_id=np.array([p[0] for p in people], dtype=int),
+    )
+    detections.data["team_id"] = np.array([p[1] for p in people], dtype=int)
+    detections.data["pitch_xy"] = np.array([p[2] for p in people], float).reshape(n, 2)
+    empty = sv.Detections.empty()
+    return FrameResult(index, index / FPS, detections, empty, ball_candidates=empty)
+
+
+def _tail_radar(trail_seconds: float | None = 1.0) -> viz.PitchRadar:
+    """Red team 0, green without a team, on a black pitch with black lines."""
+    return viz.PitchRadar(
+        trail_seconds=trail_seconds, team_colors=(RED, BLUE), default_color=GREEN,
+        pitch_color=BLACK, line_color=BLACK,
+    )  # fmt: skip
+
+
+def _two_runs(*gaps: int, nan: bool = False) -> list[FrameResult]:
+    """Frames 0-4: #7 (team 0) along ``y = 20`` and #3 (no team) along
+    ``y = 50``, both 6 m a frame from ``x = 20``, listed in another order in
+    odd frames. ``gaps``: frames without #7 (``nan``: with a NaN position).
+    """
+    frames = []
+    for i in range(5):
+        x = 20.0 + 6 * i
+        people = [(7, 0, (x, 20.0)), (3, -1, (x, 50.0))]
+        if i in gaps:
+            people = [(7, 0, (np.nan, np.nan)), people[1]] if nan else people[1:]
+        frames.append(_people_at(i, *(people[::-1] if i % 2 else people)))
+    return frames
+
+
+def _at(radar: viz.PitchRadar, image: np.ndarray, x: float, y: float) -> np.ndarray:
+    """The radar pixel at pitch position ``(x, y)``, as ints."""
+    px, py = radar.to_pixels([[x, y]]).round().astype(int)[0]
+    return image[py, px].astype(int)
+
+
+def test_radar_tails_join_each_persons_earlier_positions_in_their_colour() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar(1.0)
+    image = radar.draw(now, history=history)
+    # Segment midpoints, oldest first: ages 0.35, 0.25, 0.15 and 0.05 s.
+    midpoints = (23.0, 29.0, 35.0, 41.0)
+    reds = [_at(radar, image, x, 20)[2] for x in midpoints]
+    greens = [_at(radar, image, x, 50)[1] for x in midpoints]
+    expected = np.array([0.65, 0.75, 0.85, 0.95])
+    for values in (reds, greens):
+        assert values[0] > 0 and values == sorted(values)
+        np.testing.assert_allclose(
+            np.array(values) / values[-1], expected / expected[-1], atol=0.03
+        )
+    # Each tail is its own person's colour only, keyed by tracker id.
+    assert all(_at(radar, image, x, 20)[[0, 1]].max() == 0 for x in midpoints)
+    assert all(_at(radar, image, x, 50)[[0, 2]].max() == 0 for x in midpoints)
+    assert (_at(radar, image, 32, 35) == 0).all()  # between the two tails
+
+
+@pytest.mark.parametrize("nan", [False, True], ids=["absent", "no pitch position"])
+def test_radar_tails_break_at_gaps(nan: bool) -> None:
+    *history, now = _two_runs(2, nan=nan)
+    radar = _tail_radar()
+    image = radar.draw(now, history=history)
+    assert _at(radar, image, 23, 20)[2] > 0 and _at(radar, image, 41, 20)[2] > 0
+    assert _at(radar, image, 29, 20)[2] == 0  # frames 1-2
+    assert _at(radar, image, 35, 20)[2] == 0  # frames 2-3
+    assert _at(radar, image, 29, 50)[1] > 0  # #3 was seen throughout
+
+
+def test_radar_tails_fade_to_nothing_at_their_length() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar(0.4)  # frame 0 is 0.4 s old
+    image = radar.draw(now, history=history)
+    assert _at(radar, image, 20.3, 20)[2] < 8 < _at(radar, image, 23, 20)[2]
+    shorter = _tail_radar(0.25)
+    image = shorter.draw(now, history=history)
+    assert (image == shorter.draw(now, history=history[2:])).all()
+    assert _at(shorter, image, 35, 20)[2] > 0  # 0.1-0.2 s old
+    assert _at(shorter, image, 23, 20)[2] == 0  # 0.3-0.4 s old
+
+
+def test_radar_tails_are_drawn_under_the_dots() -> None:
+    *history, now = _two_runs()
+    radar = _tail_radar()
+    image = radar.draw(now, history=history)
+    # The tail comes in from the left; the dot and its pitch-colour ring
+    # (radius 8 + 2 px) cover it.
+    centre = radar.to_pixels([[44.0, 20.0]])[0]
+    rows, columns = np.indices(image.shape[:2])
+    distance = np.hypot(columns - centre[0], rows - centre[1])
+    covered = distance <= 9.5
+    assert (image[covered] == radar.draw(now)[covered]).all()
+    x, y = centre.round().astype(int)
+    assert tuple(image[y, x]) == (0, 0, 255)  # the dot
+    assert image[y, x - 14, 2] > 0  # the tail, past the ring
+
+
+def test_radar_tails_are_off_by_default(result: PipelineResult) -> None:
+    now, history = result[-1], result.frames[:-1]
+    today = viz.PitchRadar().draw(now)
+    assert (viz.PitchRadar().draw(now, history=history) == today).all()
+    with_tails = viz.PitchRadar(trail_seconds=1.0)
+    assert (with_tails.draw(now) == today).all()
+    assert (with_tails.draw(now, history=history) != today).any()
+
+
+@pytest.mark.parametrize("seconds", [0, -1.0])
+def test_radar_tail_length_must_be_positive(seconds: float) -> None:
+    with pytest.raises(ValueError, match="trail_seconds"):
+        viz.PitchRadar(trail_seconds=seconds)
+
+
+# ---------------------------------------------------------- velocity arrows
+def _arrow_radar(
+    velocity_seconds: float | None = 1.0, pitch: SoccerPitch | None = None
+) -> viz.PitchRadar:
+    """Red team 0, green without a team, on a black pitch with black lines."""
+    return viz.PitchRadar(
+        pitch=pitch, velocity_seconds=velocity_seconds, team_colors=(RED, BLUE),
+        default_color=GREEN, pitch_color=BLACK, line_color=BLACK,
+    )  # fmt: skip
+
+
+def _two_people() -> FrameResult:
+    """#7 (team 0) at ``(30, 20)`` and #3 (no team) at ``(60, 50)``."""
+    return _people_at(0, (7, 0, (30.0, 20.0)), (3, -1, (60.0, 50.0)))
+
+
+def test_radar_velocity_arrows_point_along_the_velocity_in_the_dots_colour() -> None:
+    radar = _arrow_radar(1.0)
+    # m/s, row for row: #7 runs along the length, #3 towards the far touchline.
+    image = radar.draw(_two_people(), velocities=np.array([[6.0, 0], [0, -6.0]]))
+    red, green = _at(radar, image, 34, 20), _at(radar, image, 60, 46)
+    assert red[2] > 200 and red[[0, 1]].max() == 0
+    assert green[1] > 200 and green[[0, 2]].max() == 0
+    assert _at(radar, image, 35.4, 20)[2] > 0  # up to the tip, 6 m on
+    assert (_at(radar, image, 37.2, 20) == 0).all()  # not past it
+    assert (_at(radar, image, 26, 20) == 0).all()  # nor behind the dot
+    assert (_at(radar, image, 60, 54) == 0).all()
+    assert (_at(radar, image, 64, 50) == 0).all()
+
+
+@pytest.mark.parametrize(
+    ("velocity", "seconds", "pitch", "reach"),
+    [
+        ((3.0, 0), 1.0, SoccerPitch(), (3.0, 0)),
+        ((6.0, 0), 1.0, SoccerPitch(), (6.0, 0)),
+        ((3.0, 0), 2.0, SoccerPitch(), (6.0, 0)),
+        # m/s in StatsBomb units: 120 x 80 units are 105 x 68 m.
+        ((6.0, 0), 1.0, SoccerPitch(120, 80), (6.0 * 120 / 105, 0)),
+        ((0, 6.0), 1.0, SoccerPitch(120, 80), (0, 6.0 * 80 / 68)),
+    ],
+)
+def test_radar_velocity_arrow_length_is_proportional_to_speed(
+    velocity: tuple[float, float],
+    seconds: float,
+    pitch: SoccerPitch,
+    reach: tuple[float, float],
+) -> None:
+    radar = _arrow_radar(seconds, pitch)
+    image = radar.draw(_two_people(), velocities=np.array([velocity, [np.nan] * 2]))
+    tip = np.array([30.0, 20.0]) + reach
+    along = np.array(reach) / np.hypot(*reach)
+    assert _at(radar, image, *(tip - 0.6 * along))[2] > 0
+    assert _at(radar, image, *(tip + 1.2 * along))[2] == 0
+
+
+def test_radar_draws_no_arrow_for_people_without_a_velocity() -> None:
+    radar, now = _arrow_radar(), _two_people()
+    image = radar.draw(now, velocities=np.array([[np.nan, np.nan], [0, -6.0]]))
+    assert (_at(radar, image, 34, 20) == 0).all()
+    assert _at(radar, image, 60, 46)[1] > 200
+    assert (
+        radar.draw(now) == radar.draw(now, velocities=np.full((2, 2), np.nan))
+    ).all()
+    assert (radar.draw(now) == _arrow_radar(None).draw(now)).all()  # no velocities
+
+
+def test_radar_velocity_arrows_are_drawn_under_the_dots() -> None:
+    radar, now = _arrow_radar(), _two_people()
+    image = radar.draw(now, velocities=np.array([[6.0, 0], [np.nan] * 2]))
+    # The arrow leaves the dot to the right; the dot and its pitch-colour
+    # ring (radius 8 + 2 px) cover its start.
+    centre = radar.to_pixels([[30.0, 20.0]])[0]
+    rows, columns = np.indices(image.shape[:2])
+    covered = np.hypot(columns - centre[0], rows - centre[1]) <= 9.5
+    assert (image[covered] == radar.draw(now)[covered]).all()
+    x, y = centre.round().astype(int)
+    assert image[y, x + 14, 2] > 0  # the arrow, past the ring
+
+
+def test_radar_velocity_arrows_are_off_by_default(result: PipelineResult) -> None:
+    now = result[2]
+    velocities = np.full((len(now.detections), 2), 5.0)
+    today = viz.PitchRadar().draw(now)
+    assert (viz.PitchRadar().draw(now, velocities=velocities) == today).all()
+    with_arrows = viz.PitchRadar(velocity_seconds=1.0)
+    assert (with_arrows.draw(now, velocities=velocities) != today).any()
+
+
+def test_radar_velocity_arrows_check_their_settings() -> None:
+    for seconds in (0, -1.0):
+        with pytest.raises(ValueError, match="velocity_seconds"):
+            viz.PitchRadar(velocity_seconds=seconds)
+    with pytest.raises(ValueError, match="velocities"):
+        _arrow_radar().draw(_two_people(), velocities=np.zeros((3, 2)))
+
+
+class _VelocitySpy(viz.PitchRadar):
+    """Records the ``velocities`` of each drawn radar."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.velocities: list[np.ndarray | None] = []
+
+    def draw(self, frame_result=None, space_control=None, frame=None, **kwargs):
+        self.velocities.append(kwargs.get("velocities"))
+        return super().draw(frame_result, space_control, frame, **kwargs)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_passes_each_frames_velocities(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    spy = _VelocitySpy(velocity_seconds=1.0)
+    viz.render_video(
+        result, video, tmp_path / "arrows.mp4", radar=spy, birds_eye=birds_eye,
+        progress=False,
+    )  # fmt: skip
+    expected = tv_analysis.velocities(result)
+    assert len(spy.velocities) == len(expected)
+    for drawn, velocities in zip(spy.velocities, expected, strict=True):
+        np.testing.assert_array_equal(drawn, velocities)
+    assert np.isfinite(np.concatenate(expected)).any()
+    without = _VelocitySpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", radar=without, birds_eye=birds_eye,
+        progress=False,
+    )  # fmt: skip
+    assert without.velocities == [None] * len(result.frames)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_a_render_with_velocity_arrows_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=viz.PitchRadar(**options),
+            birds_eye=birds_eye, overlay_width_fraction=1.0, progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, arrows = render("plain.mp4"), render("arrows.mp4", velocity_seconds=1.0)
+    # Frames 0 and 8 have no velocities: three positions are needed in 0.5 s.
+    assert all((p != a).any() for p, a in zip(plain[1:4], arrows[1:4], strict=True))
+
+
+# ------------------------------------------------------------- visible area
+# frame -> pitch: 8 px a metre, the frame's top-left corner at (20, 15), so
+# the visible area is [20, 60] x [15, 45], clear of the pitch markings.
+VISIBLE = np.array([[1 / 8, 0, 20], [0, 1 / 8, 15], [0, 0, 1.0]])
+
+
+def _area_radar(draw_visible_area: bool = True) -> viz.PitchRadar:
+    """Red team 0, white 3 px lines and a green outline on a black pitch."""
+    return viz.PitchRadar(
+        draw_visible_area=draw_visible_area, visible_area_color=GREEN,
+        team_colors=(RED, BLUE), pitch_color=BLACK, line_thickness=3,
+    )  # fmt: skip
+
+
+def _outlined(pixel: np.ndarray) -> bool:
+    return tuple(pixel) == (0, 255, 0)
+
+
+def _visible_in(homography: np.ndarray | None, *people) -> FrameResult:
+    return dataclasses.replace(_people_at(0, *people), homography=homography)
+
+
+def test_radar_outlines_the_visible_area_under_the_players() -> None:
+    radar = _area_radar()
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))  # on the top edge
+    image = radar.draw(now, frame_size=(W, H))
+    for x, y in ((30, 15), (60, 30), (50, 45), (20, 30)):  # one point per edge
+        assert _outlined(_at(radar, image, x, y))
+    assert (_at(radar, image, 30, 30) == 0).all()  # inside
+    assert (_at(radar, image, 10, 30) == 0).all()  # outside
+    assert tuple(_at(radar, image, 40, 15)) == (0, 0, 255)  # the dot on top
+    # The frame gives the frame size, and the outline is drawn over it.
+    frame = np.full((H, W, 3), 90, dtype=np.uint8)
+    over_frame = radar.draw(now, frame=frame)
+    assert _outlined(_at(radar, over_frame, 30, 15))
+    assert (_at(radar, over_frame, 30, 30) == 90).all()
+
+
+def test_radar_draws_no_visible_area_beyond_the_horizon_or_without_a_homography() -> (
+    None
+):
+    radar = _area_radar()
+    plain = radar.draw(_visible_in(None), frame_size=(W, H))
+    assert (plain == _area_radar(False).draw(_visible_in(None))).all()
+    # The horizon at y = 33: the bottom of the frame lies beyond it.
+    beyond = np.array([[1, 0, 0], [0, 1, 0], [0, -0.03, 1.0]])
+    assert (radar.draw(_visible_in(beyond), frame_size=(W, H)) == plain).all()
+
+
+def test_radar_outlines_a_visible_area_reaching_towards_the_horizon() -> None:
+    # The horizon just below the frame: its bottom corners lie about 1e9 m
+    # away, far past the radar, and the outline is cut at the radar's edge.
+    to_horizon = np.diag([1.0, 1.0, 1.0])
+    to_horizon[2, 1] = -(1 - 1e-8) / H
+    homography = VISIBLE @ to_horizon
+    assert np.abs(visible_area(homography, (W, H))).max() > 1e9
+    radar = _area_radar()
+    image = radar.draw(_visible_in(homography), frame_size=(W, H))
+    assert _outlined(_at(radar, image, 30, 15))  # the top edge
+    assert _outlined(_at(radar, image, 20, 60))  # the left edge, to the touchline
+    assert (_at(radar, image, 30, 30) == 0).all()  # inside
+
+
+def test_radar_visible_area_is_off_by_default() -> None:
+    now = _visible_in(VISIBLE, (7, 0, (40.0, 15.0)))
+    today = _area_radar(False).draw(now)
+    assert (_area_radar(False).draw(now, frame_size=(W, H)) == today).all()
+    assert (_area_radar().draw(now, frame_size=(W, H)) != today).any()
+
+
+def test_radar_visible_area_has_its_own_colour() -> None:
+    radar = viz.PitchRadar(draw_visible_area=True, line_thickness=3)
+    image = radar.draw(_visible_in(VISIBLE), frame_size=(W, H))
+    outline = sv.Color.from_hex(viz.radar.VISIBLE_AREA_COLOR).as_bgr()
+    assert outline != radar.line_color.as_bgr()  # not the markings' white
+    assert tuple(_at(radar, image, 30, 15)) == outline
+    with pytest.raises(ValueError):
+        viz.PitchRadar(visible_area_color="nope")
+
+
+def test_radar_visible_area_needs_the_frame_size() -> None:
+    with pytest.raises(ValueError, match="frame_size"):
+        _area_radar().draw(_visible_in(VISIBLE))
+    assert (_area_radar().draw() == _area_radar(False).draw()).all()  # no frame
+
+
+def test_the_visible_area_is_what_warp_to_pitch_shows() -> None:
+    px_per_m = 4
+    shown = viz.warp_to_pitch(_frame(), HOMOGRAPHY, PITCH, px_per_m)[..., 3] > 0
+    outline = cv2.perspectiveTransform(
+        visible_area(HOMOGRAPHY, (W, H))[None],
+        viz.pitch_to_birds_eye(PITCH, px_per_m),
+    )[0]
+    inside = np.zeros(shown.shape, np.uint8)
+    cv2.fillPoly(inside, [np.round(outline).astype(np.int32)], 1)
+    edge = cv2.dilate(inside, np.ones((3, 3))) != cv2.erode(inside, np.ones((3, 3)))
+    assert shown.sum() > 10_000
+    assert (shown == inside.astype(bool))[~edge].all()
+
+
+# ------------------------------------------------------------ bird's-eye view
+def _pitch_template(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
+    """Top-down pitch, BGR: a colour gradient along both axes and white lines."""
+    height, width = round(68 * px_per_m), round(105 * px_per_m)
+    columns, rows = np.meshgrid(np.arange(width), np.arange(height))
+    image = np.dstack([40 + columns * 160 // width, 40 + rows * 160 // height,
+                       np.full_like(columns, 128)]).astype(np.uint8)  # fmt: skip
+    to_pixels = np.array([width / pitch.length, height / pitch.width])
+    lines, _ = viz.radar.pitch_markings(pitch)
+    for line in lines:
+        cv2.polylines(image, [np.round(line * to_pixels - 0.5).astype(np.int32)],
+                      False, (255, 255, 255), 2)  # fmt: skip
+    return image
+
+
+def _canvas_to_pitch(pitch: SoccerPitch, px_per_m: float) -> np.ndarray:
+    """Bird's-eye pixel (column, row) -> pitch: pixels tile the pitch."""
+    sx, sy = np.round(np.array([105, 68]) * px_per_m) / [pitch.length, pitch.width]
+    return np.array([[1 / sx, 0, 0.5 / sx], [0, 1 / sy, 0.5 / sy], [0, 0, 1]])
+
+
+@pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
+def test_pitch_to_birds_eye_is_the_warp_canvas(pitch: SoccerPitch) -> None:
+    to_image = viz.pitch_to_birds_eye(pitch, px_per_m=4)
+    np.testing.assert_allclose(to_image, np.linalg.inv(_canvas_to_pitch(pitch, 4)))
+
+
+def test_draw_space_control_on_a_birds_eye_view() -> None:
+    frame = np.full((H, W, 3), 200, dtype=np.uint8)
+    view = viz.warp_to_pitch(frame, HOMOGRAPHY, PITCH, px_per_m=2)
+    out = viz.draw_space_control(
+        view, _halves(), viz.pitch_to_birds_eye(PITCH, px_per_m=2),
+        ("#FF0000", "#0000FF"), alpha=0.5,
+    )  # fmt: skip
+    assert out.shape == view.shape and (out[..., 3] == view[..., 3]).all()
+    assert tuple(out[68, 80]) == (100, 100, 228, 255)  # pitch (40, 34): team 0, red
+    assert tuple(out[68, 130]) == (228, 100, 100, 255)  # pitch (65, 34): team 1
+    hidden = view[..., 3] == 0
+    assert (out[hidden] == 0).all()  # nothing tinted where the frame shows nothing
+
+
+@pytest.mark.parametrize("pitch", [PITCH, SoccerPitch(120, 80)])
+def test_warp_to_pitch_rectifies_a_synthetic_pitch(pitch: SoccerPitch) -> None:
+    to_pitch = np.diag([pitch.length / 105, pitch.width / 68, 1]) @ HOMOGRAPHY
+    template = _pitch_template(pitch, 4)
+    # The camera's view of the template, rendered through the known homography
+    # (frame coordinates are continuous: pixel centres at + 0.5).
+    canvas_to_frame = np.linalg.inv(to_pitch) @ _canvas_to_pitch(pitch, 4)
+    to_centres = np.array([[1, 0, -0.5], [0, 1, -0.5], [0, 0, 1]])
+    frame = cv2.warpPerspective(template, to_centres @ canvas_to_frame, (W, H))
+    out = viz.warp_to_pitch(frame, to_pitch, pitch, px_per_m=4)
+    assert out.shape == (272, 420, 4) and out.dtype == np.uint8
+    seen = cv2.erode((out[..., 3] == 255).astype(np.uint8), np.ones((5, 5)))
+    assert seen.sum() > 0.9 * 45 * 48 * 16  # most of the 45 x 48 m in view
+    error = np.abs(out[..., :3].astype(int) - template)[seen.astype(bool)]
+    assert error.mean() < 2.5  # resampled twice: the lines blur a little
+
+
+def test_warp_to_pitch_leaves_the_unseen_pitch_transparent() -> None:
+    frame = np.full((H, W, 3), 200, dtype=np.uint8)
+    out = viz.warp_to_pitch(frame, HOMOGRAPHY, PITCH, px_per_m=2)
+    assert out.shape == (136, 210, 4)
+    # Pixel centres inside the frame outline on the pitch (the visible area).
+    outline = frame_to_pitch(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), HOMOGRAPHY)
+    columns, rows = np.meshgrid(np.arange(210), np.arange(136))
+    centres = np.column_stack([columns.ravel(), rows.ravel()]) / 2 + 0.25
+    view = MplPath(outline).contains_points(centres).reshape(136, 210)
+    alpha = out[..., 3]
+    assert set(np.unique(alpha)) == {0, 255}
+    assert ((alpha == 255) == view).all()  # transparent outside the view
+    assert (out[alpha == 0, :3] == 0).all()  # with no colour invented
+    assert (out[alpha == 255, :3] == 200).all()
+
+
+def _camera(
+    position: np.ndarray,
+    target: tuple[float, float],
+    focal: float,
+    size: tuple[int, int],
+) -> np.ndarray:
+    """Pitch -> frame homography of a pinhole camera at ``position`` (x, y,
+    height in metres) looking at ``target`` on the pitch."""
+    forward = np.array([*target, 0.0]) - position
+    forward /= np.linalg.norm(forward)
+    right = np.cross(forward, [0, 0, 1.0])
+    right /= np.linalg.norm(right)
+    down = np.cross(forward, right)
+    rotation = np.array([right, down, forward])
+    translation = -rotation @ position
+    intrinsics = np.array([[focal, 0, size[0] / 2], [0, focal, size[1] / 2], [0, 0, 1]])
+    return intrinsics @ np.column_stack([rotation[:, :2], translation])
+
+
+def test_warp_to_pitch_does_not_smear_points_behind_the_camera() -> None:
+    # A low camera inside the pitch at x = 60, looking along the length with
+    # the horizon in the frame: the pitch behind it (x < 60) is never seen.
+    size = (640, 360)
+    to_frame = _camera(np.array([60.0, 34.0, 6.0]), (105.0, 34.0), 320, size)
+    frame = np.full((size[1], size[0], 3), 200, dtype=np.uint8)
+    canvas_to_frame = to_frame @ _canvas_to_pitch(PITCH, 2)
+    # A plain warp mirrors the pitch behind the camera into the sky ...
+    naive = cv2.warpPerspective(
+        frame, canvas_to_frame, (210, 136), flags=cv2.WARP_INVERSE_MAP
+    )
+    assert (naive[:, :110] > 0).mean() > 0.5
+    # ... warp_to_pitch leaves it transparent.
+    out = viz.warp_to_pitch(frame, np.linalg.inv(to_frame), PITCH, px_per_m=2)
+    assert (out[:, :120] == 0).all()  # column 120: the camera's x = 60 m at 2 px/m
+    assert (out[:, 200:, 3] == 255).all()  # x > 100 m: in front, in view
+
+
+def test_warp_to_pitch_checks_its_inputs() -> None:
+    frame = np.zeros((H, W, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="px_per_m"):
+        viz.warp_to_pitch(frame, HOMOGRAPHY, px_per_m=0)
+    with pytest.raises(ValueError, match="3 x 3"):
+        viz.warp_to_pitch(frame, np.eye(2))
+    with pytest.raises(ValueError, match="BGR uint8"):
+        viz.warp_to_pitch(frame[..., 0], HOMOGRAPHY)
+    with pytest.raises(ValueError, match="BGR uint8"):
+        viz.warp_to_pitch(frame.astype(np.float32), HOMOGRAPHY)
+
+
+def _gradient_frame() -> np.ndarray:
+    """Frame whose blue and green levels are 0.75 x its column and row."""
+    columns, rows = np.meshgrid(np.arange(W), np.arange(H))
+    return np.dstack([np.round(0.75 * columns), np.round(0.75 * rows),
+                      np.full_like(columns, 128)]).astype(np.uint8)  # fmt: skip
+
+
+def test_radar_draws_the_dots_on_the_warped_frame(result: PipelineResult) -> None:
+    # A small radar (about 2 px per metre), so a half-pixel shift moves the
+    # sampled frame point by about 2 frame pixels.
+    radar = viz.PitchRadar(width_px=260, padding_px=24)
+    empty = radar.draw()
+    background = radar.draw(dataclasses.replace(result[0], detections=sv.Detections.empty(),
+                            ball=sv.Detections.empty()), frame=_gradient_frame())  # fmt: skip
+    assert background.shape == empty.shape and background.dtype == np.uint8
+    # Each radar pixel shows the frame at its pitch point: no half-pixel offset.
+    columns, rows = np.meshgrid(np.arange(radar.width_px), np.arange(radar.height_px))
+    centres = np.column_stack([columns.ravel(), rows.ravel()]).astype(float)
+    origin, scale = (
+        radar.to_pixels([[0, 0]]),
+        radar.to_pixels([[1, 1]]) - radar.to_pixels([[0, 0]]),
+    )
+    in_frame = pitch_to_frame((centres - origin) / scale, HOMOGRAPHY)
+    expected = 0.75 * (in_frame - 0.5)  # pixel c holds 0.75 c at its centre c + 0.5
+    lines = cv2.dilate(
+        (empty != empty[0, 0]).any(axis=2).astype(np.uint8), np.ones((5, 5))
+    )
+    seen = ((in_frame > 1) & (in_frame < [W - 1, H - 1])).all(axis=1).reshape(
+        lines.shape
+    ) & (lines == 0)
+    assert seen.sum() > 5000
+    error = background[..., :2].reshape(-1, 2)[seen.ravel()] - expected[seen.ravel()]
+    assert np.abs(error).max() < 1.5
+    assert np.abs(error).mean() < 0.5  # about 0.8 with a half-pixel shift
+    # The pitch the frame does not show keeps the plain radar's colour.
+    x, y = radar.to_pixels([[5, 5]]).round().astype(int)[0]
+    assert (background[y, x] == empty[y, x]).all()
+    # Players and the ball are drawn on top, in their team colours.
+    image = radar.draw(result[0], frame=_gradient_frame())
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    assert tuple(image[y, x]) == sv.Color.from_hex("#00BFFF").as_bgr()
+    x, y = radar.to_pixels(result[0].ball_xy)[0].round().astype(int)
+    assert tuple(image[y, x]) == sv.Color.from_hex(viz.radar.BALL_COLOR).as_bgr()
+    assert (radar.draw() == empty).all()  # drawing keeps no state
+
+
+def test_radar_background_needs_a_homography(result: PipelineResult) -> None:
+    radar = viz.PitchRadar(width_px=260)
+    frame = _gradient_frame()
+    with pytest.raises(ValueError, match="frame_result"):
+        radar.draw(frame=frame)
+    unfitted = dataclasses.replace(result[0], homography=None)
+    assert (radar.draw(unfitted, frame=frame) == radar.draw(unfitted)).all()
+    with pytest.raises(ValueError, match="BGR uint8"):
+        radar.draw(result[0], frame=frame[..., 0])
 
 
 # --------------------------------------------------------------------- video
@@ -308,7 +1188,13 @@ def test_render_video_seeks_to_the_first_frame_of_the_result(tmp_path: Path) -> 
         writer.write(np.full((H, W, 3), (0, 20 * i, 0), dtype=np.uint8))
     writer.release()
     frames = [
-        FrameResult(i, i / FPS, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / FPS,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in (3, 5, 7)
     ]
     partial = PipelineResult(frames, FPS, (W, H), [])
@@ -333,6 +1219,219 @@ def test_render_video_checks_the_source_and_the_pitch(
         )  # fmt: skip
     result.video_path = video
     assert viz.render_video(result, None, tmp_path / "c.mp4", progress=False).is_file()
+
+
+def test_render_video_writes_a_birds_eye_video(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    radar = viz.PitchRadar(width_px=260)
+    output = viz.render_video(
+        result, video, tmp_path / "top.mp4", radar=radar, birds_eye=True,
+        progress=False,
+    )  # fmt: skip
+    frames, fps = _read_all(output)
+    assert len(frames) == 5 and fps == pytest.approx(FPS / 2)
+    assert radar.size == (260, 185)  # an odd height, rounded up to even
+    assert frames[0].shape == (186, 260, 3)
+    # The source frames, about (40, 120, 40) after encoding, fill the visible area.
+    x, y = radar.to_pixels([[40, 20]]).round().astype(int)[0]
+    for frame in frames:
+        np.testing.assert_allclose(frame[y, x], (40, 124, 40), atol=12)
+    x, y = radar.to_pixels([[5, 5]]).round().astype(int)[0]  # outside the view
+    np.testing.assert_allclose(frames[0][y, x], radar.draw()[y, x], atol=12)
+    x, y = radar.to_pixels(result[0].pitch_xy[0])[0].round().astype(int)
+    np.testing.assert_allclose(frames[0][y, x], (255, 191, 0), atol=40)  # team 0
+    # The annotator is not drawn, so its pitch is not checked.
+    other = viz.FrameAnnotator(pitch=SoccerPitch(120, 80))
+    viz.render_video(
+        result, video, tmp_path / "top2.mp4", annotator=other, radar=radar,
+        birds_eye=True, progress=False,
+    )  # fmt: skip
+
+
+def test_a_birds_eye_video_pads_an_odd_width(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    radar = viz.PitchRadar(width_px=261)
+    assert radar.size == (261, 186)  # an odd width, an even height
+    output = viz.render_video(
+        result, video, tmp_path / "top.mp4", radar=radar, birds_eye=True,
+        progress=False,
+    )  # fmt: skip
+    frames, _ = _read_all(output)
+    assert len(frames) == 5 and frames[0].shape == (186, 262, 3)
+    # The added column repeats the radar's last one.
+    expected = radar.draw(result[0], frame=_frame())
+    np.testing.assert_allclose(frames[0][:, -1], expected[:, -1], atol=40)
+
+
+def test_a_birds_eye_video_needs_the_radar(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="birds_eye"):
+        viz.render_video(
+            result, video, tmp_path / "top.mp4", radar=False, birds_eye=True,
+            progress=False,
+        )  # fmt: skip
+    assert not (tmp_path / "top.mp4").exists()
+    with pytest.raises(ValueError, match="birds_eye"):
+        viz.video.check_render_options(radar=False, birds_eye=True)
+    viz.video.check_render_options(birds_eye=True)
+
+
+class _HistorySpy(viz.FrameAnnotator):
+    """Records the frame indices of the ``history`` of each drawn frame."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.histories: list[list[int] | None] = []
+
+    def annotate(self, frame, frame_result, history=None, **kwargs):
+        self.histories.append(None if history is None else [f.index for f in history])
+        return super().annotate(frame, frame_result, history=history, **kwargs)
+
+
+def test_render_video_passes_the_trail_window_as_history(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    spy = _HistorySpy(trail_seconds=0.4)  # frames are 0.2 s apart
+    viz.render_video(
+        result, video, tmp_path / "trail.mp4", annotator=spy, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert spy.histories == [[], [0], [0, 2], [2, 4], [4, 6]]
+    assert spy.histories == [
+        [f.index for f in result.window(f.index, 0.4)] for f in result
+    ]
+    without = _HistorySpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", annotator=without, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert without.histories == [None] * 5
+
+
+def test_a_render_with_the_ball_trail_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        annotator = viz.FrameAnnotator(draw_boxes=False, **options)
+        output = viz.render_video(
+            result, video, tmp_path / name, annotator=annotator, radar=False,
+            progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, trail = render("plain.mp4"), render("trail.mp4", trail_seconds=1.0)
+    assert (plain[0] == trail[0]).all()  # no history yet
+    assert all((p != t).any() for p, t in zip(plain[1:], trail[1:], strict=True))
+
+
+class _RadarHistorySpy(viz.PitchRadar):
+    """Records the frame indices of the ``history`` of each drawn radar."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.histories: list[list[int] | None] = []
+
+    def draw(self, frame_result=None, space_control=None, frame=None, **kwargs):
+        history = kwargs.get("history")
+        self.histories.append(None if history is None else [f.index for f in history])
+        return super().draw(frame_result, space_control, frame, **kwargs)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_windows_the_longer_of_the_annotator_and_radar_trails(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    annotator = _HistorySpy(trail_seconds=0.2)  # frames are 0.2 s apart
+    radar = _RadarHistorySpy(trail_seconds=0.4)
+    viz.render_video(
+        result, video, tmp_path / "tails.mp4", annotator=annotator, radar=radar,
+        birds_eye=birds_eye, progress=False,
+    )  # fmt: skip
+    longer = [[f.index for f in result.window(f.index, 0.4)] for f in result]
+    assert longer == [[], [0], [0, 2], [2, 4], [4, 6]]
+    assert radar.histories == longer
+    assert annotator.histories == ([] if birds_eye else longer)
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_a_render_with_the_visible_area_differs_from_one_without(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=viz.PitchRadar(**options),
+            birds_eye=birds_eye, progress=False,
+        )  # fmt: skip
+        return _read_all(output)[0]
+
+    plain, outlined = render("plain.mp4"), render("area.mp4", draw_visible_area=True)
+    assert all((p != o).any() for p, o in zip(plain, outlined, strict=True))
+
+
+class _CarrierSpy(viz.FrameAnnotator):
+    """Records the ``ball_carrier`` of each drawn frame."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.carriers: list[int | None] = []
+
+    def annotate(self, frame, frame_result, history=None, ball_carrier=None):
+        self.carriers.append(ball_carrier)
+        return super().annotate(
+            frame, frame_result, history=history, ball_carrier=ball_carrier
+        )
+
+
+def test_render_video_passes_each_frames_ball_carrier(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    carriers = [1, None, 2, 2, None]  # one per frame of result.frames
+    spy = _CarrierSpy()
+    viz.render_video(
+        result, video, tmp_path / "ring.mp4", annotator=spy, radar=False,
+        progress=False, ball_carriers=carriers,
+    )  # fmt: skip
+    assert spy.carriers == carriers
+    without = _CarrierSpy()
+    viz.render_video(
+        result, video, tmp_path / "plain.mp4", annotator=without, radar=False,
+        progress=False,
+    )  # fmt: skip
+    assert without.carriers == [None] * 5
+
+
+def test_a_render_rings_the_carrier_only_in_frames_with_one(
+    result: PipelineResult, video: Path, tmp_path: Path
+) -> None:
+    def render(name: str, **options) -> list[np.ndarray]:
+        output = viz.render_video(
+            result, video, tmp_path / name, radar=False, progress=False, **options
+        )
+        return _read_all(output)[0]
+
+    plain = render("plain.mp4")
+    ringed = render("ring.mp4", ball_carriers=[1, None, 2, None, 99])
+    # The encoder leaves a faint residue of a ring in the next frames.
+    differs = [
+        np.abs(p.astype(int) - r).max() > 100
+        for p, r in zip(plain, ringed, strict=True)
+    ]
+    assert differs == [True, False, True, False, False]
+
+
+@pytest.mark.parametrize("birds_eye", [False, True], ids=["overlay", "birds_eye"])
+def test_render_video_needs_one_ball_carrier_per_frame(
+    result: PipelineResult, video: Path, tmp_path: Path, birds_eye: bool
+) -> None:
+    with pytest.raises(ValueError, match="ball_carriers"):
+        viz.render_video(
+            result, video, tmp_path / "ring.mp4", progress=False,
+            birds_eye=birds_eye, ball_carriers=[1, 2],
+        )  # fmt: skip
+    assert not (tmp_path / "ring.mp4").exists()
 
 
 # --------------------------------------------------------------------- plots
@@ -390,6 +1489,19 @@ def test_show_samples_and_augmentations(tmp_path: Path) -> None:
     assert isinstance(fig, Figure) and len([a for a in fig.axes if a.images]) == 4
     with pytest.raises(ValueError, match="empty"):
         viz.show_samples(dataset, split="valid")
+    for show in (
+        viz.show_samples,
+        lambda d, **kw: viz.show_augmentations(d, flip, **kw),
+    ):
+        by_member = show(dataset, split=Split.TRAIN, n=1)
+        by_name = show(dataset, split="train", n=1)
+        assert [a.get_title() for a in by_member.axes] == [
+            a.get_title() for a in by_name.axes
+        ]
+        with pytest.raises(
+            ValueError, match="Unknown split 'dev'. Available: train, valid, test"
+        ):
+            show(dataset, split="dev")
 
 
 def test_plot_training_ultralytics_and_rfdetr(tmp_path: Path) -> None:
@@ -498,7 +1610,13 @@ def test_render_video_passes_overlay_padding(
 
 def _empty_frames(*indices: int) -> PipelineResult:
     frames = [
-        FrameResult(i, i / FPS, sv.Detections.empty(), sv.Detections.empty())
+        FrameResult(
+            i,
+            i / FPS,
+            sv.Detections.empty(),
+            sv.Detections.empty(),
+            ball_candidates=sv.Detections.empty(),
+        )
         for i in indices
     ]
     return PipelineResult(frames, FPS, (W, H), [])
@@ -628,6 +1746,10 @@ def test_render_video_refuses_to_overwrite_its_source(
 def test_overlay_options_have_a_validator(options, match):
     with pytest.raises(ValueError, match=match):
         viz.check_overlay(**options)
+    viz.check_overlay(position=OverlayPosition.CENTER_LEFT)
+    viz.check_overlay(position="center-left")
+    with pytest.raises(ValueError, match="Unknown position 'left'. Available: center"):
+        viz.check_overlay(position="left")
     viz.check_overlay()  # nothing given: nothing to check
 
 
@@ -639,7 +1761,27 @@ def test_render_video_checks_overlay_options_before_writing(
             result, video, tmp_path / "a.mp4", overlay_position="bottom-middle",
             radar=False, progress=False,
         )  # fmt: skip
+    with pytest.raises(
+        ValueError, match="'bottom-middle'. Available: center, top-left"
+    ):
+        viz.render_video(
+            result, video, tmp_path / "a.mp4", overlay_position="bottom-middle",
+            progress=False,
+        )  # fmt: skip
     assert not (tmp_path / "a.mp4").exists()
+    frames = [
+        _read_all(
+            viz.render_video(
+                result,
+                video,
+                tmp_path / f"{i}.mp4",
+                overlay_position=position,
+                progress=False,
+            )  # fmt: skip
+        )[0]
+        for i, position in enumerate((OverlayPosition.TOP_LEFT, "top-left"))
+    ]
+    np.testing.assert_array_equal(frames[0], frames[1])
     with pytest.raises(ValueError, match="fps"):
         viz.render_video(result, video, tmp_path / "a.mp4", fps=0, progress=False)
     assert not (tmp_path / "a.mp4").exists()
@@ -650,11 +1792,11 @@ class _FailingAnnotator(viz.FrameAnnotator):
         super().__init__()
         self.calls, self.fail_at = 0, fail_at
 
-    def annotate(self, frame, frame_result):
+    def annotate(self, frame, frame_result, history=None, **kwargs):
         self.calls += 1
         if self.calls == self.fail_at:
             raise RuntimeError("boom")
-        return super().annotate(frame, frame_result)
+        return super().annotate(frame, frame_result, history=history, **kwargs)
 
 
 def test_render_video_deletes_a_partial_output(
@@ -730,7 +1872,13 @@ def _people(index: int, rows: list[tuple[int, str, int, list[float]]]) -> FrameR
             "pitch_xy": np.array([xy for *_, xy in rows], dtype=float),
         },
     )
-    return FrameResult(index, index / FPS, people, sv.Detections.empty())
+    return FrameResult(
+        index,
+        index / FPS,
+        people,
+        sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
+    )
 
 
 @pytest.fixture

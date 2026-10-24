@@ -14,7 +14,14 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
-from tactifoot_vision.models.base import MODELS, Model, TrainConfig, TrainResult
+from tactifoot_vision.enums import DetectionKey, ModelType
+from tactifoot_vision.models.base import (
+    MODELS,
+    Model,
+    TrainConfig,
+    TrainResult,
+    check_class_conf,
+)
 from tactifoot_vision.utils import cache_dir
 
 logger = logging.getLogger(__name__)
@@ -95,13 +102,11 @@ class _UltralyticsModel(Model):
         names = self._yolo.names
         return [names[i] for i in sorted(names)]
 
-    def _run(
-        self, image: np.ndarray, conf: float | None = None
-    ) -> tuple[Any, np.ndarray, np.ndarray]:
+    def _run(self, image: np.ndarray) -> tuple[Any, np.ndarray, np.ndarray]:
         """The Ultralytics result and the ``(x, y)`` scale and shift from its pixels
         to ``image``'s: ``image_xy = result_xy * scale + shift``."""
         options: dict[str, Any] = {
-            "conf": self.conf if conf is None else conf,
+            "conf": self._lowest_conf,
             "iou": self.iou,
             "device": self.device,
             "verbose": False,
@@ -188,7 +193,7 @@ class _UltralyticsModel(Model):
         )
 
 
-@MODELS.register("yolo")
+@MODELS.register(ModelType.YOLO)
 class YOLODetector(_UltralyticsModel):
     """Ultralytics YOLO box detector (YOLOv8, YOLO11, ... detection checkpoints).
 
@@ -206,7 +211,7 @@ class YOLODetector(_UltralyticsModel):
         )
     """
 
-    name = "yolo"
+    name = ModelType.YOLO.value
     task = Task.DETECT
     default_weights = "yolo11n.pt"
 
@@ -215,57 +220,40 @@ class YOLODetector(_UltralyticsModel):
         weights: str | Path | None = None,
         *,
         conf: float = 0.25,
+        class_conf: Mapping[str, float] | None = None,
         iou: float = 0.7,
         imgsz: int | None = None,
         resize: Resize = "letterbox",
-        class_conf: Mapping[str, float] | None = None,
         device: str | None = None,
     ) -> None:
         """
         Args:
             weights, conf, iou, imgsz, resize, device: as for every Ultralytics backend.
             class_conf: minimum confidence per class name, replacing ``conf``
-                for the classes it names (e.g. ``{"ball": 0.15}``). Other
-                classes keep exactly the detections they get with ``conf``
-                alone (non-maximum suppression is per class), unless the
-                lower threshold lets more than Ultralytics' ``max_det`` (300)
-                candidates through, which football frames do not reach.
+                for those classes, e.g. ``{"ball": 0.05}`` so that weak ball
+                candidates are kept. Other classes keep exactly the detections
+                they get with ``conf`` alone (non-maximum suppression is per
+                class), unless the lower threshold lets more than Ultralytics'
+                ``max_det`` (300) candidates through, which football frames do
+                not reach.
         """
-        self.class_conf = dict(class_conf or {})
-        for name, value in self.class_conf.items():
-            if not 0 <= value <= 1:
-                raise ValueError(f"class_conf[{name!r}] must be in [0, 1], got {value}")
+        self.class_conf = check_class_conf(class_conf)
         super().__init__(
             weights, conf=conf, iou=iou, imgsz=imgsz, resize=resize, device=device
         )
-        unknown = []
-        if self.class_conf:
-            unknown = sorted(set(self.class_conf) - set(self.class_names))
-        if unknown:
-            raise ValueError(
-                f"class_conf names unknown class(es) {', '.join(unknown)}; "
-                f"the model has {', '.join(self.class_names)}"
-            )
 
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
-        floor = min([self.conf, *self.class_conf.values()])
-        result, scale, shift = self._run(image, conf=floor)
+        result, scale, shift = self._run(image)
         detections = sv.Detections.from_ultralytics(result)
         detections.xyxy = detections.xyxy * np.tile(scale, 2) + np.tile(shift, 2)
-        class_id = detections.class_id.astype(int)
-        detections.data["class_name"] = np.asarray(self.class_names, dtype=str)[
-            class_id
-        ]
-        if self.class_conf:
-            thresholds = np.array(
-                [self.class_conf.get(name, self.conf) for name in self.class_names]
-            )
-            detections = detections[detections.confidence >= thresholds[class_id]]
-        return detections
+        detections.data[DetectionKey.CLASS_NAME] = np.asarray(
+            self.class_names, dtype=str
+        )[detections.class_id.astype(int)]
+        return self._apply_class_conf(detections)
 
 
-@MODELS.register("yolo_pose")
+@MODELS.register(ModelType.YOLO_POSE)
 class YOLOPoseModel(_UltralyticsModel):
     """Ultralytics YOLO pose model, e.g. pitch landmarks (32 keypoints per pitch).
 
@@ -283,7 +271,7 @@ class YOLOPoseModel(_UltralyticsModel):
         best = keypoints.xy[0]  # (32, 2) pixel coordinates of the best pitch
     """
 
-    name = "yolo_pose"
+    name = ModelType.YOLO_POSE.value
     task = Task.POSE
     default_weights = "yolov8n-pose.pt"
 
@@ -350,7 +338,7 @@ def _keypoints_from_arrays(
         confidence=confidence.astype(np.float32),
         class_id=class_id,
         data={
-            "class_name": np.asarray(class_names, dtype=str)[class_id],
+            DetectionKey.CLASS_NAME: np.asarray(class_names, dtype=str)[class_id],
             "xyxy": xyxy[order].astype(np.float32).reshape(-1, 4),
             "box_confidence": box_confidence.astype(np.float32),
         },

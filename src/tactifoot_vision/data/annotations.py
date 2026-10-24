@@ -2,18 +2,12 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from enum import StrEnum
 
 import numpy as np
 import supervision as sv
 
-
-class Task(StrEnum):
-    """What a dataset or model is about."""
-
-    DETECT = "detect"  # bounding boxes with classes (players, ball, ...)
-    POSE = "pose"  # boxes plus a fixed set of keypoints per object (pitch landmarks)
-
+from tactifoot_vision.enums import DetectionKey
+from tactifoot_vision.enums import Task as Task  # re-exported from its old home
 
 # Keypoint visibility flags, identical in YOLO-pose and COCO.
 NOT_LABELLED, OCCLUDED, VISIBLE = 0, 1, 2
@@ -103,7 +97,7 @@ class Annotations:
             confidence=np.ones(len(self), dtype=np.float32),
         )
         if class_names is not None:
-            detections.data["class_name"] = np.array(
+            detections.data[DetectionKey.CLASS_NAME] = np.array(
                 [class_names[i] for i in self.class_ids], dtype=str
             )
         return detections

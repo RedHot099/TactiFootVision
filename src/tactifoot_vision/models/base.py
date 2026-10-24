@@ -2,8 +2,10 @@
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -13,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import DetectionKey, Split
 from tactifoot_vision.registry import Registry
 from tactifoot_vision.utils import next_run_dir, resolve_device
 
@@ -92,6 +95,10 @@ class Model(ABC):
 
     name: ClassVar[str]
     task: ClassVar[Task]
+    # Per-class confidence thresholds (a detector's ``class_conf`` option); every
+    # other class uses ``conf``. A detector sets it before calling
+    # ``Model.__init__``, which checks the class names once the model is loaded.
+    class_conf: Mapping[str, float] = MappingProxyType({})
     # Backend option -> the TrainConfig field that sets it; Model.train refuses the option.
     _train_config_aliases: ClassVar[dict[str, str]] = {}
 
@@ -107,7 +114,7 @@ class Model(ABC):
         self.conf = conf
         self.device = resolve_device(device)
         self.weights: str | Path | None = weights
-        self._load(weights)
+        self._load_checked(weights)
 
     # ---------------------------------------------------------------- backend
     @abstractmethod
@@ -157,6 +164,38 @@ class Model(ABC):
     def predict(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
         """Run on one BGR image."""
 
+    def _load_checked(self, weights: str | Path | None) -> None:
+        """:meth:`_load`, then check that every ``class_conf`` name is a class of the model."""
+        self._load(weights)
+        for class_name in self.class_conf:
+            if class_name not in self.class_names:
+                raise ValueError(
+                    f"Unknown class {class_name!r} in class_conf; "
+                    f"the model's classes are {', '.join(self.class_names)}"
+                )
+
+    @property
+    def _lowest_conf(self) -> float:
+        """The threshold to run the backend at: the lowest of ``conf`` and ``class_conf``."""
+        return min([self.conf, *self.class_conf.values()])
+
+    def _apply_class_conf(self, detections: sv.Detections) -> sv.Detections:
+        """Keep the detections that reach their class's threshold (``class_conf``, else ``conf``).
+
+        A score equal to the threshold is kept here, while RF-DETR's backend
+        keeps only higher ones.
+        """
+        if not self.class_conf:
+            return detections
+        thresholds = np.array(
+            [
+                self.class_conf.get(str(n), self.conf)
+                for n in detections.data[DetectionKey.CLASS_NAME]
+            ],
+            dtype=float,
+        )
+        return detections[detections.confidence >= thresholds]
+
     # ------------------------------------------------------------ public API
     def __call__(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
         return self.predict(image)
@@ -172,7 +211,7 @@ class Model(ABC):
             raise ValueError(
                 f"{self.name} is a {self.task.value} model but the dataset is {dataset.task.value}"
             )
-        if not dataset["train"] or not dataset["valid"]:
+        if not dataset[Split.TRAIN] or not dataset[Split.VALID]:
             raise ValueError(
                 "Training needs non-empty 'train' and 'valid' splits; "
                 "create them with dataset.resplit(train=0.8, valid=0.2)"
@@ -192,11 +231,11 @@ class Model(ABC):
         )
         result = self._train(dataset, cfg, run_dir)
         self.weights = result.weights
-        self._load(result.weights)
+        self._load_checked(result.weights)
         return result
 
     def evaluate(
-        self, dataset: Dataset, split: str = "valid", **kwargs: Any
+        self, dataset: Dataset, split: Split | str = Split.VALID, **kwargs: Any
     ) -> "DetectionMetrics | KeypointMetrics":
         """Score on a dataset split with backend-independent metrics.
 
@@ -207,7 +246,22 @@ class Model(ABC):
         return evaluate(self, dataset, split=split, **kwargs)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(weights={self.weights!r}, conf={self.conf}, device={self.device!r})"
+        class_conf = f", class_conf={dict(self.class_conf)}" if self.class_conf else ""
+        return (
+            f"{type(self).__name__}(weights={self.weights!r}, conf={self.conf}"
+            f"{class_conf}, device={self.device!r})"
+        )
+
+
+def check_class_conf(class_conf: Mapping[str, float] | None) -> dict[str, float]:
+    """A detector's ``class_conf`` option as a dict, every threshold in ``[0, 1]``."""
+    checked = dict(class_conf or {})
+    for class_name, value in checked.items():
+        if not 0 <= value <= 1:
+            raise ValueError(
+                f"class_conf[{class_name!r}] must be in [0, 1], got {value}"
+            )
+    return checked
 
 
 def load_model(name: str, weights: str | Path | None = None, **options: Any) -> Model:

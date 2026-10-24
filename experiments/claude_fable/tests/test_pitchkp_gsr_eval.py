@@ -266,7 +266,7 @@ def test_the_refinement_runs_with_d3s_declared_settings():
 
     import pitchkp_gsr_eval as run
 
-    from tactifoot_vision.pitch.lines import refine_homography
+    from tactifoot_vision.pitch.frame_lines import refine_homography
 
     declared = json.loads(run.CONFIGS.read_text())["common"]["homography"]["refinement_defaults"]
     defaults = {k: p.default for k, p in inspect.signature(refine_homography).parameters.items()

@@ -9,6 +9,7 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
+from tactifoot_vision.enums import DetectionKey, Split
 from tactifoot_vision.evaluation.metrics import DetectionMetrics
 from tactifoot_vision.models.base import Model
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 def evaluate_detector(
     model: Model,
     dataset: Dataset,
-    split: str = "valid",
+    split: Split | str = Split.VALID,
     conf: float = 0.01,
     max_images: int | None = None,
 ) -> DetectionMetrics:
@@ -47,6 +48,7 @@ def evaluate_detector(
         raise ValueError(
             f"evaluate_detector needs a detection model, got a {model.task.value} model"
         )
+    split = Split.parse(split)
     samples = dataset[split][:max_images]
     if not samples:
         raise ValueError(f"Split {split!r} of {dataset!r} has no images")
@@ -111,7 +113,7 @@ def _to_dataset_classes(
     """
     if len(predictions) == 0:
         return sv.Detections.empty()
-    names = predictions.data.get("class_name")
+    names = predictions.data.get(DetectionKey.CLASS_NAME)
     if names is None:
         raise ValueError("Detector predictions must carry data['class_name']")
     if predictions.confidence is None:

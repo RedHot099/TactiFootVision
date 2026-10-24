@@ -90,6 +90,42 @@ custom = tv.viz.FrameAnnotator(
 tv.show(custom.annotate(frame, frame_result), width=11)
 """)
     nb.md("""
+`trail_seconds` draws the ball's recent path. Drawing keeps no memory between
+frames, so `annotate` takes the earlier frames as `history`, oldest first, and
+`result.window(index, seconds)` gives them (ADR 0003). Each earlier ball
+position is projected through the current frame's homography, so the trail
+stays on the grass when the camera pans. It breaks where the ball was not
+seen, fades to nothing at `trail_seconds`, and is not drawn on a frame
+without a homography. Positions that `track_ball` filled in draw like any
+other. Here: the frame with the most ball positions in the second before it.
+""")
+    nb.code("""
+TRAIL = 1.0
+trail_result = max(result, key=lambda f: sum(len(h.ball) > 0 for h in result.window(f.index, TRAIL)))
+trail_frame = video.read(trail_result.index)
+trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL).annotate(
+    trail_frame, trail_result, history=result.window(trail_result.index, TRAIL))
+tv.show(trail, titles=f"trail_seconds={TRAIL} at frame {trail_result.index}", width=11)
+""")
+    nb.md("""
+`annotate(..., ball_carrier=tracker_id)` rings the ball carrier at their
+feet in `ball_color`. `tv.analysis.ball_carriers(result)` gives one
+`tracker_id`, or `None` for a loose ball, per frame of `result.frames`; `None`
+or an id nobody in the frame has draws no ring. Here: the first frame with a
+carrier.
+""")
+    nb.code("""
+carriers = tv.analysis.ball_carriers(result)
+carried = next(((f, c) for f, c in zip(result, carriers) if c is not None), None)
+if carried is None:
+    print("no frame of the demo clip has a ball carrier")
+else:
+    carrier_result, carrier = carried
+    ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+        video.read(carrier_result.index), carrier_result, ball_carrier=carrier)
+    display(tv.show(ring, titles=f"ball_carrier={carrier} at frame {carrier_result.index}", width=11))
+""")
+    nb.md("""
 `draw_masks=True` draws segmentation masks, which only a mask tracker (SAM2)
 produces and only `Pipeline(keep_masks=True)` keeps. With a box tracker there
 are no masks; the annotator then warns once and draws the rest.
@@ -138,6 +174,42 @@ colors = np.where(event["teammate"], "#00BFFF", "#FF1493").tolist()
 tv.show(statsbomb_radar.draw_points(np.array(event["pitch_location"].tolist()), colors), width=7)
 """)
     nb.md("""
+`trail_seconds` draws a tail behind each person, so the teams' movement shows.
+Like the ball trail, `draw` takes the earlier frames as `history`. Each tail
+joins the earlier pitch positions of the same track id, in the person's
+colour (the default colour without a team), breaks where the track was not
+seen, fades to nothing at `trail_seconds` and lies under the dots.
+""")
+    nb.code("""
+tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(trail_result, history=result.window(trail_result.index, 2.0))
+tv.show(tails, titles=f"trail_seconds=2.0 at frame {trail_result.index}", width=7)
+""")
+    nb.md("""
+`draw_visible_area` outlines the frame's visible area, the part of the pitch
+the camera shows, under the players, in `visible_area_color`. It is `tv.pitch.visible_area`, the
+polygon freeze frames export, and needs the frame size: pass
+`frame_size=result.frame_size`, or the `frame`. There is no outline without a
+homography or when part of the frame lies beyond the horizon.
+""")
+    nb.code("""
+visible = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_size=result.frame_size)
+tv.show(visible, titles="draw_visible_area=True", width=7)
+""")
+    nb.md("""
+`velocity_seconds` draws each person's velocity as an arrow in their colour,
+from the dot to where the velocity takes them in that many seconds.
+`draw` takes the frame's velocities, as `tv.analysis.velocities(result)`
+gives them: one m/s array per frame of `result.frames`, row for row with
+the detections. A person without a velocity (no track, too few positions in
+the window, or too fast) gets no arrow.
+""")
+    nb.code("""
+velocities = tv.analysis.velocities(result)
+moving_at = next(i for i, f in enumerate(result) if f.index == trail_result.index)
+arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(trail_result, velocities=velocities[moving_at])
+tv.show(arrows, titles=f"velocity_seconds=1.0 at frame {trail_result.index}", width=7)
+""")
+    nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
 `width_fraction` the size and `alpha` the opacity.
 """)
@@ -157,15 +229,20 @@ tv.show([
 annotated and with the radar overlay, to an mp4. It refuses a video whose
 frame size differs from the result's and a radar or annotator drawing another
 pitch, and warns when the frame rates differ.
-Pass your own annotator and radar, or `radar=False` for none.
+Pass your own annotator and radar, or `radar=False` for none. With a
+`trail_seconds` annotator or radar, `render_video` passes each frame its
+`history` itself, for the longer of the two, and the radar the frame size
+its visible area needs. A `velocity_seconds` radar gets each frame's
+`tv.analysis.velocities` too. `ball_carriers`, one per frame as
+`tv.analysis.ball_carriers` returns them, rings each frame's carrier.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
     result, VIDEO, OUT / "annotated.mp4",
-    annotator=tv.viz.FrameAnnotator(style="video_game"),
-    radar=tv.viz.PitchRadar(draw_ids=True),
+    annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
+    radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0),
     overlay_position="bottom-right", overlay_width_fraction=0.3,
-    progress=False,
+    ball_carriers=carriers, progress=False,
 )
 rendered = tv.VideoReader(video_path)
 print(rendered)

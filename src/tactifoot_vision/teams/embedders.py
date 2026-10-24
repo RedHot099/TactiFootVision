@@ -4,11 +4,12 @@ import contextlib
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 import cv2
 import numpy as np
 
+from tactifoot_vision.enums import ColorSpace, EmbedderType, Pooling
 from tactifoot_vision.registry import Registry
 from tactifoot_vision.utils import resolve_device
 
@@ -35,11 +36,11 @@ def available_embedders() -> list[str]:
     return EMBEDDERS.names()
 
 
-@EMBEDDERS.register("resnet")
+@EMBEDDERS.register(EmbedderType.RESNET)
 class ResNetEmbedder(Embedder):
     """Global-average-pooled ImageNet ResNet-18 features (512-d)."""
 
-    name = "resnet"
+    name = EmbedderType.RESNET.value
 
     def __init__(self, device: str | None = None, batch_size: int = 64) -> None:
         import torch
@@ -73,7 +74,7 @@ class ResNetEmbedder(Embedder):
         return np.concatenate(features).astype(np.float32)
 
 
-@EMBEDDERS.register("siglip")
+@EMBEDDERS.register(EmbedderType.SIGLIP)
 class SigLIPEmbedder(Embedder):
     """SigLIP vision-tower features, optionally concatenated with colour histograms.
 
@@ -89,22 +90,20 @@ class SigLIPEmbedder(Embedder):
         device: torch device; ``None`` picks CUDA when available.
     """
 
-    name = "siglip"
+    name = EmbedderType.SIGLIP.value
 
     def __init__(
         self,
         model_name: str = "google/siglip-base-patch16-224",
         batch_size: int = 32,
-        pooling: Literal["mean", "cls"] = "mean",
+        pooling: Pooling | str = Pooling.MEAN,
         color_hist_bins: int = 0,
         color_hist_weight: float = 1.0,
-        color_space: Literal["rgb", "hsv"] = "rgb",
+        color_space: ColorSpace | str = ColorSpace.RGB,
         device: str | None = None,
     ) -> None:
-        if pooling not in ("mean", "cls"):
-            raise ValueError(f"pooling must be 'mean' or 'cls', got {pooling!r}")
-        if color_space not in ("rgb", "hsv"):
-            raise ValueError(f"color_space must be 'rgb' or 'hsv', got {color_space!r}")
+        pooling = Pooling.parse(pooling, "pooling")
+        color_space = ColorSpace.parse(color_space, "color_space")
         if not 0 <= color_hist_bins <= 256:
             raise ValueError("color_hist_bins must be in [0, 256]")
         from transformers import SiglipImageProcessor, SiglipVisionModel
@@ -138,7 +137,7 @@ class SigLIPEmbedder(Embedder):
                 outputs = self._model(**inputs)
             pooled = (
                 outputs.pooler_output
-                if self.pooling == "cls"
+                if self.pooling == Pooling.CLS
                 else outputs.last_hidden_state.mean(dim=1)
             )
             features.append(pooled.float().cpu().numpy())
@@ -155,7 +154,7 @@ class SigLIPEmbedder(Embedder):
 
     def _histogram(self, crop: np.ndarray) -> np.ndarray:
         """Per-channel L1-normalised histograms (OpenCV hue spans 0-180)."""
-        if self.color_space == "hsv":
+        if self.color_space == ColorSpace.HSV:
             image, ranges = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV), (180, 256, 256)
         else:
             image, ranges = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), (256, 256, 256)

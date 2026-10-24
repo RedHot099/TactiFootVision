@@ -9,7 +9,10 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.data.annotations import Task
+from tactifoot_vision.enums import TrackerType
+from tactifoot_vision.evaluation import evaluate_tracking
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import (
     NO_TEAM,
@@ -17,6 +20,7 @@ from tactifoot_vision.pipeline import (
     Pipeline,
     PipelineResult,
     fill_ball,
+    track_ball,
 )
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
 from tactifoot_vision.teams import Embedder, TeamClassifier
@@ -229,16 +233,30 @@ def test_teams_by_vote_goalkeeper_by_position_referee_none(result):
         assert teams[names == "goalkeeper"].tolist() == [0]
 
 
-def test_ball_is_single_and_outliers_are_cleaned(result):
-    # the ball moves ~17 m/s; the one-frame teleport (~44 m) exceeds the default 40 m/s
+def test_the_pass_keeps_each_tracks_mean_team_embedding(result):
+    # the team-class people's crops were embedded (mean colour); the referee's were not
+    frame = result[0]
+    names = frame.detections.data["class_name"]
+    ids = frame.detections.tracker_id
+    assert set(result.track_embeddings) == {int(i) for i in ids[names != "referee"]}
+    keeper = int(ids[names == "goalkeeper"][0])
+    red = int(ids[_track_of(frame, *RED_PLAYERS[0])])
+    yellow, red_kit = np.array([0, 230, 230]) / 255, np.array(KITS[0]) / 255
+    assert result.track_embeddings[keeper].dtype == np.float16
+    # the vote samples the first frame of a track and every 10th: frames 0 and 10
+    assert result.track_embedding_samples == dict.fromkeys(result.track_embeddings, 2)
+    assert np.linalg.norm(result.track_embeddings[keeper] - yellow) < 0.15
+    assert np.linalg.norm(result.track_embeddings[red] - red_kit) < 0.15
+
+
+def test_ball_is_single_and_the_pass_keeps_its_jumps(result):
+    # choosing the ball is track_ball's job: the pass keeps the teleport
     for t, f in enumerate(result):
         assert len(f.ball) == 1
         assert f.ball.data["class_name"].tolist() == ["ball"]
+        assert np.isfinite(f.ball_xy).all()
         if t == TELEPORT_FRAME:
-            assert np.isnan(f.ball_xy).all()
-            assert f.ball.xyxy[0, 0] == pytest.approx(290, abs=2)  # the box is kept
-        else:
-            assert np.isfinite(f.ball_xy).all()
+            assert f.ball.xyxy[0, 0] == pytest.approx(290, abs=2)
 
 
 def test_table_export(result):
@@ -276,6 +294,7 @@ def test_without_tracker_each_detection_gets_a_team(video):
         assert f.detections.tracker_id is None
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in RED_PLAYERS} == {0}
         assert {f.team_ids[_track_of(f, x + t, y)] for x, y in BLUE_PLAYERS} == {1}
+    assert result.track_embeddings == {}  # no tracks to keep an embedding for
 
 
 def test_prefitted_classifier_is_reused_when_asked(video):
@@ -312,6 +331,7 @@ def test_no_team_classifier_leaves_no_team(video):
         video, end=2, progress=False
     )
     assert all((f.team_ids == NO_TEAM).all() for f in result)
+    assert result.track_embeddings == {}
 
 
 def test_validation():
@@ -386,17 +406,15 @@ def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
 
 # ----------------------------------------------------------------- real models
 @pytest.mark.model
-def test_real_video_pipeline(tmp_path):
+def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
     video = ROOT / "data" / "videos" / "broadcast_60s.mp4"
-    detector_weights = ROOT / "models" / "football_yolo11m.pt"
-    pose_weights = ROOT / "models" / "pitch_yolov8n_pose.pt"
-    if not (video.is_file() and detector_weights.is_file() and pose_weights.is_file()):
-        pytest.skip("real video or weights not available")
+    if not video.is_file():
+        pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model("yolo_pose", pose_weights, resize="stretch"),
+        keypoint_model=tv.load_model("yolo_pose", pitch_weights, resize="square"),
         team_classifier=TeamClassifier("siglip"),
     )
     result = pipeline.run(video, end=50, progress=False)
@@ -457,7 +475,9 @@ def _frame_with(keys, names, xy) -> "tv.pipeline.FrameResult":
         tracker_id=np.array(keys),
         data={"class_name": np.array(names), "pitch_xy": np.array(xy, float)},
     )
-    return tv.pipeline.FrameResult(0, 0.0, detections, sv.Detections.empty())
+    return tv.pipeline.FrameResult(
+        0, 0.0, detections, sv.Detections.empty(), ball_candidates=sv.Detections.empty()
+    )
 
 
 def test_goalkeeper_without_pitch_positions_keeps_its_crop_vote():
@@ -576,17 +596,58 @@ def test_goalkeeper_team_follows_position_when_the_kit_says_otherwise(tmp_path):
         assert frame.team_ids[names == "goalkeeper"].tolist() == [1]
 
 
-def test_ball_speed_limit_scales_with_the_stride(video):
-    # The ball moves ~17 m/s, under the 25 m/s limit: at stride 3 it covers
-    # ~2 m between processed frames, more than the limit allows per source
-    # frame (1 m) but less than per processed frame (3 m).
-    result = _pipeline(ball_max_speed=25).run(video, stride=3, progress=False)
-    assert [f.index for f in result] == [0, 3, 6, 9]
+@pytest.mark.parametrize("stride", [1, 3])
+def test_track_ball_drops_the_teleport_and_fills_it_at_any_stride(video, stride):
+    # The ball moves ~17 m/s and the teleport jumps ~44 m. The gate widens
+    # with the time since the last ball, not per processed frame, so at
+    # stride 3 the ~2 m between processed frames still pass it.
+    result = track_ball(_pipeline().run(video, stride=stride, progress=False))
+    assert [f.index for f in result] == list(range(0, FRAMES, stride))
     for frame in result:
-        if frame.index == TELEPORT_FRAME:
-            assert np.isnan(frame.ball_xy).all()
-        else:
-            assert np.isfinite(frame.ball_xy).all(), frame.index
+        assert len(frame.ball) == 1, frame.index
+        assert frame.ball.data["interpolated"].tolist() == [
+            frame.index == TELEPORT_FRAME
+        ]
+        bx = 150 + 2 * frame.index + 3  # the box centre without the teleport
+        assert frame.ball.get_anchors_coordinates(sv.Position.CENTER)[0, 0] == (
+            pytest.approx(bx, abs=2)
+        )
+
+
+def _labelled_clip(video: Path) -> LabelledClip:
+    """The synthetic clip's truth: every object of every frame, one id each."""
+    frames = []
+    for t in range(FRAMES):
+        objects = [(i + 1, COLORS[c], box) for i, (c, box) in enumerate(_scene(t))]
+        people = [o for o in objects if o[1] != "ball"]
+        ball = [o for o in objects if o[1] == "ball"]
+        frames.append(
+            LabelledFrame(
+                t,
+                *(
+                    sv.Detections(
+                        xyxy=np.array([b for _, _, b in rows], float).reshape(-1, 4),
+                        tracker_id=np.array([i for i, _, _ in rows], int),
+                        data={"class_name": np.array([n for _, n, _ in rows])},
+                    )
+                    for rows in (people, ball)
+                ),
+            )
+        )
+    return LabelledClip(
+        "synthetic", video, FPS, WIDTH, HEIGHT, tuple(frames),
+        frozenset({Truth.IDENTITIES, Truth.BOXES, Truth.BALL}),
+    )  # fmt: skip
+
+
+def test_a_strided_run_is_scored_on_its_processed_frames_only(video):
+    result = _pipeline().run(video, stride=2, progress=False)
+    metrics = evaluate_tracking(result, _labelled_clip(video), hota=False)
+    # The odd frames hold truth but were skipped: no misses there.
+    assert metrics.num_frames == FRAMES // 2
+    assert metrics.per_class.loc["player", "instances"] == 6 * FRAMES // 2
+    assert (metrics.false_negatives, metrics.false_positives) == (0, 0)
+    assert (metrics.mota, metrics.idf1, metrics.id_switches) == (1.0, 1.0, 0)
 
 
 def test_too_few_player_crops_leave_an_unfitted_classifier_alone(video, caplog):
@@ -625,6 +686,66 @@ def test_the_most_confident_ball_is_kept(video):
         assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
 
 
+def test_every_ball_candidate_is_kept_best_first(video):
+    result = Pipeline(
+        _ThreeBalls(device="cpu"),
+        keypoint_model=KnownHomographyKeypoints(device="cpu"),
+        tracker=None,
+    ).run(video, end=3, progress=False)
+    for t, frame in enumerate(result):
+        candidates = frame.ball_candidates
+        assert candidates.confidence.tolist() == pytest.approx([0.95, 0.7, 0.5])
+        assert candidates.xyxy[1:, 0].tolist() == [300, 10]
+        assert candidates.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
+        np.testing.assert_array_equal(frame.ball.xyxy, candidates.xyxy[:1])
+        centres = candidates.get_anchors_coordinates(sv.Position.CENTER)
+        np.testing.assert_allclose(
+            candidates.data["pitch_xy"],
+            frame_to_pitch(centres, FRAME_TO_PITCH),
+            atol=1e-3,
+        )
+
+
+def test_track_ball_leaves_the_candidates_alone(result):
+    frame = track_ball(result).frame(TELEPORT_FRAME)
+    assert frame.ball.data["interpolated"].tolist() == [True]
+    assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(290, abs=2)
+    assert np.isfinite(frame.ball_candidates.data["pitch_xy"]).all()
+
+
+def test_the_ball_shares_no_memory_with_its_candidates(video):
+    result = Pipeline(_ThreeBalls(device="cpu"), tracker=None).run(
+        video, end=1, progress=False
+    )
+    frame = result[0]
+    frame.ball.xyxy[:] = 0
+    frame.ball.data["pitch_xy"][:] = 0
+    assert frame.ball_candidates.xyxy[0, 0] == pytest.approx(150, abs=2)
+    assert np.isnan(frame.ball_candidates.data["pitch_xy"][0]).all()
+
+
+# ------------------------------------------------------------- enums (ADR 0004)
+def test_saved_files_hold_plain_strings_whatever_the_enum_members(video, tmp_path):
+    detector = ColorDetector(device="cpu")
+    result = Pipeline(detector, tracker=TrackerType.BYTETRACK).run(
+        video, end=3, progress=False
+    )
+    by_name = Pipeline(detector, tracker="bytetrack").run(video, end=3, progress=False)
+    pd.testing.assert_frame_equal(result.to_dataframe(), by_name.to_dataframe())
+
+    path = result.save(tmp_path / "result.pkl")
+    assert b"tactifoot_vision.enums" not in path.read_bytes()
+    for frame in PipelineResult.load(path):
+        assert all(type(key) is str for key in frame.detections.data)
+        assert frame.detections.data["class_name"].dtype.kind == "U"
+    tracks, freeze_frames = result.to_dataframe(), result.to_freeze_frames()
+    assert {type(v) for v in tracks["object"]} == {str}
+    assert {type(v) for v in freeze_frames["type"]} == {str}
+    assert set(freeze_frames["type"]) == {"player", "goalkeeper", "referee", "ball"}
+    parquet = result.to_parquet(tmp_path / "tracks.parquet")
+    pd.testing.assert_frame_equal(pd.read_parquet(parquet), tracks)
+
+
 # ------------------------------------------------------------ single frames
 def _frame(t: int = 0, **scene) -> np.ndarray:
     frame = np.full((HEIGHT, WIDTH, 3), (40, 140, 40), dtype=np.uint8)
@@ -633,12 +754,12 @@ def _frame(t: int = 0, **scene) -> np.ndarray:
     return frame
 
 
-def _analyzer(**kwargs) -> FrameAnalyzer:
+def _analyzer(detector: Model | None = None, **kwargs) -> FrameAnalyzer:
     options = {
         "keypoint_model": KnownHomographyKeypoints(device="cpu"),
         "team_classifier": TeamClassifier(MeanColorEmbedder(), reducer=None),
     } | kwargs
-    return FrameAnalyzer(ColorDetector(device="cpu"), **options)
+    return FrameAnalyzer(detector or ColorDetector(device="cpu"), **options)
 
 
 def test_frame_analyzer_places_and_splits_one_frame_on_its_own():
@@ -662,6 +783,18 @@ def test_frame_analyzer_places_and_splits_one_frame_on_its_own():
     assert teams[names == "referee"].tolist() == [NO_TEAM]
     assert teams[names == "goalkeeper"].tolist() == list(red)  # beside the red team
     assert analyzer.homography.matrix is None  # no state kept between frames
+
+
+def test_frame_analyzer_keeps_every_ball_candidate_best_first():
+    frame = _analyzer(detector=_ThreeBalls(device="cpu"))(_frame())
+    candidates = frame.ball_candidates
+    assert candidates.confidence.tolist() == pytest.approx([0.95, 0.7, 0.5])
+    np.testing.assert_array_equal(frame.ball.xyxy, candidates.xyxy[:1])
+    assert frame.ball.xyxy is not candidates.xyxy  # a copy, as in the pipeline
+    centres = candidates.get_anchors_coordinates(sv.Position.CENTER)
+    np.testing.assert_allclose(
+        candidates.data["pitch_xy"], frame_to_pitch(centres, FRAME_TO_PITCH), atol=1e-3
+    )
 
 
 def test_frame_analyzer_without_keypoints_or_teams():

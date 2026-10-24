@@ -10,6 +10,7 @@ import pytest
 import supervision as sv
 
 from tactifoot_vision.data import Annotations, Dataset, Sample, Task
+from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation import (
     DetectionMetrics,
     KeypointMetrics,
@@ -256,6 +257,29 @@ def test_evaluate_dispatches_on_task(tmp_path):
     assert isinstance(result, KeypointMetrics) and result.pck_threshold == 0.1
 
 
+def test_every_evaluator_takes_the_split_as_a_member_or_a_string(tmp_path):
+    detection = _detection_dataset(tmp_path, LABELS)
+    detector = FakeModel(Task.DETECT, PERFECT, CLASSES)
+    pose_dir = tmp_path / "pose"
+    pose_dir.mkdir()
+    keypoints = _keypoint_dataset(pose_dir)
+    poser = FakeModel(Task.POSE, {0: _pose([[10, 10]] * 3), 1: _pose()}, ["pitch"])
+    runs = [
+        (evaluate_detector, detector, detection),
+        (evaluate_keypoints, poser, keypoints),
+        (evaluate, detector, detection),
+        (type(detector).evaluate, detector, detection),
+    ]
+    for function, model, dataset in runs:
+        by_member = function(model, dataset, split=Split.VALID).as_dict()
+        assert by_member == function(model, dataset, split="valid").as_dict()
+        assert by_member == function(model, dataset, split="val").as_dict()
+        with pytest.raises(
+            ValueError, match="Unknown split 'dev'. Available: train, valid, test"
+        ):
+            function(model, dataset, split="dev")
+
+
 # ------------------------------------------------------------- statsbomb
 def _statsbomb() -> pd.DataFrame:
     return pd.DataFrame(
@@ -326,7 +350,11 @@ def test_statsbomb_comparison_accepts_a_pipeline_result():
     people.data["pitch_xy"] = np.array([[10.5, 10.0], [52.0, 50.0]])
     people.data["team_id"] = np.array([0, 1])
     frame = FrameResult(
-        index=30, timestamp=1.2, detections=people, ball=sv.Detections.empty()
+        index=30,
+        timestamp=1.2,
+        detections=people,
+        ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     result = PipelineResult(
         frames=[frame], fps=25.0, frame_size=(1280, 720), class_names=["player"]
@@ -349,7 +377,11 @@ def test_statsbomb_comparison_of_a_second_half_pipeline_result():
         },
     )
     frame = FrameResult(
-        index=30, timestamp=1.2, detections=people, ball=sv.Detections.empty()
+        index=30,
+        timestamp=1.2,
+        detections=people,
+        ball=sv.Detections.empty(),
+        ball_candidates=sv.Detections.empty(),
     )
     result = PipelineResult([frame], 25.0, (1280, 720), ["player"])
     statsbomb = pd.DataFrame(
@@ -406,7 +438,13 @@ def _frame(index, timestamp, rows, ball_xy=None):
             confidence=np.ones(1, np.float32),
             data={"class_name": np.array(["ball"]), "pitch_xy": np.array([ball_xy])},
         )
-    return FrameResult(index=index, timestamp=timestamp, detections=people, ball=ball)
+    return FrameResult(
+        index=index,
+        timestamp=timestamp,
+        detections=people,
+        ball=ball,
+        ball_candidates=ball,
+    )
 
 
 def _one_player_at(xy, **extra):
@@ -468,7 +506,15 @@ def test_statsbomb_csv_route_agrees_with_the_result_route(tmp_path):
 
 def test_statsbomb_comparison_of_an_empty_result():
     empty = PipelineResult(
-        [FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty())],
+        [
+            FrameResult(
+                0,
+                0.0,
+                sv.Detections.empty(),
+                sv.Detections.empty(),
+                ball_candidates=sv.Detections.empty(),
+            )
+        ],
         25.0,
         (64, 48),
         [],

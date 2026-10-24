@@ -1,8 +1,10 @@
 """Name -> factory registries behind the pluggable parts of the package.
 
 Every swappable component family (models, trackers, team embedders) keeps one
-``Registry``. Backends register themselves with a decorator, and callers pick a
-backend by name, which is also how YAML configs refer to them::
+``Registry``, and so do post-processes, whose entries are functions on a
+``PipelineResult`` rather than factories. Backends register themselves with a
+decorator, and callers pick a backend by name, which is also how YAML configs
+refer to them::
 
     @MODELS.register("yolo")
     class YOLODetector(Model): ...
@@ -20,6 +22,8 @@ class Registry[T]:
         self._factories: dict[str, Callable[..., T]] = {}
 
     def register[F: Callable[..., Any]](self, name: str) -> Callable[[F], F]:
+        name = str(name)  # a built-in name's enum member is stored as its plain string
+
         def decorator(factory: F) -> F:
             if name in self._factories:
                 raise ValueError(f"{self.kind} {name!r} is already registered")

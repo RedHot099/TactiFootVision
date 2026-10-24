@@ -3,7 +3,6 @@
 Importing this package registers the ``bytetrack`` and ``sam2`` backends.
 """
 
-from tactifoot_vision.tracking.ball import clean_ball_path
 from tactifoot_vision.tracking.base import (
     TRACKERS,
     Tracker,
@@ -19,6 +18,5 @@ __all__ = [
     "SAM2Tracker",
     "Tracker",
     "available_trackers",
-    "clean_ball_path",
     "create_tracker",
 ]

@@ -165,7 +165,9 @@ def frame_from_row(row) -> FrameResult | None:
         conf = np.asarray(row["kp_conf"], np.float32)[None] if _listed(row["kp_conf"]) else None
         keypoints = sv.KeyPoints(xy=array("kp_xy", 2).astype(np.float32)[None], confidence=conf)
     homography = array("homography", 3) if _listed(row["homography"]) else None
-    return FrameResult(index=0, timestamp=0.0, detections=people, ball=ball, keypoints=keypoints, homography=homography)
+    # The cache keeps the chosen ball only, so it is also the one candidate (`ball_candidates`, package since xg-teams 00).
+    return FrameResult(index=0, timestamp=0.0, detections=people, ball=ball, ball_candidates=ball, keypoints=keypoints,
+                       homography=homography)
 
 
 def _listed(value) -> bool:
@@ -303,7 +305,8 @@ def replay_features(frames: pd.DataFrame, config: ExtractorConfig, offsets: Sequ
     return pd.DataFrame(rows)
 
 
-_NOTHING = FrameResult(index=0, timestamp=0.0, detections=sv.Detections.empty(), ball=sv.Detections.empty())
+_NOTHING = FrameResult(index=0, timestamp=0.0, detections=sv.Detections.empty(), ball=sv.Detections.empty(),
+                       ball_candidates=sv.Detections.empty())
 
 
 def frame_table(index: Path, shot_ids: list[str]) -> pd.DataFrame:

@@ -51,7 +51,11 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
-#   ball_max_speed: 40.0
+# postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
+#   - {type: smooth_homographies}      # first: lag-free homographies (homography smoothing_window: 1)
+#   - {type: join_tracks, max_gap: 1.6}  # join tracks into player tracks
+#   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
+#   - {type: assign_roles}             # goalkeepers, referees, people off the pitch
 # render:                              # tv.viz.render_video(...) arguments
 #   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)
 #   radar: {draw_ids: true}            # tv.viz.PitchRadar(...); null: no radar
