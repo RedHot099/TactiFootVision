@@ -1,0 +1,474 @@
+{
+  "title": "ball-detection 05 arm A training view",
+  "created": "2026-10-24T19:33:18+00:00",
+  "builder": "scripts/ball_view.py",
+  "pool_index": "/mnt/storage/tactifoot_research/detector_data/pool_index.parquet",
+  "pool_images": 231397,
+  "rule": {
+    "base_view": "run 2c's view (scripts/detector_train.py build_view + train_list)",
+    "sets": [
+      "issia",
+      "roboflow_ball",
+      "roboflow_players",
+      "soccana",
+      "soccer_player_detection",
+      "soccernet_gsr",
+      "soccernet_v3",
+      "sportsmot_football",
+      "teamtrack",
+      "football_yolo"
+    ],
+    "excluded_games": [
+      "gsr:11",
+      "gsr:2",
+      "gsr:3",
+      "gsr:5",
+      "gsr:7",
+      "gsr:8"
+    ],
+    "excluded_near_dup_sets": [
+      "gsr_test",
+      "gsr_valid"
+    ],
+    "excluded_gsr_splits": [
+      "valid",
+      "test"
+    ],
+    "held_out_splits": {
+      "football_yolo": "test"
+    },
+    "oversample_by_set": {
+      "football_yolo": 20
+    },
+    "bin_factor": 1,
+    "bins": {
+      "small": "some truth ball has diameter * 1920 / max(width, height) < 12.0 px",
+      "blur": "GSR train only: some ball moves >= 1.0 diameters per frame (track_id, 25 fps)",
+      "sources_without_tracks": "binned by size alone"
+    },
+    "thinning": "none",
+    "class_mask": "per image, the source's annotated_classes; classes outside it get no cls loss"
+  },
+  "init": "/mnt/storage/tactifoot_research/detector_data/runs/run2c/CANDIDATE_epoch1.pt",
+  "after": "run2c",
+  "settings": {
+    "model": "yolo11l",
+    "imgsz": 1280,
+    "batch_size": 4,
+    "optimizer": "SGD",
+    "lr": 0.002,
+    "epochs": 2,
+    "patience": null,
+    "workers": 12,
+    "seed": 0,
+    "cos_lr": true,
+    "close_mosaic": 1,
+    "save_period": 1,
+    "scale": 0.3
+  },
+  "train": {
+    "images": 100214,
+    "images_per_epoch": 114198,
+    "boxes": {
+      "ball": 78829,
+      "goalkeeper": 45532,
+      "player": 1120670,
+      "referee": 92415
+    },
+    "per_source": {
+      "football_yolo": {
+        "images": 736,
+        "images_per_epoch": 14720,
+        "annotated_classes": [
+          "ball",
+          "goalkeeper",
+          "player",
+          "referee"
+        ],
+        "boxes": {
+          "ball": 675,
+          "goalkeeper": 140,
+          "player": 12596,
+          "referee": 427
+        }
+      },
+      "issia": {
+        "images": 3126,
+        "images_per_epoch": 3126,
+        "annotated_classes": [
+          "ball",
+          "player"
+        ],
+        "boxes": {
+          "ball": 834,
+          "goalkeeper": 0,
+          "player": 25852,
+          "referee": 0
+        }
+      },
+      "roboflow": {
+        "images": 1015,
+        "images_per_epoch": 1015,
+        "annotated_classes": [
+          "ball",
+          "goalkeeper",
+          "player",
+          "referee"
+        ],
+        "boxes": {
+          "ball": 970,
+          "goalkeeper": 278,
+          "player": 7165,
+          "referee": 831
+        }
+      },
+      "soccana": {
+        "images": 11434,
+        "images_per_epoch": 11434,
+        "annotated_classes": [
+          "ball",
+          "player",
+          "referee"
+        ],
+        "boxes": {
+          "ball": 4978,
+          "goalkeeper": 0,
+          "player": 52037,
+          "referee": 3409
+        }
+      },
+      "soccer_player_detection": {
+        "images": 1075,
+        "images_per_epoch": 1075,
+        "annotated_classes": [
+          "player"
+        ],
+        "boxes": {
+          "ball": 0,
+          "goalkeeper": 0,
+          "player": 9097,
+          "referee": 0
+        }
+      },
+      "soccernet_gsr": {
+        "images": 42750,
+        "images_per_epoch": 42750,
+        "annotated_classes": [
+          "ball",
+          "goalkeeper",
+          "player",
+          "referee"
+        ],
+        "boxes": {
+          "ball": 40931,
+          "goalkeeper": 24107,
+          "player": 604971,
+          "referee": 61546
+        }
+      },
+      "soccernet_v3": {
+        "images": 33986,
+        "images_per_epoch": 33986,
+        "annotated_classes": [
+          "ball",
+          "goalkeeper",
+          "player",
+          "referee"
+        ],
+        "boxes": {
+          "ball": 26376,
+          "goalkeeper": 21007,
+          "player": 292496,
+          "referee": 26202
+        }
+      },
+      "sportsmot": {
+        "images": 1952,
+        "images_per_epoch": 1952,
+        "annotated_classes": [
+          "player"
+        ],
+        "boxes": {
+          "ball": 0,
+          "goalkeeper": 0,
+          "player": 25407,
+          "referee": 0
+        }
+      },
+      "teamtrack": {
+        "images": 4140,
+        "images_per_epoch": 4140,
+        "annotated_classes": [
+          "ball",
+          "player"
+        ],
+        "boxes": {
+          "ball": 4065,
+          "goalkeeper": 0,
+          "player": 91049,
+          "referee": 0
+        }
+      }
+    },
+    "masked_share_by_class": {
+      "ball": 0.0302,
+      "goalkeeper": 0.2234,
+      "player": 0.0065,
+      "referee": 0.1093
+    },
+    "images_with_any_masked_class": 0.2234,
+    "gsr_train_images": 42750,
+    "list_sha256": "9619660044c7ce9e54cd3490bcf930858e93c97caeb5ac71ec8a761c548d4a41"
+  },
+  "bins": {
+    "epoch_lines": 114198,
+    "all": {
+      "small": {
+        "images": 19675,
+        "lines": 21518,
+        "epoch_share": 0.1884
+      },
+      "blur": {
+        "images": 5390,
+        "lines": 5390,
+        "epoch_share": 0.0472
+      },
+      "small_or_blur": {
+        "images": 23918,
+        "lines": 25761,
+        "epoch_share": 0.2256
+      },
+      "none": {
+        "images": 76296,
+        "lines": 88437,
+        "epoch_share": 0.7744
+      }
+    },
+    "per_source": {
+      "football_yolo": {
+        "small": {
+          "images": 97,
+          "lines": 1940,
+          "epoch_share": 0.017
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 97,
+          "lines": 1940,
+          "epoch_share": 0.017
+        },
+        "none": {
+          "images": 639,
+          "lines": 12780,
+          "epoch_share": 0.1119
+        }
+      },
+      "issia": {
+        "small": {
+          "images": 591,
+          "lines": 591,
+          "epoch_share": 0.0052
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 591,
+          "lines": 591,
+          "epoch_share": 0.0052
+        },
+        "none": {
+          "images": 2535,
+          "lines": 2535,
+          "epoch_share": 0.0222
+        }
+      },
+      "roboflow": {
+        "small": {
+          "images": 573,
+          "lines": 573,
+          "epoch_share": 0.005
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 573,
+          "lines": 573,
+          "epoch_share": 0.005
+        },
+        "none": {
+          "images": 442,
+          "lines": 442,
+          "epoch_share": 0.0039
+        }
+      },
+      "soccana": {
+        "small": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "none": {
+          "images": 11434,
+          "lines": 11434,
+          "epoch_share": 0.1001
+        }
+      },
+      "soccer_player_detection": {
+        "small": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "none": {
+          "images": 1075,
+          "lines": 1075,
+          "epoch_share": 0.0094
+        }
+      },
+      "soccernet_gsr": {
+        "small": {
+          "images": 13737,
+          "lines": 13737,
+          "epoch_share": 0.1203
+        },
+        "blur": {
+          "images": 5390,
+          "lines": 5390,
+          "epoch_share": 0.0472
+        },
+        "small_or_blur": {
+          "images": 17980,
+          "lines": 17980,
+          "epoch_share": 0.1574
+        },
+        "none": {
+          "images": 24770,
+          "lines": 24770,
+          "epoch_share": 0.2169
+        }
+      },
+      "soccernet_v3": {
+        "small": {
+          "images": 660,
+          "lines": 660,
+          "epoch_share": 0.0058
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 660,
+          "lines": 660,
+          "epoch_share": 0.0058
+        },
+        "none": {
+          "images": 33326,
+          "lines": 33326,
+          "epoch_share": 0.2918
+        }
+      },
+      "sportsmot": {
+        "small": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "none": {
+          "images": 1952,
+          "lines": 1952,
+          "epoch_share": 0.0171
+        }
+      },
+      "teamtrack": {
+        "small": {
+          "images": 4017,
+          "lines": 4017,
+          "epoch_share": 0.0352
+        },
+        "blur": {
+          "images": 0,
+          "lines": 0,
+          "epoch_share": 0.0
+        },
+        "small_or_blur": {
+          "images": 4017,
+          "lines": 4017,
+          "epoch_share": 0.0352
+        },
+        "none": {
+          "images": 123,
+          "lines": 123,
+          "epoch_share": 0.0011
+        }
+      }
+    },
+    "gsr_train": {
+      "frames": 42750,
+      "frames_listed": 42750,
+      "frames_dropped": 0,
+      "frames_with_blur_known": 40233
+    }
+  },
+  "val": {
+    "rule": "run 2c's: every 4th GSR valid bench frame, then every Ekstraklasa dev image",
+    "images": 2231,
+    "list_sha256": "d0090c0bdba2c566208fa8cd038588e2c7c24bf7e5100741fe90af0826395eb7"
+  },
+  "label_paths": {
+    "train": {
+      "images": 100214,
+      "labels_found": 100214
+    },
+    "val": {
+      "images": 2231,
+      "labels_found": 2231
+    }
+  },
+  "files": {
+    "data_yaml": "/mnt/storage/tactifoot_research/detector_data/runs/bd05_A/data.yaml",
+    "annotated_classes": "/mnt/storage/tactifoot_research/detector_data/runs/bd05_A/annotated_classes.parquet",
+    "smoke_data_yaml": "/mnt/storage/tactifoot_research/detector_data/runs/bd05_A/smoke_data/data.yaml"
+  }
+}

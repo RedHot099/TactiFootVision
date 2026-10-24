@@ -21,6 +21,8 @@ annotate neither goalkeeper nor referee, and the script checks that their tables
   `scripts/detector_bench.py epochs` scores them all.
 * run2c: run 1's sets plus football_yolo (dev clips out) listed 20 times, from run 1's best.pt; 2a showed that
   football_yolo alone makes the model forget GSR.
+* bd05_A / bd05_B (ball-detection 05): dd2c fine-tuned 2 more epochs on run 2c's recipe, restarted; their lists come
+  from scripts/ball_view.py (`view` refuses them).
 
 Validation during training: every 4th frame of the frozen GSR valid benchmark (bench/, ticket 02), plus for run 2 every
 Ekstraklasa dev image (bench/ekstraklasa_dev); the full benchmarks are scored after the run with
@@ -199,6 +201,17 @@ RUNS: dict[str, dict] = {
         },
     },
 }
+# ball-detection 05 (2026-10-24): both arms fine-tune dd2c (run 2c's epoch 1, the packaged detector) on a restarted
+# copy of run 2c's recipe for 2 epochs; only the training list differs. Their views come from scripts/ball_view.py
+# (A: run 2c's list unchanged; B: ticket 01's failure bins x2, GSR train neighbours thinned to the same length).
+for _arm in ("A", "B"):
+    RUNS[f"bd05_{_arm}"] = RUNS["run2c"] | {
+        "title": f"ball-detection 05 arm {_arm} training view",
+        "init": DATA / "runs/run2c/CANDIDATE_epoch1.pt",  # dd2c, sha256 05d706cf...
+        "after": "run2c",
+        "builder": "scripts/ball_view.py",
+        "settings": RUNS["run2c"]["settings"] | {"epochs": 2},
+    }
 
 logger = logging.getLogger("detector_train")
 
@@ -327,6 +340,8 @@ def val_images(run: str) -> list[str]:
 
 def view(args: argparse.Namespace) -> None:
     spec, out = RUNS[args.run], run_dir(args.run)
+    if spec.get("builder"):
+        raise SystemExit(f"the view of {args.run} is built by {spec['builder']}")
     out.mkdir(parents=True, exist_ok=True)
     pool = pd.read_parquet(POOL)
     train = build_view(pool, args.run).sort_values("image")
