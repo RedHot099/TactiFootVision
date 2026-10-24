@@ -2,7 +2,7 @@
 
     uv run python scripts/detector_bench.py build      # bench sets, manifest, research/detector_bench.json
     uv run python scripts/detector_bench.py evaluate --weights W --split valid --out DIR
-    uv run python scripts/detector_bench.py placement --weights W --split valid --out DIR
+    uv run python scripts/detector_bench.py placement --weights W --split valid --out DIR [--row 1280]
     uv run python scripts/detector_bench.py homographies --split test  # freeze GSR test homographies (ticket 05)
     uv run python scripts/detector_bench.py epochs --weights-dir RUN/yolo11l_1280/weights --out DIR  # every epoch
     uv run python scripts/detector_bench.py dump --weights W --out DIR  # every candidate, for scoring without weights
@@ -26,12 +26,15 @@ homography of that frame (`kp03_r2_refined`, the chosen method of pitch-keypoint
 reported: the share of frames with a placed ball, its error and the share of placed balls > 5 m from the truth, with
 2,000-draw clip-bootstrap intervals. The homographies are fixed so that only the detector changes. `--split test`
 uses the GSR test homographies of the same method (pitch-keypoints 03's single test scoring of its chosen keypoint
-model), frozen by `homographies --split test` and recorded in research/detector_bench.json (ticket 05).
+model), frozen by `homographies --split test` and recorded in research/detector_bench.json (ticket 05). `--row 1280`
+(ball-detection 02) places the ball of the pipeline's row instead: native frames, imgsz 1280, NMS IoU 0.7.
 
 `dump` (ball-detection 01) runs the detector once per row on GSR valid and Ekstraklasa dev at `EVAL_CONF` with the
 row's NMS and writes every candidate box of every class (`candidates.parquet`, boxes in the labels' pixels as
 `evaluate` scores them), the scored images (`images.parquet`) and the settings (`dump.json`: weights sha256, rows,
-`max_det`, classes). `score_dump` and `dump_top_ball` score a dump as `evaluate` and `placement` score the weights.
+`max_det`, classes and their mapping to the benchmark's, inference ms per frame on this GPU). `score_dump` and
+`dump_top_ball` score a dump as `evaluate` and `placement` score the weights; `image_scores` keeps `score_dump`'s
+statistics per image, so that any subset of images (a split by game, a bootstrap draw) scores the same way.
 """
 
 import argparse
@@ -41,6 +44,7 @@ import logging
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -495,21 +499,25 @@ def ball_truth(labels: dict) -> dict[int, np.ndarray]:
     return {frame: xy[0] for frame, xy in found.items() if len(xy) == 1}
 
 
-def model_top_ball(model) -> Callable[[str, int, Path], np.ndarray | None]:
-    """``(clip, frame, image path) -> centre`` of ``model``'s most confident ball in the frame resized to
-    ``PLACEMENT["input_size"]`` (that frame's pixels), ``None`` without a ball."""
+def model_top_ball(
+    model, input_size: tuple[int, int] | None = PLACEMENT["input_size"]
+) -> Callable[[str, int, Path], np.ndarray | None]:
+    """``(clip, frame, image path) -> centre`` of ``model``'s most confident ball in ``PLACEMENT["input_size"]``
+    pixels (the homographies' frame), ``None`` without a ball. The model sees the frame resized to ``input_size``
+    (the e3 row), or the native frame when it is ``None`` (the 1280 row), whose centre is then scaled."""
+    size = np.asarray(PLACEMENT["input_size"], float)
 
     def top_ball(clip: str, frame: int, path: Path) -> np.ndarray | None:
         frame_bgr = cv2.imread(str(path))
-        size = PLACEMENT["input_size"]
-        if frame_bgr.shape[1::-1] != size:
-            frame_bgr = cv2.resize(frame_bgr, size, interpolation=cv2.INTER_AREA)
+        if input_size is not None and frame_bgr.shape[1::-1] != tuple(input_size):
+            frame_bgr = cv2.resize(frame_bgr, input_size, interpolation=cv2.INTER_AREA)
         detections = model.predict(frame_bgr)
         balls = detections[detections.data["class_name"] == "ball"]
         if not len(balls):
             return None
         best = int(np.argmax(balls.confidence))
-        return (balls.xyxy[best, :2] + balls.xyxy[best, 2:]) / 2
+        centre = (balls.xyxy[best, :2] + balls.xyxy[best, 2:]) / 2
+        return centre * size / frame_bgr.shape[1::-1]
 
     return top_ball
 
@@ -624,21 +632,26 @@ def bootstrap(table: pd.DataFrame) -> dict:
 
 def placement(args: argparse.Namespace) -> None:
     homographies = frozen_homographies(args.split)
+    row = ROWS[args.row]
     model = tv.load_model(
         "yolo",
         args.weights,
         conf=PLACEMENT["ball_conf"],
-        iou=PLACEMENT["iou"],
-        imgsz=PLACEMENT["imgsz"],
+        iou=row["iou"],
+        imgsz=row["imgsz"],
         device=args.device,
     )
     clock = time.perf_counter()
-    rows = placement_rows(model_top_ball(model), homographies, args.split)
+    rows = placement_rows(
+        model_top_ball(model, row["input_size"]), homographies, args.split
+    )
     summary = {
         "split": args.split,
         "weights": str(args.weights),
         "weights_sha256": sha256_file(args.weights),
-        "settings": PLACEMENT,
+        "settings": PLACEMENT
+        | {k: row[k] for k in ("input_size", "imgsz", "iou")}
+        | {"row": args.row},
         "seconds": round(time.perf_counter() - clock, 1),
         "all": bootstrap(rows.reset_index(drop=True)),
         "near_goal": bootstrap(rows[rows.near_goal].reset_index(drop=True)),
@@ -653,6 +666,7 @@ def placement(args: argparse.Namespace) -> None:
 DUMP_SETS = ("gsr", "ekstraklasa")
 DUMP_ROWS = ("1280", "e3")
 CANDIDATE_COLUMNS = ["x1", "y1", "x2", "y2"]
+DUMP_WARMUP = 10
 
 
 def ekstraklasa_clip(stem: str) -> str:
@@ -677,18 +691,36 @@ def image_key(set_name: str, sample: tv.data.Sample) -> dict:
 
 
 def row_predictions(model, samples: list, input_size: tuple[int, int] | None):
-    """``(sample, detections)`` per sample, the boxes in the sample's pixels: `evaluate_detector`'s inference."""
+    """``(sample, detections, seconds)`` per sample, the boxes in the sample's pixels (`evaluate_detector`'s
+    inference) and ``seconds`` the wall time of the model call alone (resize to ``input_size`` included, image read
+    excluded)."""
     for sample in samples:
         image = sample.read_image()
+        clock = time.perf_counter()
         if input_size is not None:
             image = cv2.resize(image, tuple(input_size), interpolation=cv2.INTER_AREA)
         detections = model.predict(image)
+        seconds = time.perf_counter() - clock
         if input_size is not None and len(detections):
             scale = [sample.width / input_size[0], sample.height / input_size[1]]
             detections.xyxy = np.asarray(detections.xyxy, np.float32) * np.float32(
                 scale * 2
             )
-        yield sample, detections
+        yield sample, detections, seconds
+
+
+def class_map(model_classes: list[str], dataset_classes: list[str]) -> dict:
+    """Model class name -> the benchmark class it is scored as (by name, as `evaluate_detector` maps them), or
+    ``None`` when the benchmark does not score it."""
+    return {name: name if name in dataset_classes else None for name in model_classes}
+
+
+def gpu_name(device: str | None) -> str:
+    import torch
+
+    if device == "cpu" or not torch.cuda.is_available():
+        return "cpu"
+    return torch.cuda.get_device_name(torch.device(device or "cuda"))
 
 
 def dump(args: argparse.Namespace) -> None:
@@ -696,7 +728,7 @@ def dump(args: argparse.Namespace) -> None:
 
     sets = evaluation_sets("valid", list(DUMP_SETS))
     images, candidates = [], []
-    seconds = {}
+    seconds, ms_per_frame = {}, {}
     for row in args.rows:
         settings = ROWS[row]
         model = tv.load_model(
@@ -709,9 +741,11 @@ def dump(args: argparse.Namespace) -> None:
         )
         for name, (dataset, split) in sets.items():
             clock = time.perf_counter()
-            for sample, found in row_predictions(
+            timings = []
+            for sample, found, took in row_predictions(
                 model, dataset[split], settings["input_size"]
             ):
+                timings.append(took)
                 key = image_key(name, sample)
                 if row == args.rows[0]:
                     images.append(
@@ -734,7 +768,17 @@ def dump(args: argparse.Namespace) -> None:
                 table.insert(0, "set", name)
                 candidates.append(table)
             seconds[f"{name}/{row}"] = round(time.perf_counter() - clock, 1)
-            logger.info("%s/%s dumped in %.0f s", name, row, seconds[f"{name}/{row}"])
+            # the first DUMP_WARMUP calls of a row load CUDA kernels and are left out of the cost
+            ms_per_frame[f"{name}/{row}"] = round(
+                1000 * float(np.mean(timings[DUMP_WARMUP:] or timings)), 2
+            )
+            logger.info(
+                "%s/%s dumped in %.0f s (%.1f ms/frame)",
+                name,
+                row,
+                seconds[f"{name}/{row}"],
+                ms_per_frame[f"{name}/{row}"],
+            )
     class_names = model.class_names
     frame = pd.concat(candidates, ignore_index=True)
     frame["class_name"] = pd.Categorical.from_codes(frame.class_id, class_names)
@@ -760,6 +804,7 @@ def dump(args: argparse.Namespace) -> None:
                 "resolutions": sorted(
                     {f"{s.width}x{s.height}" for s in dataset[split]}
                 ),
+                "class_map": class_map(class_names, dataset.class_names),
             }
             for name, (dataset, split) in sets.items()
         },
@@ -767,6 +812,10 @@ def dump(args: argparse.Namespace) -> None:
         "scaled back, as evaluate scores them",
         "image_key": "GSR: <clip>/<frame:06d> (1-based frame, every STRIDE-th); Ekstraklasa dev: the file stem",
         "seconds": seconds,
+        "gpu": gpu_name(args.device),
+        "ms_per_frame": ms_per_frame,
+        "ms_per_frame_note": f"mean wall time of the model call (resize to input_size, inference at conf "
+        f"{EVAL_CONF}, NMS) per image, batch 1, the first {DUMP_WARMUP} images of each set and row left out",
         "candidates": len(frame),
     }
     (args.out / "dump.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -794,46 +843,114 @@ def dump_detections(candidates: pd.DataFrame) -> dict[str, sv.Detections]:
     return found
 
 
+@dataclass
+class ImageScores:
+    """`score_dump`'s statistics of every scored image of one set and row, in the dataset's order.
+
+    ``stats[i]`` is supervision's ``MeanAveragePrecision`` entry of image ``i`` (matches at IoU 0.50:0.95,
+    confidence, class id, target class ids), ``None`` for an image without objects (supervision skips those);
+    ``counts[i]`` the operating-point true positives, false positives and missed targets per class."""
+
+    keys: pd.DataFrame  # image, clip, game
+    stats: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None]
+    counts: np.ndarray  # (images, classes, 3)
+    class_names: list[str]
+
+
+def image_scores(
+    dataset: Dataset, split: str, found: dict[str, sv.Detections], set_name: str
+) -> ImageScores:
+    """Per image of ``dataset[split]``: the dumped predictions (``dump_detections``) matched as `evaluate` matches
+    them (supervision's mAP matching, and IoU >= ``MATCH_IOU`` at ``OPERATING``)."""
+    from supervision.metrics import MeanAveragePrecision
+
+    from tactifoot_vision.evaluation import detection
+
+    thresholds = detection._operating_thresholds(
+        dataset.class_names, OPERATING["conf"], OPERATING["class_conf"], EVAL_CONF
+    )
+    iou_levels = np.linspace(0.5, 0.95, 10)
+    keys, stats, counts = [], [], []
+    for sample in dataset[split]:
+        key = image_key(set_name, sample)
+        keys.append({k: key[k] for k in ("image", "clip", "game")})
+        predictions = detection._to_dataset_classes(
+            found.get(key["image"], sv.Detections.empty()), dataset.class_names, set()
+        )
+        targets = sample.annotations.to_detections()
+        counts.append(
+            detection._match_counts(predictions, targets, thresholds, MATCH_IOU)
+        )
+        if not len(targets):
+            stats.append(None)
+        elif not len(predictions):
+            stats.append(
+                (
+                    np.zeros((0, iou_levels.size), bool),
+                    np.zeros(0, np.float32),
+                    np.zeros(0, int),
+                    targets.class_id,
+                )
+            )
+        else:
+            iou = sv.box_iou_batch(targets.xyxy, predictions.xyxy)
+            matches = MeanAveragePrecision._match_detection_batch(
+                predictions.class_id, targets.class_id, iou, iou_levels
+            )
+            stats.append(
+                (
+                    matches,
+                    predictions.confidence,
+                    predictions.class_id,
+                    targets.class_id,
+                )
+            )
+    return ImageScores(
+        pd.DataFrame(keys), stats, np.asarray(counts), list(dataset.class_names)
+    )
+
+
+def summarise_scores(scores: ImageScores, keep: np.ndarray | None = None) -> dict:
+    """`evaluate`'s metrics of the images ``keep`` (a boolean mask, ``None``: all): mAP and per-class AP50 /
+    AP50-95 / precision / recall, as supervision computes them on those images in the dataset's order."""
+    from supervision.metrics import MeanAveragePrecision
+
+    keep = np.ones(len(scores.stats), bool) if keep is None else np.asarray(keep)
+    chosen = [s for s, k in zip(scores.stats, keep, strict=True) if k and s is not None]
+    if chosen:
+        ap, classes = MeanAveragePrecision._average_precisions_per_class(
+            *[np.concatenate(items, 0) for items in zip(*chosen, strict=True)]
+        )
+        levels = np.mean(ap, axis=0)
+    else:
+        ap, classes, levels = np.zeros((0, 10)), np.zeros(0, int), np.zeros(10)
+    by_class = dict(zip(classes.tolist(), ap, strict=True))
+    counts = scores.counts[keep].sum(axis=0)
+    per_class = {}
+    for class_id, name in enumerate(scores.class_names):
+        tp, fp, fn = counts[class_id]
+        per_class[name] = {
+            "map50": float(by_class[class_id][0]) if class_id in by_class else np.nan,
+            "map50_95": float(by_class[class_id].mean())
+            if class_id in by_class
+            else np.nan,
+            "precision": float(tp / (tp + fp)) if tp + fp else np.nan,
+            "recall": float(tp / (tp + fn)) if tp + fn else np.nan,
+        }
+    return {
+        "map50": float(levels[0]),
+        "map50_95": float(levels.mean()),
+        "images": int(keep.sum()),
+        "per_class": per_class,
+    }
+
+
 def score_dump(
     dataset: Dataset, split: str, found: dict[str, sv.Detections], set_name: str
 ) -> dict:
     """`evaluate`'s metrics of one set from dumped predictions (``dump_detections``): mAP and per-class AP50 /
     AP50-95 / precision / recall at ``OPERATING`` with IoU >= ``MATCH_IOU``."""
-    from supervision.metrics import MeanAveragePrecision
-
-    from tactifoot_vision.evaluation import detection
-
-    samples = dataset[split]
-    thresholds = detection._operating_thresholds(
-        dataset.class_names, OPERATING["conf"], OPERATING["class_conf"], EVAL_CONF
-    )
-    metric = MeanAveragePrecision()
-    counts = np.zeros((len(dataset.class_names), 3), dtype=np.int64)
-    for sample in samples:
-        image = image_key(set_name, sample)["image"]
-        predictions = detection._to_dataset_classes(
-            found.get(image, sv.Detections.empty()), dataset.class_names, set()
-        )
-        targets = sample.annotations.to_detections()
-        metric.update(predictions, targets)
-        counts += detection._match_counts(predictions, targets, thresholds, MATCH_IOU)
-    result = metric.compute()
-    ap = dict(zip(result.matched_classes.tolist(), result.ap_per_class, strict=True))
-    per_class = {}
-    for class_id, name in enumerate(dataset.class_names):
-        tp, fp, fn = counts[class_id]
-        per_class[name] = {
-            "map50": float(ap[class_id][0]) if class_id in ap else np.nan,
-            "map50_95": float(ap[class_id].mean()) if class_id in ap else np.nan,
-            "precision": float(tp / (tp + fp)) if tp + fp else np.nan,
-            "recall": float(tp / (tp + fn)) if tp + fn else np.nan,
-        }
-    return {
-        "map50": float(result.map50),
-        "map50_95": float(result.map50_95),
-        "images": len(samples),
-        "per_class": per_class,
-    }
+    return summarise_scores(image_scores(dataset, split, found, set_name))
 
 
 def dump_top_ball(
@@ -871,6 +988,12 @@ def main() -> None:
         command.add_argument("--device", default=None)
     for command in (e, p):
         command.add_argument("--split", choices=SPLITS, default="valid")
+    p.add_argument(
+        "--row",
+        choices=list(ROWS),
+        default="e3",
+        help="inference row of the placed ball (e3: the frozen PLACEMENT setting; 1280: the pipeline's)",
+    )
     h = commands.add_parser("homographies", help="freeze the GSR test homographies")
     h.add_argument("--split", choices=["test"], required=True)
     e.add_argument("--rows", nargs="*", choices=list(ROWS), default=None)
