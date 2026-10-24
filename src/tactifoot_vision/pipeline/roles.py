@@ -82,9 +82,10 @@ def assign_roles(
        keeps the rule free of colour thresholds that would hold for one
        match only.
     3. For each goal, the outlier kit with most positioned rows inside its
-       penalty area is that goal's goalkeeper kit (detector goalkeepers are
-       grouped too, and a goal with one in its penalty area takes its kit,
-       or none when that kit is a team's): its tracks in at least
+       penalty area is that goal's goalkeeper kit, or the next one when no
+       track of it is mostly in the area (detector goalkeepers are grouped
+       too, and a goal with one with an embedding in its penalty area takes
+       its kit, or none when that kit is a team's): its tracks in at least
        ``min_box_share`` of their positioned rows inside the area (one
        goalkeeper, often tracked in pieces) become the ``goalkeeper`` of the
        team defending it, which
@@ -275,7 +276,7 @@ def _outlier_kits(
             )
     embeddings = np.stack([t.embedding for t in embedded]).astype(np.float64)
     weights = np.array([t.rows for t in embedded], dtype=float)
-    # two tracks fewer than kits: some kits hold two tracks and have a spread
+    # two kits fewer than tracks: some kits hold two tracks and have a spread
     k = min(n_kits, max(2, len(embedded) - 2))
     kmeans = KMeans(n_clusters=k, n_init=10, random_state=0)
     labels = kmeans.fit_predict(embeddings, sample_weight=weights)
@@ -307,32 +308,18 @@ def _outlier_kits(
     kit_spread = _kit_spread(embeddings, weights, labels)
     members = {team: labels == kit for team, kit in teams.items()}
     rest = set(labels.tolist()) - team_kits
+    kit_centres = {
+        kit: _centre_and_spread(embeddings[labels == kit], weights[labels == kit])[0]
+        for kit in rest
+    }
     while rest:
-        shapes = {
-            team: _centre_and_spread(embeddings[member], weights[member])
-            for team, member in members.items()
-        }
-        rows = {team: weights[member].sum() for team, member in members.items()}
-        mean_spread = sum(rows[team] * shapes[team][1] for team in shapes) / sum(
-            rows.values()
+        ratio, team, kit = _nearest_kit(
+            members,
+            {kit: kit_centres[kit] for kit in rest},
+            embeddings,
+            weights,
+            kit_spread,
         )
-        nearest = None
-        for team, (centre, spread) in shapes.items():
-            spread = max(spread, mean_spread, kit_spread)
-            for kit in rest:
-                inside = labels == kit
-                kit_centre = np.average(
-                    embeddings[inside], axis=0, weights=weights[inside]
-                )
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    ratio = np.nan_to_num(
-                        np.linalg.norm(kit_centre - centre) / spread,
-                        nan=0.0,
-                        posinf=np.inf,
-                    )
-                if nearest is None or ratio < nearest[0]:
-                    nearest = (ratio, team, kit)
-        ratio, team, kit = nearest
         logger.debug(
             "Kit of tracks %s: %.1f team spreads from team %d",
             [t.id for t, label in zip(embedded, labels, strict=True) if label == kit],
@@ -347,6 +334,41 @@ def _outlier_kits(
         [t for t, label in zip(embedded, labels, strict=True) if label == kit]
         for kit in sorted(rest)
     ]
+
+
+def _nearest_kit(
+    members: dict[int, np.ndarray],
+    kit_centres: dict[int, np.ndarray],
+    embeddings: np.ndarray,
+    weights: np.ndarray,
+    kit_spread: float,
+) -> tuple[float, int, int]:
+    """``(ratio, team, kit)`` of the kit nearest a team, in that team's spreads.
+
+    A team's spread is at least the teams' mean spread, by rows, and
+    ``kit_spread``.
+    """
+    shapes = {
+        team: _centre_and_spread(embeddings[member], weights[member])
+        for team, member in members.items()
+    }
+    rows = {team: weights[member].sum() for team, member in members.items()}
+    mean_spread = sum(rows[team] * shapes[team][1] for team in shapes) / sum(
+        rows.values()
+    )
+    nearest = None
+    for team, (centre, spread) in shapes.items():
+        spread = max(spread, mean_spread, kit_spread)
+        for kit, kit_centre in kit_centres.items():
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.nan_to_num(
+                    np.linalg.norm(kit_centre - centre) / spread,
+                    nan=0.0,
+                    posinf=np.inf,
+                )
+            if nearest is None or ratio < nearest[0]:
+                nearest = (float(ratio), team, kit)
+    return nearest
 
 
 def _centre_and_spread(
@@ -390,9 +412,10 @@ def _goalkeepers(
 
     ``-1`` is the goal at ``x = 0`` (attacked towards ``-x``), ``1`` the goal
     at ``x = length``. A goal's goalkeeper kit is the kit with most positioned
-    rows inside its penalty area, among the kits of the detector goalkeepers
-    there when it holds any (none of them in ``kits``: no goalkeeper kit).
-    The goal at ``x = 0``'s goalkeepers are no candidates for the other goal.
+    rows inside its penalty area that has a player track in the area, among
+    the kits of the detector goalkeepers there with an embedding when it
+    holds any (none of them in ``kits``: no goalkeeper kit). The goal at
+    ``x = 0``'s goalkeepers are no candidates for the other goal.
     """
     length, centre = pitch.length * scale[0], pitch.width * scale[1] / 2
     box = np.array([pitch.penalty_box_length, pitch.penalty_box_width / 2]) * scale
@@ -403,26 +426,36 @@ def _goalkeepers(
     def in_box(track: _Track, goal_x: float) -> bool:
         return len(track.xy) > 0 and bool(inside(track, goal_x).mean() >= min_box_share)
 
+    def rows_in(kit: list[_Track], goal_x: float) -> int:
+        return sum(int(inside(t, goal_x).sum()) for t in kit)
+
     keepers: dict[int, list[_Track]] = {}
     for attacks, goal_x in ((-1, 0.0), (1, length)):
+        # a detector goalkeeper without an embedding is in no kit
         detected = {
-            t.id for t in tracks if t.name == Role.GOALKEEPER and in_box(t, goal_x)
+            t.id
+            for t in tracks
+            if t.name == Role.GOALKEEPER
+            and t.embedding is not None
+            and in_box(t, goal_x)
         }
         candidates = [
             kit for kit in kits if not detected or any(t.id in detected for t in kit)
         ]
-        rows = [sum(int(inside(t, goal_x).sum()) for t in kit) for kit in candidates]
-        if not rows or max(rows) == 0:
-            continue
         taken = {t.id for chosen in keepers.values() for t in chosen}
-        kit = candidates[int(np.argmax(rows))]
-        chosen = [
-            t
-            for t in kit
-            if t.name == Role.PLAYER and t.id not in taken and in_box(t, goal_x)
-        ]
-        if chosen:
-            keepers[attacks] = chosen
+        # a kit with most rows in the area but no track mostly in it (a
+        # referee passing through) gives way to the next one
+        for kit in sorted(candidates, key=lambda kit: -rows_in(kit, goal_x)):
+            if rows_in(kit, goal_x) == 0:
+                break
+            chosen = [
+                t
+                for t in kit
+                if t.name == Role.PLAYER and t.id not in taken and in_box(t, goal_x)
+            ]
+            if chosen:
+                keepers[attacks] = chosen
+                break
     return keepers
 
 

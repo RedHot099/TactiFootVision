@@ -588,8 +588,9 @@ configs/              example run files
   would count them in. The rule compares the embedder's raw embeddings,
   not the team classifier's UMAP space; with fewer than three tracks a
   team it warns that kits may be missed. For each
-  goal, the kit with most rows in its penalty area (among the kits of the
-  detector goalkeepers there, when any) is its goalkeeper's: its player
+  goal, the kit with most rows in its penalty area that has a player track
+  mostly there (among the kits of the detector goalkeepers there with an
+  embedding, when any) is its goalkeeper's: its player
   tracks in the area for at least `min_box_share` (above 0) of their
   positioned rows, often one keeper in pieces, become the `goalkeeper` of
   the team defending that goal (`attack_direction`, so one period per

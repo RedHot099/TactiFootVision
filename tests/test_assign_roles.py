@@ -557,3 +557,26 @@ def test_a_keeper_near_a_teams_kit_in_a_short_shot_keeps_a_kit_of_its_own():
     assert roles[23] == {("referee", NO_TEAM)}
     for tracker_id, _, team, *_ in [*PLAYERS[:2], *PLAYERS[10:12]]:
         assert roles[tracker_id] == {("player", team)}
+
+
+def test_a_kit_with_most_rows_in_the_area_but_no_track_mostly_there_gives_way():
+    # three officials each in the box 9 frames in 20: more rows there than the
+    # keeper's 20, but none of them mostly in the area
+    def visits(y: float) -> Path:
+        return lambda index: (8.0, y) if index % 20 < 9 else (50.0, y)
+
+    officials = [(31 + i, "player", 0, "black", visits(28 + 4 * i)) for i in range(3)]
+    roles = _roles(assign_roles(_result([*PLAYERS, KEEPER_LEFT, *officials])))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    for tracker_id, *_ in officials:
+        assert roles[tracker_id] == {("referee", NO_TEAM)}
+
+
+def test_a_detector_goalkeeper_without_an_embedding_leaves_the_kits_open():
+    # no crop of the detector's keeper was usable: it is in no kit
+    detected = (41, "goalkeeper", 0, None, _at(2, 30))
+    roles = _roles(assign_roles(_result([*SCENE, detected])))
+
+    assert roles[21] == {("goalkeeper", 0)}
+    assert roles[41] == {("goalkeeper", 0)}
