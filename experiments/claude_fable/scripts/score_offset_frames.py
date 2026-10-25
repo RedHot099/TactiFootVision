@@ -30,6 +30,34 @@ Resume. Work is done in chunks of whole shots of one fold. A chunk is committed 
 and embeddings are on disk; a rerun re-checks every committed chunk (parquet and embedding hashes), redoes the others,
 and refuses to continue when the recorded identity differs from the requested one. Disk: at least 5 GiB stay free.
 The GPU is used only with --gpu-approved and only while no other python process holds it.
+
+Layout xgt (xg-temporal ticket 01b, `--layout xgt`): the G-combo embeddings of the xgv fold models for the window of
+xg-temporal, in the folder contract of `xgpoc/temporal/inputs.py` (source g_xgv).
+
+    ./run.sh --no-sync python scripts/score_offset_frames.py --layout xgt --check-only --device cpu
+    ./run.sh --no-sync python scripts/score_offset_frames.py --layout xgt --embed-seeds 0 1 --device cuda --gpu-approved
+
+    encoders      g_combo only (no head-free control, no frozen DINOv2), models `results/xgv_g_combo` (10 bundles)
+    shots         --shots-csv, by default the 01b extraction list `results/xgt_inputs/extraction_shots.csv` (checked
+                  against its completion record); every shot's match must be a `training` match of the xgv split plan
+                  (`xgpoc.detector.approach1.verify_plan`: plan.csv hash, folds file = the plan's training folds), and
+                  the bundles must name that plan
+    offsets       by default the 11 offsets -1600 ... +400 ms of `xgpoc.temporal.inputs.GRID`
+    folds         `cache/folds_xgv_home5.csv`; there is no test group: every shot is scored by the two models of the
+                  fold that held out its match (also the 31 matches of the official v1.2 test split), logits averaged
+                  over the two seeds exactly as `z_g_combo` (`xg_logit` = mean of logit / T)
+    embeddings    `--embed-seeds` (default 0): seed 0 is `embeddings_g_combo.npy` (the contract's array); every further
+                  seed k is `embeddings_g_combo_seed<k>.npy` with the same `embedding_ref` rows (no extra GPU pass: the
+                  tails of both seeds run for the logits anyway)
+    outputs       --out (default `results/xgt_xgv_embeddings`): predictions.parquet and complete.json only; the arrays
+                  in --embeddings-dir (default `outputs/xgt_xgv_embeddings`), named with absolute path and sha256 in
+                  complete.json `embeddings` (`results/` is shared between worktrees through a symlink, `outputs/`
+                  is not, so a relative path would point elsewhere from another worktree)
+    spot check    against `z_g_combo` of `results/xgd_a1_ensemble/oof.csv` (only shot_id and z_g_combo are read, after
+                  checking the file against its completion record), never against the training-time prediction files:
+                  offset 0 on the stored PNG (descriptive: mean and largest |Δlogit| and the correlation), and the
+                  index-JPEG control, which must agree within the batch-composition bound (exit code)
+A smoke subset (another shot list or other offsets) must not be written to the default --out or --embeddings-dir.
 """
 
 import argparse
@@ -54,6 +82,8 @@ from torch.utils.data import DataLoader
 from xgpoc.bundle import canonical_digest, check_data_files, read_bundle, sha256_file
 from xgpoc.data.datasets import STD
 from xgpoc.data.offset_frames import GRID_MS
+from xgpoc.detector import approach1 as a1
+from xgpoc.detector import records
 from xgpoc.models import g_bundle
 from xgpoc.paths import INDEX
 from xgpoc.probe.scoring import (
@@ -63,14 +93,16 @@ from xgpoc.probe.scoring import (
     ensemble_logits,
 )
 from xgpoc.probe.table import (
-    ENCODERS,
     G_ENCODERS,
     TEST_GROUP,
     build_plan,
     chunk_table,
+    reference_check,
     spot_check,
     validate_table,
 )
+from xgpoc.temporal import inputs as ti
+from xgpoc.temporal import provenance as tp
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "xgc_offset_scores_v1"
@@ -82,6 +114,52 @@ OUT = ROOT / "results/xgc_offset_scores"
 MIN_FREE_BYTES = 5 * 2**30
 OFFSET_FILES = ("frames.csv", "shots.csv", "summary.json", "coverage_by_offset.csv")
 TABLE_FILE = "predictions.parquet"
+FROZEN = "dinov2_frozen"
+
+XGT_VERSION = "xgt_xgv_embeddings_v1"
+XGT_OUT = ti.XGV_EMBEDDINGS                                 # results/xgt_xgv_embeddings: table and record only
+XGT_EMBEDDINGS = ROOT / "outputs/xgt_xgv_embeddings"        # the arrays, named by path and sha256 in complete.json
+XGT_SHOTS = ROOT / "results/xgt_inputs/extraction_shots.csv"
+XGT_G_COMBO = ROOT / "results/xgv_g_combo"
+XGT_REFERENCE = ti.OOF                                      # z_g_combo, read with shot_id only
+XGT_REFERENCE_COLUMNS = ["shot_id", "z_g_combo"]
+
+
+@dataclass(frozen=True)
+class Layout:
+    """What a run scores and where it writes: the direction probe of xg-credibility (xgc) or the xgv fold embeddings
+    of xg-temporal (xgt, module docstring)."""
+
+    name: str
+    version: str
+    g_encoders: tuple[str, ...]
+    frozen: bool
+    test_group: bool
+
+    @property
+    def encoders(self) -> tuple[str, ...]:
+        return (*self.g_encoders, FROZEN) if self.frozen else self.g_encoders
+
+
+LAYOUTS = {"xgc": Layout("xgc", VERSION, G_ENCODERS, True, True),
+           "xgt": Layout("xgt", XGT_VERSION, ("g_combo",), False, False)}
+
+
+def array_name(encoder: str, seed: int) -> str:
+    """The embedding array of an encoder and seed: seed 0 is `embeddings_<encoder>.npy`, seed k `<encoder>_seed<k>`."""
+    return encoder if seed == 0 else f"{encoder}_seed{seed}"
+
+
+def array_names(layout: Layout, embed_seeds: tuple[int, ...]) -> dict[str, str]:
+    """array name -> encoder, in layout order."""
+    names = {array_name(e, s): e for e in layout.g_encoders for s in embed_seeds}
+    return names | ({FROZEN: FROZEN} if layout.frozen else {})
+
+
+def resolved(path: str | Path) -> Path:
+    """A recorded path (relative to the experiment, or absolute)."""
+    path = Path(path)
+    return path if path.is_absolute() else ROOT / path
 
 
 # --- inputs --------------------------------------------------------------------------------------------------------------
@@ -156,7 +234,7 @@ def verify_bundles(root: Path, encoder: str, index: Path, folds: Path, overlay: 
         out.append({"encoder": encoder, "fold": key[0], "seed": key[1], "path": str(run / "bundle.pt"), "sha256": sha,
                     "temperature": float(temperature), "spec": bundle["spec"], "backbone": bundle["backbone"],
                     "commit": bundle["commit"], "code_digest": provenance["code"]["digest"],
-                    "data": provenance["data"]})
+                    "data": provenance["data"], "plan_sha256": ident.get("plan", {}).get("sha256")})
     return sorted(out, key=lambda m: (m["fold"], m["seed"]))
 
 
@@ -183,22 +261,63 @@ def check_layout(models: dict[str, list[dict]], folds: pd.DataFrame, expect_mode
     return spec, backbone, len(seeds)
 
 
+def xgt_roles(index: Path, folds: Path, shots: pd.DataFrame, models: list[dict]) -> dict:
+    """Layout xgt: the xgv split plan is the approved one and the folds file its training folds
+    (`approach1.verify_plan`), every bundle was trained under that plan, and every requested shot lies in a `training`
+    match (none of the 172 held-out matches). Returns the plan record of the run identity."""
+    plan = a1.verify_plan(index, folds=folds)
+    if wrong := [(m["fold"], m["seed"]) for m in models if m["plan_sha256"] != a1.PLAN_SHA256]:
+        raise ValueError(f"bundles {wrong} were not trained under the xgv split plan {a1.PLAN_SHA256[:12]}")
+    role = shots.game.map(plan.set_index("game").role)
+    if (outside := shots[role.ne(tp.ROLE)]).shape[0]:
+        raise ValueError(f"{len(outside)} shots lie outside the plan's training role, e.g. {outside.shot_id.iloc[0]} "
+                         f"({role[outside.index[0]]})")
+    return {"plan": {"path": ti.recorded_path(a1.PLAN_DIR / "plan.csv"), "sha256": a1.PLAN_SHA256},
+            "roles": {str(k): int(v) for k, v in role.value_counts().items()},
+            "matches": int(shots.game.nunique())}
+
+
+def xgt_table_check(table: pd.DataFrame, index: Path, folds: Path) -> dict:
+    """Layout xgt, on a finished table: the role of every match in the xgv split plan and whether every row was scored
+    by the models of its match's xgv fold. Passes when both hold for every row."""
+    plan = a1.verify_plan(index, folds=folds).set_index("game")
+    games = table.drop_duplicates("game").game
+    roles = games.map(plan.role).fillna("not in the plan")
+    fold_ok = bool((table.fold_source.astype(int) == table.game.map(plan.fold)).all())
+    return {"matches": int(len(games)), "shots": int(table.shot_id.nunique()),
+            "match_roles": {str(k): int(v) for k, v in roles.value_counts().items()},
+            "fold_source_is_the_xgv_fold": fold_ok, "passed": bool(roles.eq(tp.ROLE).all() and fold_ok)}
+
+
+def xgt_reference(path: Path) -> tuple[pd.Series, dict]:
+    """shot_id -> z_g_combo of the out-of-fold table, read with these two columns only after checking the file against
+    its completion record; and its record for the identity."""
+    digest = records.verified_file(path)
+    table = pd.read_csv(path, usecols=XGT_REFERENCE_COLUMNS)
+    if table.shot_id.duplicated().any():
+        raise ValueError(f"{path}: a shot appears twice")
+    return table.set_index("shot_id").z_g_combo, {"path": ti.recorded_path(path), "sha256": digest,
+                                                  "columns": XGT_REFERENCE_COLUMNS}
+
+
 # --- models --------------------------------------------------------------------------------------------------------------
 
 class ModelBank:
     """The shared trunk and fold tails of both G encoders, loaded when a group first needs them."""
 
-    def __init__(self, models: dict[str, list[dict]], spec: dict, device: str):
-        self.models, self.device = models, device
+    def __init__(self, models: dict[str, list[dict]], spec: dict, device: str, layout: Layout = LAYOUTS["xgc"],
+                 embed_seeds: tuple[int, ...] = (0,)):
+        self.models, self.device, self.layout, self.embed_seeds = models, device, layout, tuple(embed_seeds)
+        self.arrays = array_names(layout, self.embed_seeds)
         pretrained, _ = g_bundle.build_g(spec)    # the untouched pretrained network: trunk and frozen encoder
         self.scorer = SharedScorer(pretrained.eval(), spec["model"]["n_blocks"], device)
         self.size_wh, self.mask = tuple(spec["input"]["size_wh"]), spec["input"]["mask"]
         width = pretrained.backbone.embed_dim   # 1024 for ViT-L: 5 x 1024 for G (CLS + 4 queries), 2 x 1024 for the frozen encoder
-        self.dims = {"g_combo": 5 * width, "g_combo_no_head": 5 * width, "dinov2_frozen": 2 * width}
+        self.dims = {"g_combo": 5 * width, "g_combo_no_head": 5 * width, FROZEN: 2 * width}
 
     def members(self, group: str) -> tuple[list[GMember], list[GMember]]:
-        """(models that score the group, those whose embedding is kept). A fold group needs that fold's models; the
-        test group all of them, and keeps no G embedding."""
+        """(models that score the group, those whose embedding is kept: the `embed_seeds` models of the fold). A fold
+        group needs that fold's models; the test group all of them, and keeps no G embedding."""
         wanted = [(m["encoder"], m["fold"], m["seed"]) for ms in self.models.values() for m in ms
                   if group == TEST_GROUP or group == f"fold{m['fold']}"]
         out = []
@@ -210,7 +329,7 @@ class ModelBank:
                     raise ValueError(f"{record['path']} is not the verified bundle")
                 self.scorer.add(key[0], key[1], key[2], record["temperature"], loaded.model)
             out.append(self.scorer.members[key])
-        embed = [] if group == TEST_GROUP else [m for m in out if m.seed == 0]
+        embed = [] if group == TEST_GROUP else [m for m in out if m.seed in self.embed_seeds]
         return out, embed
 
 
@@ -227,15 +346,17 @@ def plan_digest(plan: pd.DataFrame) -> str:
 
 
 def requested_identity(args, offset_provenance: dict, models: dict[str, list[dict]], spec: dict, backbone: dict,
-                       plan: pd.DataFrame, full: bool, sources: dict) -> dict:
-    """Everything that makes a table this table. A rerun with any of it changed is refused, not merged."""
+                       plan: pd.DataFrame, full: bool, sources: dict, xgt: dict | None = None) -> dict:
+    """Everything that makes a table this table. A rerun with any of it changed is refused, not merged. `xgt`: the
+    layout-xgt part (shot list, plan, reference, embedding seeds and folder)."""
     shots = plan.drop_duplicates("shot_id").shot_id
     return json.loads(json.dumps({
-        "version": VERSION,
+        "version": LAYOUTS[args.layout].version, **({"xgt": xgt} if xgt is not None else {}),
         "protocol": {"sha256": sha256_file(args.protocol), "approval": PROTOCOL_APPROVAL},
         "offset_frames": offset_provenance,
         "index_sha256": sha256_file(args.index), "folds_sha256": sha256_file(args.folds), "overlay_sha256": sha256_file(args.overlay),
-        "bundles": {e: [{k: m[k] for k in ("fold", "seed", "sha256", "temperature", "commit", "code_digest", "data")} for m in ms]
+        "bundles": {e: [{k: m[k] for k in ("fold", "seed", "sha256", "temperature", "commit", "code_digest", "data")}
+                        | ({"plan_sha256": m["plan_sha256"]} if xgt is not None else {}) for m in ms]
                     for e, ms in models.items()},
         "spec": spec, "backbone": backbone,
         "plan": {"shots": len(shots), "rows": len(plan), "offsets_ms": sorted(plan.offset_ms.unique().tolist()),
@@ -249,14 +370,17 @@ def requested_identity(args, offset_provenance: dict, models: dict[str, list[dic
         "sources": sources, "runtime": runtime()}))
 
 
-def open_embeddings(out: Path, plan: pd.DataFrame, dims: dict[str, int]) -> dict[str, np.ndarray]:
-    """The three float16 arrays (created at full size, written chunk by chunk); sized from the plan."""
-    sizes = {"g_combo": int((plan.emb_row_g >= 0).sum()), "g_combo_no_head": int((plan.emb_row_g >= 0).sum()),
-             "dinov2_frozen": int((plan.emb_row_frozen >= 0).sum())}
+def array_rows(plan: pd.DataFrame, encoder: str) -> int:
+    return int(((plan.emb_row_frozen if encoder == FROZEN else plan.emb_row_g) >= 0).sum())
+
+
+def open_embeddings(folder: Path, plan: pd.DataFrame, dims: dict[str, int], names: dict[str, str]) -> dict[str, np.ndarray]:
+    """The float16 arrays `names` (array name -> encoder; created at full size, written chunk by chunk) in `folder`;
+    sized from the plan."""
     arrays = {}
-    for encoder, rows in sizes.items():
-        path = out / f"embeddings_{encoder}.npy"
-        shape = (rows, dims[encoder])
+    for name, encoder in names.items():
+        path = folder / f"embeddings_{name}.npy"
+        shape = (array_rows(plan, encoder), dims[encoder])
         if not path.exists():
             temporary = path.with_name(path.name + ".tmp")
             np.lib.format.open_memmap(temporary, mode="w+", dtype=np.float16, shape=shape).flush()
@@ -264,12 +388,12 @@ def open_embeddings(out: Path, plan: pd.DataFrame, dims: dict[str, int]) -> dict
         array = np.lib.format.open_memmap(path, mode="r+")
         if array.shape != shape or array.dtype != np.float16:
             raise ValueError(f"{path} has shape {array.shape} {array.dtype}, expected {shape} float16")
-        arrays[encoder] = array
+        arrays[name] = array
     return arrays
 
 
-def embedding_slice(chunk_rows: pd.DataFrame, encoder: str) -> tuple[int, int]:
-    column = chunk_rows.emb_row_frozen if encoder == "dinov2_frozen" else chunk_rows.emb_row_g
+def embedding_slice(chunk_rows: pd.DataFrame, name: str) -> tuple[int, int]:
+    column = chunk_rows.emb_row_frozen if name == FROZEN else chunk_rows.emb_row_g
     kept = column[column >= 0]
     if kept.empty:
         return 0, 0
@@ -324,11 +448,12 @@ def score_chunk(chunk_rows: pd.DataFrame, bank: ModelBank, batch_size: int, work
     images = chunk_rows[chunk_rows.has_frame]
     loader = DataLoader(FrameDataset([Path(p) for p in images.frame_file], images.file_sha256.tolist(), bank.size_wh, bank.mask),
                         batch_size, shuffle=False, num_workers=workers)
-    by_encoder = {e: [m for m in members if m.encoder == e] for e in G_ENCODERS}
-    collected = {e: {"xg_logit": [], "xg_logit_raw": [], "on_target_logit": []} for e in G_ENCODERS}
-    embeddings = {e: [] for e in ENCODERS}
+    layout = bank.layout
+    by_encoder = {e: [m for m in members if m.encoder == e] for e in layout.g_encoders}
+    collected = {e: {"xg_logit": [], "xg_logit_raw": [], "on_target_logit": []} for e in layout.g_encoders}
+    embeddings = {name: [] for name in bank.arrays}
     for batch in loader:
-        scores, frozen = bank.scorer.score(batch, members, embed)
+        scores, frozen = bank.scorer.score(batch, members, embed, frozen=layout.frozen)
         lookup = {id(m): s for m, s in zip(members, scores, strict=True)}
         for encoder, ms in by_encoder.items():
             xg_t, xg_raw, on_target = ensemble_logits([lookup[id(m)] for m in ms], ms)
@@ -337,28 +462,31 @@ def score_chunk(chunk_rows: pd.DataFrame, bank: ModelBank, batch_size: int, work
             collected[encoder]["on_target_logit"].append(on_target)
             for m in ms:
                 if any(m is e for e in embed):
-                    embeddings[encoder].append(lookup[id(m)].embedding.astype(np.float16))
-        embeddings["dinov2_frozen"].append(frozen.astype(np.float16))
+                    embeddings[array_name(encoder, m.seed)].append(lookup[id(m)].embedding.astype(np.float16))
+        if layout.frozen:
+            embeddings[FROZEN].append(frozen.astype(np.float16))
     values = {}
-    for encoder in G_ENCODERS:
+    for encoder in layout.g_encoders:
         values[encoder] = {c: np.concatenate(v) if v else np.zeros(0) for c, v in collected[encoder].items()}
         values[encoder]["on_target_logit"] = values[encoder]["on_target_logit"] if encoder == "g_combo" else None
         n = len(by_encoder[encoder])
         values[encoder] |= {"fold_source": -1 if group == TEST_GROUP else int(group.removeprefix("fold")),
                             "seed_source": ",".join(map(str, sorted({m.seed for m in by_encoder[encoder]}))), "n_models": n}
-    values["dinov2_frozen"] = {"fold_source": -1, "seed_source": "", "n_models": 0}
-    stacked = {e: np.concatenate(v) if v else np.zeros((0, bank.dims[e]), np.float16) for e, v in embeddings.items()}
-    for encoder, array in stacked.items():
+    if layout.frozen:
+        values[FROZEN] = {"fold_source": -1, "seed_source": "", "n_models": 0}
+    stacked = {name: np.concatenate(v) if v else np.zeros((0, bank.dims[bank.arrays[name]]), np.float16)
+               for name, v in embeddings.items()}
+    for name, array in stacked.items():
         if not np.isfinite(array).all():
-            raise ValueError(f"{encoder}: non-finite or overflowing embedding in chunk of {group}")
-    for encoder in G_ENCODERS:
+            raise ValueError(f"{name}: non-finite or overflowing embedding in chunk of {group}")
+    for encoder in layout.g_encoders:
         for column in ("xg_logit", "xg_logit_raw"):
             if not np.isfinite(values[encoder][column]).all():
                 raise ValueError(f"{encoder}: non-finite {column} in chunk of {group}")
     expected_g = int((chunk_rows.emb_row_g >= 0).sum())
-    if len(stacked["g_combo"]) != expected_g or len(stacked["g_combo_no_head"]) != expected_g or len(stacked["dinov2_frozen"]) != len(images):
+    if any(len(array) != (len(images) if name == FROZEN else expected_g) for name, array in stacked.items()):
         raise ValueError("embedding count does not match the plan")
-    return ChunkResult(chunk_table(chunk_rows, values), stacked)
+    return ChunkResult(chunk_table(chunk_rows, values, layout.encoders), stacked)
 
 
 def commit_chunk(out: Path, number: int, chunk_rows: pd.DataFrame, result: ChunkResult, arrays: dict[str, np.ndarray]) -> None:
@@ -447,6 +575,26 @@ def full_spot_check(table: pd.DataFrame, plan: pd.DataFrame, bank: ModelBank | N
     return report
 
 
+def xgt_spot_check(table: pd.DataFrame, plan: pd.DataFrame, bank: ModelBank, args: argparse.Namespace,
+                   reference: pd.Series) -> dict:
+    """Layout xgt: the spot check against `z_g_combo` (module docstring). `offset0_vs_z_g_combo`: the table's offset-0
+    `xg_logit` on the stored PNG, descriptive (the PNG cut from the clip differs from the index JPEG the models saw; xgc
+    found a mean |Δlogit| of about 0.09). `index_jpeg_control`: the same pipeline on the index JPEG of `--control-shots`
+    evenly spaced shots, which must agree within the batch-composition bound. `roles`: every match a training match
+    and every row scored by its xgv fold (`xgt_table_check`). The run passes when the control and the roles do."""
+    report = {"offset0_vs_z_g_combo": reference_check(table, reference)}
+    rows = control_rows(plan, args.index, args.control_shots)
+    parts = [score_chunk(group, bank, args.batch_size, args.workers, keep_embeddings=False).table for _, group in rows.groupby("group")]
+    control = reference_check(pd.concat(parts, ignore_index=True), reference)
+    control["files_sha256"] = canonical_digest(dict(zip(rows.shot_id, rows.file_sha256, strict=True)))
+    report["index_jpeg_control"] = control
+    report["input_gap"] = input_gap(rows, bank)
+    report["roles"] = xgt_table_check(table, args.index, args.folds)
+    report["pipeline_passed"] = bool(control["passed"] and report["roles"]["passed"])
+    report["offset0_passed"] = report["offset0_vs_z_g_combo"]["passed"]
+    return report
+
+
 # --- completion ----------------------------------------------------------------------------------------------------------
 
 def output_hashes(out: Path) -> dict[str, str]:
@@ -469,32 +617,45 @@ def verify_complete(out: Path, identity: dict) -> dict:
     for name, expected in record["files"].items():
         if sha256_file(out / name) != expected:
             raise ValueError(f"{out / name} changed since the run completed")
+    for entry in record.get("embeddings", {}).values():
+        if sha256_file(resolved(entry["path"])) != entry["sha256"]:
+            raise ValueError(f"{resolved(entry['path'])} changed since the run completed")
     return record
 
 
-def finalize(out: Path, plan: pd.DataFrame, identity: dict, check_with: tuple, n_models: int, n_seeds: int,
-             arrays: dict, started: float) -> dict:
+def finalize(out: Path, embeddings_dir: Path, plan: pd.DataFrame, identity: dict, bank: ModelBank, checker, n_models: int,
+             n_seeds: int, arrays: dict, started: float) -> dict:
+    """Assemble and validate the table, run the spot check (`checker(table)`), hash every output and write
+    complete.json; arrays outside `out` are named in `embeddings` with path and sha256."""
     parts = []
     for number in sorted(plan.chunk.unique()):
         parts.append(pd.read_parquet(chunk_files(out, int(number))[0]))
     table = pd.concat(parts, ignore_index=True)
-    validate_table(table, plan, n_models, n_seeds)
+    validate_table(table, plan, n_models, n_seeds, bank.layout.encoders)
     for array in arrays.values():
         array.flush()
     arrays.clear()
     table.to_parquet(out / TABLE_FILE, index=False)
-    check = full_spot_check(table, plan, *check_with)
+    check = checker(table)
     files = output_hashes(out)
+    paths = {name: embeddings_dir / f"embeddings_{name}.npy" for name in bank.arrays}
+    seeds = {array_name(e, s): s for e in bank.layout.g_encoders for s in bank.embed_seeds}    # none for the frozen encoder
+    elsewhere = {} if same_path(embeddings_dir, out) else {"embeddings": {
+        name: {"path": str(path.resolve()), "sha256": sha256_file(path), "encoder": bank.arrays[name],
+               "seed": seeds.get(name), "shape": list(np.load(path, mmap_mode="r").shape), "dtype": "float16"}
+        for name, path in paths.items()}}
     scored = table[table.encoder.eq("g_combo")]
-    record = {"identity": identity, "files": files, "spot_check": check,
+    record = {"identity": identity, "files": files, **elsewhere, "spot_check": check,
               "summary": {"rows": len(table), "shots": int(scored.shot_id.nunique()),
                           "frames_scored": int(scored.frame_status.isin(["ok", "anchor_off_tolerance"]).sum()),
                           "rows_without_frame_per_encoder": int(scored.frame_status.isin(["missing", "ambiguous", "decode_failed"]).sum()),
                           "frame_status": scored.frame_status.value_counts().to_dict(),
                           "complete_case_shots": int(scored.drop_duplicates("shot_id").complete_case.sum()),
-                          "embedding_dims": check_with[0].dims,
-                          "embedding_rows": {e: int(np.load(out / f"embeddings_{e}.npy", mmap_mode="r").shape[0]) for e in ENCODERS},
-                          "seconds_this_run": round(time.time() - started, 1)},
+                          "embedding_dims": {e: bank.dims[e] for e in bank.layout.encoders},
+                          "embedding_rows": {n: int(np.load(p, mmap_mode="r").shape[0]) for n, p in paths.items()},
+                          "embedding_bytes": {n: p.stat().st_size for n, p in paths.items()},
+                          "seconds_this_run": round(time.time() - started, 1),
+                          "gpu_peak_allocated_bytes": torch.cuda.max_memory_allocated() if torch.cuda.is_initialized() else None},
               "completed_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     write_atomic(out / "complete.json", json_text(record).encode())
     shutil.rmtree(out / "chunks")
@@ -506,62 +667,138 @@ def finalize(out: Path, plan: pd.DataFrame, identity: dict, check_with: tuple, n
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--layout", choices=sorted(LAYOUTS), default="xgc", help="xgc: the direction probe; xgt: xg-temporal 01b")
+    ap.add_argument("--out", type=Path, help=f"default {OUT.relative_to(ROOT)} (xgc), {XGT_OUT.relative_to(ROOT)} (xgt)")
+    ap.add_argument("--embeddings-dir", type=Path,
+                    help=f"where the arrays go; default --out (xgc), {XGT_EMBEDDINGS.relative_to(ROOT)} (xgt)")
+    ap.add_argument("--embed-seeds", type=int, nargs="+", default=[0],
+                    help="seeds whose G embedding is kept (0 must be one; seed k > 0 goes to embeddings_<encoder>_seed<k>)")
     ap.add_argument("--index", type=Path, default=INDEX)
     ap.add_argument("--offset-frames", type=Path, default=OFFSET_FRAMES)
-    ap.add_argument("--g-combo", type=Path, default=G_ROOTS["g_combo"])
-    ap.add_argument("--head-free", type=Path, default=G_ROOTS["g_combo_no_head"])
-    ap.add_argument("--folds", type=Path, default=ROOT / FOLDS_FILE)
+    ap.add_argument("--g-combo", type=Path, help=f"default {G_ROOTS['g_combo'].relative_to(ROOT)} (xgc), "
+                                                 f"{XGT_G_COMBO.relative_to(ROOT)} (xgt)")
+    ap.add_argument("--head-free", type=Path, default=G_ROOTS["g_combo_no_head"], help="xgc only")
+    ap.add_argument("--folds", type=Path, help=f"default {FOLDS_FILE} (xgc), {a1.FOLDS.relative_to(ROOT)} (xgt)")
     ap.add_argument("--overlay", type=Path, default=ROOT / OVERLAY)
     ap.add_argument("--protocol", type=Path, default=PROTOCOL)
+    ap.add_argument("--reference", type=Path, default=XGT_REFERENCE, help="xgt: the out-of-fold table with z_g_combo")
     ap.add_argument("--expect-models", type=int, default=10, help="fold models per G encoder (ten in the real run)")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--chunk-shots", type=int, default=64, help="shots per chunk, the unit of resume")
     ap.add_argument("--workers", type=int, default=6, help="image decoding workers")
     ap.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
     ap.add_argument("--gpu-approved", action="store_true", help="owner approval to use the GPU; required on a GPU")
-    ap.add_argument("--shots-csv", type=Path, help="smoke runs: score only the shots listed in the shot_id column")
-    ap.add_argument("--offsets", type=int, nargs="*", help="smoke runs: score only these grid offsets")
+    ap.add_argument("--shots-csv", type=Path, help=f"xgc smoke runs: score only the shots listed in the shot_id column; "
+                                                   f"xgt: the shot list, default {XGT_SHOTS.relative_to(ROOT)}")
+    ap.add_argument("--offsets", type=int, nargs="*", help="xgc smoke runs: score only these grid offsets; "
+                                                           f"xgt: default {list(ti.GRID)}")
     ap.add_argument("--control-shots", type=int, default=120, help="shots of the JPEG control of the spot check")
     ap.add_argument("--max-chunks", type=int, help="stop cleanly after this many new chunks (resume by rerunning)")
     ap.add_argument("--check-only", action="store_true", help="verify the inputs, build the plan, print sizes; score nothing")
     ap.add_argument("--spot-check", action="store_true", help="re-run the offset-0 check on a finished table; score nothing")
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    xgt = args.layout == "xgt"
+    args.out = args.out or (XGT_OUT if xgt else OUT)
+    args.embeddings_dir = args.embeddings_dir or (XGT_EMBEDDINGS if xgt else args.out)
+    args.g_combo = args.g_combo or (XGT_G_COMBO if xgt else G_ROOTS["g_combo"])
+    args.folds = args.folds or (a1.FOLDS if xgt else ROOT / FOLDS_FILE)
+    args.embed_seeds = tuple(sorted(set(args.embed_seeds)))
+    if 0 not in args.embed_seeds:
+        ap.error("--embed-seeds must include 0 (the embedding of the protocol and of the g_xgv contract)")
+    if xgt:
+        args.shots_csv = args.shots_csv or XGT_SHOTS
+        args.offsets = args.offsets or list(ti.GRID)
+    return args
+
+
+def same_path(a: Path, b: Path) -> bool:
+    return Path(a).resolve() == Path(b).resolve()
+
+
+def check_destination(args: argparse.Namespace, grid: tuple[int, ...]) -> bool:
+    """Whether the run is the full one of its layout; a subset must not go to a default output. Layout xgt: full is
+    the 01b extraction list (checked against its completion record) at the 11 offsets of the temporal grid."""
+    if args.layout == "xgc":
+        if (args.shots_csv or args.offsets) and same_path(args.out, OUT):
+            raise SystemExit("a smoke subset (--shots-csv / --offsets) must not be written to the default --out; pass another --out")
+        return not args.shots_csv and grid == GRID_MS
+    full = same_path(args.shots_csv, XGT_SHOTS) and grid == ti.GRID
+    if full:
+        records.verified_file(XGT_SHOTS)
+    elif same_path(args.out, XGT_OUT) or same_path(args.embeddings_dir, XGT_EMBEDDINGS):
+        raise SystemExit("a subset (another --shots-csv or --offsets) must not be written to the default --out or "
+                         "--embeddings-dir of layout xgt; pass others")
+    return full
+
+
+def plan_summary(plan: pd.DataFrame, bank: ModelBank, identity: dict, n_seeds: int) -> dict:
+    """What a run would score (printed by --check-only)."""
+    frames = plan[plan.has_frame]
+    sizes = {name: array_rows(plan, e) * bank.dims[e] * 2 for name, e in bank.arrays.items()}
+    return {"layout": bank.layout.name, "encoders": list(bank.layout.encoders), "shots": identity["plan"]["shots"],
+            "matches": int(plan.game.nunique()), "offsets_ms": identity["plan"]["offsets_ms"], "plan_rows": len(plan),
+            "frames_to_score": len(frames), "frames_ok_uncut": int((frames.frame_status.eq("ok") & frames.cut_between_anchor.eq(False)).sum()),
+            "frame_status": {str(k): int(v) for k, v in plan.frame_status.value_counts().items()},
+            "official_split": {str(k): int(v) for k, v in plan.drop_duplicates("shot_id").split.value_counts().items()},
+            "shots_per_group": {str(k): int(v) for k, v in plan.drop_duplicates("shot_id").group.value_counts().sort_index().items()},
+            "chunks": int(plan.chunk.nunique()), "trunk_passes": len(frames),
+            "tail_passes": len(frames) * len(bank.layout.g_encoders) * n_seeds + (len(frames) if bank.layout.frozen else 0),
+            "embedding_arrays_gib": {n: round(b / 2**30, 3) for n, b in sizes.items()},
+            "bundles": {e: [{"fold": m["fold"], "seed": m["seed"], "sha256": m["sha256"]} for m in ms]
+                        for e, ms in identity["bundles"].items()},
+            "folds_sha256": identity["folds_sha256"], "index_sha256": identity["index_sha256"], "full": identity["plan"]["full"],
+            "plan_digest": identity["plan"]["digest"], "shot_ids_sha256": identity["plan"]["shot_ids_sha256"],
+            **({"xgt": identity["xgt"]} if "xgt" in identity else {})}
 
 
 def run(args: argparse.Namespace) -> int:
     started = time.time()
+    layout = LAYOUTS[args.layout]
     device = args.device if args.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu")
     if args.check_only or args.spot_check:
         device = "cpu"    # nothing is scored on a GPU unless the run is approved
     args.device_type = device
-    if (args.shots_csv or args.offsets) and args.out == OUT:
-        raise SystemExit("a smoke subset (--shots-csv / --offsets) must not be written to the default --out; pass another --out")
+    grid = tuple(args.offsets) if args.offsets else GRID_MS
+    full = check_destination(args, grid)
     if args.spot_check:
         recorded = json.loads((args.out / "complete.json").read_text())["spot_check"]
-        again = spot_check(pd.read_parquet(args.out / TABLE_FILE), {"g_combo": args.g_combo, "g_combo_no_head": args.head_free})
-        print(json_text({"offset0_vs_stored_recomputed": again, "recorded_at_completion": recorded}))
-        return 0 if recorded["pipeline_passed"] else 1
+        table = pd.read_parquet(args.out / TABLE_FILE)
+        if layout.name == "xgt":
+            again = {"offset0_vs_z_g_combo": reference_check(table, xgt_reference(args.reference)[0]),
+                     "roles": xgt_table_check(table, args.index, args.folds)}
+            passed = recorded["pipeline_passed"] and again["roles"]["passed"]
+        else:
+            again = {"offset0_vs_stored": spot_check(table, {"g_combo": args.g_combo, "g_combo_no_head": args.head_free})}
+            passed = recorded["pipeline_passed"]
+        print(json_text({"recomputed": again, "recorded_at_completion": recorded}))
+        return 0 if passed else 1
 
     shots, frames, offset_provenance = load_offset_frames(args.offset_frames, args.protocol, args.index)
     folds = pd.read_csv(args.folds)
-    models = {e: verify_bundles(root, e, args.index, args.folds, args.overlay)
-              for e, root in (("g_combo", args.g_combo), ("g_combo_no_head", args.head_free))}
+    roots = {"g_combo": args.g_combo, "g_combo_no_head": args.head_free}
+    models = {e: verify_bundles(roots[e], e, args.index, args.folds, args.overlay) for e in layout.g_encoders}
     spec, backbone, n_seeds = check_layout(models, folds, args.expect_models)
+    if not set(args.embed_seeds) <= {m["seed"] for m in models["g_combo"]}:
+        raise ValueError(f"--embed-seeds {list(args.embed_seeds)} are not seeds of the fold models")
     if args.shots_csv:
         wanted = set(pd.read_csv(args.shots_csv).shot_id)
         if unknown := wanted - set(shots.shot_id):
             raise ValueError(f"{len(unknown)} requested shots are not in the offset frames")
         shots = shots[shots.shot_id.isin(wanted)]
-    grid = tuple(args.offsets) if args.offsets else GRID_MS
     if not set(grid) <= set(GRID_MS):
         raise ValueError("offsets must be on the approved grid")
-    full = not args.shots_csv and grid == GRID_MS
-    plan = build_plan(shots, frames, folds, args.offset_frames, args.chunk_shots, grid)
+    xgt, reference = None, None
+    if layout.name == "xgt":
+        reference, reference_record = xgt_reference(args.reference)
+        xgt = {**xgt_roles(args.index, args.folds, shots, models["g_combo"]),
+               "shots_csv": {"path": ti.recorded_path(args.shots_csv), "sha256": sha256_file(args.shots_csv)},
+               "reference": reference_record, "embedding_seeds": list(args.embed_seeds),
+               "embeddings_dir": str(args.embeddings_dir.resolve()), "encoders": list(layout.encoders)}
+    plan = build_plan(shots, frames, folds, args.offset_frames, args.chunk_shots, grid, test_group=layout.test_group)
     sources = {**own_sources(), "scripts/score_offset_frames.py": sha256_file(Path(__file__))}
     if absent := [m for m in ("xgpoc/probe/scoring.py", "xgpoc/probe/table.py") if m not in sources]:
         raise ValueError(f"source hashes lack {absent}; run from the experiment directory (./run.sh)")
-    identity = requested_identity(args, offset_provenance, models, spec, backbone, plan, full, sources)
+    identity = requested_identity(args, offset_provenance, models, spec, backbone, plan, full, sources, xgt)
     if (args.out / "complete.json").exists() and not args.check_only:
         record = verify_complete(args.out, identity)
         print("verified existing output; nothing rescored")
@@ -572,15 +809,16 @@ def run(args: argparse.Namespace) -> int:
         if not args.gpu_approved:
             raise SystemExit("refusing to use the GPU without --gpu-approved (owner approval)")
         check_gpu_free()
-    bank = ModelBank(models, spec, device)
-    sizes = {e: int((plan.emb_row_frozen >= 0).sum() if e == "dinov2_frozen" else (plan.emb_row_g >= 0).sum()) * bank.dims[e] * 2
-             for e in ENCODERS}
-    print(f"{identity['plan']['shots']} shots, {len(plan)} offset rows x 3 encoders, {plan.chunk.nunique()} chunks, embeddings "
-          f"{sum(sizes.values()) / 2**30:.2f} GiB ({', '.join(f'{e} {s / 2**30:.2f}' for e, s in sizes.items())}), device {device}", flush=True)
+    bank = ModelBank(models, spec, device, layout, args.embed_seeds)
+    sizes = {name: array_rows(plan, e) * bank.dims[e] * 2 for name, e in bank.arrays.items()}
+    print(f"{identity['plan']['shots']} shots, {len(plan)} offset rows x {len(layout.encoders)} encoders, {plan.chunk.nunique()} "
+          f"chunks, {int(plan.has_frame.sum())} frames, embeddings {sum(sizes.values()) / 2**30:.2f} GiB "
+          f"({', '.join(f'{e} {s / 2**30:.2f}' for e, s in sizes.items())}), device {device}", flush=True)
     if args.check_only:
+        print(json_text(plan_summary(plan, bank, identity, n_seeds)))
         return 0
 
-    out = args.out
+    out, embeddings_dir = args.out, args.embeddings_dir
     out.mkdir(parents=True, exist_ok=True)
     marker = out / "identity.json"
     if marker.exists():
@@ -588,11 +826,14 @@ def run(args: argparse.Namespace) -> int:
             raise ValueError(f"{out} holds a different run than requested (identity changed); use a new --out")
     elif any(out.iterdir()):
         raise ValueError(f"{out} is not empty and has no run identity")
+    elif not same_path(embeddings_dir, out) and embeddings_dir.exists() and any(embeddings_dir.iterdir()):
+        raise ValueError(f"{embeddings_dir} is not empty and {out} has no run identity")
+    embeddings_dir.mkdir(parents=True, exist_ok=True)
     arrays_needed = sum(sizes.values())
-    if shutil.disk_usage(out).free - arrays_needed < MIN_FREE_BYTES and not marker.exists():
+    if shutil.disk_usage(embeddings_dir).free - arrays_needed < MIN_FREE_BYTES and not marker.exists():
         raise OSError(f"embeddings need {arrays_needed / 2**30:.1f} GiB, which would leave under 5 GiB free; not started")
     write_atomic(marker, json_text(identity).encode())
-    arrays = open_embeddings(out, plan, bank.dims)
+    arrays = open_embeddings(embeddings_dir, plan, bank.dims, bank.arrays)
 
     chunks = {int(n): rows for n, rows in plan.groupby("chunk", sort=True)}
     todo = [n for n, rows in chunks.items() if not chunk_is_committed(out, n, rows, arrays)]
@@ -602,7 +843,7 @@ def run(args: argparse.Namespace) -> int:
         if args.max_chunks is not None and done >= args.max_chunks:
             print(f"stopping after {done} chunks as asked; rerun to resume")
             return 0
-        if shutil.disk_usage(out).free < MIN_FREE_BYTES:
+        if shutil.disk_usage(embeddings_dir).free < MIN_FREE_BYTES:
             raise OSError("free disk fell under 5 GiB; stopped, rerun to resume")
         if device == "cuda":
             check_gpu_free()
@@ -614,12 +855,17 @@ def run(args: argparse.Namespace) -> int:
         remaining = len(todo) - done
         print(f"chunk {number} ({rows.group.iloc[0]}, {rows.shot_id.nunique()} shots, {int(rows.has_frame.sum())} frames) "
               f"{time.time() - began:.0f}s; {remaining} left ({time.strftime('%H:%M')})", flush=True)
-    record = finalize(out, plan, identity, (bank, args, {"g_combo": args.g_combo, "g_combo_no_head": args.head_free}),
-                      args.expect_models, n_seeds, arrays, started)
+    if layout.name == "xgt":
+        def checker(table: pd.DataFrame) -> dict:
+            return xgt_spot_check(table, plan, bank, args, reference)
+    else:
+        def checker(table: pd.DataFrame) -> dict:
+            return full_spot_check(table, plan, bank, args, {"g_combo": args.g_combo, "g_combo_no_head": args.head_free})
+    record = finalize(out, embeddings_dir, plan, identity, bank, checker, args.expect_models, n_seeds, arrays, started)
     print(json_text(record["spot_check"]))
     print(f"OFFSET SCORES DONE ({time.strftime('%H:%M')}): {record['summary']}")
     if not record["spot_check"]["pipeline_passed"]:
-        print("SPOT CHECK CONTROL FAILED: the scoring pipeline does not reproduce the stored predictions on the index frames")
+        print("SPOT CHECK CONTROL FAILED: the scoring pipeline does not reproduce the reference logits on the index frames")
     return 0 if record["spot_check"]["pipeline_passed"] else 1
 
 

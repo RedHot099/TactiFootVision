@@ -29,6 +29,10 @@ meaning of each column is fixed here.
                                  g_combo / g_combo_no_head: 5120 features of the seed-0 model of the shot's fold,
                                  train/valid shots only (the protocol's Gp and G0p read nothing else);
                                  dinov2_frozen: 2048 features (CLS + mean patch token), all shots with a frame.
+
+The xg-temporal layout of `scripts/score_offset_frames.py` (`--layout xgt`, ticket 01b) writes the g_combo rows only
+(`encoders` of `chunk_table` / `validate_table`) and has no test group (`build_plan(test_group=False)`): every shot is
+in a fold of the xgv folds file, whatever its official `split`.
 """
 
 import json
@@ -54,26 +58,29 @@ SPOT_TOLERANCE = 1e-3  # ticket 08: the batch-composition noise bound of the fro
 
 
 def build_plan(shots: pd.DataFrame, frames: pd.DataFrame, folds: pd.DataFrame, frames_root: Path, chunk_shots: int,
-               grid: tuple[int, ...] = GRID_MS) -> pd.DataFrame:
+               grid: tuple[int, ...] = GRID_MS, test_group: bool = True) -> pd.DataFrame:
     """Everything to score, one row per non-penalty shot and offset, in processing order.
 
     Goals are scored too (the attribution-sensitivity rows of ticket 10 need shots that are goals under the main
     rule); penalties are not (protocol). `shots` is the offset-frames `shots.csv`, `frames` its `frames.csv`, `folds`
     the home-team fold file (game, fold). Rows are ordered fold 0, fold 1, ..., test; shots by id; offsets by `grid`.
     Chunks hold at most `chunk_shots` shots of one group, so all frames of a chunk need the same models. Embedding rows
-    are assigned here, from the plan alone, so that they do not depend on how far a run got."""
+    are assigned here, from the plan alone, so that they do not depend on how far a run got.
+
+    `test_group` False (the xgv folds of xg-temporal, which cover matches of every official split): every shot's game
+    must be in `folds` and every shot is scored by its fold's models; the official `split` is then only a column."""
     shots = shots[~shots.is_penalty.astype(bool)]
     if shots.empty:
         raise ValueError("no non-penalty shots to score")
     if folds.game.duplicated().any():
         raise ValueError("a game has two folds in the folds file")
     fold_of = folds.set_index("game").fold
-    is_test = shots.split.eq("test")
+    is_test = shots.split.eq("test") if test_group else pd.Series(False, index=shots.index)
     if shots[is_test].game.isin(fold_of.index).any():
         raise ValueError("a test game is in the folds file")
     missing = sorted(set(shots[~is_test].game) - set(fold_of.index))
     if missing:
-        raise ValueError(f"{len(missing)} train/valid games have no fold, e.g. {missing[0]}")
+        raise ValueError(f"{len(missing)} {'train/valid ' if test_group else ''}games have no fold, e.g. {missing[0]}")
     fold = shots.game.map(fold_of)
     shots = shots.assign(group=np.where(is_test, TEST_GROUP, "fold" + fold.fillna(-1).astype(int).astype(str)),
                          group_rank=np.where(is_test, TEST_RANK, fold.fillna(-1)).astype(int))
@@ -102,11 +109,11 @@ def build_plan(shots: pd.DataFrame, frames: pd.DataFrame, folds: pd.DataFrame, f
     return rows[PLAN_COLUMNS]
 
 
-def chunk_table(rows: pd.DataFrame, values: dict[str, dict]) -> pd.DataFrame:
+def chunk_table(rows: pd.DataFrame, values: dict[str, dict], encoders: tuple[str, ...] = ENCODERS) -> pd.DataFrame:
     """Table rows of one chunk. `rows`: its plan rows. `values[encoder]`: arrays aligned to the rows that have a frame
     (`xg_logit`, `xg_logit_raw`, optional `on_target_logit`) plus `fold_source`, `seed_source`, `n_models`."""
     parts = []
-    for encoder in ENCODERS:
+    for encoder in encoders:
         v = values[encoder]
         has = rows.has_frame.to_numpy()
         out = rows[["shot_id", "game", "half", "split", "offset_ms", "frame_status", "decoded_relative_ms",
@@ -124,21 +131,31 @@ def chunk_table(rows: pd.DataFrame, values: dict[str, dict]) -> pd.DataFrame:
         out["embedding_ref"] = (rows.emb_row_frozen if encoder == "dinov2_frozen" else rows.emb_row_g).astype(np.int32).to_numpy()
         parts.append(out)
     table = pd.concat(parts, ignore_index=True)
-    table["order"] = np.tile(np.arange(len(rows)), len(ENCODERS))
-    table = table.sort_values("order", kind="stable").drop(columns="order").reset_index(drop=True)   # row, then ENCODERS order
+    table["order"] = np.tile(np.arange(len(rows)), len(encoders))
+    table = table.sort_values("order", kind="stable").drop(columns="order").reset_index(drop=True)   # row, then encoder order
     table["half"] = table.half.astype(np.int8)
     table["offset_ms"] = table.offset_ms.astype(np.int16)
     return table[TABLE_COLUMNS]
 
 
-def validate_table(table: pd.DataFrame, plan: pd.DataFrame, n_models: int, n_seeds: int) -> None:
+def validate_table(table: pd.DataFrame, plan: pd.DataFrame, n_models: int, n_seeds: int,
+                   encoders: tuple[str, ...] = ENCODERS) -> None:
     """Raise unless `table` is exactly what `plan` asks for. `n_models`: models that score a test shot."""
     if list(table.columns) != TABLE_COLUMNS:
         raise ValueError(f"table columns are {list(table.columns)}")
-    if len(table) != len(plan) * len(ENCODERS):
-        raise ValueError(f"table has {len(table)} rows, the plan asks for {len(plan) * len(ENCODERS)}")
+    if len(table) != len(plan) * len(encoders):
+        raise ValueError(f"table has {len(table)} rows, the plan asks for {len(plan) * len(encoders)}")
+    if set(table.encoder) != set(encoders):
+        raise ValueError(f"table encoders are {sorted(set(table.encoder))}, expected {sorted(encoders)}")
     if table.duplicated(["shot_id", "offset_ms", "encoder"]).any():
         raise ValueError("duplicate shot/offset/encoder rows")
+    keep = ["shot_id", "game", "half", "split", "offset_ms", "frame_status", "complete_case"]
+    plan_view = plan[keep].astype({"offset_ms": int, "half": int}).reset_index(drop=True)
+    for encoder in encoders:
+        part = table[table.encoder.eq(encoder)]
+        if not plan_view.equals(part[keep].astype({"offset_ms": int, "half": int}).reset_index(drop=True)):
+            raise ValueError(f"{encoder}: table rows do not follow the plan")
+    test = plan.group.eq(TEST_GROUP).to_numpy()
     for encoder, part in table.groupby("encoder"):
         has = part.frame_status.isin(FRAME_STATUSES_WITH_FRAME).to_numpy()
         columns = {"g_combo": ("xg_logit", "xg_logit_raw", "on_target_logit"),
@@ -159,7 +176,6 @@ def validate_table(table: pd.DataFrame, plan: pd.DataFrame, n_models: int, n_see
             if (part.fold_source != -1).any() or (part.n_models != 0).any() or (part.seed_source != "").any():
                 raise ValueError("dinov2_frozen has no fold, seed or model count")
         else:
-            test = part.split.eq("test").to_numpy()
             if (refs[test] != -1).any() or not np.array_equal(refs[~test] >= 0, has[~test]):
                 raise ValueError(f"{encoder}: embeddings belong to scored train/valid frames only")
             if (part.fold_source[test] != -1).any() or (part.n_models[test] != n_models).any():
@@ -168,13 +184,9 @@ def validate_table(table: pd.DataFrame, plan: pd.DataFrame, n_models: int, n_see
                 raise ValueError(f"{encoder}: train/valid shots are scored by the {n_seeds} models of their fold")
     if not table.oof.all():
         raise ValueError("a row is not out-of-fold")
-    keep = ["shot_id", "game", "half", "split", "offset_ms", "frame_status", "complete_case"]
-    plan_view = plan[keep].astype({"offset_ms": int, "half": int}).reset_index(drop=True)
     expected_fold = plan.group.map(lambda g: -1 if g == TEST_GROUP else int(g.removeprefix("fold"))).to_numpy()
-    for encoder in G_ENCODERS:
+    for encoder in (e for e in encoders if e in G_ENCODERS):
         part = table[table.encoder.eq(encoder)]
-        if not plan_view.equals(part[keep].astype({"offset_ms": int, "half": int}).reset_index(drop=True)):
-            raise ValueError(f"{encoder}: table rows do not follow the plan")
         if not np.array_equal(part.fold_source.to_numpy(), expected_fold):
             raise ValueError(f"{encoder}: a shot is scored by the models of another fold than the one that held out its match")
 
@@ -217,3 +229,24 @@ def spot_check(table: pd.DataFrame, roots: dict[str, Path], tolerance: float = S
         report[encoder] = entry
     report["passed"] = all(report[e]["passed"] for e in roots)
     return report
+
+
+def reference_check(table: pd.DataFrame, reference: pd.Series, tolerance: float = SPOT_TOLERANCE,
+                    encoder: str = "g_combo") -> dict:
+    """Offset-0 `xg_logit` (mean of logit / temperature over the scoring models) of `encoder`'s `ok` rows against a
+    per-shot reference logit on the same scale (`reference`: shot_id -> logit, e.g. `z_g_combo` of the out-of-fold
+    table, the mean of logit(stored p) = logit / T of the models that held the shot out). Reports the mean and largest
+    |difference| and the Pearson correlation; passes when every compared shot has a reference and the largest
+    |difference| is within `tolerance`."""
+    zero = table[table.encoder.eq(encoder) & table.offset_ms.eq(0) & table.frame_status.eq("ok")]
+    ref = reference.reindex(zero.shot_id).to_numpy(np.float64)
+    ours = zero.xg_logit.to_numpy(np.float64)
+    usable = np.isfinite(ref) & np.isfinite(ours)
+    diff = np.abs(ours[usable] - ref[usable])
+    entry = {"encoder": encoder, "column": "xg_logit", "tolerance": tolerance, "shots": int(len(zero)),
+             "missing_reference": int((~np.isfinite(ref)).sum()),
+             "mean_abs_dlogit": float(diff.mean()) if len(diff) else None,
+             "max_abs_dlogit": float(diff.max()) if len(diff) else None,
+             "pearson_r": float(np.corrcoef(ours[usable], ref[usable])[0, 1]) if usable.sum() > 1 else None}
+    entry["passed"] = bool(len(diff) and entry["missing_reference"] == 0 and entry["max_abs_dlogit"] <= tolerance)
+    return entry
