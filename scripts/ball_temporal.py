@@ -6,6 +6,8 @@
     uv run python scripts/ball_temporal.py tune                  # sensitivity grid, games 2+3, off-benchmark frames
     uv run python scripts/ball_temporal.py track --games 2 3     # the chosen setting -> tracks + scorecard dumps
     uv run python scripts/ball_temporal.py breakdown             # the gain by ticket 01's categories (after the card)
+    uv run python scripts/ball_temporal.py read --tracks DIR     # placement of tracks vs top-1, paired (ticket 09)
+    uv run python scripts/ball_temporal.py dump --split test --out DIR  # ticket 09: GSR test at 25 fps (SNMOT frames)
 
 The tracker is the package's ``track_ball`` (``tactifoot_vision.pipeline``, ported from the prototype
 ``.scratch/ball-tracking/prototype/ball_track.py``: static and spot candidates and ball boxes on a person dropped, a
@@ -36,6 +38,16 @@ tracks and three scorecard dumps in ticket 01's format (`detector_bench.py dump`
 single ball candidate >= 0.15 of each frame; every other ball candidate is capped below 0.15, the tail kept for AP;
 other classes and Ekstraklasa dev as in dd2c's ticket 01 dump), ``measured`` (the same without the interpolated balls)
 and ``top1`` (dd2c's own top-1 ball encoded the same way, the reference for recall at r px).
+
+Ticket 09 (the final candidate's "second read" of GSR test): ``--split test`` dumps, moves and tracks the GSR test
+clips. Local GSR test holds only every 5th frame, so the 25 fps frames come from SoccerNet Tracking test
+(``FULL_FRAMES``: the same clips, SNMOT-NNN = SNGS-NNN; ``check_frames`` asserts that every local GSR frame is byte for
+byte the SNMOT one); labels, games and the frozen test homographies are GSR test's. ``track --post-filter`` drops the
+ball candidates longer than ``RULE["post_filter_long_side_px"]`` before ``track_ball`` (the top-1 reference keeps the
+unfiltered dump). `read` places the tracked ball and dd2c's top-1 ball (>= 0.15) on the split's placement frames
+(``detector_bench.placement_rows``: the scorecard's denominator, frames without a homography count as misses) and
+reads both with the scorecard's clip-bootstrap draws (``ball_scorecard.Draws``, ``placement_draws``, ``paired``), plus
+the measured / interpolated / no-ball breakdown; no scorecard dump is needed, so it reads GSR test too.
 """
 
 import argparse
@@ -83,6 +95,10 @@ CLASSES = ("ball", "goalkeeper", "player", "referee")
 # the pipeline's people threshold: the person boxes track_ball checks against
 PEOPLE_CONF = bench.OPERATING["conf"]
 SELECTION = be.SELECTION_GAMES
+# GSR test is downloaded at stride 5 only (data/SoccerNetGS/fetch_log.jsonl); its 25 fps frames are SoccerNet
+# Tracking's test sequences, the same clips (ball-detection spec, "Protokół oceny"; checked by ``check_frames``).
+FULL_FRAMES = {"test": bench.CHECKOUT / "data/soccernet/tracking/extracted/test"}
+POST_FILTER = bs.RULE["post_filter_long_side_px"]
 # Camera motion between consecutive frames, estimated at half resolution.
 MOTION = {
     "scale": 0.5,
@@ -147,10 +163,16 @@ logger = logging.getLogger("ball_temporal")
 
 
 # ------------------------------------------------------------------ dump
-def clip_dirs() -> list[Path]:
-    return sorted(
-        p.parent for p in (bench.GSR / "valid").glob("*/Labels-GameState.json")
-    )
+def clip_dirs(split: str = "valid") -> list[Path]:
+    """The GSR clip folders (labels) of ``split``."""
+    return sorted(p.parent for p in (bench.GSR / split).glob("*/Labels-GameState.json"))
+
+
+def frames_dir(clip_dir: Path) -> Path:
+    """The folder holding every frame of a GSR clip: the clip itself, or for a split in ``FULL_FRAMES`` the SoccerNet
+    Tracking sequence of the same clip."""
+    full = FULL_FRAMES.get(clip_dir.parent.name)
+    return clip_dir if full is None else full / clip_dir.name.replace("SNGS-", "SNMOT-")
 
 
 def clip_game(clip_dir: Path) -> str:
@@ -160,8 +182,20 @@ def clip_game(clip_dir: Path) -> str:
 
 
 def clip_frames(clip_dir: Path) -> list[Path]:
-    """Every frame of a GSR clip in order (``img1/000001.jpg`` ...)."""
-    return sorted((clip_dir / "img1").glob("*.jpg"))
+    """Every frame of a GSR clip in order (``img1/000001.jpg`` ...), from ``frames_dir``."""
+    return sorted((frames_dir(clip_dir) / "img1").glob("*.jpg"))
+
+
+def check_frames(clip_dir: Path) -> int:
+    """The clip's local GSR frames that are byte for byte the 25 fps source's (raises on the first that is not or is
+    missing there); returns how many were compared."""
+    source = frames_dir(clip_dir)
+    local = sorted((clip_dir / "img1").glob("*.jpg"))
+    for path in local:
+        twin = source / "img1" / path.name
+        if not twin.is_file() or twin.read_bytes() != path.read_bytes():
+            raise SystemExit(f"{path} is not the 25 fps source's {twin}")
+    return len(local)
 
 
 def read_ahead(paths: list[Path], flags: int = cv2.IMREAD_COLOR, depth: int = 16):
@@ -207,11 +241,18 @@ def dump_table(found: sv.Detections, frame: int, height: int, limit: float | Non
     )
     table["conf"] = np.asarray(found.confidence, np.float32)
     table["class_id"] = np.asarray(found.class_id, np.int8)
-    if limit is not None:
-        side = np.maximum(table.x2 - table.x1, table.y2 - table.y1) * 1080 / height
-        table = table[~((table.class_id == 0) & (side > limit))].reset_index(drop=True)
+    table = drop_long_balls(table, limit, height)
     table.insert(0, "frame", np.int16(frame))
     return table
+
+
+def drop_long_balls(table: pd.DataFrame, limit: float | None, height: int = 1080):
+    """``table`` without the ball candidates whose long side at 1080p (``height``: the frame's) is over ``limit``
+    (ticket 03's post-filter; None: unchanged)."""
+    if limit is None:
+        return table
+    side = np.maximum(table.x2 - table.x1, table.y2 - table.y1) * 1080 / height
+    return table[~((table.class_id == 0) & (side > limit))].reset_index(drop=True)
 
 
 def dump(args: argparse.Namespace) -> None:
@@ -223,11 +264,12 @@ def dump(args: argparse.Namespace) -> None:
     predict, class_names, settings = dump_predictor(
         args.variant, args.weights, args.device
     )
-    limit = bs.RULE["post_filter_long_side_px"] if args.post_filter else None
+    limit = POST_FILTER if args.post_filter else None
     row = args.variant + (f"+pf{limit}" if limit is not None else "")
     parts = args.out / "parts"
     parts.mkdir(parents=True, exist_ok=True)
-    clips = clip_dirs()
+    clips = clip_dirs(args.split)
+    checked = sum(check_frames(c) for c in clips) if args.split in FULL_FRAMES else None
     timings, frames = [], []
     for clip_dir in clips:
         clip = clip_dir.name
@@ -259,6 +301,9 @@ def dump(args: argparse.Namespace) -> None:
     record = {
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "ticket": args.ticket,
+        "split": args.split,
+        "frames_source": str(FULL_FRAMES.get(args.split, bench.GSR / args.split)),
+        "gsr_frames_checked_identical": checked,
         "weights": str(args.weights),
         "weights_sha256": bench.sha256_file(args.weights),
         "conf": DUMP_CONF,
@@ -422,10 +467,11 @@ def clip_anchors(clip: str, frozen: dict, frames: int = 750) -> dict[int, np.nda
     }
 
 
-def _motion_worker(clip_dir: Path) -> dict:
-    out = MOTION_DIR / f"{clip_dir.name}.npz"
+def _motion_worker(job: tuple[Path, Path, Path]) -> dict:
+    clip_dir, folder, motion_dir = job
+    out = motion_dir / f"{clip_dir.name}.npz"
     if not out.is_file():
-        found = clip_motion(clip_dir, clip_candidates(clip_dir.name))
+        found = clip_motion(clip_dir, clip_candidates(clip_dir.name, folder))
         np.savez_compressed(out, motion=found["motion"], inliers=found["inliers"])
     saved = np.load(out)
     carried, still = anchor_agreement(
@@ -442,13 +488,20 @@ def _motion_worker(clip_dir: Path) -> dict:
 
 
 def motion(args: argparse.Namespace) -> None:
-    MOTION_DIR.mkdir(parents=True, exist_ok=True)
-    clips = [c for c in clip_dirs() if (DUMP / "parts" / f"{c.name}.parquet").is_file()]
-    with multiprocessing.Pool(args.workers, initializer=_init_worker) as pool:
-        rows = pool.map(_motion_worker, clips)
+    out = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    clips = [
+        c
+        for c in clip_dirs(args.split)
+        if (args.dump / "parts" / f"{c.name}.parquet").is_file()
+    ]
+    with multiprocessing.Pool(
+        args.workers, initializer=_init_worker, initargs=(args.split,)
+    ) as pool:
+        rows = pool.map(_motion_worker, [(c, args.dump, out) for c in clips])
     table = pd.DataFrame(rows)
-    table.to_csv(MOTION_DIR / "summary.csv", index=False)
-    (MOTION_DIR / "settings.json").write_text(
+    table.to_csv(out / "summary.csv", index=False)
+    (out / "settings.json").write_text(
         json.dumps(MOTION | {"reach": REACH}, indent=2) + "\n"
     )
     print(table.to_string(index=False))
@@ -458,8 +511,8 @@ def motion(args: argparse.Namespace) -> None:
     )
 
 
-def load_motion(clip: str) -> np.ndarray:
-    return np.load(MOTION_DIR / f"{clip}.npz")["motion"]
+def load_motion(clip: str, folder: Path = MOTION_DIR) -> np.ndarray:
+    return np.load(folder / f"{clip}.npz")["motion"]
 
 
 # ------------------------------------------------------------------ homographies
@@ -506,9 +559,11 @@ def propagate(
     return out
 
 
-def clip_homographies(clip: str, frames: int, frozen: dict) -> list[np.ndarray | None]:
+def clip_homographies(
+    clip: str, frames: int, frozen: dict, motion_dir: Path = MOTION_DIR
+) -> list[np.ndarray | None]:
     """Every frame's 1080p frame -> corner-metres homography: the frozen 720p ones carried by the camera motion."""
-    return propagate(load_motion(clip), clip_anchors(clip, frozen, frames))
+    return propagate(load_motion(clip, motion_dir), clip_anchors(clip, frozen, frames))
 
 
 # ------------------------------------------------------------------ tracking
@@ -628,13 +683,16 @@ def setting_name(setting: dict) -> str:
     )
 
 
-def _track_worker(job: tuple[str, list[dict], Path]) -> list[pd.DataFrame]:
-    """Tracks of one clip of the dump ``folder`` for every setting (``clip`` column added), the top-1 table first."""
+def _track_worker(job: tuple) -> list[pd.DataFrame]:
+    """Tracks of one clip of the dump ``folder`` for every setting (``clip`` column added), the top-1 table first.
+    ``job`` = (clip, settings, folder, split, motion folder, post-filter limit); the tracker sees the candidates
+    without the balls over the limit, the top-1 table the dump's own."""
     logging.getLogger("tactifoot_vision").setLevel(logging.WARNING)
-    clip, settings, folder = job
+    clip, settings, folder, split, motion_dir, limit = job
     candidates = clip_candidates(clip, folder)
-    frames = len(clip_frames(bench.GSR / "valid" / clip))
-    result = clip_result(candidates, clip_homographies(clip, frames, _FROZEN))
+    frames = len(clip_frames(bench.GSR / split / clip))
+    homographies = clip_homographies(clip, frames, _FROZEN, motion_dir)
+    result = clip_result(drop_long_balls(candidates, limit), homographies)
     tables = [top_balls(candidates, frames)]
     for setting in settings:
         clock = time.perf_counter()
@@ -649,24 +707,38 @@ def _track_worker(job: tuple[str, list[dict], Path]) -> list[pd.DataFrame]:
 _FROZEN: dict = {}
 
 
-def _init_worker() -> None:
-    _FROZEN.update(bench.frozen_homographies("valid"))
+def _init_worker(split: str = "valid") -> None:
+    _FROZEN.update(bench.frozen_homographies(split))
 
 
 def run_tracks(
-    clips: list[str], settings: list[dict], workers: int, folder: Path = DUMP
+    clips: list[str],
+    settings: list[dict],
+    workers: int,
+    folder: Path = DUMP,
+    split: str = "valid",
+    motion_dir: Path = MOTION_DIR,
+    limit: float | None = None,
 ) -> tuple[pd.DataFrame, list[pd.DataFrame]]:
-    """``(top-1 table, one tracks table per setting)`` over ``clips`` of the 25 fps dump ``folder``."""
-    with multiprocessing.Pool(workers, initializer=_init_worker) as pool:
-        per_clip = pool.map(_track_worker, [(c, settings, folder) for c in clips])
+    """``(top-1 table, one tracks table per setting)`` over ``clips`` of the 25 fps dump ``folder`` (the tracker
+    without the ball candidates over the post-filter ``limit``)."""
+    jobs = [(c, settings, folder, split, motion_dir, limit) for c in clips]
+    with multiprocessing.Pool(
+        workers, initializer=_init_worker, initargs=(split,)
+    ) as pool:
+        per_clip = pool.map(_track_worker, jobs)
     stacked = [
         pd.concat(tables, ignore_index=True) for tables in zip(*per_clip, strict=True)
     ]
     return stacked[0], stacked[1:]
 
 
-def games_clips(games) -> list[str]:
-    return [c.name for c in clip_dirs() if clip_game(c) in games]
+def games_clips(games, split: str = "valid") -> list[str]:
+    return [c.name for c in clip_dirs(split) if clip_game(c) in games]
+
+
+def split_games(split: str) -> list[str]:
+    return sorted({clip_game(c) for c in clip_dirs(split)}, key=int)
 
 
 # ------------------------------------------------------------------ tuning score
@@ -855,9 +927,14 @@ def encode(tracks: pd.DataFrame, reference: Path, out: Path, note: dict, games) 
 def track(args: argparse.Namespace) -> None:
     """The chosen setting on the clips of ``--games``: tracks and the three scorecard dumps."""
     setting = json.loads(args.setting.read_text()) if args.setting else BASE
-    clips = games_clips(args.games)
+    if args.games == ["all"]:
+        args.games = split_games(args.split)
+    clips = games_clips(args.games, args.split)
+    limit = POST_FILTER if args.post_filter else None
     clock = time.perf_counter()
-    top1, (tracks,) = run_tracks(clips, [setting], args.workers, args.dump)
+    top1, (tracks,) = run_tracks(
+        clips, [setting], args.workers, args.dump, args.split, args.motion, limit
+    )
     seconds = time.perf_counter() - clock
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -866,12 +943,21 @@ def track(args: argparse.Namespace) -> None:
     note = {
         "setting": setting,
         "tracker": f"tactifoot_vision.pipeline.track_ball on {args.dump} (conf >= {DUMP_CONF}, every frame)",
+        "split": args.split,
+        "clips": len(clips),
+        "motion": str(args.motion),
+        "post_filter_long_side_px": limit,
         "cpu_ms_per_frame": 1000
         * tracks.groupby("clip").seconds.first().sum()
         / len(tracks),
         "wall_seconds": seconds,
         "encoding": "the chosen ball is the single ball candidate >= 0.15 per frame; other balls capped at 0.1499",
     }
+    (out / "track.json").write_text(json.dumps(note, indent=2, default=float) + "\n")
+    counts = tracks.status.value_counts().to_dict()
+    if args.split != "valid" or args.no_card_dumps:  # `read` places them without a dump
+        print(json.dumps(note | {"status": counts}, indent=2, default=float))
+        return
     measured = tracks.copy()
     measured.loc[measured.status == "interpolated", COLUMNS + ["conf"]] = np.nan
     measured.loc[measured.status == "interpolated", "status"] = "none"
@@ -881,8 +967,184 @@ def track(args: argparse.Namespace) -> None:
         ("top1", top1, {"variant": "dd2c's top-1 ball, same encoding"}),
     ):
         encode(table, args.reference, out / f"dump_{name}", note | extra, args.games)
-    counts = tracks.status.value_counts().to_dict()
     print(json.dumps(note | {"status": counts}, indent=2, default=float))
+
+
+# ------------------------------------------------------------------ read (ticket 09)
+# The reads of `read` per split: the GSR valid groups of the scorecard (game 5 only inside the full split, ticket
+# 09), GSR test whole.
+READS = {"valid": {"selection": SELECTION, "full": ("2", "3", "5")}, "test": None}
+
+
+def table_top_ball(table: pd.DataFrame):
+    """``detector_bench.placement_rows``' ``top_ball`` from a tracks (or top-1) table: the frame's ball centre in
+    the homographies' ``PLACEMENT["input_size"]`` pixels (boxes in native 1920 x 1080), None without a ball."""
+    scale = 1920 / bench.PLACEMENT["input_size"][0]
+    balls = table[table.status != "none"]
+    centres = {
+        (c, int(f)): ((x1 + x2) / 2 / scale, (y1 + y2) / 2 / scale)
+        for c, f, x1, y1, x2, y2 in zip(
+            balls["clip"],
+            balls.frame,
+            balls.x1,
+            balls.y1,
+            balls.x2,
+            balls.y2,
+            strict=True,
+        )
+    }
+
+    def top_ball(clip: str, frame: int, path: Path):
+        centre = centres.get((clip, frame))
+        return None if centre is None else np.asarray(centre)
+
+    return top_ball
+
+
+def status_rows(
+    rows: pd.DataFrame, top_rows: pd.DataFrame, tracks: pd.DataFrame
+) -> list[dict]:
+    """Per tracking status on the placement frames (measured / interpolated / none): frames, share, well placed and
+    > 5 m (of the status' frames) of tracking and top-1, and the gain in pp of all frames."""
+    status = rows[["clip", "frame"]].merge(
+        tracks[["clip", "frame", "status"]], on=["clip", "frame"], how="left"
+    )["status"]
+    if status.isna().any():
+        raise SystemExit("tracks miss placement frames")
+    far = bench.PLACEMENT["far_m"]
+    well, top_well = rows.error_m <= far, top_rows.error_m <= far
+    out = []
+    for level in ("measured", "interpolated", "none"):
+        part = (status == level).to_numpy()
+        out.append(
+            {
+                "status": level,
+                "frames": int(part.sum()),
+                "share": float(part.mean()),
+                "track_well": float(well[part].mean()) if part.any() else np.nan,
+                "track_far": float((rows.error_m[part] > far).mean())
+                if part.any()
+                else np.nan,
+                "top1_well": float(top_well[part].mean()) if part.any() else np.nan,
+                "gain_pp_of_all": 100
+                * float(well[part].sum() - top_well[part].sum())
+                / len(rows),
+            }
+        )
+    return out
+
+
+def read_placement(
+    tracks: pd.DataFrame, top1: pd.DataFrame, split: str, groups: dict | None = None
+) -> dict:
+    """Tracking vs top-1 on the placement frames of ``split`` per group of games (``READS``; None: all clips):
+    the scorecard's placement numbers with clip-bootstrap intervals, the paired differences and the status rows."""
+    homographies = bench.frozen_homographies(split)
+    rows = bench.placement_rows(table_top_ball(tracks), homographies, split)
+    top_rows = bench.placement_rows(table_top_ball(top1), homographies, split)
+    keys = ["clip", "frame"]
+    if not rows[keys].equals(top_rows[keys]):
+        raise SystemExit("the two placements have other frames")
+    clip_game_of = {c.name: clip_game(c) for c in clip_dirs(split)}
+    groups = groups or {split: tuple(sorted(set(clip_game_of.values()), key=int))}
+    out = {}
+    for name, games in groups.items():
+        keep = rows.game.isin(games).to_numpy()
+        draws = bs.Draws([c for c, g in clip_game_of.items() if g in games])
+        group_rows = rows[keep].reset_index(drop=True)
+        group_top = top_rows[keep].reset_index(drop=True)
+        found = bs.placement_draws(group_rows, draws)
+        reference = bs.placement_draws(group_top, draws)
+        out[name] = {
+            "games": list(games),
+            "counts": bs.placement_counts(group_rows),
+            "track": bs.summary(found),
+            "top1": bs.summary(reference),
+            "track_vs_top1": bs.paired(found, reference),
+            "status": status_rows(group_rows, group_top, tracks),
+            "rows": group_rows,
+            "top1_rows": group_top,
+        }
+    return out
+
+
+def read_markdown(found: dict, title: str) -> str:
+    def pct(entry: dict) -> str:
+        low, high = (100 * v for v in entry["ci"])
+        return f"{100 * entry['value']:.2f}% [{low:.1f}; {high:.1f}]"
+
+    def pp(entry: dict) -> str:
+        low, high = (100 * v for v in entry["ci"])
+        return f"{100 * entry['difference']:+.2f} [{low:+.2f}; {high:+.2f}]"
+
+    lines = [
+        f"# {title}",
+        "",
+        "| group | frames (no H) | ceiling | top-1 well placed | tracking well placed | paired gain, pp [95%] | "
+        "well with H: top-1 / tracking | > 5 m of placed: top-1 / tracking (pp) | placed: top-1 / tracking |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for name, g in found.items():
+        t, r, d = g["track"], g["top1"], g["track_vs_top1"]
+        lines.append(
+            f"| {name} | {g['counts']['frames']} ({g['counts']['without_homography']}) | "
+            f"{100 * t['ceiling']['value']:.1f}% | {pct(r['well_placed'])} | {pct(t['well_placed'])} | "
+            f"**{pp(d['well_placed'])}** | {100 * r['well_placed_with_homography']['value']:.2f}% / "
+            f"{100 * t['well_placed_with_homography']['value']:.2f}% ({pp(d['well_placed_with_homography'])}) | "
+            f"{100 * r['far_of_placed']['value']:.2f}% / {100 * t['far_of_placed']['value']:.2f}% "
+            f"({pp(d['far_of_placed'])}) | {100 * r['placed']['value']:.2f}% / {100 * t['placed']['value']:.2f}% |"
+        )
+    lines += [
+        "",
+        "| group | status | frames (share) | tracking well | tracking > 5 m | top-1 well | gain, pp of all |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for name, g in found.items():
+        for s in g["status"]:
+            lines.append(
+                f"| {name} | {s['status']} | {s['frames']} ({100 * s['share']:.1f}%) | "
+                f"{100 * s['track_well']:.1f}% | {100 * s['track_far']:.1f}% | {100 * s['top1_well']:.1f}% | "
+                f"{s['gain_pp_of_all']:+.2f} |"
+            )
+    gate = bs.RULE["gate_1280"]
+    lines += [
+        "",
+        f"Gates (GSR valid values, orientation only): {100 * gate['satisfactory']:.2f}% / "
+        f"{100 * gate['ambitious']:.2f}%. Bootstrap {bs.BOOTSTRAP['draws']} draws over clips, seed "
+        f"{bs.BOOTSTRAP['seed']}.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def read(args: argparse.Namespace) -> None:
+    """Tracking (``--tracks``: `track`'s tracks.parquet) vs its top1.parquet (or ``--reference``, another tracks
+    table in the same columns) on the placement frames."""
+    tracks = pd.read_parquet(args.tracks / "tracks.parquet")
+    top1 = pd.read_parquet(args.reference or args.tracks / "top1.parquet")
+    found = read_placement(tracks, top1, args.split, READS[args.split])
+    out = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    for name, g in found.items():
+        g.pop("rows").to_parquet(out / f"placement_{name}_track.parquet", index=False)
+        g.pop("top1_rows").to_parquet(
+            out / f"placement_{name}_top1.parquet", index=False
+        )
+    record = {
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "tracks": str(args.tracks),
+        "reference": str(args.reference or args.tracks / "top1.parquet"),
+        "split": args.split,
+        "homographies": bench.homography_file(args.split),
+        "bootstrap": bs.BOOTSTRAP,
+        "groups": found,
+    }
+    (out / "read.json").write_text(json.dumps(record, indent=2, default=float) + "\n")
+    text = read_markdown(
+        found, args.title or f"{args.tracks.name}: tracking vs top-1 ({args.split})"
+    )
+    (out / "read.md").write_text(text)
+    print(text)
 
 
 # ------------------------------------------------------------------ breakdown
@@ -990,6 +1252,7 @@ def main() -> None:
         help="drop ball candidates longer than 45 px at 1080p (ticket 03's post-filter)",
     )
     d.add_argument("--out", type=Path, default=DUMP)
+    d.add_argument("--split", choices=bench.SPLITS, default="valid")
     d.add_argument("--device", default=None)
     d.add_argument(
         "--ticket", default="ball-detection 04", help="the dump record's ticket"
@@ -997,18 +1260,38 @@ def main() -> None:
     m = commands.add_parser(
         "motion", help="frame-to-frame camera motion of every dumped clip (CPU)"
     )
+    m.add_argument("--dump", type=Path, default=DUMP, help="the 25 fps dump (people)")
+    m.add_argument("--out", type=Path, default=MOTION_DIR)
     t = commands.add_parser(
         "tune", help="sensitivity grid on games 2+3, off-benchmark frames"
     )
     t.add_argument("--stage", type=int, choices=[*GRIDS, 3], default=1)
     k = commands.add_parser("track", help="one setting -> tracks and scorecard dumps")
-    k.add_argument("--games", nargs="+", default=list(SELECTION))
+    k.add_argument("--games", nargs="+", default=list(SELECTION), help="games, or all")
     k.add_argument(
         "--setting", type=Path, help="JSON of track_ball options (default: BASE)"
     )
     k.add_argument("--out", type=Path, default=OUT / "track")
     k.add_argument("--dump", type=Path, default=DUMP, help="the 25 fps dump to track")
     k.add_argument("--reference", type=Path, default=be.DUMP)
+    k.add_argument("--motion", type=Path, default=MOTION_DIR, help="`motion`'s folder")
+    k.add_argument(
+        "--post-filter",
+        action="store_true",
+        help="drop ball candidates longer than 45 px at 1080p before tracking",
+    )
+    k.add_argument(
+        "--no-card-dumps",
+        action="store_true",
+        help="tracks only, no scorecard dumps (always so off GSR valid)",
+    )
+    r = commands.add_parser("read", help="placement of tracks vs top-1, paired")
+    r.add_argument("--tracks", type=Path, required=True, help="`track`'s --out")
+    r.add_argument("--out", type=Path, required=True)
+    r.add_argument("--title", default=None)
+    r.add_argument(
+        "--reference", type=Path, help="tracks parquet to pair with (default: top-1)"
+    )
     b = commands.add_parser("breakdown", help="the gain by ticket 01's categories")
     b.add_argument("--out", type=Path, default=OUT / "track")
     b.add_argument("--card", type=Path, default=OUT / "card_track")
@@ -1019,6 +1302,9 @@ def main() -> None:
         type=Path,
         default=be.ROOT / "ball/02/truth/balls_gsr_games_23.parquet",
     )
+    for command in (m, k):
+        command.add_argument("--split", choices=bench.SPLITS, default="valid")
+    r.add_argument("--split", choices=bench.SPLITS, default="valid")
     for command in (m, t, k):
         command.add_argument("--workers", type=int, default=12)
     args = parser.parse_args()
@@ -1033,6 +1319,7 @@ def main() -> None:
         "motion": motion,
         "tune": tune,
         "track": track,
+        "read": read,
         "breakdown": breakdown,
     }[args.command](args)
 

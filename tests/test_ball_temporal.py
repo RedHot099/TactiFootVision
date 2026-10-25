@@ -316,3 +316,119 @@ def test_dump_table_keeps_the_dump_floor_and_drops_long_balls_at_1080p():
         found, 6, 720, 45
     )  # 46 px -> 69 px and 30 px -> 45 px at 1080p
     assert at_720.conf.tolist() == pytest.approx([0.5, 0.3, 0.8])
+
+
+def test_test_split_frames_come_from_the_tracking_sequences_and_must_match(
+    tmp_path, monkeypatch
+):
+    """Ticket 09: GSR test's 25 fps frames are SNMOT's; every local stride-5 GSR frame must be byte-identical."""
+    gsr_clip = tmp_path / "gsr/test/SNGS-001"
+    full = tmp_path / "full/SNMOT-001/img1"
+    (gsr_clip / "img1").mkdir(parents=True)
+    full.mkdir(parents=True)
+    (gsr_clip / "img1/000001.jpg").write_bytes(b"one")
+    for name, data in (("000001", b"one"), ("000002", b"two")):
+        (full / f"{name}.jpg").write_bytes(data)
+    monkeypatch.setattr(bt, "FULL_FRAMES", {"test": tmp_path / "full"})
+    assert [p.name for p in bt.clip_frames(gsr_clip)] == ["000001.jpg", "000002.jpg"]
+    assert bt.check_frames(gsr_clip) == 1
+    (full / "000001.jpg").write_bytes(b"other")
+    with pytest.raises(SystemExit):
+        bt.check_frames(gsr_clip)
+    valid_clip = tmp_path / "gsr/valid/SNGS-002"
+    (valid_clip / "img1").mkdir(parents=True)
+    (valid_clip / "img1/000001.jpg").write_bytes(b"v")
+    assert bt.frames_dir(valid_clip) == valid_clip
+
+
+def test_drop_long_balls_keeps_people_and_short_balls():
+    table = pd.DataFrame(
+        {
+            "x1": 0.0,
+            "y1": 0.0,
+            "x2": [10.0, 46.0, 46.0],
+            "y2": 10.0,
+            "class_id": [0, 0, 2],
+        }
+    )
+    assert bt.drop_long_balls(table, 45).x2.tolist() == [10.0, 46.0]
+    assert bt.drop_long_balls(table, None) is table
+
+
+def gsr_labels(folder: Path, game: str, frames: list[int], truth_xy) -> None:
+    """A minimal GSR ``Labels-GameState.json``: one ball per frame at ``truth_xy`` (centre-origin metres)."""
+    folder.mkdir(parents=True)
+    labels = {
+        "info": {"game_id": game},
+        "categories": [{"id": 4, "name": "ball"}],
+        "images": [{"image_id": f, "file_name": f"{f:06d}.jpg"} for f in frames],
+        "annotations": [
+            {
+                "category_id": 4,
+                "image_id": f,
+                "bbox_pitch": {
+                    "x_bottom_middle": truth_xy[0],
+                    "y_bottom_middle": truth_xy[1],
+                },
+            }
+            for f in frames
+        ],
+    }
+    (folder / "Labels-GameState.json").write_text(json.dumps(labels))
+
+
+def test_read_placement_pairs_tracking_with_top1_on_the_placement_frames(
+    tmp_path, monkeypatch
+):
+    """Truth at corner metres (50, 30) = 720p pixel (500, 300) under H = 0.1 px -> m = 1080p (750, 450). Frame 1:
+    both exact; 6: tracking interpolated 10 m off; 11: tracking measured 2 m off, no top-1; 16: no homography (a miss
+    for both); frame 2 is not a stride-5 frame."""
+    gsr_labels(tmp_path / "test/SNGS-001", "7", [1, 2, 6, 11, 16], (50 - 52.5, 30 - 34))
+    monkeypatch.setattr(bt.bench, "GSR", tmp_path)
+    scale = np.diag([0.1, 0.1, 1.0])
+    monkeypatch.setattr(
+        bt.bench,
+        "frozen_homographies",
+        lambda split: {("SNGS-001", f): scale for f in (1, 6, 11)},
+    )
+
+    def table(rows):
+        return pd.DataFrame(
+            [
+                {"clip": "SNGS-001", "frame": f, "status": s}
+                | dict(zip(bt.COLUMNS, box((x, y), 10), strict=True))
+                for f, s, x, y in rows
+            ]
+        )
+
+    tracks = table(
+        [
+            (1, "measured", 750, 450),
+            (6, "interpolated", 750 + 150, 450),  # 100 px at 720p = 10 m
+            (11, "measured", 750 + 30, 450),  # 2 m
+            (16, "measured", 750, 450),
+        ]
+    )
+    top1 = table(
+        [(1, "measured", 750, 450)] + [(f, "none", np.nan, np.nan) for f in (6, 11, 16)]
+    )
+    found = bt.read_placement(tracks, top1, "test")["test"]
+    assert found["counts"] == {
+        "frames": 4,
+        "without_homography": 1,
+        "near_goal_frames": 0,
+        "clips": 1,
+    }
+    t, r, d = found["track"], found["top1"], found["track_vs_top1"]
+    assert t["well_placed"]["value"] == pytest.approx(0.5)
+    assert r["well_placed"]["value"] == pytest.approx(0.25)
+    assert d["well_placed"]["difference"] == pytest.approx(0.25)
+    assert t["well_placed_with_homography"]["value"] == pytest.approx(2 / 3)
+    assert t["far_of_placed"]["value"] == pytest.approx(1 / 3)
+    assert t["ceiling"]["value"] == pytest.approx(0.75)
+    status = {s["status"]: s for s in found["status"]}
+    assert status["measured"]["frames"] == 3
+    assert status["measured"]["track_well"] == pytest.approx(2 / 3)
+    assert status["interpolated"]["track_far"] == pytest.approx(1.0)
+    assert status["measured"]["gain_pp_of_all"] == pytest.approx(25.0)
+    assert status["none"]["frames"] == 0
