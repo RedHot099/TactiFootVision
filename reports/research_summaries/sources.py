@@ -10,7 +10,7 @@ XD = ROOT / ".claude/worktrees/research-xg-detector/experiments/claude_fable"
 SHOTS = Path("/home/kuba/projects/football_data/xg_shots_full/soccernet_720p")
 DETECTOR = ROOT / "models/detector_yolo11l_1280_dd2c.pt"
 KEYPOINTS = ROOT / "models/pitch_yolo11m_pose_sn960.pt"
-OUT = ROOT / "outputs/research_summaries"
+OUT = Path(__file__).resolve().parents[2] / "outputs/research_summaries"
 # The shot (SoccerNet anchor) sits 4000 ms into every 8 s clip.
 CLIP_ANCHOR_MS = 4000
 
