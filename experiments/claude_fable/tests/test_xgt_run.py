@@ -21,7 +21,7 @@ from xgt_fixtures import synthetic_population  # noqa: E402
 
 def test_the_run_refuses_real_labels_and_empty_settings():
     for argv in (["--source", "dinov2"], ["--synthetic", "--source", "dinov2", "--replicates", "0"],
-                 ["--synthetic", "--source", "dinov2", "--k", "0"]):
+                 ["--synthetic", "--source", "dinov2", "--k", "0"], ["--synthetic"]):
         with pytest.raises(SystemExit):
             xgt_run.parse_args(argv)
 
@@ -68,7 +68,8 @@ def test_the_run_writes_its_records_end_to_end_on_synthetic_inputs(tmp_path, mon
     assert len(pd.read_csv(out / "replicates.csv")) == 2
     complete = json.loads((out / "complete.json").read_text())
     assert complete["files"] == {p.name: sha256_file(p) for p in sorted(out.iterdir()) if p.name != "complete.json"}
-    assert "xgpoc/temporal/features.py" in complete["code"]["files"]
+    assert "xgpoc/temporal/features.py" in complete["code"]["run"]["files"]
+    assert "scripts/xgt_run.py" not in complete["code"]["package"]["files"]
     with pytest.raises(SystemExit, match="new folder"):
         xgt_run.main(["--synthetic", "--source", "g_xgv", "--k", "3", "--out", str(out)])
 

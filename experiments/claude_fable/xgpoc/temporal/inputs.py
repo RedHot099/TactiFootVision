@@ -47,6 +47,7 @@ Extraction list of ticket 01b (`extraction_shots`)
     depend on which G models had an embedding).
 """
 
+import hashlib
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -239,6 +240,10 @@ class Population:
     def z(self) -> np.ndarray:
         return self.table.z_g_combo.to_numpy(float)
 
+    def record(self) -> dict:
+        """What the protocol freezes of a population: input hashes, counts and the shot list's sha256."""
+        return {"inputs": self.inputs, "counts": self.counts, "shot_list_sha256": shot_list_sha256(self.table)}
+
 
 def population_from(base: pd.DataFrame, frames: pd.DataFrame, window: Window, source: Source) -> Population:
     """The population of `window` from the base shots and the source's frame rows (module docstring)."""
@@ -268,6 +273,27 @@ def population_from(base: pd.DataFrame, frames: pd.DataFrame, window: Window, so
               "usable_frames": int((refs >= 0).sum()),
               "usable_by_offset": {str(o): int((refs[:, i] >= 0).sum()) for i, o in enumerate(window.offsets)}}
     return Population(source.name, window, table, refs, frames, counts=counts)
+
+
+def restrict(population: Population, shot_ids) -> Population:
+    """The shots of `population` that are in `shot_ids` (a grid cell's window population intersected with the main
+    population P_G, so every cell is read on a subset of the same shots); counts recomputed, inputs kept."""
+    keep = population.table.index.isin(pd.Index(shot_ids))
+    table = population.table.loc[keep]
+    refs = population.refs[keep]
+    frames = population.frames[population.frames.shot_id.isin(table.index)].reset_index(drop=True)
+    counts = {"shots": len(table), "matches": int(table.game.nunique()), "complete_shots": int(table.complete.sum()),
+              "window_shots": len(population.table), "restricted_to_main": True,
+              "shots_per_fold": {str(k): int(v) for k, v in table.fold.value_counts().sort_index().items()},
+              "matches_per_fold": {str(k): int(v) for k, v in table.groupby("fold").game.nunique().items()},
+              "usable_frames": int((refs >= 0).sum()),
+              "usable_by_offset": {str(o): int((refs[:, i] >= 0).sum()) for i, o in enumerate(population.window.offsets)}}
+    return replace(population, table=table, refs=refs, frames=frames, counts=counts)
+
+
+def shot_list_sha256(table: pd.DataFrame) -> str:
+    """sha256 of the population's shot ids, one per line in sorted order (the frozen shot list)."""
+    return hashlib.sha256(("\n".join(sorted(table.index)) + "\n").encode()).hexdigest()
 
 
 def recorded_path(path: Path) -> str:

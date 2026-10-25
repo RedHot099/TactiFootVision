@@ -9,7 +9,7 @@ import pytest
 from xgpoc.bundle import sha256_file
 from xgpoc.temporal import inputs as ti
 from xgpoc.temporal import provenance as tp
-from xgt_fixtures import base_table, source_frames
+from xgt_fixtures import base_table, source_frames, synthetic_population
 
 
 @pytest.mark.parametrize(("start", "o_max", "control", "offsets", "middle"), [
@@ -195,3 +195,15 @@ def test_build_population_from_a_source_folder_records_every_input(tmp_path, mon
     assert list(population.table.index) == ["a1"] and population.refs.tolist() == [[0, 1]]
     assert population.inputs["oof"]["path"] == str(oof.resolve()) and population.inputs["source"] == files.record()
     assert population.inputs["oof"]["columns"] == ["shot_id", "z_g_combo"]
+
+
+def test_a_grid_cell_is_restricted_to_the_main_populations_shots_and_hashed_by_its_shot_list():
+    cell, _, _ = synthetic_population(ti.Window(-1600, 400, True))
+    keep = cell.table.index[::2]
+    restricted = ti.restrict(cell, list(keep) + ["not_a_shot"])
+    assert list(restricted.table.index) == list(keep) and len(restricted.refs) == len(keep)
+    assert set(restricted.frames.shot_id) == set(keep) and restricted.counts["window_shots"] == len(cell.table)
+    assert restricted.counts["shots"] == len(keep) and restricted.counts["restricted_to_main"]
+    record = restricted.record()
+    assert record["shot_list_sha256"] == ti.shot_list_sha256(restricted.table.iloc[::-1])     # order-free
+    assert record["shot_list_sha256"] != cell.record()["shot_list_sha256"]

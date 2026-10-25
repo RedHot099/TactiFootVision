@@ -1,0 +1,210 @@
+"""Write the frozen protocol of xg-temporal, `research/xgt_protocol.json` (ticket 03). Label-free; CPU only.
+
+    ./run.sh --no-sync python scripts/xgt_protocol.py                       # after 01b and the label-free controls
+    ./run.sh --no-sync python scripts/xgt_protocol.py --draft --source g_xgc --out outputs/xgt_protocol_draft.json
+    ... --refreeze --reason "..."                                            # after a code change only
+
+The file holds `frozen` (`xgpoc.temporal.protocol.frozen()`, every rule the code runs) and `data`, built here inside
+`no_statsbomb_reads()` without any label:
+    main                  the main population of g_xgv at (-1600, -600): input hashes (plan, folds, oof.csv with
+                          its two columns, index with its three, the source's table and embedding array), counts, the
+                          shot list's SHA-256, the arms' columns, the leak assertions; `source_record` adds the
+                          SHA-256 of the source folder's complete.json (results/xgt_xgv_embeddings/complete.json)
+    cells                 every window of the ticket 07 grid and the leakage-control rows, its population (window
+                          population ∩ main) recorded the same way
+    descriptive_sources   g_xgc and dinov2: their files and their main-window populations
+    safe_margin           ticket 02's result.json (pinned SHA-256, checked against its completion record): STOP and the
+                          owner's decision
+    e3                    the hashes of the E3 table the categories use
+    label_free_controls   the record of `scripts/xgt_run.py --controls` (results/xgt/controls/label_free), refused
+                          unless it matches its files, is the protocol's controls (source g_xgv, 200 replicates, every
+                          simulation), was written under the current package code, has the same settings and
+                          population, and passed every label-free gate
+    code                  `xgpoc.temporal.records.package_hashes()`
+Without results/xgt_xgv_embeddings (ticket 01b) or the label-free controls the protocol cannot be written; `--draft`
+writes a draft instead (another --source allowed, missing parts recorded as pending, `draft: true`, never to the
+protocol's path), which `scripts/xgt_run.py` refuses. An existing protocol is refused unless `--refreeze --reason`, which
+keeps the previous file's SHA-256 and the reason in `history` and refuses any change of `frozen` (a re-freeze is for a
+code change, never for a rule). Prints the file's SHA-256; the ticket records it and `scripts/xgt_run.py` pins it.
+"""
+
+import argparse
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from xgpoc.bundle import sha256_file
+from xgpoc.detector import approach1 as a1
+from xgpoc.detector import records
+from xgpoc.detector.guard import no_statsbomb_reads
+from xgpoc.paths import INDEX
+from xgpoc.temporal import categories as tc
+from xgpoc.temporal import controls as tco
+from xgpoc.temporal import features as tf
+from xgpoc.temporal import inputs as ti
+from xgpoc.temporal import protocol as tpr
+from xgpoc.temporal import provenance as tp
+from xgpoc.temporal import records as tr_records
+
+ROOT = Path(__file__).resolve().parents[1]
+PENDING = "pending"
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--source", choices=sorted(ti.SOURCES), default=tpr.MAIN_SOURCE)
+    parser.add_argument("--draft", action="store_true", help="a draft: another source, pending parts; never the protocol")
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--controls", type=Path, default=ROOT / tpr.LABEL_FREE, help="the label-free controls' folder")
+    parser.add_argument("--refreeze", action="store_true")
+    parser.add_argument("--reason", default=None)
+    args = parser.parse_args(argv)
+    protocol_path = (ROOT / tpr.PROTOCOL).resolve()
+    if args.out is None:
+        if args.draft:
+            parser.error("--draft needs its own --out")
+        args.out = protocol_path
+    if args.draft and Path(args.out).resolve() == protocol_path:
+        parser.error(f"a draft is never written to {tpr.PROTOCOL}")
+    if not args.draft and args.source != tpr.MAIN_SOURCE:
+        parser.error(f"the protocol's main source is {tpr.MAIN_SOURCE}; another source needs --draft")
+    if args.refreeze and not args.reason:
+        parser.error("--refreeze needs --reason")
+    return args
+
+
+def source_record(files: ti.SourceFiles) -> dict:
+    return files.record() | {"complete_json": {"path": ti.recorded_path(files.source.folder / ti.RECORD),
+                                               "sha256": sha256_file(files.source.folder / ti.RECORD)}}
+
+
+def main_record(source: str, plan) -> tuple[dict, ti.Population]:
+    population, files = ti.build_population(ti.SOURCES[source], ti.Window(), plan)
+    columns = tf.arm_columns(population.window, tf.K)
+    provenance = tp.control(population, columns, plan)
+    if not provenance["passed"]:
+        raise SystemExit(f"provenance failed: {[c for c in provenance['checks'] if not c['passed']]}")
+    return {"source": source, **population.record(), "source_files": source_record(files), "columns": columns,
+            "provenance": provenance}, population
+
+
+def cell_records(source: str, plan, main: ti.Population) -> list[dict]:
+    """Every grid cell's population (window population ∩ main), recorded like the main one."""
+    files = ti.verify_source(ti.SOURCES[source])
+    out = []
+    for cell in tpr.grid_cells():
+        window = tpr.cell_window(cell)
+        population, _ = ti.build_population(ti.SOURCES[source], window, plan, files=files)
+        population = ti.restrict(population, main.table.index)
+        provenance = tp.control(population, tf.arm_columns(window, tf.K), plan)
+        if not provenance["passed"]:
+            raise SystemExit(f"provenance failed in cell {cell['start']}/{cell['o_max']}")
+        out.append({"start": cell["start"], "o_max": cell["o_max"], **population.record(),
+                    "provenance_passed": provenance["passed"]})
+    return out
+
+
+def descriptive_sources(plan) -> dict:
+    out = {}
+    for name in tpr.DESCRIPTIVE_SOURCES:
+        population, files = ti.build_population(ti.SOURCES[name], ti.Window(), plan)
+        out[name] = {**population.record(), "source_files": source_record(files)}
+    return out
+
+
+def safe_margin() -> dict:
+    path = ROOT / tpr.SAFE_MARGIN
+    digest = sha256_file(path)
+    recorded = json.loads((path.parent / "complete.json").read_text())["outputs"].get(path.name)
+    if digest != tpr.SAFE_MARGIN_RESULT_SHA256 or recorded != digest:
+        raise SystemExit(f"{path} is not ticket 02's result (sha256 {digest})")
+    result = json.loads(path.read_text())
+    return {"path": str(tpr.SAFE_MARGIN), "sha256": digest, "verdict": result["verdict"], "o_max": result["o_max_ms"],
+            "violations": result["violations"], "n": result["n"], "cp_upper_95": result["cp_upper_95"],
+            "max_rate": result["max_rate"],
+            "worst_case": {o: v["worst_case_struck"] for o, v in result["per_offset"].items()},
+            "owner_decision": "2026-10-25: o_max stays -600 despite the STOP; the report (ticket 05) discloses the STOP "
+                              "and the deviation from the stop rule; boundary sensitivity from the ticket 07 grid"}
+
+
+def label_free_controls(folder: Path, main: dict, draft: bool) -> dict:
+    """The label-free controls' record (module docstring); pending in a draft when it is missing."""
+    path = folder / "complete.json"
+    if not path.exists():
+        if draft:
+            return {"status": PENDING, "path": ti.recorded_path(folder)}
+        raise SystemExit(f"{path} does not exist: run scripts/xgt_run.py --controls first")
+    record = json.loads(path.read_text())
+    for name, digest in record["files"].items():
+        if not (folder / name).exists() or sha256_file(folder / name) != digest:
+            raise SystemExit(f"{folder / name} does not match {path}")
+    problems = []
+    if not record.get("protocol_controls"):
+        problems.append("not the protocol's controls (a trial run)")
+    if record["source"] != main["source"]:
+        problems.append(f"source {record['source']}")
+    if record["code"]["package"]["digest"] != tr_records.package_hashes()["digest"]:
+        problems.append("other package code")
+    if json.loads(json.dumps(record["settings"])) != json.loads(json.dumps(tco.settings())):
+        problems.append("other settings")
+    if {k: record[k] for k in ("inputs", "counts", "shot_list_sha256")} != json.loads(json.dumps(
+            {k: main[k] for k in ("inputs", "counts", "shot_list_sha256")})):
+        problems.append("another population")
+    if not record["label_free_passed"]:
+        problems.append("a label-free gate failed")
+    if problems and not draft:
+        raise SystemExit(f"the label-free controls cannot enter the protocol: {problems}")
+    return {"status": "recorded", "path": ti.recorded_path(folder), "complete_sha256": sha256_file(path),
+            "gates": record["gates"], "label_free_passed": record["label_free_passed"],
+            "protocol_controls": record.get("protocol_controls"), "problems": problems}
+
+
+def refreeze_history(path: Path, reason: str | None, record: dict) -> list[dict]:
+    if not path.exists():
+        raise SystemExit("a re-freeze needs an existing protocol")
+    previous = json.loads(path.read_text())
+    if previous["frozen"] != json.loads(json.dumps(record["frozen"], default=tr_records.json_default)):
+        raise SystemExit("a re-freeze may not change the frozen rules")
+    return [*previous.get("history", []), {"sha256": sha256_file(path), "written": previous["written"],
+                                           "git": previous["git"], "replaced_because": reason}]
+
+
+def build(args: argparse.Namespace) -> dict:
+    with no_statsbomb_reads():
+        plan = a1.verify_plan(INDEX)
+        try:
+            main, population = main_record(args.source, plan)
+        except FileNotFoundError as e:
+            raise SystemExit(f"{e}: the {args.source} embeddings are not there yet (ticket 01b for g_xgv); a draft on "
+                             "another source needs --draft --source g_xgc") from None
+        data = {"main": main, "cells": cell_records(args.source, plan, population),
+                "descriptive_sources": descriptive_sources(plan), "safe_margin": safe_margin(),
+                "e3": {name: {"path": ti.recorded_path(tc.E3 / name), "sha256": records.verified_file(tc.E3 / name)}
+                       for name in ("frames.parquet", "features.parquet")},
+                "label_free_controls": label_free_controls(args.controls, main, args.draft),
+                "code": tr_records.package_hashes()}
+    if args.draft:
+        xgv = ti.SOURCES[tpr.MAIN_SOURCE].folder / ti.RECORD
+        data["pending"] = {"g_xgv_complete_json": None if xgv.exists() else ti.recorded_path(xgv),
+                           "label_free_controls": data["label_free_controls"]["status"] == PENDING}
+    purpose = ("xg-temporal ticket 03: the frozen protocol, written before any label is read" if not args.draft else
+               "xg-temporal ticket 03: a DRAFT of the protocol (not frozen; refused by scripts/xgt_run.py)")
+    return {"purpose": purpose, "draft": bool(args.draft), "frozen": tpr.frozen(), "data": data,
+            "written": datetime.now(UTC).isoformat(timespec="seconds"), "git": records.git_state()}
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    out = Path(args.out)
+    if out.exists() and not args.refreeze:
+        raise SystemExit(f"{out} exists; a re-freeze needs --refreeze and --reason")
+    record = build(args)
+    history = refreeze_history(out, args.reason, record) if args.refreeze else []
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(record | {"history": history}, indent=1, default=tr_records.json_default,
+                              allow_nan=False) + "\n")
+    print(sha256_file(out))
+
+
+if __name__ == "__main__":
+    main()
