@@ -16,7 +16,7 @@ import torch
 from xgpoc.bundle import sha256_file
 from xgpoc.models import g_bundle
 from xgpoc.models.d_foundation import FinetuneViTXG
-from xgpoc.probe.table import TABLE_COLUMNS, build_plan, reference_check
+from xgpoc.probe.table import TABLE_COLUMNS, build_plan, reference_check, validate_table
 from xgpoc.temporal import inputs as ti
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -141,7 +141,7 @@ def test_every_shot_is_scored_by_its_xgv_fold_models_with_both_seed_embeddings(w
     seed1 = np.load(world["emb"] / "embeddings_g_combo_seed1.npy", mmap_mode="r")
     assert seed0.shape == seed1.shape == (int(scored.sum()), 5 * 384) and seed0.dtype == np.float16
     frames = world["frames"]
-    for shot in ("a1", "t1"):
+    for shot in ("a1", "b1", "t1"):
         fold = XGV_FOLD[SHOTS[shot][0]]
         mine = frames[frames.shot_id.eq(shot) & frames.offset_ms.isin([-1600, 0, 400]) & frames.status.eq("ok")]
         rows = table.set_index(["shot_id", "offset_ms"]).loc[[(shot, o) for o in mine.offset_ms]]
@@ -300,6 +300,59 @@ def test_reference_is_read_with_shot_id_and_z_g_combo_only(world, monkeypatch):
         scorer.xgt_reference(copy / "oof.csv")
 
 
+def test_an_interrupted_run_resumes_to_the_same_table_and_arrays(world, tmp_path):
+    out, emb = tmp_path / "out", tmp_path / "emb"
+    argv = xgt_args(world, out, emb, "--embed-seeds", "0", "1")
+    assert scorer.run(scorer.parse_args([*argv, "--max-chunks", "2"])) == 0
+    assert (out / "identity.json").exists() and not (out / "complete.json").exists()
+    assert len(list((out / "chunks").glob("chunk_*.json"))) == 2
+    torn = np.lib.format.open_memmap(emb / "embeddings_g_combo_seed1.npy", mode="r+")    # a committed seed-1 slice changes
+    torn[0] = 0
+    torn.flush()
+    del torn
+    assert scorer.run(scorer.parse_args(argv)) == 0
+    assert sha256_file(out / "predictions.parquet") == sha256_file(world["out"] / "predictions.parquet")
+    for name in ("embeddings_g_combo.npy", "embeddings_g_combo_seed1.npy"):
+        assert sha256_file(emb / name) == sha256_file(world["emb"] / name)
+
+
+def test_a_non_empty_embeddings_dir_without_a_run_identity_is_refused(world, tmp_path, monkeypatch):
+    out, emb = tmp_path / "out", tmp_path / "emb"
+    emb.mkdir()
+    (emb / "run.log").write_text("a log beside the arrays")
+    monkeypatch.setattr(scorer, "open_embeddings", lambda *a, **k: pytest.fail("opened arrays in a foreign folder"))
+    with pytest.raises(ValueError, match="is not empty and .* has no run identity"):
+        scorer.run(scorer.parse_args(xgt_args(world, out, emb)))
+    assert not (out / "identity.json").exists()
+
+
+def test_embed_seeds_must_be_seeds_of_the_fold_models_and_are_refused_in_xgc(world, tmp_path):
+    with pytest.raises(ValueError, match="are not seeds of the fold models"):
+        scorer.run(scorer.parse_args(xgt_args(world, tmp_path / "out", tmp_path / "emb", "--embed-seeds", "0", "2", "--check-only")))
+    with pytest.raises(SystemExit):
+        scorer.parse_args(["--embed-seeds", "0", "1"])
+    with pytest.raises(SystemExit):
+        scorer.parse_args(["--out", str(tmp_path / "out"), "--embeddings-dir", str(tmp_path / "emb")])
+    assert scorer.parse_args(["--out", str(tmp_path / "out"), "--embeddings-dir", str(tmp_path / "out")]).embed_seeds == (0,)
+
+
+def test_validate_table_refuses_another_encoder_set(world):
+    table = pd.read_parquet(world["out"] / "predictions.parquet")
+    plan = build_plan(world["shots"], world["frames"], pd.read_csv(world["files"]["folds"]), world["files"]["frames"], 1, ti.GRID,
+                      test_group=False)
+    validate_table(table, plan, 4, 2, ("g_combo",))
+    with pytest.raises(ValueError, match="table encoders are"):
+        validate_table(table.assign(encoder="g_combo_no_head"), plan, 4, 2, ("g_combo",))
+
+
+def test_offset_frame_shots_are_read_without_outcome_columns(world):
+    files = world["files"]
+    assert {"label", "goal"} <= set(world["shots"].columns)              # the stored shots.csv carries them
+    shots, _, _ = scorer.load_offset_frames(files["frames"], files["protocol"], files["index"])
+    assert not [c for c in shots.columns if any(f in c.lower() for f in scorer.tp.BANNED)]
+    assert {"shot_id", "game", "half", "split", "is_penalty", "complete_case"} <= set(shots.columns)
+
+
 # --- units ---------------------------------------------------------------------------------------------------------------------
 
 def test_plan_without_test_group_puts_every_shot_in_its_fold(world):
@@ -324,3 +377,6 @@ def test_reference_check_reports_mean_max_and_correlation():
     missing = reference_check(table, pd.Series({"a": 1.0, "b": 2.0}))
     assert not missing["passed"] and missing["missing_reference"] == 1
     json.dumps(reference_check(table.iloc[:0], pd.Series(dtype=float)), allow_nan=False)
+    constant = reference_check(table.assign(xg_logit=1.0), pd.Series({"a": 1.0, "b": 2.0, "c": 3.0}), tolerance=5)
+    assert constant["pearson_r"] is None and constant["passed"]
+    json.dumps(constant, allow_nan=False)

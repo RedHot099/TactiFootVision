@@ -231,6 +231,15 @@ def spot_check(table: pd.DataFrame, roots: dict[str, Path], tolerance: float = S
     return report
 
 
+def pearson_r(a: np.ndarray, b: np.ndarray) -> float | None:
+    """The correlation, or None when it is undefined (under two values, or a constant side): the record is strict JSON."""
+    if len(a) < 2:
+        return None
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r = float(np.corrcoef(a, b)[0, 1])
+    return r if np.isfinite(r) else None
+
+
 def reference_check(table: pd.DataFrame, reference: pd.Series, tolerance: float = SPOT_TOLERANCE,
                     encoder: str = "g_combo") -> dict:
     """Offset-0 `xg_logit` (mean of logit / temperature over the scoring models) of `encoder`'s `ok` rows against a
@@ -247,6 +256,6 @@ def reference_check(table: pd.DataFrame, reference: pd.Series, tolerance: float 
              "missing_reference": int((~np.isfinite(ref)).sum()),
              "mean_abs_dlogit": float(diff.mean()) if len(diff) else None,
              "max_abs_dlogit": float(diff.max()) if len(diff) else None,
-             "pearson_r": float(np.corrcoef(ours[usable], ref[usable])[0, 1]) if usable.sum() > 1 else None}
+             "pearson_r": pearson_r(ours[usable], ref[usable])}
     entry["passed"] = bool(len(diff) and entry["missing_reference"] == 0 and entry["max_abs_dlogit"] <= tolerance)
     return entry

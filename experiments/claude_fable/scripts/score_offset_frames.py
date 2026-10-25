@@ -168,10 +168,17 @@ def json_text(value) -> str:
     return json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n"
 
 
+def without_outcome(column: str) -> bool:
+    """A shots.csv column that may be read: none whose name holds a banned fragment of xg-temporal (`label`, `goal`,
+    ...); nothing here scores by outcome."""
+    return not any(fragment in column.lower() for fragment in tp.BANNED)
+
+
 def load_offset_frames(root: Path, protocol: Path, index: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """The shots and frames tables of the offset-frames version after checking its completion record: tables unchanged,
     approved protocol, 30-offset grid, lossless model-input storage, built from this index, and the protocol's stop
-    rule not triggered. Frame files are checked one by one when they are read."""
+    rule not triggered. Frame files are checked one by one when they are read. The shots table comes without its
+    outcome columns (`without_outcome`)."""
     record = json.loads((root / "complete.json").read_text())
     identity = record["identity"]
     for name in OFFSET_FILES:
@@ -187,7 +194,7 @@ def load_offset_frames(root: Path, protocol: Path, index: Path) -> tuple[pd.Data
     if summary["protocol_population"]["stop_rule_triggered"] is not False:
         raise SystemExit("the offset frames triggered the protocol's stop rule (more than 5% of the population excluded); "
                          "this returns to the owner, nothing is scored")
-    shots = pd.read_csv(root / "shots.csv")
+    shots = pd.read_csv(root / "shots.csv", usecols=without_outcome)    # shots.csv carries label and goal: never read
     frames = pd.read_csv(root / "frames.csv", dtype={"cut_between_anchor": "boolean", "frame_path": str, "file_sha256": str})
     provenance = {"complete_json_sha256": sha256_file(root / "complete.json"),
                   **{name: record["files"][name] for name in OFFSET_FILES},
@@ -305,8 +312,7 @@ def xgt_reference(path: Path) -> tuple[pd.Series, dict]:
 class ModelBank:
     """The shared trunk and fold tails of both G encoders, loaded when a group first needs them."""
 
-    def __init__(self, models: dict[str, list[dict]], spec: dict, device: str, layout: Layout = LAYOUTS["xgc"],
-                 embed_seeds: tuple[int, ...] = (0,)):
+    def __init__(self, models: dict[str, list[dict]], spec: dict, device: str, layout: Layout, embed_seeds: tuple[int, ...]):
         self.models, self.device, self.layout, self.embed_seeds = models, device, layout, tuple(embed_seeds)
         self.arrays = array_names(layout, self.embed_seeds)
         pretrained, _ = g_bundle.build_g(spec)    # the untouched pretrained network: trunk and frozen encoder
@@ -670,9 +676,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--layout", choices=sorted(LAYOUTS), default="xgc", help="xgc: the direction probe; xgt: xg-temporal 01b")
     ap.add_argument("--out", type=Path, help=f"default {OUT.relative_to(ROOT)} (xgc), {XGT_OUT.relative_to(ROOT)} (xgt)")
     ap.add_argument("--embeddings-dir", type=Path,
-                    help=f"where the arrays go; default --out (xgc), {XGT_EMBEDDINGS.relative_to(ROOT)} (xgt)")
+                    help=f"xgt only: where the arrays go, default {XGT_EMBEDDINGS.relative_to(ROOT)} (xgc: always --out)")
     ap.add_argument("--embed-seeds", type=int, nargs="+", default=[0],
-                    help="seeds whose G embedding is kept (0 must be one; seed k > 0 goes to embeddings_<encoder>_seed<k>)")
+                    help="xgt only: seeds whose G embedding is kept (0 must be one; seed k > 0 goes to embeddings_<encoder>_seed<k>)")
     ap.add_argument("--index", type=Path, default=INDEX)
     ap.add_argument("--offset-frames", type=Path, default=OFFSET_FRAMES)
     ap.add_argument("--g-combo", type=Path, help=f"default {G_ROOTS['g_combo'].relative_to(ROOT)} (xgc), "
@@ -705,6 +711,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args.embed_seeds = tuple(sorted(set(args.embed_seeds)))
     if 0 not in args.embed_seeds:
         ap.error("--embed-seeds must include 0 (the embedding of the protocol and of the g_xgv contract)")
+    if not xgt and (args.embed_seeds != (0,) or not same_path(args.embeddings_dir, args.out)):
+        ap.error("--embed-seeds and --embeddings-dir are for layout xgt: the xgc identity records neither")
     if xgt:
         args.shots_csv = args.shots_csv or XGT_SHOTS
         args.offsets = args.offsets or list(ti.GRID)
