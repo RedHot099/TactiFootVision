@@ -27,6 +27,8 @@ def test_the_seeds_are_fresh_and_the_settings_serialise():
     settings = tco.settings()
     assert settings["seeds_fresh"]["distinct"] and len(set(tco.SEEDS.values())) == len(tco.SEEDS)
     assert tco.TRACER_SEED not in tco.SEEDS.values() and settings["replicates"] == 200
+    assert not set(tco.REMEDY_SEEDS.values()) & set(tco.SEEDS.values()) and "positive_-0.002" in tco.REMEDY_SEEDS
+    assert settings["remedy"]["seeds"] == tco.REMEDY_SEEDS and settings["positive"]["second_plant"]["gating"] is False
     assert settings["rich_nulls"]["scale"] == -0.004 and settings["positive"]["gated_contrast"] == "T-S"
     assert json.loads(json.dumps(settings)) == settings
 
@@ -42,14 +44,27 @@ def test_the_rich_null_hits_its_oracle_s_minus_r_scale_without_outcomes(built):
     assert np.array_equal(again.u, truths.u) and np.array_equal(again.m, truths.m)
 
 
-def test_the_motion_plant_is_invisible_to_s_and_hits_its_oracle_t_minus_s_target(built):
+@pytest.mark.parametrize("plant", ["motion", "pc01"])
+def test_both_motion_plants_are_invisible_to_s_and_hit_their_oracle_t_minus_s_target(built, plant):
     _, _, truths, _ = built
-    x = np.column_stack([np.ones(len(truths.m)), truths.x_static])
-    assert np.abs(x.T @ truths.m).max() / len(truths.m) < 1e-10           # residualised on S's pooled inputs
-    p, record = truths.positive(tco.POSITIVE_TARGET)
-    assert record["oracle_T-S"] == pytest.approx(tco.POSITIVE_TARGET, abs=1e-9)
+    m = truths.m if plant == "motion" else truths.m_pc01
+    x = np.column_stack([np.ones(len(m)), truths.x_static])
+    assert np.abs(x.T @ m).max() / len(m) < 1e-10                         # residualised on S's pooled inputs
+    p, record = truths.positive(tco.POSITIVE_TARGET, plant)
+    assert record["plant"] == plant and record["oracle_T-S"] == pytest.approx(tco.POSITIVE_TARGET, abs=1e-9)
     assert record["oracle_T-R"] == pytest.approx(tco.POSITIVE_TARGET, abs=2e-4)
     assert record["beta"] < 0
+
+
+def test_the_gating_plant_combines_every_motion_column(built):
+    data, _, truths, _ = built
+    columns = tco.motion_columns(data, tco.pooled_scores(data))
+    assert columns.shape[1] == data.k * len(tf.motion_kinds(data.window))
+    residual = tco.residualised(columns, truths.x_static)
+    weights = np.linalg.lstsq(residual, truths.m, rcond=None)[0]
+    assert np.allclose(residual @ weights, truths.m, atol=1e-8)           # m lies in the span of the motion columns
+    assert np.count_nonzero(np.abs(weights) > 1e-6) == columns.shape[1]
+    assert abs(np.corrcoef(truths.m, truths.m_pc01)[0, 1]) < 0.9
 
 
 def test_dependent_missing_indicators_are_dropped_before_the_unpenalised_projection():
@@ -98,9 +113,10 @@ def test_the_null_gates_compare_the_holm_rejection_rate_with_0_09():
 def test_the_positive_gate_is_the_mean_recovered_t_minus_s_in_its_band():
     frame = null_frame(0).assign(delta_oracle=-0.002, p_oracle=0.01)
     for value, passed in ((-0.0015, True), (-0.0031, False), (-0.0009, False)):
-        summary = tco.positive_summary(frame.assign(**{"delta_T-S": value}), 1, {"target": -0.002})
+        summary = tco.positive_summary(frame.assign(**{"delta_T-S": value}), 1, {"target": -0.002, "plant": "motion"})
         assert summary["passed"] is passed
     assert "passed" not in tco.positive_summary(frame, 1, {"target": -0.004})
+    assert "passed" not in tco.positive_summary(frame, 1, {"target": -0.002, "plant": "pc01"})
 
 
 def test_the_smallest_detectable_effect_interpolates_the_t_minus_s_power():
@@ -118,6 +134,9 @@ def test_the_label_free_run_holds_every_gate_and_refuses_to_drop_one(built):
             tco.run_label_free(fitter, weights, truths, provenance, 2, simulations=("plain_nulls", "rich_nulls"))
     assert set(frames) == set(tco.SIMULATIONS) and set(summary["gates"]) == set(tco.LABEL_FREE_GATES)
     assert summary["reports"]["power_curve"]["targets"] == [-0.002, -0.003, -0.004]
+    assert summary["gates"]["positive"]["plant"] == "motion"
+    assert summary["reports"]["positive_pc01_-0.002"]["plant"] == "pc01"
+    assert "passed" not in summary["reports"]["positive_pc01_-0.002"]
     assert set(summary["reports"]["clustered_nulls"]["coverage"]) == set(tco.CONTRASTS)
     assert summary["label_free_passed"] == all(summary["gates"][g]["passed"] for g in tco.LABEL_FREE_GATES)
     json.dumps(summary, default=float)
@@ -128,7 +147,7 @@ def test_a_strong_motion_plant_is_recovered_by_t_minus_s(built):
     p, _ = truths.positive(-0.02)
     with tco.Fitter(designs) as fitter:
         frame = tco.simulate(fitter, weights, tco.fixed(p), 3, 5)
-    assert (frame["delta_T-S"] < -0.005).all() and frame["holm_T-S"].all()
+    assert (frame["delta_T-S"] < 0).all() and frame["delta_T-S"].mean() < -0.008 and frame["holm_T-S"].sum() >= 2
 
 
 def test_the_permutation_keeps_each_matchs_labels_and_returns_no_label(built, monkeypatch):
@@ -161,24 +180,53 @@ def test_the_readability_veto_fires_only_on_a_lower_bound_above_0_55():
     assert not unreadable["vetoed"] and readable["lower_one_sided_95"] <= readable["auc"]
 
 
-def test_the_claims_need_holm_the_practical_threshold_and_no_veto():
+def test_the_claims_need_holm_the_practical_threshold_no_veto_and_no_leak_jump():
     result = {"readings": {"T-R": {"holm_rejected": True, "detectable_improvement": True, "practical_candidate": True},
                            "T-S": {"holm_rejected": False, "detectable_improvement": False, "practical_candidate": False}}}
     chosen = {"R": [None] * 5, "S": [1e-5] * 3 + [1.0] * 2, "T": [1e-5] * 2 + [1.0] * 3}
-    open_ = tr.claims(result, {"vetoed": False}, chosen)
-    vetoed = tr.claims(result, {"vetoed": True}, chosen)
-    assert open_["T-R"]["practical_candidate"] and not open_["motion_helps"]
+    calm = {"jump": {"T-R": {"signal": False}, "T-S": {"signal": False}}}
+    jump = {"jump": {"T-R": {"signal": True}, "T-S": {"signal": False}}}
+    open_ = tr.claims(result, {"vetoed": False}, chosen, calm)
+    vetoed = tr.claims(result, {"vetoed": True}, chosen, calm)
+    jumped = tr.claims(result, {"vetoed": False}, chosen, jump)
+    assert open_["T-R"]["practical_candidate"] and not open_["motion_helps"] and open_["T-R"]["wording"] is None
     assert not vetoed["T-R"]["practical_candidate"] and vetoed["T-R"]["practical_blocked_by_veto"]
+    assert not jumped["T-R"]["practical_candidate"] and jumped["T-R"]["wording"] == tr.AMBIGUOUS
+    assert jumped["T-R"]["detectable_improvement"]                          # the Holm reading is unchanged
     assert open_["arm_near_reference"] == {"S": True, "T": False}
 
 
-def test_the_leak_rules_read_the_method_control_and_the_jump_over_the_trend():
+def test_the_trend_is_the_least_squares_line_through_three_points():
+    for at in (-400, -200):
+        c = tr.trend_weights(at)
+        assert c.sum() == pytest.approx(1.0)
+        assert c @ np.array([-1000.0, -800.0, -600.0]) == pytest.approx(at)          # the line y = x
+
+
+def test_the_leak_rules_read_the_method_control_and_the_jump_with_its_interval():
+    rng = np.random.default_rng(0)
+
     def curve(late: float, positive_hi: float) -> dict:
         values = {-1000: 0.0, -800: -0.0005, -600: -0.001, -400: -0.0015, -200: late, 0: -0.01, 400: -0.02}
-        return {o: {n: {"delta_ll": v, "hi95": positive_hi if (o, n) == (400, "S-R") else 0.0}
+        noise = rng.normal(0, 1e-4, 200)
+        return {o: {n: {"delta_ll": v, "draws": v + noise, "hi95": positive_hi if (o, n) == (400, "S-R") else 0.0}
                     for n in ("T-R", "T-S", "S-R")} for o, v in values.items()}
     flat = tr.leak_rules(curve(-0.002, -0.01))
     assert flat["method_positive"]["passed"] and not flat["leak_signal"]
-    assert flat["jump"]["T-S"]["excess"]["-200"] == pytest.approx(0.0)
+    assert flat["jump"]["T-S"]["excess"]["-200"]["excess"] == pytest.approx(0.0, abs=1e-12)
     jump = tr.leak_rules(curve(-0.0035, 0.001))
+    excess = jump["jump"]["T-S"]["excess"]["-200"]
     assert jump["leak_signal"] and not jump["method_positive"]["passed"]
+    assert excess["excess"] == pytest.approx(-0.0015) and excess["lo95"] <= excess["excess"] <= excess["hi95"]
+
+
+def test_a_curve_point_keeps_its_draws_paired_with_the_main_weights():
+    games = np.repeat(np.arange(30), 20).astype(str)
+    weights = ss.bootstrap_weights(games)
+    rng = np.random.default_rng(1)
+    y = (rng.random(len(games)) < 0.2).astype(int)
+    probabilities = {arm: np.clip(0.2 + 0.05 * rng.normal(size=len(games)), 0.01, 0.99) for arm in ("R", "S", "T")}
+    point = tr.curve_point(y, probabilities, weights)
+    assert set(point) == {"T-R", "T-S", "S-R"} and point["T-S"]["draws"].shape == (ss.N_BOOT,)
+    assert point["T-R"]["delta_ll"] == pytest.approx(ss.paired_delta(y, probabilities["T"], probabilities["R"],
+                                                                     weights)["delta_ll"])

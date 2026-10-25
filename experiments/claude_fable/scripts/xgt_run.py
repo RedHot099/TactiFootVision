@@ -354,19 +354,19 @@ def read_window(designs: dict, y: np.ndarray, weights: np.ndarray) -> tuple[dict
 
 
 def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, large: Path) -> dict:
-    """The read-out of ticket 04 (module docstring); returns the summary."""
+    """The read-out of ticket 04 (module docstring); returns the summary. Every leak-curve point uses the main
+    population's match draws restricted to its shots, so the jump rule's excess has a paired interval."""
     population, columns, provenance, _, built = main_population(protocol, plan, stages)
+    e3, e3_hashes = tc.e3_inputs(population.table.index, ROOT / protocol["data"]["e3"]["source"])     # label-free first
+    stages("e3")
     labels = tl.load_labels(population, INDEX, ti.PLAN_CSV)
     stages("labels")
     weights = ss.bootstrap_weights(population.games)
     probabilities, chosen, result = read_window(built["designs"], labels.goal, weights)
     veto = tr.readability_veto(labels.goal, labels.on_target, probabilities["T"], probabilities["S"], population.games)
-    claims = tr.claims(result, veto, chosen)
-    stages("main_read_out")
-    e3, e3_hashes = tc.e3_inputs(population.table.index)
     categories = tc.category_table(e3, labels.goal, probabilities, weights)
-    stages("categories")
-    curve, rows = {ti.O_MAX: result["deltas"]}, []
+    stages("main_read_out")
+    curve, rows = {ti.O_MAX: tr.curve_point(labels.goal, probabilities, weights)}, []
     cells = {(c["start"], c["o_max"]): c for c in protocol["data"]["cells"]}
     main_ids = population.table.index
     for o_max in tpr.LEAK_CURVE:
@@ -375,9 +375,9 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
             cell_population, _, _, _, cell = prepared(tpr.MAIN_SOURCE, window, tf.K, plan, stages, main_ids)
             check_population(cell_population, cells[(-1600, o_max)], f"cell -1600/{o_max}")
             cell_labels = labels.aligned(cell_population)
-            _, cell_chosen, cell_result = read_window(cell["designs"], cell_labels.goal,
-                                                      ss.bootstrap_weights(cell_population.games))
-            curve[o_max] = cell_result["deltas"]
+            cell_weights = weights[:, main_ids.get_indexer(cell_population.table.index)]
+            cell_probabilities, cell_chosen = tr.out_of_fold(cell["designs"], cell_labels.goal)
+            curve[o_max] = tr.curve_point(cell_labels.goal, cell_probabilities, cell_weights)
             n = cell_population.counts["shots"]
         else:
             cell_chosen, n = chosen, population.counts["shots"]
@@ -386,6 +386,7 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
                          **{k: d[k] for k in ("delta_ll", "lo95", "hi95", "bound_one_sided_95", "p_one_sided")},
                          "near_reference_T": tr.near_reference(cell_chosen["T"])})
     leak = tr.leak_rules(curve)
+    claims = tr.claims(result, veto, chosen, leak)
     stages("leak_curve")
     large.mkdir(parents=True)
     pd.DataFrame({"shot_id": population.table.index, "game": population.games, "fold": population.folds}

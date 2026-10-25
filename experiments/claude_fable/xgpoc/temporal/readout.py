@@ -14,21 +14,26 @@ Synthetic outcomes (`synthetic_outcomes`): y* ~ Bernoulli(sigmoid(z_g_combo)), d
     vector per replicate in order. No real label is involved.
 Real read-out rules (ticket 04; the protocol records them through `xgpoc.temporal.protocol.frozen`)
     claims (`claims`)        a Holm-rejected contrast is a "detectable improvement", with point ΔLL <= -0.002 a
-                             "practical candidate" unless the readability veto fires; "motion helps" only when T - S is
-                             rejected; an arm whose inner CV chose the grid's smallest C in >= `NEAR_REFERENCE_FOLDS`
+                             "practical candidate" unless the readability veto fires or the leak curve shows a jump for
+                             that contrast (then "ambiguous: leak or late pre-contact motion", C9 Q3); "motion helps"
+                             only when T - S is rejected; an arm whose inner CV chose the grid's smallest C in >= `NEAR_REFERENCE_FOLDS`
                              outer folds is "arm ≈ R" (`near_reference`, C8).
     veto (`readability_veto`) among the non-goal shots, the AUC of logit(p_T) - logit(p_S) for on_target; its lower
                              bound, the 5th percentile of 2,000 match-bootstrap draws (seed 0) over the non-goal shots'
                              matches (`xgpoc.probe.readability.weighted_auc`), above `VETO_AUC` blocks every
                              "practical candidate".
-    leak curve (`leak_rules`) start -1600, o_max -1000 ... +400: the method's positive control is S - R at +400 with
-                             hi95 < 0; the jump rule takes the per-step trend g = (Δ(-600) - Δ(-1000)) / 2 and flags a
-                             leak signal when Δ(o) - (Δ(-600) + g (o + 600) / 200) <= `LEAK_EXCESS` at o = -400 or
-                             -200, for T - R or T - S (descriptive, disclosed beside every claim).
+    leak curve (`leak_rules`) start -1600, o_max -1000 ... +400, every point with the same match draws (the main
+                             population's weights restricted to the point's shots): the method's positive control is
+                             S - R at +400 with hi95 < 0; the jump rule (C9 Q3) fits the least-squares line through
+                             o_max -1000, -800, -600 (`LEAK_TREND`) and takes the excess e(o) = Δ(o) - line(o) at -400
+                             and -200, with its match-bootstrap interval (the line refitted in every draw); a jump is
+                             e(o) <= `LEAK_EXCESS` at either point, per confirmatory contrast, and blocks the
+                             "practical candidate" wording of that contrast.
 """
 
 import numpy as np
 
+from xgpoc.detector.testrule import shot_log_loss
 from xgpoc.eval.calibration import logit, sigmoid
 from xgpoc.probe import readability
 from xgpoc.stack import fit as sf
@@ -42,7 +47,7 @@ VETO_AUC = 0.55
 VETO_BOUND_PERCENTILE = 5.0
 NEAR_REFERENCE_FOLDS = 3
 LEAK_EXCESS = -0.001
-LEAK_TREND = (-1000, -600)
+LEAK_TREND = (-1000, -800, -600)
 LEAK_TESTED = (-400, -200)
 METHOD_POSITIVE_O_MAX = 400
 
@@ -90,30 +95,56 @@ def readability_veto(goal: np.ndarray, on_target: np.ndarray, p_t: np.ndarray, p
             "lower_one_sided_95": lower, "threshold": VETO_AUC, "vetoed": bool(lower > VETO_AUC), "draws": int(len(draws))}
 
 
-def claims(result: dict, veto: dict, chosen: dict[str, list]) -> dict:
+AMBIGUOUS = "ambiguous: leak or late pre-contact motion"
+
+
+def claims(result: dict, veto: dict, chosen: dict[str, list], leak: dict) -> dict:
     """The claims the read-out allows (module docstring)."""
     readings = result["readings"]
     out = {}
     for name in CONFIRMATORY:
         practical = readings[name]["practical_candidate"]
+        jump = leak["jump"][name]["signal"]
         out[name] = {"detectable_improvement": readings[name]["detectable_improvement"],
-                     "practical_candidate": bool(practical and not veto["vetoed"]),
-                     "practical_blocked_by_veto": bool(practical and veto["vetoed"])}
+                     "practical_candidate": bool(practical and not veto["vetoed"] and not jump),
+                     "practical_blocked_by_veto": bool(practical and veto["vetoed"]),
+                     "practical_blocked_by_leak_jump": bool(practical and jump),
+                     "wording": AMBIGUOUS if practical and jump else None}
     return out | {"motion_helps": readings["T-S"]["holm_rejected"],
                   "arm_near_reference": {arm: near_reference(c) for arm, c in chosen.items() if arm != "R"}}
 
 
+def curve_point(y: np.ndarray, probabilities: dict[str, np.ndarray], weights: np.ndarray) -> dict[str, dict]:
+    """contrast -> `paired_delta` with its draws (`draws`, one per row of `weights`) for one leak-curve point."""
+    out = {}
+    for name, (a, b) in (CONFIRMATORY | DESCRIPTIVE).items():
+        d = shot_log_loss(y, probabilities[a], ss.CLIP) - shot_log_loss(y, probabilities[b], ss.CLIP)
+        out[name] = ss.summarise(d.mean(), boot := ss.boot_means(weights, d)) | {"draws": boot}
+    return out
+
+
+def trend_weights(at: int, through: tuple[int, ...] = LEAK_TREND) -> np.ndarray:
+    """c with line(at) = Σ c_i Δ(through_i) for the least-squares line through the points."""
+    x = np.column_stack([np.ones(len(through)), np.asarray(through, float)])
+    return np.array([1.0, float(at)]) @ np.linalg.pinv(x)
+
+
 def leak_rules(curve: dict[int, dict]) -> dict:
-    """The method's positive control and the jump rule on the leak curve: o_max -> contrast -> paired_delta."""
+    """The method's positive control and the jump rule on the leak curve (module docstring): o_max -> contrast ->
+    `curve_point` entry (delta_ll, hi95, draws)."""
     positive = curve[METHOD_POSITIVE_O_MAX]["S-R"]
     out = {"method_positive": {"contrast": "S-R", "o_max": METHOD_POSITIVE_O_MAX, "delta_ll": positive["delta_ll"],
-                               "hi95": positive["hi95"], "passed": bool(positive["hi95"] < 0)}, "jump": {}}
-    early, late = LEAK_TREND
+                               "hi95": positive["hi95"], "passed": bool(positive["hi95"] < 0)},
+           "trend": list(LEAK_TREND), "jump": {}}
     for name in CONFIRMATORY:
-        step = (curve[late][name]["delta_ll"] - curve[early][name]["delta_ll"]) / ((late - early) / 200)
-        excess = {str(o): curve[o][name]["delta_ll"] - (curve[late][name]["delta_ll"] + step * (o - late) / 200)
-                  for o in LEAK_TESTED}
-        out["jump"][name] = {"trend_per_step": step, "excess": excess,
-                             "signal": any(e <= LEAK_EXCESS for e in excess.values())}
+        excess = {}
+        for o in LEAK_TESTED:
+            c = trend_weights(o)
+            point = curve[o][name]["delta_ll"] - sum(ci * curve[t][name]["delta_ll"] for ci, t in zip(c, LEAK_TREND, strict=True))
+            draws = curve[o][name]["draws"] - sum(ci * curve[t][name]["draws"] for ci, t in zip(c, LEAK_TREND, strict=True))
+            draws = draws[np.isfinite(draws)]
+            excess[str(o)] = {"excess": float(point), "lo95": float(np.percentile(draws, 2.5)),
+                              "hi95": float(np.percentile(draws, 97.5))}
+        out["jump"][name] = {"excess": excess, "signal": any(e["excess"] <= LEAK_EXCESS for e in excess.values())}
     out["leak_signal"] = any(j["signal"] for j in out["jump"].values())
     return out

@@ -12,12 +12,18 @@ Truths (`Truths`, built once per population from the pooled PCA of `pooled_score
                  analytically (`xgpoc.stack.controls.true_delta` with (a, b) = (0, 1): E[LL(p)] - E[LL(q_R)] over the
                  population with y ~ p, q_R the unpenalised logistic projection of p on [1, z]); no outcome is sampled.
                  S has a static signal to find and T nothing beyond S. Gating scale -0.004 (C8), descriptive -0.002.
-    positive     y* ~ Bernoulli(sigmoid(z + β m)), m the motion plant (`motion_plant`): the pooled PCA's first component
-                 at o_max minus at the window start (the arms' pc01_vs_start@o_max), residualised by least squares on
-                 S's pooled inputs [1, z, pc01..pcK@o_max, the non-constant missing indicators] and standardised, so S
-                 cannot use it linearly. β is the negative root of oracle T - S ΔLL(β) = target, E[LL(p_β)] - E[LL(q_S)]
-                 with q_S the unpenalised logistic projection of p_β on [1, S's pooled inputs] (`true_delta_beyond`);
-                 the oracle against R (projection on [1, z]) is reported beside it.
+    positive     y* ~ Bernoulli(sigmoid(z + β m)), m a motion plant, residualised by least squares on S's pooled
+                 inputs [1, z, pc01..pcK@o_max, the missing indicators] and standardised, so S cannot use it linearly:
+                     motion (gating, council C9 Q1 (b); `motion_plant`)  a fixed-seed Gaussian combination
+                                  (`default_rng(SEEDS["motion_plant"])`) of every motion column of the pooled PCA
+                                  (vs_start, vs_mid, slope per component, as the arm T has them), each standardised
+                                  and residualised;
+                     pc01 (reported only; `pc01_plant`)  the pooled PCA's first component at o_max minus at the window
+                                  start (pc01_vs_start@o_max).
+                 β is the negative root of oracle T - S ΔLL(β) = target, E[LL(p_β)] - E[LL(q_S)] with q_S the
+                 unpenalised logistic projection of p_β on [1, S's pooled inputs] (`true_delta_beyond`); the oracle
+                 against R (projection on [1, z]) is reported beside it. The control checks the pipeline, not the
+                 detectability of real motion (the fold PCAs drift from the pooled one; C9).
     clustered    y* ~ Bernoulli(sigmoid(z + u_m)), a match random intercept u_m ~ N(0, CLUSTER_SD²) drawn per replicate
                  before the outcomes: no arm can use it.
 Each simulation draws its replicates from its own `default_rng(seed)` in replicate order (`draw`): the truth's random
@@ -34,11 +40,13 @@ Gates (`GATES`; a failed gate is fixed in the code, never by loosening the crite
     rich_nulls   N_REPLICATES rich nulls at scale -0.004: the share with a Holm rejection of T - S <= 0.09 (C8: the
                  failure event is a T - S rejection only).
     positive     the motion plant at true T - S ΔLL -0.002: the mean recovered out-of-fold T - S ΔLL in
-                 [-0.003, -0.001]; Holm power of T - S (and T - R) with Monte Carlo SE sqrt(p (1 - p) / n).
+                 [-0.003, -0.001]; Holm power of T - S (and T - R, reported only) with Monte Carlo SE
+                 sqrt(p (1 - p) / n). A miss with the recovered T - S above -0.001 (shrinkage) triggers the
+                 pre-registered remedy (`REMEDY`, C9 Q2), built only then; any other miss is fixed in the code.
     permutation  after the protocol commit, inside the label seal: the read-out on the real labels permuted within
                  matches (`permutation`); no Holm rejection.
 Reports (not gating)
-    positive at -0.004 (the same plant), the power curve of T - S at -0.002 / -0.003 / -0.004 (the -0.002 and -0.004
+    positive at -0.004 (the same plant), the pc01 plant at -0.002, the power curve of T - S at -0.002 / -0.003 / -0.004 (the -0.002 and -0.004
     points are the positive controls) with the smallest detectable effect at power 0.8 (`smallest_detectable`), the
     rich nulls at -0.002, and the clustered nulls: per contrast the coverage of the one-sided 95% bound of the
     procedure's expected ΔLL (`coverage`, as xg-stack); "no improvement larger than |bound|" is allowed for a contrast
@@ -82,16 +90,17 @@ ORACLE_ALPHA = sc.ORACLE_ALPHA          # 0.05
 CLUSTER_SD = sc.CLUSTER_SD              # 0.25 logit
 COVERAGE_LEVEL = sc.COVERAGE_LEVEL      # 0.95
 BETA_BRACKET = sc.BETA_BRACKET          # (-5, 0)
-PLANT_COMPONENT = 1                     # the motion plant's PCA component
+PLANT_COMPONENT = 1                     # the pc01 plant's PCA component
 MOTION_CONTRAST = "T-S"
 SEEDS = {"plain_nulls": 30301, "rich_projection": 30302, "rich_nulls": 30303, "rich_nulls_-0.002": 30304,
          "positive_-0.002": 30305, "positive_-0.004": 30306, "curve_-0.003": 30307, "clustered_nulls": 30308,
-         "permutation": 30309}
+         "permutation": 30309, "motion_plant": 30310, "positive_pc01_-0.002": 30311}
+REMEDY_SEEDS = {name: seed + 100 for name, seed in SEEDS.items() if name not in ("rich_projection", "motion_plant")}
 TRACER_SEED = 0                         # scripts/xgt_run.py --synthetic's default
 GATES = ("provenance", "plain_nulls", "rich_nulls", "positive", "permutation")
 LABEL_FREE_GATES = GATES[:-1]
 SIMULATIONS = ("plain_nulls", "rich_nulls", "positive_-0.002", "positive_-0.004", "curve_-0.003", "clustered_nulls",
-               "rich_nulls_-0.002")     # run order; the last is the first to drop when CPU time binds (C8)
+               "positive_pc01_-0.002", "rich_nulls_-0.002")     # run order; the last is the first to drop when CPU time binds (C8)
 CONTRASTS = (*tr.CONFIRMATORY, *tr.DESCRIPTIVE)
 
 Designs = dict[str, list[sf.FoldDesign]]
@@ -106,13 +115,31 @@ def quiet(_: str) -> None:
 mc_se = sc.mc_se
 
 
+REMEDY = {
+    "source": "council C9 Q2 (b), pre-registered; built only on a miss, not before",
+    "trigger": f"the positive gate fails with the mean recovered T-S ΔLL above {POSITIVE_WINDOW[1]} (shrinkage); a miss "
+               f"below {POSITIVE_WINDOW[0]} is a code bug, fixed in the code",
+    "change": "T keeps, per outer fold, the C that S's inner CV chose for the static block (z unpenalised, the S "
+              "columns at 1 / C_S) and chooses a separate C_M for the motion block by the same inner match-grouped CV "
+              "over the C8 grid, implemented exactly by rescaling the motion columns by sqrt(C_M / C_S) under the "
+              "common penalty 1 / C_S, so T still nests S; S, R, the grid and every criterion unchanged",
+    "runs": "once; then every label-free gate (provenance, plain nulls, rich nulls, positive) and every report rerun on "
+            "the fresh seeds below (the truths' projection seeds rich_projection and motion_plant unchanged)",
+    "seeds": REMEDY_SEEDS,
+    "second_miss": "a second positive-control miss stops the phase and goes to the council (D9)",
+    "refreeze": "the protocol is re-frozen after the code change, with the reason, before any label",
+}
+
+
 def settings() -> dict:
     """The controls' frozen settings (module docstring), as the protocol records them."""
     lo, hi = POSITIVE_WINDOW
     return {
         "replicates": N_REPLICATES, "seeds": dict(SEEDS), "simulations": list(SIMULATIONS),
         "seeds_fresh": {"tracer": TRACER_SEED, "pca": tf.PCA_SEED, "bootstrap": ss.BOOT_SEED,
-                        "distinct": not ({TRACER_SEED, tf.PCA_SEED, ss.BOOT_SEED, *range(200, 207)} & set(SEEDS.values()))},
+                        "distinct": not ({TRACER_SEED, tf.PCA_SEED, ss.BOOT_SEED, *range(200, 207)}
+                                         & {*SEEDS.values(), *REMEDY_SEEDS.values()})
+                        and not set(SEEDS.values()) & set(REMEDY_SEEDS.values())},
         "gates": list(GATES),
         "provenance": "every leak assertion of xgpoc.temporal.provenance.control on the population and the arms' columns",
         "plain_nulls": {"truth": "y* ~ Bernoulli(sigmoid(z_g_combo))",
@@ -123,9 +150,14 @@ def settings() -> dict:
                                 "the analytic oracle S-R ΔLL(a) = scale (projection on [1, z])",
                        "scale": RICH_SCALE, "extra_scale_reported": RICH_SCALE_EXTRA,
                        "pass": f"share of replicates with a Holm rejection of T-S <= {NULL_MAX_REJECTION_RATE}"},
-        "positive": {"plant": f"the pooled PCA's component {PLANT_COMPONENT} o_max - start score (vs_start), "
-                              "residualised by least squares on [1, z, pc01..pc32@o_max, the missing indicators] "
-                              "(pooled; constant and linearly dependent columns dropped) and standardised",
+        "positive": {"plant": "council C9 Q1 (b): a Gaussian combination, w ~ N(0, I) from "
+                              "default_rng(seeds.motion_plant), of every motion column of the pooled PCA (vs_start, "
+                              "vs_mid, slope of pc01..pc32, as arm T has them), each standardised and residualised by "
+                              "least squares on S's pooled inputs [1, z, pc01..pc32@o_max, the missing indicators] "
+                              "(constant and linearly dependent columns dropped); the combination standardised",
+                     "second_plant": {"plant": f"pc0{PLANT_COMPONENT}_vs_start of the pooled PCA, residualised the same "
+                                               "way and standardised", "target": POSITIVE_TARGET,
+                                      "simulation": "positive_pc01_-0.002", "gating": False},
                      "truth": "y* ~ Bernoulli(sigmoid(z_g_combo + β m)), β the negative root of the analytic oracle T-S "
                               "ΔLL(β) = target (E[LL(p)] - E[LL(q_S)], q_S the unpenalised logistic projection of p on "
                               "[1, S's pooled inputs]); the oracle against R reported beside it",
@@ -133,6 +165,7 @@ def settings() -> dict:
                      "pass": f"at {POSITIVE_TARGET}: mean recovered {MOTION_CONTRAST} ΔLL in [{lo}, {hi}]",
                      "reported": "Holm power of T-S and T-R with Monte Carlo SE sqrt(p (1 - p) / n), the oracle ΔLL "
                                  "and its unadjusted power, the grid-floor share of S and T"},
+        "remedy": REMEDY,
         "power_curve": {"contrast": MOTION_CONTRAST, "targets": list(CURVE), "seeds": "positive_-0.002, curve_-0.003, "
                         "positive_-0.004", "smallest_detectable": f"Holm power >= {DETECTABLE_POWER}, linear "
                                                                   "interpolation along the grid"},
@@ -191,12 +224,32 @@ def rich_signal(scores: np.ndarray, seed: int = SEEDS["rich_projection"]) -> np.
     return standardised(scores[:, -1, :] @ w)
 
 
-def motion_plant(data: tf.DesignData, scores: np.ndarray, component: int = PLANT_COMPONENT) -> np.ndarray:
-    """m: the pooled component's o_max - start score, residualised on [1, S's pooled inputs], standardised."""
+def residualised(raw: np.ndarray, x_static: np.ndarray) -> np.ndarray:
+    """The least-squares residual of each column of `raw` on [1, x_static]."""
+    x = np.column_stack([np.ones(len(raw)), x_static])
+    return raw - x @ np.linalg.lstsq(x, raw, rcond=None)[0]
+
+
+def pc01_plant(data: tf.DesignData, scores: np.ndarray, component: int = PLANT_COMPONENT) -> np.ndarray:
+    """The reported plant: the pooled component's o_max - start score, residualised on [1, S's pooled inputs],
+    standardised."""
     raw = tf.motion_scores(scores, data.window, "vs_start")[:, component - 1]
-    x = np.column_stack([np.ones(len(raw)), static_inputs(data, scores)])
-    residual = raw - x @ np.linalg.lstsq(x, raw, rcond=None)[0]
-    return standardised(residual)
+    return standardised(residualised(raw, static_inputs(data, scores)))
+
+
+def motion_columns(data: tf.DesignData, scores: np.ndarray) -> np.ndarray:
+    """Every motion column of the pooled PCA (T's kinds, components in order), standardised, constant ones dropped."""
+    raw = np.column_stack([tf.motion_scores(scores, data.window, kind) for kind in tf.motion_kinds(data.window)])
+    raw = raw[:, raw.std(axis=0) > 1e-12]
+    return (raw - raw.mean(axis=0)) / raw.std(axis=0)
+
+
+def motion_plant(data: tf.DesignData, scores: np.ndarray, seed: int = SEEDS["motion_plant"]) -> np.ndarray:
+    """The gating plant (C9 Q1): standardised(R w), R the motion columns each residualised on [1, S's pooled inputs],
+    w ~ N(0, I) from `default_rng(seed)`."""
+    columns = residualised(motion_columns(data, scores), static_inputs(data, scores))
+    w = np.random.default_rng(seed).normal(size=columns.shape[1])
+    return standardised(columns @ w)
 
 
 def projection_on(x: np.ndarray, p: np.ndarray) -> np.ndarray:
@@ -223,13 +276,15 @@ class Truths:
     z: np.ndarray
     games: np.ndarray
     u: np.ndarray                       # rich-null signal
-    m: np.ndarray                       # motion plant
+    m: np.ndarray                       # gating motion plant
+    m_pc01: np.ndarray                  # reported pc01 plant
     x_static: np.ndarray                # S's pooled inputs
 
     @classmethod
     def build(cls, data: tf.DesignData, games: np.ndarray) -> "Truths":
         scores = pooled_scores(data)
         return cls(np.asarray(data.z, float), np.asarray(games), rich_signal(scores), motion_plant(data, scores),
+                   pc01_plant(data, scores),
                    static_inputs(data, scores))
 
     @property
@@ -241,12 +296,15 @@ class Truths:
         return sigmoid(self.z + a * self.u), {"scale": scale, "a": a, "oracle_S-R": sc.true_delta(a, 0.0, 1.0, self.z, self.u),
                                               "w_seed": SEEDS["rich_projection"]}
 
-    def positive(self, target: float) -> tuple[np.ndarray, dict]:
-        beta = solve_beyond(self.z, self.m, self.x_static, target)
-        return sigmoid(self.z + beta * self.m), {
-            "target": target, "beta": beta, "oracle_T-S": true_delta_beyond(beta, self.z, self.m, self.x_static),
-            "oracle_T-R": true_delta_beyond(beta, self.z, self.m, self.x_reference), "component": PLANT_COMPONENT,
-            "plant_corr_static_max": float(np.abs(self.x_static.T @ self.m / len(self.m)).max())}
+    def positive(self, target: float, plant: str = "motion") -> tuple[np.ndarray, dict]:
+        m = {"motion": self.m, "pc01": self.m_pc01}[plant]
+        beta = solve_beyond(self.z, m, self.x_static, target)
+        detail = {"w_seed": SEEDS["motion_plant"]} if plant == "motion" else {"component": PLANT_COMPONENT}
+        return sigmoid(self.z + beta * m), {
+            "plant": plant, **detail, "target": target, "beta": beta,
+            "oracle_T-S": true_delta_beyond(beta, self.z, m, self.x_static),
+            "oracle_T-R": true_delta_beyond(beta, self.z, m, self.x_reference),
+            "plant_corr_static_max": float(np.abs(self.x_static.T @ m / len(m)).max())}
 
     def clustered(self, sd: float = CLUSTER_SD) -> Truth:
         matches, index = np.unique(self.games, return_inverse=True)
@@ -396,7 +454,7 @@ def power_summary(frame: pd.DataFrame) -> dict:
 
 def positive_summary(frame: pd.DataFrame, seed: int, plant: dict) -> dict:
     out = {"seed": seed, **plant, **power_summary(frame)}
-    if plant["target"] == POSITIVE_TARGET:
+    if plant["target"] == POSITIVE_TARGET and plant.get("plant", "motion") == "motion":
         lo, hi = POSITIVE_WINDOW
         mean = out[f"mean_recovered_delta_{MOTION_CONTRAST}"]
         out |= {"criterion": f"mean recovered {MOTION_CONTRAST} ΔLL in [{lo}, {hi}]", "passed": bool(lo <= mean <= hi)}
@@ -447,10 +505,11 @@ def run_label_free(fitter: Fitter, weights: np.ndarray, truths: Truths, provenan
             summary = null_summary(run(name, fixed(p)), seeds[name], MOTION_CONTRAST if name == "rich_nulls" else None)
             (gates if name == "rich_nulls" else reports)[name] = summary | {"truth": plants[name]}
         elif name.startswith(("positive_", "curve_")):
-            target = float(name.split("_", 1)[1])
-            p, plants[name] = truths.positive(target)
+            target = float(name.rsplit("_", 1)[1])
+            p, plants[name] = truths.positive(target, "pc01" if name.startswith("positive_pc01") else "motion")
             summary = positive_summary(run(name, fixed(p)), seeds[name], plants[name])
-            curve[target] = summary
+            if not name.startswith("positive_pc01"):
+                curve[target] = summary
             if name == "positive_-0.002":
                 gates["positive"] = summary
             else:

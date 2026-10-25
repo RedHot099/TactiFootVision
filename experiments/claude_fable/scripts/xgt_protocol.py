@@ -15,7 +15,8 @@ The file holds `frozen` (`xgpoc.temporal.protocol.frozen()`, every rule the code
     descriptive_sources   g_xgc and dinov2: their files and their main-window populations
     safe_margin           ticket 02's result.json (pinned SHA-256, checked against its completion record): STOP and the
                           owner's decision
-    e3                    the hashes of the E3 table the categories use
+    e3                    the categories' E3 source after the label-free coverage check of P_G (C9 Q5:
+                          cache/xgd_full3/E3, else cache/xgd_full4_feet_t0/E3), its hashes and the category counts
     label_free_controls   the record of `scripts/xgt_run.py --controls` (results/xgt/controls/label_free), refused
                           unless it matches its files, is the protocol's controls (source g_xgv, 200 replicates, every
                           simulation), was written under the current package code, has the same settings and
@@ -127,6 +128,14 @@ def safe_margin() -> dict:
                               "and the deviation from the stop rule; boundary sensitivity from the ticket 07 grid"}
 
 
+def e3_record(population: ti.Population) -> dict:
+    """The categories' E3 source chosen by the label-free coverage check of C9 Q5 (`categories.covering_source`)."""
+    try:
+        return tc.covering_source(population.table.index)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+
+
 def label_free_controls(folder: Path, main: dict, draft: bool) -> dict:
     """The label-free controls' record (module docstring); pending in a draft when it is missing."""
     path = folder / "complete.json"
@@ -179,8 +188,7 @@ def build(args: argparse.Namespace) -> dict:
                              "another source needs --draft --source g_xgc") from None
         data = {"main": main, "cells": cell_records(args.source, plan, population),
                 "descriptive_sources": descriptive_sources(plan), "safe_margin": safe_margin(),
-                "e3": {name: {"path": ti.recorded_path(tc.E3 / name), "sha256": records.verified_file(tc.E3 / name)}
-                       for name in ("frames.parquet", "features.parquet")},
+                "e3": e3_record(population),
                 "label_free_controls": label_free_controls(args.controls, main, args.draft),
                 "code": tr_records.package_hashes()}
     if args.draft:

@@ -40,7 +40,7 @@ def test_the_grid_has_14_windows_with_every_late_o_max_a_flagged_control_row():
     assert next(c for c in cells if (c["start"], c["o_max"]) == (-800, -600))["motion_features"] == ["vs_start"]
 
 
-def test_the_frozen_part_is_deterministic_json_with_the_c8_grid_and_the_stop_of_ticket_02():
+def test_the_frozen_part_is_deterministic_json_with_the_c8_grid_the_c9_rules_and_the_stop_of_ticket_02():
     frozen = tpr.frozen()
     assert json.loads(json.dumps(frozen)) == json.loads(json.dumps(tpr.frozen()))
     assert frozen["model"]["c_grid"][:5] == [1e-5, 3e-5, 1e-4, 3e-4, 0.001] and frozen["model"]["z_unpenalised"]
@@ -49,6 +49,9 @@ def test_the_frozen_part_is_deterministic_json_with_the_c8_grid_and_the_stop_of_
     assert frozen["readings"]["holm"]["contrasts"] == ["T-R", "T-S"]
     assert set(frozen["descriptive"]) == {"L", "S_xgc/T_xgc", "F_S/F_T", "k_sensitivity", "seed_sensitivity", "N"}
     assert frozen["descriptive"]["k_sensitivity"]["k"] == [16, 64]
+    assert frozen["controls"]["remedy"]["seeds"] == tco.REMEDY_SEEDS and "C9" in frozen["leak"]["jump_rule"]["source"]
+    assert frozen["leak"]["jump_rule"]["trend"].endswith("[-1000, -800, -600] (start -1600)")
+    assert any("+0.0012" in d for d in frozen["disclosures"])
     assert set(frozen["readings"]["categories"]) == {"e3_outside_box", "e3_angle_lt_15deg", "e3_dist_lt_6m",
                                                      "e3_gk_depth_ge_4yd"}
 
@@ -138,7 +141,7 @@ def lab(tmp_path, monkeypatch):
                          (rng.random(n) < 0.4).astype(int))
     monkeypatch.setattr(xgt_run.tl, "load_labels", labels)
 
-    def e3(shot_ids):
+    def e3(shot_ids, source=None):
         n = len(shot_ids)
         frame = pd.DataFrame({"shot_x@0": rng.uniform(70, 105, n), "angle@0": rng.uniform(0, 1.5, n),
                               "dist@0": rng.uniform(2, 30, n), "gk_depth@0": rng.uniform(0, 8, n)}, index=shot_ids)
@@ -154,6 +157,7 @@ def test_the_draft_records_the_missing_parts_as_pending(lab):
     assert draft["draft"] and draft["data"]["label_free_controls"]["status"] == "pending"
     assert len(draft["data"]["cells"]) == 14 and draft["data"]["main"]["columns"]["T"][0] == "z_g_combo"
     assert set(draft["data"]["descriptive_sources"]) == {"g_xgc", "dinov2"}
+    assert draft["data"]["e3"]["source"] == "cache/xgd_full3/E3" and not draft["data"]["e3"]["fallback_used"]
     assert draft["data"]["main"]["source_files"]["complete_json"]["sha256"] == sha256_file(lab / "source/complete.json")
     with pytest.raises(SystemExit, match="exists"):
         xgt_protocol.main(["--draft", "--source", "g_xgc", "--out", str(out)])
@@ -200,7 +204,8 @@ def test_controls_then_protocol_then_permutation_then_the_real_run(lab, monkeypa
     xgt_run.main(["--real"])
     summary = json.loads((lab / xgt_run.REAL_OUT / "summary.json").read_text())
     assert {"T-R", "T-S", "S-R"} == set(summary["deltas"]) and "readability_veto" in summary
-    assert set(summary["leak"]) == {"method_positive", "jump", "leak_signal"} and "motion_helps" in summary["claims"]
+    assert set(summary["leak"]) == {"method_positive", "trend", "jump", "leak_signal"} and "motion_helps" in summary["claims"]
+    assert set(summary["leak"]["jump"]["T-S"]["excess"]["-200"]) == {"excess", "lo95", "hi95"}
     assert set(pd.read_csv(lab / xgt_run.REAL_OUT / "leak_curve.csv").o_max) == set(tpr.LEAK_CURVE)
     assert set(pd.read_csv(lab / xgt_run.REAL_OUT / "categories.csv").category) == set(tpr.tc.CATEGORIES)
     probabilities = pd.read_csv(lab / xgt_run.REAL_LARGE / "probabilities.csv")

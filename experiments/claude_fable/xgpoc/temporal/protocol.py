@@ -120,7 +120,8 @@ def readings_record() -> dict:
         "holm": {"contrasts": list(tr.CONFIRMATORY), "alpha": ss.ALPHA},
         "detectable_improvement": "a Holm-rejected contrast",
         "practical_candidate": f"a Holm-rejected contrast with point ΔLL <= {ss.PRACTICAL}, unless the readability veto "
-                               "fires",
+                               "fires or the leak curve shows a jump for that contrast (then the wording is "
+                               f"'{tr.AMBIGUOUS}', C9 Q3)",
         "motion_helps": "only when T - S is Holm-rejected",
         "descriptive": list(tr.DESCRIPTIVE),
         "readability_veto": {"population": "non-goal shots of P_G", "score": "logit(p_T) - logit(p_S), out of fold",
@@ -138,7 +139,9 @@ def readings_record() -> dict:
         "also_reported": ["AUC", "Brier", "calibration slope and intercept", "the chosen C per arm and outer fold",
                           "the power curve of T - S from the controls"],
         "categories": tc.definitions(),
-        "categories_source": "xgpoc.stack.inputs.e3_table on cache/xgd_full3/E3 (xg-stack's frozen E3 table), t0 columns",
+        "categories_source": "xgpoc.stack.inputs.e3_table, t0 columns, on cache/xgd_full3/E3 (xg-stack's frozen E3 "
+                             "table) if the label-free coverage check covers every shot of P_G, else on "
+                             "cache/xgd_full4_feet_t0/E3, said so in data.e3 (C9 Q5); the real run reads data.e3.source",
         "no_test": "the 172 held-out matches are spent; every result is development (D7)",
     }
 
@@ -153,12 +156,14 @@ def leak_record() -> dict:
                                     "pass": "hi95 < 0 (the 95% interval below zero)",
                                     "if_failed": "the leak curve cannot detect leakage; the report says so and makes no "
                                                  "'no leakage' statement"},
-        "jump_rule": {"contrasts": ["T-R", "T-S"],
-                      "trend": "g = (Δ(-600) - Δ(-1000)) / 2, the change per 200 ms step over the pre-margin points",
-                      "excess": "e(o) = Δ(o) - (Δ(-600) + g (o + 600) / 200) for o in {-400, -200}",
-                      "signal": f"e(-400) <= {tr.LEAK_EXCESS} or e(-200) <= {tr.LEAK_EXCESS} for either contrast",
-                      "consequence": "a leak signal is disclosed beside every claim of the main read-out; it changes "
-                                     "no reading (descriptive)"},
+        "jump_rule": {"source": "council C9 Q3 (b)", "contrasts": ["T-R", "T-S"],
+                      "trend": f"the least-squares line through o_max {list(tr.LEAK_TREND)} (start -1600)",
+                      "excess": "e(o) = Δ(o) - line(o) for o in {-400, -200}, with its 95% match-bootstrap interval "
+                                "(the same 2,000 draws at every point: the main population's match weights restricted "
+                                "to the point's shots; the line refitted in every draw)",
+                      "signal": f"e(-400) <= {tr.LEAK_EXCESS} or e(-200) <= {tr.LEAK_EXCESS}, per contrast",
+                      "consequence": "a jump blocks the 'practical candidate' wording of that contrast; the wording is "
+                                     f"'{tr.AMBIGUOUS}'; the Holm reading itself is unchanged"},
         "control_rows": "o_max -400 (every start; C8 Q2), -200, 0, +400 are leakage-control rows with the control flag, "
                         "never a candidate; 'control' does not mean confirmed contamination",
         "grid_rules": "every cell: arms S and T with the model and penalty rule of the main read-out; S - R, T - R and "
@@ -221,8 +226,14 @@ def disclosures() -> list[str]:
         "with the stop disclosed; boundary sensitivity from the ticket 07 grid. -400 had 6 of 120 (9.6%).",
         "The rich null's u uses one PCA pooled over the population's window frames; the arms use a PCA per training "
         "fold (C8).",
-        "The motion plant is the pooled PCA's first-component o_max - start score residualised on S's pooled inputs; T's "
-        "motion columns come from the fold PCA, so the plant lies in T's span only approximately.",
+        "Shared penalty under the rich null (C9, V): in the 4-replicate trial on g_xgc (outputs/xgt_controls_trial_g_xgc, "
+        "not the protocol's controls) T - S averaged +0.0012 under the rich null, the cost of one penalty shared by the "
+        "static and motion blocks; the protocol's controls report it at 200 replicates.",
+        "The positive control checks the pipeline, not the detectability of real motion: its plants come from the pooled "
+        "PCA and T's motion columns from the fold PCAs, which drift from it (C9, S).",
+        "The gating motion plant is a fixed-seed combination of every pooled-PCA motion column residualised on S's pooled "
+        "inputs (C9 Q1); the pc01_vs_start plant is reported beside it. T's motion columns come from the fold PCAs, so "
+        "the plants lie in T's span only approximately.",
         "Every truth of the label-free controls uses z_g_combo with intercept 0 and slope 1; no real label sets it.",
         "z_g_combo is the averaged pre-Platt logit of the two G-combo models that held each shot out; each member's "
         "epoch and temperature were chosen on its own scored fold (xg-stack C6).",
@@ -258,8 +269,10 @@ def frozen() -> dict:
         "after_freeze": ["the permutation control inside the label seal (results/xgt/controls/complete.json)",
                          "ticket 04: the single real run (results/xgt/real)", "tickets 07-09: the descriptive runs"],
         "on_failure": "a failed control is fixed in the code, never by loosening a criterion; a re-freeze only after "
-                      "a code change, with the reason; a positive control failing twice stops for the council (D9); a "
-                      "positive-control miss caused by shrinkage goes to the council as a grid question (C8)",
+                      "a code change, with the reason; a positive-control miss by shrinkage (recovered T - S above "
+                      "-0.001) triggers the pre-registered remedy of controls.remedy (C9 Q2: separate inner-CV C for "
+                      "the motion block, run once, every label-free gate rerun on its fresh seeds); a second miss stops "
+                      "the phase for the council (D9)",
     }
 
 

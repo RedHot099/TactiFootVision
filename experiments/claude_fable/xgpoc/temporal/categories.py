@@ -1,8 +1,11 @@
 """Detector-defined categories of the xg-temporal read-out (descriptive; spec, "Ewaluacja"). Label-free definitions.
 
-The inputs are xg-stack's E3 columns at t0 (`xgpoc.stack.inputs.e3_table` on `cache/xgd_full3/E3`, the detector
-table xg-stack froze: the frames replayed with E3's ball-source rule, checked equal to the cached features, sanitised,
-angle wrapped to [0, π]), for the population's shots only. Categories (`CATEGORIES`):
+The inputs are xg-stack's E3 columns at t0 (`xgpoc.stack.inputs.e3_table`: the frames replayed with E3's
+ball-source rule, checked equal to the cached features, sanitised, angle wrapped to [0, π]), for the population's shots
+only. Source (council C9 Q5, `covering_source`): `cache/xgd_full3/E3`, the table xg-stack froze, if the label-free
+check covers every shot of P_G (every shot in the replayed table, the replay equal to the cache); otherwise
+`cache/xgd_full4_feet_t0/E3`, and the protocol says so. The protocol records the source, the attempts and the
+label-free category counts; the real run reads the recorded source. Categories (`CATEGORIES`):
     e3_outside_box       shot_x@0 < 88.5 m                    (xg-stack, `xgpoc.stack.stats.CATEGORIES`)
     e3_angle_lt_15deg    angle@0 < 15 degrees                 (xg-stack)
     e3_dist_lt_6m        dist@0 < 6 m                         (xg-stack)
@@ -14,6 +17,8 @@ A shot whose defining input is missing is outside the category's population (nei
 arm: n, O, E, O/E and ΔLL against R with its 95% interval from the same match draws restricted to the category's shots.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -22,6 +27,7 @@ from xgpoc.stack import inputs as si
 from xgpoc.stack import stats as ss
 
 E3 = si.E3
+E3_SOURCES = (si.E3, si.EXPERIMENT / "cache/xgd_full4_feet_t0/E3")
 GK_DEPTH_M = 4 * 0.9144
 CATEGORIES = {name: ss.CATEGORIES[name] for name in ("e3_outside_box", "e3_angle_lt_15deg", "e3_dist_lt_6m")} | {
     "e3_gk_depth_ge_4yd": ss.Category(si.col("gk_depth", 0), f"gk_depth@0 >= {GK_DEPTH_M:.4f} m (4 yd)",
@@ -38,6 +44,7 @@ def definitions() -> dict:
 def e3_inputs(shot_ids, e3=E3) -> tuple[pd.DataFrame, dict]:
     """(the categories' columns for `shot_ids`, index shot_id in their order; the E3 files' hashes), label-free."""
     ids = sorted(shot_ids)
+    e3 = Path(e3)
     hashes = {name: {"path": str(e3 / name), "sha256": records.verified_file(e3 / name)}
               for name in ("frames.parquet", "features.parquet")}
     frames = pd.read_parquet(e3 / "frames.parquet", filters=[("shot_id", "in", ids)])
@@ -47,6 +54,25 @@ def e3_inputs(shot_ids, e3=E3) -> tuple[pd.DataFrame, dict]:
     if not table.index.equals(pd.Index(ids, name="shot_id")):
         raise ValueError("E3 does not cover the population exactly")
     return table[columns].loc[list(shot_ids)], hashes
+
+
+def covering_source(shot_ids, sources=E3_SOURCES) -> dict:
+    """The first E3 source (C9 Q5 order) whose replayed table covers every shot of `shot_ids`, label-free: its path
+    (relative to the experiment), hashes, the attempts, and per category the number of shots with the input defined and
+    inside. Raises when no source covers the population."""
+    attempts = []
+    for source in sources:
+        try:
+            table, hashes = e3_inputs(shot_ids, source)
+        except (ValueError, FileNotFoundError) as e:
+            attempts.append({"source": str(source), "covers": False, "reason": str(e)})
+            continue
+        attempts.append({"source": str(source), "covers": True})
+        counts = {name: {"defined": int(defined.sum()), "inside": int(inside.sum())}
+                  for name, (defined, inside) in masks(table).items()}
+        return {"source": str(Path(source).relative_to(si.EXPERIMENT)), "fallback_used": source != sources[0],
+                "shots": len(table), "hashes": hashes, "attempts": attempts, "category_counts": counts}
+    raise ValueError(f"no E3 source covers the population: {attempts}")
 
 
 def masks(table: pd.DataFrame) -> dict[str, tuple[np.ndarray, np.ndarray]]:
