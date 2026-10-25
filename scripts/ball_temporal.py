@@ -1,6 +1,7 @@
 """ball-detection 04: how many ball misses tracking the ball through time recovers (offline, GSR valid at 25 fps).
 
     uv run python scripts/ball_temporal.py dump                  # dd2c candidates on all 43,500 frames (GPU, once)
+    uv run python scripts/ball_temporal.py dump --variant tiles2x2 --post-filter --out DIR  # ticket 08's variant
     uv run python scripts/ball_temporal.py motion                # frame-to-frame camera motion of every clip (CPU)
     uv run python scripts/ball_temporal.py tune                  # sensitivity grid, games 2+3, off-benchmark frames
     uv run python scripts/ball_temporal.py track --games 2 3     # the chosen setting -> tracks + scorecard dumps
@@ -20,7 +21,12 @@ break) to it, blended linearly between the two (``propagate``). On an anchor fra
 unchanged, so the tracked ball is placed exactly as the scorecard places it.
 
 `dump` writes every candidate of every class >= ``DUMP_CONF`` of dd2c in the pipeline's row (1280: native frames,
-imgsz 1280, NMS IoU 0.7, ``max_det`` 300) for every frame of the 58 clips. `tune` runs a stage of ``GRIDS`` (or ``AROUND``) on the
+imgsz 1280, NMS IoU 0.7, ``max_det`` 300) for every frame of the 58 clips; ``--variant tiles2x2`` dumps ticket 03's
+tiles instead (``ball_inference.Tiled`` unchanged, its candidates >= ``DUMP_CONF`` kept: NMS and the ball merge keep a
+candidate only against more confident ones, so these are the candidates a ``DUMP_CONF`` call would give) and
+``--post-filter`` drops the ball candidates longer than ``RULE["post_filter_long_side_px"]`` (ticket 08). `track
+--dump` tracks another 25 fps dump (the camera motion stays ``motion``'s: tiles take their people from the same full
+frame 1280 call); the scorecard dumps then take the reference dump's single row. `tune` runs a stage of ``GRIDS`` (or ``AROUND``) on the
 selection split (games 2 and 3) and scores it on the frames that are not benchmark frames (frame - 1 not a multiple
 of 5; one truth ball with a pitch position on the pitch): a frame is hit when the chosen ball's centre is within
 r = max(5 px, truth diameter) of the truth ball's (ticket 01's centre rule), so that choosing the setting never reads
@@ -53,6 +59,8 @@ import supervision as sv
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ball_errors as be  # noqa: E402
+import ball_inference as bi  # noqa: E402
+import ball_scorecard as bs  # noqa: E402
 import detector_bench as bench  # noqa: E402
 
 import tactifoot_vision as tv  # noqa: E402
@@ -170,20 +178,53 @@ def read_ahead(paths: list[Path], flags: int = cv2.IMREAD_COLOR, depth: int = 16
         yield item
 
 
+def dump_predictor(variant: str, weights: Path, device: str | None):
+    """``(predict, class_names, row settings)`` of a 25 fps dump: dd2c's row 1280 at ``DUMP_CONF``, or ticket 03's
+    tiles (``ball_inference``, dd2c's weights, candidates down to its 0.001 floor)."""
+    if variant == ROW:
+        settings = bench.ROWS[ROW]
+        model = tv.load_model(
+            "yolo",
+            weights,
+            conf=DUMP_CONF,
+            iou=settings["iou"],
+            imgsz=settings["imgsz"],
+            device=device,
+        )
+        return model.predict, model.class_names, settings
+    if weights != bi.WEIGHTS:
+        raise SystemExit(f"{variant} is dumped with {bi.WEIGHTS} only")
+    tiled = bi.predictor(variant, False, device)
+    return tiled, tiled.full.class_names, bi.variant_settings(variant, False)
+
+
+def dump_table(found: sv.Detections, frame: int, height: int, limit: float | None):
+    """One frame's dump rows: the candidates >= ``DUMP_CONF``, without the ball candidates whose long side at 1080p
+    is over ``limit`` (None: no filter)."""
+    found = found[found.confidence >= DUMP_CONF]
+    table = pd.DataFrame(
+        np.asarray(found.xyxy, np.float32).reshape(-1, 4), columns=COLUMNS
+    )
+    table["conf"] = np.asarray(found.confidence, np.float32)
+    table["class_id"] = np.asarray(found.class_id, np.int8)
+    if limit is not None:
+        side = np.maximum(table.x2 - table.x1, table.y2 - table.y1) * 1080 / height
+        table = table[~((table.class_id == 0) & (side > limit))].reset_index(drop=True)
+    table.insert(0, "frame", np.int16(frame))
+    return table
+
+
 def dump(args: argparse.Namespace) -> None:
     """Every candidate of every class >= ``DUMP_CONF`` on every frame of every GSR valid clip, row 1280 (native
-    frames, imgsz 1280, NMS IoU 0.7, the bench's ``max_det``), one parquet per clip, then ``candidates.parquet``."""
+    frames, imgsz 1280, NMS IoU 0.7, the bench's ``max_det``) or ``--variant``, one parquet per clip, then
+    ``candidates.parquet``."""
     from ultralytics.cfg import DEFAULT_CFG_DICT
 
-    settings = bench.ROWS[ROW]
-    model = tv.load_model(
-        "yolo",
-        args.weights,
-        conf=DUMP_CONF,
-        iou=settings["iou"],
-        imgsz=settings["imgsz"],
-        device=args.device,
+    predict, class_names, settings = dump_predictor(
+        args.variant, args.weights, args.device
     )
+    limit = bs.RULE["post_filter_long_side_px"] if args.post_filter else None
+    row = args.variant + (f"+pf{limit}" if limit is not None else "")
     parts = args.out / "parts"
     parts.mkdir(parents=True, exist_ok=True)
     clips = clip_dirs()
@@ -191,10 +232,8 @@ def dump(args: argparse.Namespace) -> None:
     for clip_dir in clips:
         clip = clip_dir.name
         paths = clip_frames(clip_dir)
-        frames += [
-            {"clip": clip, "game": clip_game(clip_dir), "frame": int(p.stem)}
-            for p in paths
-        ]
+        game = clip_game(clip_dir)  # parses the clip's labels: once per clip
+        frames += [{"clip": clip, "game": game, "frame": int(p.stem)} for p in paths]
         part = parts / f"{clip}.parquet"
         if part.is_file():
             continue
@@ -202,15 +241,9 @@ def dump(args: argparse.Namespace) -> None:
         tables = []
         for path, image in read_ahead(paths):
             start = time.perf_counter()
-            found = model.predict(image)
+            found = predict(image)
             timings.append(time.perf_counter() - start)
-            table = pd.DataFrame(
-                np.asarray(found.xyxy, np.float32).reshape(-1, 4), columns=COLUMNS
-            )
-            table["conf"] = np.asarray(found.confidence, np.float32)
-            table["class_id"] = np.asarray(found.class_id, np.int8)
-            table.insert(0, "frame", np.int16(int(path.stem)))
-            tables.append(table)
+            tables.append(dump_table(found, int(path.stem), image.shape[0], limit))
         frame = pd.concat(tables, ignore_index=True)
         frame.insert(0, "clip", clip)
         frame.to_parquet(part, index=False)
@@ -225,16 +258,17 @@ def dump(args: argparse.Namespace) -> None:
     pd.DataFrame(frames).to_parquet(args.out / "frames.parquet", index=False)
     record = {
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
-        "ticket": "ball-detection 04",
+        "ticket": args.ticket,
         "weights": str(args.weights),
         "weights_sha256": bench.sha256_file(args.weights),
         "conf": DUMP_CONF,
-        "row": ROW,
+        "row": row,
         "settings": settings,
+        "post_filter_long_side_px": limit,
         "max_det": DEFAULT_CFG_DICT["max_det"],
         "agnostic_nms": DEFAULT_CFG_DICT["agnostic_nms"],
         "half": DEFAULT_CFG_DICT["half"],
-        "classes": dict(enumerate(model.class_names)),
+        "classes": dict(enumerate(class_names)),
         "clips": len(clips),
         "frames": len(frames),
         "candidates": len(candidates),
@@ -243,7 +277,8 @@ def dump(args: argparse.Namespace) -> None:
         "ms_per_frame": round(1000 * float(np.mean(timings[bench.DUMP_WARMUP :])), 2)
         if len(timings) > bench.DUMP_WARMUP
         else None,
-        "ms_per_frame_note": "model call per frame (inference + NMS), batch 1, image read in a separate thread",
+        "ms_per_frame_note": "model call(s) per frame (inference + NMS; tiles: every tile, the full frame and the "
+        "merge), batch 1, image read in a separate thread",
     }
     (args.out / "dump.json").write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps(record, indent=2))
@@ -593,11 +628,11 @@ def setting_name(setting: dict) -> str:
     )
 
 
-def _track_worker(job: tuple[str, list[dict]]) -> list[pd.DataFrame]:
-    """Tracks of one clip for every setting (``clip`` column added), the top-1 table first."""
+def _track_worker(job: tuple[str, list[dict], Path]) -> list[pd.DataFrame]:
+    """Tracks of one clip of the dump ``folder`` for every setting (``clip`` column added), the top-1 table first."""
     logging.getLogger("tactifoot_vision").setLevel(logging.WARNING)
-    clip, settings = job
-    candidates = clip_candidates(clip)
+    clip, settings, folder = job
+    candidates = clip_candidates(clip, folder)
     frames = len(clip_frames(bench.GSR / "valid" / clip))
     result = clip_result(candidates, clip_homographies(clip, frames, _FROZEN))
     tables = [top_balls(candidates, frames)]
@@ -619,11 +654,11 @@ def _init_worker() -> None:
 
 
 def run_tracks(
-    clips: list[str], settings: list[dict], workers: int
+    clips: list[str], settings: list[dict], workers: int, folder: Path = DUMP
 ) -> tuple[pd.DataFrame, list[pd.DataFrame]]:
-    """``(top-1 table, one tracks table per setting)`` over ``clips``."""
+    """``(top-1 table, one tracks table per setting)`` over ``clips`` of the 25 fps dump ``folder``."""
     with multiprocessing.Pool(workers, initializer=_init_worker) as pool:
-        per_clip = pool.map(_track_worker, [(c, settings) for c in clips])
+        per_clip = pool.map(_track_worker, [(c, settings, folder) for c in clips])
     stacked = [
         pd.concat(tables, ignore_index=True) for tables in zip(*per_clip, strict=True)
     ]
@@ -730,12 +765,18 @@ def tune(args: argparse.Namespace) -> None:
 
 # ------------------------------------------------------------------ scorecard dumps
 def encode(tracks: pd.DataFrame, reference: Path, out: Path, note: dict, games) -> None:
-    """A scorecard dump (ticket 01's format, row 1280) of dd2c's ticket 01 dump with the ball of ``tracks`` as the
-    single ball candidate >= 0.15 of each tracked benchmark frame: a measured ball keeps its box and confidence (at
-    least 0.15), an interpolated one is added at 0.15, every other ball candidate is capped at ``CAP``. Other classes,
-    untracked clips (outside ``games``) and Ekstraklasa dev are dd2c's."""
+    """A scorecard dump (ticket 01's format) of the ``reference`` dump's row 1280 (or its only row; dd2c's ticket 01
+    dump by default) with the ball of ``tracks`` as the single ball candidate >= 0.15 of each tracked benchmark
+    frame: a measured ball keeps its box and confidence (at least 0.15), an interpolated one is added at 0.15, every
+    other ball candidate is capped at ``CAP``. Other classes, untracked clips (outside ``games``) and Ekstraklasa dev
+    are the reference's."""
     record, images, candidates = bench.read_dump(reference)
-    candidates = candidates[candidates["row"] == ROW].copy()
+    row_name = ROW if ROW in record["rows"] else None
+    if row_name is None:
+        if len(record["rows"]) != 1:
+            raise SystemExit(f"{reference}: no row {ROW} and not a single row")
+        (row_name,) = record["rows"]
+    candidates = candidates[candidates["row"] == row_name].copy()
     candidates["row"] = candidates["row"].cat.remove_unused_categories()
     gsr_images = images[(images.set == "gsr") & images.game.isin(games)]
     tracked = gsr_images.merge(tracks, on=["clip", "frame"], how="left", validate="1:1")
@@ -770,7 +811,7 @@ def encode(tracks: pd.DataFrame, reference: Path, out: Path, note: dict, games) 
                 iou.max(),
             )
         added.append(
-            {"set": "gsr", "row": ROW, "image": row.image}
+            {"set": "gsr", "row": row_name, "image": row.image}
             | dict(zip(COLUMNS, box[0], strict=True))
             | {
                 "conf": CHOSEN
@@ -793,9 +834,9 @@ def encode(tracks: pd.DataFrame, reference: Path, out: Path, note: dict, games) 
     images.to_parquet(out / "images.parquet", index=False)
     record = record | {
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
-        "rows": {ROW: record["rows"][ROW]},
+        "rows": {row_name: record["rows"][row_name]},
         "seconds": {
-            k: v for k, v in record["seconds"].items() if k.endswith(f"/{ROW}")
+            k: v for k, v in record["seconds"].items() if k.endswith(f"/{row_name}")
         },
         "candidates": len(candidates),
         "source_dump": str(reference),
@@ -804,7 +845,9 @@ def encode(tracks: pd.DataFrame, reference: Path, out: Path, note: dict, games) 
     }
     if "ms_per_frame" in record:  # ticket 01's dump has wall seconds only
         record["ms_per_frame"] = {
-            k: v for k, v in record["ms_per_frame"].items() if k.endswith(f"/{ROW}")
+            k: v
+            for k, v in record["ms_per_frame"].items()
+            if k.endswith(f"/{row_name}")
         }
     (out / "dump.json").write_text(json.dumps(record, indent=2, default=float) + "\n")
 
@@ -814,7 +857,7 @@ def track(args: argparse.Namespace) -> None:
     setting = json.loads(args.setting.read_text()) if args.setting else BASE
     clips = games_clips(args.games)
     clock = time.perf_counter()
-    top1, (tracks,) = run_tracks(clips, [setting], args.workers)
+    top1, (tracks,) = run_tracks(clips, [setting], args.workers, args.dump)
     seconds = time.perf_counter() - clock
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -822,7 +865,7 @@ def track(args: argparse.Namespace) -> None:
     top1.to_parquet(out / "top1.parquet", index=False)
     note = {
         "setting": setting,
-        "tracker": "tactifoot_vision.pipeline.track_ball on dump25 (dd2c 1280, conf >= 0.01, every frame)",
+        "tracker": f"tactifoot_vision.pipeline.track_ball on {args.dump} (conf >= {DUMP_CONF}, every frame)",
         "cpu_ms_per_frame": 1000
         * tracks.groupby("clip").seconds.first().sum()
         / len(tracks),
@@ -940,8 +983,17 @@ def main() -> None:
         "dump", help="dd2c candidates on every GSR valid frame (GPU)"
     )
     d.add_argument("--weights", type=Path, default=WEIGHTS)
+    d.add_argument("--variant", choices=[ROW, "tiles2x2", "tiles3x2"], default=ROW)
+    d.add_argument(
+        "--post-filter",
+        action="store_true",
+        help="drop ball candidates longer than 45 px at 1080p (ticket 03's post-filter)",
+    )
     d.add_argument("--out", type=Path, default=DUMP)
     d.add_argument("--device", default=None)
+    d.add_argument(
+        "--ticket", default="ball-detection 04", help="the dump record's ticket"
+    )
     m = commands.add_parser(
         "motion", help="frame-to-frame camera motion of every dumped clip (CPU)"
     )
@@ -955,6 +1007,7 @@ def main() -> None:
         "--setting", type=Path, help="JSON of track_ball options (default: BASE)"
     )
     k.add_argument("--out", type=Path, default=OUT / "track")
+    k.add_argument("--dump", type=Path, default=DUMP, help="the 25 fps dump to track")
     k.add_argument("--reference", type=Path, default=be.DUMP)
     b = commands.add_parser("breakdown", help="the gain by ticket 01's categories")
     b.add_argument("--out", type=Path, default=OUT / "track")

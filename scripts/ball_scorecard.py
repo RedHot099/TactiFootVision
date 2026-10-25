@@ -31,7 +31,8 @@ Intervals: 95% percentile clip bootstrap, 2,000 draws, seed 0 (`np.random.defaul
 (2000, clips))` over the split's clips in name order); the same draws for every number of a split, so that a paired
 difference (variant minus the reference, frame-paired: both on the same frames and draws) is the percentile interval
 of the per-draw differences. The reference is dd2c's ticket 01 dump (`--reference`); a row is paired with the
-reference row of the same name, else with the reference's 1280 row (e.g. a 1920 variant against dd2c 1280).
+reference row of the same name, else with a single-row reference's only row (e.g. tiles + filter against dd2c 1280 +
+filter), else with the reference's 1280 row (e.g. a 1920 variant against dd2c 1280).
 Bootstrap APs are supervision's AP on the drawn images (`resampled_ap`), equal to `evaluate`'s on the original set.
 
 `references` dumps and cards the reference rows (dd2c from its weights, run 1 best, the base model) and checks
@@ -479,7 +480,10 @@ class Model:
 
 
 def pair_row(row: str, reference: Model) -> str:
-    return row if row in reference.rows else "1280"
+    """The reference row ``row`` is paired with: the same name, else the reference's only row, else its 1280 row."""
+    if row in reference.rows:
+        return row
+    return reference.rows[0] if len(reference.rows) == 1 else "1280"
 
 
 def subset(dataset: tv.data.Dataset, games) -> tv.data.Dataset:

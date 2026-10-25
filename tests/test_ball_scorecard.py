@@ -329,3 +329,14 @@ def test_agree_compares_every_number_but_cost_and_paths():
     assert report["over_1e-3"] == [] and report["max_abs_difference"] == pytest.approx(
         4e-4
     )
+
+
+def test_pair_row_same_name_else_a_single_rows_reference_else_1280():
+    from types import SimpleNamespace
+
+    two = SimpleNamespace(rows=["1280", "e3"])
+    assert bs.pair_row("e3", two) == "e3"
+    assert bs.pair_row("tiles2x2+pf45", two) == "1280"
+    single = SimpleNamespace(rows=["1280+pf45"])
+    assert bs.pair_row("tiles2x2+pf45", single) == "1280+pf45"
+    assert bs.pair_row("1280+pf45", single) == "1280+pf45"

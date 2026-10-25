@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import supervision as sv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -172,8 +173,9 @@ def test_image_scores_hit_within_the_centre_rule_radius():
     ] == pytest.approx(0.5)
 
 
-def reference_dump(folder: Path) -> None:
-    """A two-frame ticket 01 dump: frame 1 has two balls and a player, frame 6 one ball; plus an Ekstraklasa image."""
+def reference_dump(folder: Path, single: str | None = None) -> None:
+    """A two-frame ticket 01 dump: frame 1 has two balls and a player, frame 6 one ball; plus an Ekstraklasa image.
+    ``single``: the 1280 row renamed to it and the e3 row left out (a variant's one-row dump)."""
     folder.mkdir()
     images = pd.DataFrame(
         {
@@ -203,6 +205,8 @@ def reference_dump(folder: Path) -> None:
             for s, r, i, b, c, k in rows
         ]
     )
+    if single:
+        candidates = candidates[candidates.row == "1280"].assign(row=single)
     candidates["class_name"] = np.array(bt.CLASSES)[candidates.class_id]
     for column in ("set", "row", "class_name"):
         candidates[column] = candidates[column].astype("category")
@@ -217,6 +221,12 @@ def reference_dump(folder: Path) -> None:
         "max_det": 300,
         "classes": dict(enumerate(bt.CLASSES)),
     }
+    if single:
+        record |= {
+            "rows": {single: {"imgsz": 1280, "iou": 0.7, "input_size": None}},
+            "seconds": {f"gsr/{single}": 1.0},
+            "ms_per_frame": {f"gsr/{single}": 74.8},
+        }
     (folder / "dump.json").write_text(json.dumps(record))
 
 
@@ -257,3 +267,52 @@ def test_encode_makes_the_chosen_ball_the_single_ball_at_the_operating_point(tmp
         np.float32(0.7)
     ]
     assert record["ball-detection 04"]["added_balls"] == 1
+
+
+def test_encode_takes_a_single_row_references_row(tmp_path):
+    reference_dump(tmp_path / "ref", single="tiles2x2+pf45")
+    tracks = pd.DataFrame(
+        {
+            "clip": "C",
+            "frame": [1, 6],
+            "status": ["measured", "none"],
+            "x1": [100.0, np.nan],
+            "y1": [100.0, np.nan],
+            "x2": [110.0, np.nan],
+            "y2": [110.0, np.nan],
+            "conf": [0.05, np.nan],
+        }
+    )
+    bt.encode(tracks, tmp_path / "ref", tmp_path / "out", {"setting": {}}, ["2"])
+    record, _, candidates = bt.bench.read_dump(tmp_path / "out")
+    assert list(record["rows"]) == ["tiles2x2+pf45"]
+    assert set(candidates["row"]) == {"tiles2x2+pf45"}
+    assert record["ms_per_frame"] == {"gsr/tiles2x2+pf45": 74.8}
+    balls = candidates[(candidates.class_name == "ball") & (candidates["set"] == "gsr")]
+    assert balls[balls.conf >= 0.15].x1.tolist() == [100.0]
+
+
+def test_dump_table_keeps_the_dump_floor_and_drops_long_balls_at_1080p():
+    found = sv.Detections(
+        xyxy=np.array(
+            [
+                [0, 0, 10, 10],  # ball, kept
+                [0, 0, 10, 10],  # ball under the dump floor
+                [0, 0, 46, 10],  # ball 46 px long at 1080p
+                [0, 0, 30, 10],  # 30 px at 720p = 45 px at 1080p: kept (not over)
+                [0, 0, 20, 80],  # a long player, kept
+            ],
+            np.float32,
+        ),
+        confidence=np.array([0.5, 0.005, 0.9, 0.3, 0.8], np.float32),
+        class_id=np.array([0, 0, 0, 0, 2]),
+    )
+    plain = bt.dump_table(found, 6, 1080, None)
+    assert plain.conf.tolist() == pytest.approx([0.5, 0.9, 0.3, 0.8])
+    assert (plain.frame == 6).all() and plain.frame.dtype == np.int16
+    filtered = bt.dump_table(found, 6, 1080, 45)
+    assert filtered.conf.tolist() == pytest.approx([0.5, 0.3, 0.8])
+    at_720 = bt.dump_table(
+        found, 6, 720, 45
+    )  # 46 px -> 69 px and 30 px -> 45 px at 1080p
+    assert at_720.conf.tolist() == pytest.approx([0.5, 0.3, 0.8])

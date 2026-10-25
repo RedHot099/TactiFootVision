@@ -303,7 +303,7 @@ def dump(args: argparse.Namespace) -> None:
     pd.DataFrame(images).to_parquet(args.out / "images.parquet", index=False)
     record = {
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
-        "ticket": "ball-detection 03",
+        "ticket": args.ticket,
         "variant": args.variant,
         "weights": str(WEIGHTS),
         "weights_sha256": bench.sha256_file(WEIGHTS),
@@ -580,6 +580,9 @@ def main() -> None:
     )
     d.add_argument("--out", type=Path, required=True)
     d.add_argument("--device", default=None)
+    d.add_argument(
+        "--ticket", default="ball-detection 03", help="the dump record's ticket"
+    )
     p = commands.add_parser("postfilter", help="drop ball candidates longer than 45 px")
     p.add_argument("--dump", type=Path, required=True)
     p.add_argument("--row", required=True)
