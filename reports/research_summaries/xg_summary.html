@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Expected goals from broadcast video: research summary</title>
+<style>
+  @page { size: A4; margin: 14mm 15mm 14mm 15mm; }
+  :root {
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #85837d; --rule: #e4e3df; --wash: #f5f4f1;
+    --video: #2a78d6; --geometry: #1baf7a; --vendor: #52514e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 10pt/1.45 "Noto Sans", "Inter", system-ui, sans-serif; }
+  main { max-width: 186mm; margin: 0 auto; padding: 10mm 0; }
+  h1 { font-size: 19pt; line-height: 1.2; margin: 0 0 2mm; letter-spacing: -0.01em; }
+  h2 { font-size: 12.5pt; margin: 7mm 0 2mm; padding-top: 2mm; border-top: 1px solid var(--rule); }
+  h3 { font-size: 10.5pt; margin: 4mm 0 1mm; }
+  p { margin: 0 0 2.2mm; }
+  .byline { color: var(--ink-2); font-size: 9.5pt; margin-bottom: 4mm; }
+  .abstract { font-size: 10.2pt; color: #222; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2.5mm; margin: 4mm 0 2mm; }
+  .kpi { background: var(--wash); border-radius: 6px; padding: 2.6mm 3mm; }
+  .kpi b { display: block; font-size: 15pt; line-height: 1.15; letter-spacing: -0.01em; }
+  .kpi span { display: block; font-size: 8pt; color: var(--ink-2); line-height: 1.3; margin-top: 1mm; }
+  figure { margin: 3mm 0; break-inside: avoid; }
+  figcaption { font-size: 8.4pt; color: var(--ink-2); margin-top: 1.2mm; line-height: 1.35; }
+  figcaption b { color: var(--ink); }
+  img, video, svg { display: block; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.8pt; margin: 2mm 0; break-inside: avoid; }
+  th, td { text-align: left; padding: 1.2mm 2mm; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 8.2pt; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .arrow { color: var(--muted); padding: 0 0.6mm; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; align-items: start; }
+  .chart-row { display: grid; grid-template-columns: 1.95fr 1fr; gap: 4mm; align-items: start; }
+  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 5mm; }
+  .card { break-inside: avoid; }
+  .card img { border-radius: 4px; }
+  .chips { display: flex; gap: 1.5mm; flex-wrap: wrap; margin-top: 1.3mm; font-size: 8.2pt; }
+  .chip { border-radius: 3px; padding: 0.3mm 1.6mm; background: var(--wash); white-space: nowrap; }
+  .chip i { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; margin-right: 1mm; vertical-align: -0.1mm; }
+  .chip.out { background: #fff; border: 1px solid var(--rule); font-weight: 600; }
+  .feature { break-inside: avoid; display: grid; grid-template-columns: 1.55fr 1fr; gap: 5mm; align-items: start; }
+  .media video { width: 100%; border-radius: 4px; background: #000; }
+  .media .poster { display: none; }
+  ul { margin: 1mm 0 2mm; padding-left: 5mm; }
+  li { margin-bottom: 1.2mm; }
+  .note { font-size: 8.4pt; color: var(--ink-2); }
+  footer { margin-top: 6mm; padding-top: 2mm; border-top: 1px solid var(--rule); font-size: 7.8pt; color: var(--muted); }
+  .page-break { break-before: page; }
+  @media print {
+    main { padding: 0; }
+    .media video { display: none; }
+    .media .poster { display: block; border-radius: 4px; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Expected goals from broadcast video</h1>
+<div class="byline">Jakub Eichner · TactiFoot Vision · research summary, October 2026</div>
+
+<p class="abstract">
+Expected-goals (xG) models estimate the probability that a shot becomes a goal. Commercial xG relies on
+event data that human analysts annotate by hand, including the positions of every player at the moment of the
+shot. This project asks how much of that information a model can recover <b>directly from broadcast video</b>, and
+where it still falls short. It combines an end-to-end video model with an explicit perception stack (player and ball
+detection, pitch registration) and compares both against StatsBomb's commercial xG in a pre-registered study.
+</p>
+
+<div class="kpis">
+  <div class="kpi"><b>11,030</b><span>shots from 500 broadcast matches (SoccerNet, 6 competitions)</span></div>
+  <div class="kpi"><b>0.792</b><span>ROC AUC of the video-only xG model on the official test split</span></div>
+  <div class="kpi"><b>0.46&nbsp;m</b><span>median error of player positions on the pitch (was 1.88&nbsp;m)</span></div>
+  <div class="kpi"><b>5.2&nbsp;→&nbsp;1.2&nbsp;m</b><span>median error of the detected shot location</span></div>
+  <div class="kpi"><b>34%</b><span>of the log-loss gap to commercial xG closed by explicit geometry</span></div>
+</div>
+
+<h2>1&nbsp;&nbsp;Approach</h2>
+<figure>
+<svg viewBox="0 0 760 196" width="100%" role="img" aria-label="Pipeline: broadcast frame to video model and perception stack, combined into xG" style="font: 11px 'Noto Sans', sans-serif">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#85837d"/></marker></defs>
+  <g stroke="#85837d" stroke-width="1.4" fill="none" marker-end="url(#a)">
+    <path d="M118,98 C135,98 135,40 150,40"/><path d="M118,98 C135,98 135,148 150,148"/>
+    <path d="M356,40 L600,40 C620,40 622,90 638,92"/>
+    <path d="M320,148 L340,148"/><path d="M510,148 L530,148"/><path d="M626,148 C636,148 632,108 638,104"/>
+  </g>
+  <rect x="0" y="66" width="118" height="64" rx="8" fill="#f5f4f1"/>
+  <text x="59" y="93" text-anchor="middle" font-weight="600">Broadcast clip</text>
+  <text x="59" y="109" text-anchor="middle" fill="#52514e">720p, frame at contact</text>
+  <rect x="150" y="14" width="206" height="52" rx="8" fill="#2a78d6" fill-opacity="0.12" stroke="#2a78d6"/>
+  <text x="253" y="36" text-anchor="middle" font-weight="600">Video model</text>
+  <text x="253" y="52" text-anchor="middle" fill="#52514e">DINOv2-L, fine-tuned end to end</text>
+  <text x="465" y="32" text-anchor="middle" fill="#2a78d6" font-weight="600">xG (video only)</text>
+  <rect x="150" y="118" width="170" height="60" rx="8" fill="#1baf7a" fill-opacity="0.12" stroke="#1baf7a"/>
+  <text x="235" y="139" text-anchor="middle" font-weight="600">Perception</text>
+  <text x="235" y="154" text-anchor="middle" fill="#52514e">players, GK, ball (YOLO11l)</text>
+  <text x="235" y="168" text-anchor="middle" fill="#52514e">pitch keypoints (YOLO11m-pose)</text>
+  <rect x="340" y="118" width="170" height="60" rx="8" fill="#1baf7a" fill-opacity="0.12" stroke="#1baf7a"/>
+  <text x="425" y="139" text-anchor="middle" font-weight="600">Pitch registration</text>
+  <text x="425" y="154" text-anchor="middle" fill="#52514e">homography → metres</text>
+  <text x="425" y="168" text-anchor="middle" fill="#52514e">shooter feet, GK, defenders</text>
+  <rect x="530" y="124" width="100" height="48" rx="8" fill="#1baf7a" fill-opacity="0.12" stroke="#1baf7a"/>
+  <text x="578" y="145" text-anchor="middle" font-weight="600">Geometry</text>
+  <text x="578" y="160" text-anchor="middle" fill="#52514e">distance, angle</text>
+  <rect x="640" y="70" width="116" height="56" rx="8" fill="#0b0b0b"/>
+  <text x="698" y="93" text-anchor="middle" fill="#fff" font-weight="600">Stacked xG</text>
+  <text x="698" y="110" text-anchor="middle" fill="#c3c2b7">video + geometry</text>
+</svg>
+<figcaption><b>Two complementary routes from pixels to xG.</b> The video model sees one frame at the moment of the shot.
+The perception stack turns the same frame into pitch coordinates in metres. A small stacked model combines the two.
+All components are part of an open, importable Python package (<code>tactifoot_vision</code>).</figcaption>
+</figure>
+
+<h2>2&nbsp;&nbsp;Results</h2>
+
+<h3>2.1 A video-only xG model</h3>
+<p>
+A DINOv2-L backbone, with its last 4 of 24 transformer blocks fine-tuned, reads a single frame at the moment of the shot
+and outputs a calibrated goal probability. Ten models (5 folds grouped by home team × 2 seeds) are averaged, then Platt-scaled.
+On the official SoccerNet test split (100 matches, 2,229 shots) it reaches the following:
+</p>
+<table>
+  <tr><th>Metric (test, 2,229 shots)</th><th class="n">Video-only model</th><th class="n">Constant baseline</th><th>Note</th></tr>
+  <tr><td>ROC AUC</td><td class="n">0.792 [0.768, 0.817]</td><td class="n">0.500</td><td>95% match-bootstrap CI</td></tr>
+  <tr><td>Log-loss</td><td class="n">0.324</td><td class="n">0.392</td><td>−17% relative</td></tr>
+  <tr><td>Brier score</td><td class="n">0.097</td><td class="n">—</td><td></td></tr>
+  <tr><td>Inference</td><td class="n">≈ 36 ms / shot</td><td class="n"></td><td>shared frozen trunk, RTX 4070 Ti SUPER</td></tr>
+</table>
+<p>
+A larger ensemble with other architectures was no better (ΔAUC +0.001 [−0.003, +0.005]), so the simpler model is kept.
+<b>Robustness:</b> training without one league and testing on it costs only +0.004 log-loss (1.2%)
+[0.002, 0.006] across the five domestic leagues. The conclusions hold under alternative rules for attributing goals to rebound shots.
+</p>
+
+<h3>2.2 Video versus commercial event data (pre-registered)</h3>
+<p>
+I paired 2,754 SoccerNet shots one-to-one with StatsBomb Open Data events (135 matches, 99.5% goal agreement). The hypotheses,
+margins and analysis were registered before the labels were joined. On the 2,721 non-penalty shots, video alone
+reaches a log-loss of 0.355 (AUC 0.736), and StatsBomb xG 0.326 (AUC 0.792). The video model still trails
+manually annotated event data. The registered tests explain why:
+</p>
+<ul>
+  <li><b>The frame adds nothing beyond player positions.</b> Adding the video model to a positions-only model
+    changes log-loss by −0.0004 [−0.0026, +0.0018]. That is equivalent within the pre-set margin δ = 0.005 (TOST p = 0.0006).</li>
+  <li><b>The video model has learned shot geometry implicitly.</b> Its embedding linearly encodes the distance to goal
+    (R² = 0.71) and the number of defenders in the shooting cone (AUC 0.76). Both are above the pre-registered thresholds and
+    above frozen DINOv2 features.</li>
+</ul>
+<p>So the useful content of the frame is mostly geometry. That points at the perception stack: measure the geometry explicitly and accurately.
+A paper on this study is in preparation for the CVsports workshop at CVPR 2027.</p>
+
+<h3>2.3 Perception: from pixels to metres</h3>
+<table>
+  <tr><th>Component</th><th>Measure</th><th class="n">Before</th><th class="n">After</th></tr>
+  <tr><td>Detector (YOLO11l, 1280&nbsp;px)</td><td>mAP@50, 4 classes, GSR test (7,350 frames)</td><td class="n">0.229</td><td class="n"><b>0.747</b></td></tr>
+  <tr><td></td><td>Goalkeeper AP@50 · ball AP@50</td><td class="n">0.00 · 0.18</td><td class="n"><b>0.67 · 0.46</b></td></tr>
+  <tr><td>Pitch keypoints (YOLO11m-pose)</td><td>median player position error · frames registered</td><td class="n">1.88&nbsp;m · 76%</td><td class="n"><b>0.46&nbsp;m · 86%</b></td></tr>
+  <tr><td>Shot geometry vs StatsBomb</td><td>median shot-location error (2,721 shots)</td><td class="n">5.18&nbsp;m</td><td class="n"><b>1.16&nbsp;m</b></td></tr>
+  <tr><td></td><td>median goalkeeper position error · GK found</td><td class="n">6.50&nbsp;m · 18%</td><td class="n"><b>0.77&nbsp;m · 91%</b></td></tr>
+</table>
+<p class="note">The shot location went from 5.18 m to 2.62 m with the retrained detector, then to 1.16 m by placing the shot at the shooter's feet instead of
+projecting the ball, which is often in the air. On headers the error dropped from 13.0 m to 2.4 m.</p>
+
+<h3>2.4 Effect on xG</h3>
+<div class="chart-row">
+  <figure>
+    <img src="{{fig_gap}}" alt="Log-loss reduction relative to the video-only model">
+    <figcaption><b>How much of the gap to commercial xG explicit geometry closes.</b> Log-loss reduction relative to the video-only
+    model on the 2,721 shots paired with StatsBomb. On a larger set of 172 held-out matches (3,819 shots), adding geometry reduces log-loss by
+    0.0091 [0.0042, 0.0142].</figcaption>
+  </figure>
+  <figure>
+    <img src="{{fig_reliability}}" alt="Reliability diagram">
+    <figcaption><b>Calibration.</b> Observed goal rate per decile of predicted xG; all three models Platt-recalibrated alike.</figcaption>
+  </figure>
+</div>
+<figure>
+  <img src="{{fig_categories}}" alt="Expected over actual goals by situation">
+  <figcaption><b>Where video still errs.</b> Expected ÷ actual goals by situation (1 = calibrated). Geometry fixes much of the
+  sharp-angle and long-range over-estimation. It does not help with an advanced goalkeeper or defensive pressure, where event
+  annotators see context that a single frame and the current team assignment miss.</figcaption>
+</figure>
+
+<h2>3&nbsp;&nbsp;Examples</h2>
+<div class="feature">
+  <div class="media">
+    <video src="{{vid_feature_clip}}" poster="{{img_feature}}" controls muted loop playsinline preload="metadata"></video>
+    <img class="poster" src="{{img_feature}}" alt="Annotated shot frame with pitch radar">
+  </div>
+  <div>
+    <h3 style="margin-top:0">Anatomy of one shot</h3>
+    <p class="note">{{feature_match}}, a headed goal. The package detects and tracks the players, the goalkeeper and the ball,
+    and registers the pitch, so every person gets a position in metres (radar, top right).
+    At contact, the three xG estimates are:</p>
+    <div class="chips">
+      <span class="chip"><i style="background:var(--video)"></i>Video only {{feature_video}}</span>
+      <span class="chip"><i style="background:var(--geometry)"></i>Video + geometry {{feature_geometry}}</span>
+      <span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{feature_vendor}}</span>
+      <span class="chip out">{{feature_outcome}}</span>
+    </div>
+    <p class="note" style="margin-top:2mm">The video model under-rates this close-range header. The explicit shot location moves the estimate most of the
+    way towards the value from manual event data. In the HTML version this panel plays a 6-second clip.</p>
+  </div>
+</div>
+
+<div class="gallery" style="margin-top:4mm">
+  <figure class="card"><img src="{{img_agree}}" alt="">
+    <figcaption><b>{{agree_caption}}</b> {{agree_match}}.</figcaption>
+    <div class="chips"><span class="chip"><i style="background:var(--video)"></i>Video {{agree_video}}</span><span class="chip"><i style="background:var(--geometry)"></i>+ geometry {{agree_geometry}}</span><span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{agree_vendor}}</span><span class="chip out">{{agree_outcome}}</span></div></figure>
+  <figure class="card"><img src="{{img_angle}}" alt="">
+    <figcaption><b>{{angle_caption}}</b> {{angle_match}}.</figcaption>
+    <div class="chips"><span class="chip"><i style="background:var(--video)"></i>Video {{angle_video}}</span><span class="chip"><i style="background:var(--geometry)"></i>+ geometry {{angle_geometry}}</span><span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{angle_vendor}}</span><span class="chip out">{{angle_outcome}}</span></div></figure>
+  <figure class="card"><img src="{{img_close}}" alt="">
+    <figcaption><b>{{close_caption}}</b> {{close_match}}.</figcaption>
+    <div class="chips"><span class="chip"><i style="background:var(--video)"></i>Video {{close_video}}</span><span class="chip"><i style="background:var(--geometry)"></i>+ geometry {{close_geometry}}</span><span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{close_vendor}}</span><span class="chip out">{{close_outcome}}</span></div></figure>
+  <figure class="card"><img src="{{img_pressure}}" alt="">
+    <figcaption><b>{{pressure_caption}}</b> {{pressure_match}}.</figcaption>
+    <div class="chips"><span class="chip"><i style="background:var(--video)"></i>Video {{pressure_video}}</span><span class="chip"><i style="background:var(--geometry)"></i>+ geometry {{pressure_geometry}}</span><span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{pressure_vendor}}</span><span class="chip out">{{pressure_outcome}}</span></div></figure>
+</div>
+
+<h2>4&nbsp;&nbsp;Open questions</h2>
+<ul>
+  <li><b>Defensive pressure and team context.</b> A team-free pressure feature already separates pressured shots (AUC 0.72). With the current
+    team assignment it does not (0.51). Robust team identification is now the main bottleneck.</li>
+  <li><b>Confirmation on fresh data.</b> The geometry gains were measured on matches that were also used during development. A new, untouched
+    test set (another season or league) would turn them into a confirmatory result.</li>
+  <li><b>Ball detection.</b> The ball is the weakest detector class (AP@50 0.46) and limits the pre-shot context. It is the subject of the current research phase.</li>
+  <li><b>Time.</b> All models here read a single frame. Whether short temporal context (the run-up, the pass) adds information beyond
+    geometry is still open, as is transfer to lower-tier broadcasts.</li>
+</ul>
+
+<footer>
+Video data: SoccerNet (Giancola et al., CVPR-W 2018; Deliège et al., CVPR-W 2021) and SoccerNet Game State Reconstruction (GSR) for the perception benchmarks.
+Event data and commercial xG: StatsBomb Open Data. Data: StatsBomb. Unless stated otherwise, CIs are 95% bootstrap intervals resampling whole matches.
+</footer>
+</main>
+</body>
+</html>

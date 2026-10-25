@@ -1,0 +1,18 @@
+# Research summaries
+
+Short HTML + PDF summaries of the research lines, meant for presenting the project.
+They read results from the research worktrees (paths in `sources.py`) and write
+everything to `outputs/research_summaries/<name>/`, which stays out of git.
+
+xG from broadcast video (CPU only; about 15 min the first time, then cached):
+
+```bash
+cd reports/research_summaries
+uv run python figures_xg.py                         # charts + numbers.json
+CUDA_VISIBLE_DEVICES= uv run python media_xg.py     # shot stills + 6 s clip
+uv run python build.py xg                           # xg_summary.html (self-contained) + .pdf
+```
+
+The PDF is printed by headless Chromium; there the clip is replaced by its poster frame.
+Text and figure numbers are in `xg_summary.html`; the sources of every number are
+the reports on `research/xg-detector` and `claude-fable/xg-poc`.
