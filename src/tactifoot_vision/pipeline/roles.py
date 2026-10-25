@@ -64,8 +64,9 @@ def assign_roles(
     1. A track whose median pitch position lies more than
        ``off_pitch_margin`` m outside the pitch (stewards, cameramen,
        substitutes behind the boards) is left out: its rows are dropped.
-    2. The ``player`` tracks are grouped into ``n_kits`` kits by k-means on
-       their embeddings, each weighted by its rows. A match has five kits
+    2. The ``player`` and detector ``goalkeeper`` tracks are grouped into
+       ``n_kits`` kits by k-means on their embeddings, each weighted by its
+       rows. A match has five kits
        on the pitch (two teams, two goalkeepers, the officials); one more
        lets a team split in two without taking an official's kit. There
        are at least two kits and two fewer than tracks, so some kits hold
