@@ -28,10 +28,11 @@ Wszystkie wiersze poza 1920 są opisowe. Wariant opisowy nie wygrywa ticketu (re
 | 1600 | 0,313 (+0,017) | 52,56% | +0,96 [−0,49; +2,67] | 20,86% (+2,42) | 0,016 / 0,063 | 0,281 / 0,397 | 0,244 | 0,348 [0,24; 0,46] | 0,437 (+0,013) | 0,547 (+0,033) | 28,5 |
 | kafle 2×2 + 1280 | 0,214 (−0,082) | 50,87% | −0,73 [−2,89; +1,39] | 37,39% (+18,94) | 0,014 / 0,123 | 0,315 / 0,476 | 0,596 | 0,242 [0,12; 0,50] | 0,415 (−0,009) | 0,514 (0) | 74,8 |
 | kafle 3×2 + 1280 | 0,199 (−0,097) | 49,81% | −1,79 [−4,55; +1,03] | 39,06% (+20,62) | 0,014 / 0,115 | 0,309 / 0,466 | 0,605 | 0,248 [0,12; 0,50] | 0,416 (−0,008) | 0,514 (0) | 80,8 |
-| 1600 + TTA | czeka na GPU (zob. niżej) | | | | | | | | | | |
+| 1600 + TTA | 0,302 (+0,006) | 56,49% | +4,89 [+3,23; +6,76] | 22,82% (+4,38) | 0,027 / 0,132 | 0,321 / 0,481 | 0,403 | 0,331 [0,27; 0,41] | 0,441 (+0,017) | 0,547 (+0,033) | 55,5 |
 | dd2c 1280 + pf45 | 0,337 (+0,041) | 52,24% | +0,64 [+0,12; +1,18] | 9,61% (−8,84) | 0,003 / 0,071 | 0,266 / 0,385 | 0,090 | 0,279 [0,25; 0,38] | 0,424 (0) | 0,514 (0) | 19,6 |
 | 1920 + pf45 | 0,339 (+0,044) | 52,40% | +0,80 [−1,70; +2,96] | 10,45% (−7,99) | 0,016 / 0,049 | 0,274 / 0,398 | 0,118 | 0,318 [0,22; 0,48] | 0,441 (+0,017) | 0,547 (+0,033) | 34,8 |
 | 1600 + pf45 | 0,356 (+0,060) | 53,18% | +1,58 [+0,25; +3,05] | 9,53% (−8,92) | 0,016 / 0,063 | 0,281 / 0,397 | 0,092 | 0,349 [0,24; 0,46] | 0,437 (+0,013) | 0,547 (+0,033) | 28,5 |
+| 1600 + TTA + pf45 | 0,361 (+0,065) | **58,05%** | **+6,45 [+4,46; +8,82]** | 10,42% (−8,02) | 0,027 / 0,132 | 0,321 / 0,481 | 0,198 | 0,332 [0,27; 0,41] | 0,441 (+0,017) | 0,547 (+0,033) | 55,5 |
 | kafle 2×2 + pf45 (poza rejestracją) | 0,346 (+0,050) | **58,00%** | **+6,40 [+4,91; +8,06]** | 12,68% (−5,76) | 0,014 / 0,123 | 0,315 / 0,476 | 0,152 | 0,242 [0,12; 0,50] | 0,415 (−0,009) | 0,514 (0) | 74,8 |
 | kafle 3×2 + pf45 (poza rejestracją) | 0,340 (+0,044) | 57,72% | +6,12 [+4,60; +7,87] | 13,66% (−4,79) | 0,014 / 0,115 | 0,309 / 0,466 | 0,158 | 0,249 [0,12; 0,50] | 0,416 (−0,008) | 0,514 (0) | 80,8 |
 
@@ -61,10 +62,14 @@ zmian.
    głównym późniejszego ticketu, zapisanym przed odczytem, z odczytem potwierdzającym na grze 5.
 4. Koszt: kafle 2×2 to 74,8 ms/klatkę (3,8× dd2c 1280); 3×2 jest wolniejsze i nie lepsze.
 
-**TTA nie zmierzone.** Najlepszy z wariantów 1920 / 1600 / kafle (punktowo) to 1600, więc TTA (Ultralytics
-`augment`) idzie na 1600 (`1600+tta`). Zrzut czeka w kolejce na blokadę GPU. Trening 05 (ramię B) przerwał się
-ok. 11:00 25.10 bez zwolnienia blokady i blokady nie przejmuję. Po zwolnieniu blokady `ball/03/run_dumps.sh` zrobi zrzut,
-a `ball/03/after_tta.sh` kartę i tabelę. TTA jest opisowe i nie zmienia wyniku ticketu.
+5. **TTA (opisowo).** Najlepszy punktowo z wariantów 1920 / 1600 / kafle to 1600, więc TTA (Ultralytics `augment`:
+   skale 1 / 0,83 / 0,67, odbicie przy 0,83) poszło na 1600. Wynik: +4,89 pp [+3,23; +6,76], 55,5 ms/klatkę (2,8×
+   dd2c). Recall rośnie jak przy kaflach (środek 0,585; < 8 px 0,13; 8–12 px 0,48), fałszywych piłek jest 0,40 na
+   klatkę, a > 5 m to 22,8%. Zgodnie z rejestracją post-filtr idzie na najlepszy z wariantów 1–3, czyli teraz na
+   1600 + TTA: **+6,45 pp [+4,46; +8,82]**, > 5 m 10,4%, AP50 piłki +0,065, ludzie +0,033, Ekstraklasa mAP50-95
+   +0,017. Tyle samo co kafle 2×2 + pf45 przy 74% ich czasu, a ludzie są lepsi. To wariant zarejestrowany, ale
+   opisowy (wybrany jako najlepszy na tym samym splicie), więc też tylko kandydat na porównanie główne późniejszego
+   ticketu. Zrzut TTA powstał 25.10 17:39–17:45 (blokada GPU wzięta i zwolniona), po końcu treningu 05.
 
 ## Decyzja 9: czy zysk skupia się w piłkach < 12 px
 
@@ -78,12 +83,17 @@ Opisowo, dla kafli liczonych wobec dd2c 1280 + pf45 (ten sam filtr po obu strona
 jest więc w małych piłkach tylko trochę silniejszy niż proporcjonalnie, rozłożony na 8–16 px, a piłek < 8 px nadal
 prawie nikt nie wykrywa (recall IoU 0,014). Tabela: `ball/03/table/size_gain_vs_dd2c_pf45.md`.
 
+1600 + TTA wobec dd2c 1280: netto +208 klatek, z tego 49,5% w < 12 px (zysk na klatkę 0,061 vs 0,041); trafień
+środka +380, z tego 52% w < 12 px. 1600 + TTA + pf45 wobec dd2c 1280 + pf45: +247 klatek, 53% w < 12 px. Obraz jest
+ten sam co przy kaflach: zysk w małych piłkach jest nieco ponadproporcjonalny, ale nie skupiony.
+
 ## Propozycja dla pipeline'u (tylko propozycja, pakiet bez zmian)
 
 - Opcja detektora `ball_max_side_px` (domyślnie 45 przy 1080p, skalowana wysokością klatki): odrzut kandydatów piłki
   dłuższych niż próg, zanim zobaczy je `track_ball`. Zero kosztu, zysk na samym dd2c 1280.
-- Kafle (`ball_tiles=(2, 2)`) dopiero po potwierdzeniu w osobnym tickecie. Koszt 3,8× czasu detekcji; batch kafli
-  powinien ten koszt obniżyć.
+- TTA na piłkę (`ball_tta=True` przy imgsz 1600) albo kafle (`ball_tiles=(2, 2)`) dopiero po potwierdzeniu w
+  osobnym tickecie (porównanie główne zapisane przed odczytem, odczyt gry 5). TTA kosztuje 2,8×, kafle 3,8× czasu
+  detekcji; TTA jest tańsze i daje to samo.
 
 ## Ścieżki (poza gitem)
 
