@@ -27,8 +27,9 @@ output, so each is made once, and runs inside `no_statsbomb_reads()`.
                label seal (`xgpoc.temporal.labels`), runs the read-out on the labels permuted within matches and writes
                results/xgt/controls/permutation.json and complete.json with every gate and `all_passed`.
 --real         the same protocol checks, then refuses unless results/xgt/controls/complete.json matches its files, was
-               written under this protocol and code and has `all_passed: true` (`check_controls`). Then reads goal and
-               on_target inside the label seal and writes the read-out (`real_run`): results/xgt/real/summary.json
+               written under this protocol and code and has `all_passed: true` (`check_controls`). Then reads the
+               categories' E3 columns, refused unless their files have the protocol's SHA-256 (`check_e3`), reads goal
+               and on_target inside the label seal and writes the read-out (`real_run`): results/xgt/real/summary.json
                (scores, ΔLL, Holm, claims, readability veto, chosen C, the leak curve with its rules, the controls'
                power curve), categories.csv, leak_curve.csv and complete.json; the out-of-fold probabilities (no
                label) go to outputs/xgt_real/probabilities.csv, named in complete.json by path and SHA-256.
@@ -348,6 +349,12 @@ def run_permutation(protocol: dict, plan: pd.DataFrame, stages: Stages, started:
 
 
 # ------------------------------------------------------------------ --real (ticket 04)
+def check_e3(hashes: dict, recorded: dict) -> None:
+    """The categories' E3 files, refused unless their SHA-256 are the ones the protocol pins (paths may differ)."""
+    if {k: v["sha256"] for k, v in hashes.items()} != {k: v["sha256"] for k, v in recorded.items()}:
+        raise SystemExit("the E3 files differ from the ones the protocol pins")
+
+
 def read_window(designs: dict, y: np.ndarray, weights: np.ndarray) -> tuple[dict, dict, dict]:
     probabilities, chosen = tr.out_of_fold(designs, y)
     return probabilities, chosen, tr.contrasts(y, probabilities, weights)
@@ -358,6 +365,7 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
     population's match draws restricted to its shots, so the jump rule's excess has a paired interval."""
     population, columns, provenance, _, built = main_population(protocol, plan, stages)
     e3, e3_hashes = tc.e3_inputs(population.table.index, ROOT / protocol["data"]["e3"]["source"])     # label-free first
+    check_e3(e3_hashes, protocol["data"]["e3"]["hashes"])
     stages("e3")
     labels = tl.load_labels(population, INDEX, ti.PLAN_CSV)
     stages("labels")

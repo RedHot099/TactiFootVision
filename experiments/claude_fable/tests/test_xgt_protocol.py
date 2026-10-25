@@ -74,6 +74,22 @@ def test_the_package_digest_covers_every_xgpoc_module_the_scripts_import():
     subprocess.run([sys.executable, "-c", code], cwd=EXPERIMENT, check=True)
 
 
+def test_the_package_digest_pins_the_run_script_except_its_protocol_pin(tmp_path):
+    assert f"{tr_records.RUN_SCRIPT} (pin normalised)" in tr_records.package_hashes()["files"]
+    text = (EXPERIMENT / tr_records.RUN_SCRIPT).read_text()
+    line = next(x for x in text.splitlines() if x.startswith("PROTOCOL_SHA256"))
+    script = tmp_path / "xgt_run.py"
+    script.write_text(text)
+    before = tr_records.run_script_sha256(script)
+    script.write_text(text.replace(line, f'PROTOCOL_SHA256: str | None = "{"a" * 64}"'))
+    assert tr_records.run_script_sha256(script) == before                     # pinning after the freeze
+    script.write_text(text.replace("REAL_OUT = ", "REAL_OUT =  "))
+    assert tr_records.run_script_sha256(script) != before                     # any other edit
+    script.write_text(text.replace(line, ""))
+    with pytest.raises(ValueError, match="exactly once"):
+        tr_records.run_script_sha256(script)
+
+
 # ------------------------------------------------------------------ the generator's arguments
 def test_the_generator_refuses_a_draft_on_the_protocol_path_and_another_source_without_draft():
     for argv in (["--draft"], ["--draft", "--out", str(EXPERIMENT / tpr.PROTOCOL)], ["--source", "g_xgc"],
@@ -234,6 +250,17 @@ def test_the_real_run_refuses_failed_or_foreign_controls(lab, tmp_path):
     (folder / "permutation.json").write_text("{ }")
     with pytest.raises(SystemExit, match="does not match"):
         xgt_run.check_controls(folder, "p", "d")
+
+
+def test_the_real_run_refuses_e3_files_other_than_the_protocols():
+    pinned = {"frames.parquet": {"path": "/a/frames.parquet", "sha256": "f"},
+              "features.parquet": {"path": "/a/features.parquet", "sha256": "g"}}
+    moved = {name: {"path": f"/b/{name}", "sha256": h["sha256"]} for name, h in pinned.items()}
+    xgt_run.check_e3(moved, pinned)                                 # another checkout: same files
+    for changed in ({**moved, "features.parquet": {"path": "/a/features.parquet", "sha256": "h"}},
+                    {"frames.parquet": moved["frames.parquet"]}):
+        with pytest.raises(SystemExit, match="E3"):
+            xgt_run.check_e3(changed, pinned)
 
 
 def test_a_draft_or_a_changed_protocol_is_refused(lab, monkeypatch):

@@ -68,6 +68,7 @@ import numpy as np
 import pandas as pd
 from scipy.linalg import qr
 from scipy.optimize import brentq
+from threadpoolctl import threadpool_limits
 
 from xgpoc.compare.stats import permute_within_matches
 from xgpoc.eval.calibration import sigmoid
@@ -320,8 +321,6 @@ _DESIGNS: Designs | None = None
 
 
 def _start_worker(designs: Designs) -> None:
-    from threadpoolctl import threadpool_limits
-
     global _DESIGNS
     threadpool_limits(1)
     _DESIGNS = designs
@@ -333,7 +332,7 @@ def _fit(y: np.ndarray) -> tuple[dict[str, np.ndarray], dict[str, list]]:
 
 class Fitter:
     """Out-of-fold fits of every arm for many outcome vectors, in `jobs` spawned worker processes (one BLAS thread
-    each) or in this process when jobs == 1; a context manager that owns its pool."""
+    each) or in this process with one BLAS thread when jobs == 1; a context manager that owns its pool."""
 
     def __init__(self, designs: Designs, jobs: int = 1):
         self.designs, self.jobs, self.pool = designs, max(1, int(jobs)), None
@@ -351,8 +350,15 @@ class Fitter:
 
     def map(self, ys: Iterable[np.ndarray]) -> Iterable[tuple[dict[str, np.ndarray], dict[str, list]]]:
         if self.pool is None:
-            return (tr.out_of_fold(self.designs, y) for y in ys)
+            return self._serial(ys)
         return self.pool.map(_fit, ys)
+
+    def _serial(self, ys: Iterable[np.ndarray]) -> Iterable[tuple[dict[str, np.ndarray], dict[str, list]]]:
+        """In this process with one BLAS thread too, as in the workers, so jobs = 1 gives the same fits."""
+        for y in ys:
+            with threadpool_limits(1):
+                fit = tr.out_of_fold(self.designs, y)
+            yield fit
 
 
 def default_jobs() -> int:

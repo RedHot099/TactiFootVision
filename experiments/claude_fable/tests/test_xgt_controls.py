@@ -84,6 +84,17 @@ def test_the_fits_do_not_depend_on_the_number_of_worker_processes(built):
     assert set(frames[0].columns) >= {"delta_T-S", "holm_T-S", "delta_oracle", "floor_share_T", "holm_any"}
 
 
+def test_the_serial_fits_run_with_one_blas_thread_as_the_workers(monkeypatch):
+    from threadpoolctl import threadpool_info
+
+    seen = []
+    monkeypatch.setattr(tco.tr, "out_of_fold", lambda designs, y: seen.append(
+        {i["num_threads"] for i in threadpool_info() if i["user_api"] == "blas"}) or ({}, {}))
+    with tco.Fitter({}, 1) as fitter:
+        assert len(list(fitter.map([np.zeros(3), np.ones(3)]))) == 2
+    assert seen == [{1}, {1}]
+
+
 def test_outcomes_are_drawn_in_replicate_order_from_the_seed():
     p = np.full(50, 0.3)
     a, b = tco.draw(tco.fixed(p), 3, 11, 50), tco.draw(tco.fixed(p), 3, 11, 50)

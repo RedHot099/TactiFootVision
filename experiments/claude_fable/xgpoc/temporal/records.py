@@ -1,5 +1,7 @@
 """Code identity and resource use of the xg-temporal runs: the files a completion record pins."""
 
+import hashlib
+import re
 import resource
 import sys
 from pathlib import Path
@@ -41,12 +43,29 @@ USED = ("xgpoc/__init__.py", "xgpoc/bundle.py", "xgpoc/compare/__init__.py", "xg
         "xgpoc/vendor/refit.py", "scripts/xgt_protocol.py")
 
 
+RUN_SCRIPT = "scripts/xgt_run.py"
+PIN = re.compile(r"^PROTOCOL_SHA256: str \| None = .*$", re.MULTILINE)
+PIN_NORMALISED = "PROTOCOL_SHA256: str | None = <pin>"
+
+
+def run_script_sha256(path: Path) -> str:
+    """sha256 of the run script with its one `PROTOCOL_SHA256` line normalised: pinning the protocol after the freeze
+    leaves it unchanged, any other edit changes it."""
+    text, n = PIN.subn(PIN_NORMALISED, Path(path).read_text())
+    if n != 1:
+        raise ValueError(f"{path} must assign PROTOCOL_SHA256 exactly once on its own line, found {n}")
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def package_hashes() -> dict:
-    """sha256 of every file of `xgpoc/temporal`, of the modules it uses (`USED`: the closure the run and protocol scripts
-    import, a fixed list so the digest does not depend on what a process imported; a test keeps it complete) and of the protocol writer, and their digest: what the protocol pins. The run
-    script is not in it (it pins the protocol's SHA-256); a run record adds it (`code_hashes`)."""
+    """sha256 of every file of `xgpoc/temporal`, of the modules it uses (`USED`: the closure the run and protocol
+    scripts import, a fixed list so the digest does not depend on what a process imported; a test keeps it complete),
+    of the protocol writer and of the run script with its pin line normalised (`run_script_sha256`), and their digest:
+    what the protocol pins, so neither the rules nor the real run's code can change after the freeze. A run record adds
+    the run script's plain hash (`code_hashes`)."""
     files = [*sorted((EXPERIMENT / "xgpoc/temporal").glob("*.py")), *(EXPERIMENT / name for name in USED)]
     hashes = {str(p.relative_to(EXPERIMENT)): sha256_file(p) for p in files}
+    hashes[f"{RUN_SCRIPT} (pin normalised)"] = run_script_sha256(EXPERIMENT / RUN_SCRIPT)
     return {"digest": canonical_digest(hashes), "files": dict(sorted(hashes.items()))}
 
 
