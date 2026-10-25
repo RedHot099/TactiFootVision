@@ -58,6 +58,9 @@ def xg_values(root: Path) -> dict[str, str]:
         values[f"{name}_outcome"] = "Goal" if m["goal"] else "No goal"
         values[f"{name}_caption"] = m["caption"]
         values[f"{name}_match"] = m["match"].split("/")[-1]
+        digits = {"angle": 0, "def_cone": 0, "opp_3m": 0}
+        for key, value in m.get("geometry", {}).items():
+            values[f"{name}_g_{key}"] = f"{value:.{digits.get(key, 1)}f}"
     return values
 
 

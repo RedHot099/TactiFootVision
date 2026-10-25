@@ -33,13 +33,21 @@
   .arrow { color: var(--muted); padding: 0 0.6mm; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; align-items: start; }
   .chart-row { display: grid; grid-template-columns: 1.95fr 1fr; gap: 4mm; align-items: start; }
-  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 5mm; }
+  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
+  .gallery figcaption { font-size: 7.6pt; }
+  .gallery .chips { font-size: 7.2pt; gap: 1mm; }
   .card { break-inside: avoid; }
   .card img { border-radius: 4px; }
   .chips { display: flex; gap: 1.5mm; flex-wrap: wrap; margin-top: 1.3mm; font-size: 8.2pt; }
   .chip { border-radius: 3px; padding: 0.3mm 1.6mm; background: var(--wash); white-space: nowrap; }
   .chip i { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; margin-right: 1mm; vertical-align: -0.1mm; }
   .chip.out { background: #fff; border: 1px solid var(--rule); font-weight: 600; }
+  figure.measure { break-inside: auto; }
+  .measure-row { break-inside: avoid; display: grid; grid-template-columns: 1.9fr 1fr; gap: 3mm; align-items: center; }
+  .measure-row img { border-radius: 4px; width: 100%; }
+  .measure-tail { break-inside: avoid; }
+  table.inputs { margin-top: 2mm; font-size: 8.2pt; }
+  table.inputs td, table.inputs th { padding: 0.8mm 1.6mm; }
   .feature { break-inside: avoid; display: grid; grid-template-columns: 1.55fr 1fr; gap: 5mm; align-items: start; }
   .media video { width: 100%; border-radius: 4px; background: #000; }
   .media .poster { display: none; }
@@ -109,7 +117,7 @@ detection, pitch registration) and compares both against StatsBomb's commercial 
   <text x="698" y="93" text-anchor="middle" fill="#fff" font-weight="600">Stacked xG</text>
   <text x="698" y="110" text-anchor="middle" fill="#c3c2b7">video + geometry</text>
 </svg>
-<figcaption><b>Two complementary routes from pixels to xG.</b> The video model sees one frame at the moment of the shot.
+<figcaption><b>Figure 1. Two complementary routes from pixels to xG.</b> The video model sees one frame at the moment of the shot.
 The perception stack turns the same frame into pitch coordinates in metres. A small stacked model combines the two.
 All components are part of an open, importable Python package (<code>tactifoot_vision</code>).</figcaption>
 </figure>
@@ -164,6 +172,26 @@ A paper on this study is in preparation for the CVsports workshop at CVPR 2027.<
 <p class="note">The shot location went from 5.18 m to 2.62 m with the retrained detector, then to 1.16 m by placing the shot at the shooter's feet instead of
 projecting the ball, which is often in the air. On headers the error dropped from 13.0 m to 2.4 m.</p>
 
+<figure class="measure">
+  <div class="measure-row">
+    <img src="{{img_freeze}}" alt="Frame at contact with the measured geometry">
+    <img src="{{fig_geometry}}" alt="Top-down view of the measured geometry">
+  </div>
+  <div class="measure-tail">
+  <table class="inputs">
+    <tr><th>Input (measured at contact and again 400 ms before)</th><th class="n">This shot, at contact</th><th>How it is measured</th></tr>
+    <tr><td>Video model score</td><td class="n">xG {{feature_video}}</td><td>DINOv2-L on the frame at contact</td></tr>
+    <tr><td>Distance to goal · goal-mouth angle</td><td class="n">{{feature_g_distance}} m · {{feature_g_angle}}°</td><td>from the shooter's feet, picked as the player nearest the ball</td></tr>
+    <tr><td>Opponents in the shooting cone</td><td class="n">{{feature_g_def_cone}}</td><td>outfield opponents inside the triangle feet–posts</td></tr>
+    <tr><td>Nearest opponent · opponents within 3 m</td><td class="n">{{feature_g_near_opp}} m · {{feature_g_opp_3m}}</td><td>pressure proxies; need the team assignment</td></tr>
+    <tr><td>Goalkeeper off the line · off centre</td><td class="n">{{feature_g_gk_depth}} m · {{feature_g_gk_off_centre}} m</td><td>goalkeeper class from the detector</td></tr>
+  </table>
+  <figcaption><b>Figure 2. What the geometry model takes into account.</b> Left: the frame at contact, with detections
+  projected through the pitch homography. Right: the same in metres, from above. With the video score, the stacked model
+  outputs xG {{feature_geometry}} (StatsBomb: {{feature_vendor}}).</figcaption>
+  </div>
+</figure>
+
 <h3>2.4 Effect on xG</h3>
 <div class="chart-row">
   <figure>
@@ -187,22 +215,22 @@ projecting the ball, which is often in the air. On headers the error dropped fro
 <h2>3&nbsp;&nbsp;Examples</h2>
 <div class="feature">
   <div class="media">
-    <video src="{{vid_feature_clip}}" poster="{{img_feature}}" controls muted loop playsinline preload="metadata"></video>
+    <video src="{{vid_feature_clip}}" poster="{{img_freeze}}" controls muted loop playsinline preload="metadata"></video>
     <img class="poster" src="{{img_feature}}" alt="Annotated shot frame with pitch radar">
   </div>
   <div>
-    <h3 style="margin-top:0">Anatomy of one shot</h3>
-    <p class="note">{{feature_match}}, a headed goal. The package detects and tracks the players, the goalkeeper and the ball,
-    and registers the pitch, so every person gets a position in metres (radar, top right).
-    At contact, the three xG estimates are:</p>
+    <h3 style="margin-top:0">One shot, end to end</h3>
+    <p class="note">{{feature_match}}. The clip plays the attack with the package's detections and a live radar, freezes at
+    the moment of contact while the measured inputs of Figure&nbsp;2 appear one by one, then shows the outcome.
+    The three estimates for this shot:</p>
     <div class="chips">
       <span class="chip"><i style="background:var(--video)"></i>Video only {{feature_video}}</span>
       <span class="chip"><i style="background:var(--geometry)"></i>Video + geometry {{feature_geometry}}</span>
       <span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{feature_vendor}}</span>
       <span class="chip out">{{feature_outcome}}</span>
     </div>
-    <p class="note" style="margin-top:2mm">The video model under-rates this close-range header. The explicit shot location moves the estimate most of the
-    way towards the value from manual event data. In the HTML version this panel plays a 6-second clip.</p>
+    <p class="note" style="margin-top:2mm">A pressured shot from 14 m through a crowded box: all three estimates agree
+    that it is a below-average chance. In the PDF this panel shows the frame at contact.</p>
   </div>
 </div>
 

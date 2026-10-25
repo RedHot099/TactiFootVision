@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 import cv2
+import geometry_xg
 import numpy as np
 import supervision as sv
 from PIL import Image, ImageDraw, ImageFont
@@ -43,7 +44,12 @@ GALLERY = {
         "Open problem: a pressured header; neither video model sees the defensive pressure.",
     ),
 }
-FEATURE = "soccernet__england_epl_2015-2016_2015-12-05---20-30-Chelsea-0---1-Bournemouth__2__2184665"
+FEATURE = "soccernet__england_epl_2015-2016_2015-08-16---18-00-Manchester-City-3---0-Chelsea__1__1859901"
+# Text a pirate stream burned into the SoccerNet video (x0, y0, x1, y1), blurred out for presentation.
+WATERMARKS = {FEATURE: [(960, 0, 1280, 30), (1030, 694, 1280, 720)]}
+FREEZE_SECONDS = 4.4
+# Where the radar goes when the default top-right corner would hide the goal.
+RADAR_CORNER = {FEATURE: "bottom-right"}
 TEAM_COLORS = ["#3987e5", "#3987e5"]
 FONT = "/usr/share/fonts/noto/NotoSans-Regular.ttf"
 FONT_BOLD = "/usr/share/fonts/noto/NotoSans-Bold.ttf"
@@ -100,7 +106,9 @@ def annotators() -> tuple[tv.viz.FrameAnnotator, tv.viz.PitchRadar]:
     return annotator, radar
 
 
-def draw(result: tv.PipelineResult, frame: np.ndarray, index: int) -> np.ndarray:
+def draw(
+    result: tv.PipelineResult, frame: np.ndarray, index: int, corner: str = "top-right"
+) -> np.ndarray:
     annotator, radar = annotators()
     frame_result = result.frame(index)
     image = annotator.annotate(frame, frame_result, history=result.window(index, 1.0))
@@ -109,7 +117,7 @@ def draw(result: tv.PipelineResult, frame: np.ndarray, index: int) -> np.ndarray
     )
     pitch = attacking_half(pitch, result)
     return tv.viz.overlay(
-        image, pitch, position="top-right", width_fraction=0.24, alpha=0.9, padding=14
+        image, pitch, position=corner, width_fraction=0.24, alpha=0.9, padding=14
     )
 
 
@@ -126,14 +134,22 @@ def attacking_half(radar: np.ndarray, result: tv.PipelineResult) -> np.ndarray:
 
 def still(shot_id: str, name: str) -> Path:
     result = analyse(shot_id)
-    frame = tv.VideoReader(SHOTS / "clips" / f"{shot_id}.mp4").read(ANCHOR)
+    frame = clean(
+        tv.VideoReader(SHOTS / "clips" / f"{shot_id}.mp4").read(ANCHOR), shot_id
+    )
     path = MEDIA / f"{name}.jpg"
-    cv2.imwrite(str(path), draw(result, frame, ANCHOR), [cv2.IMWRITE_JPEG_QUALITY, 86])
+    cv2.imwrite(
+        str(path),
+        draw(result, frame, ANCHOR, RADAR_CORNER.get(shot_id, "top-right")),
+        [cv2.IMWRITE_JPEG_QUALITY, 86],
+    )
     return path
 
 
-def card(image: Image.Image, values: dict, t: float, goal: bool) -> None:
-    """xG card, bottom left: hidden before the shot, fades in at contact, outcome 1 s later."""
+def card(
+    image: Image.Image, values: dict, t: float, goal: bool, outcome: bool = True
+) -> None:
+    """xG card, bottom left: hidden for t < 0, fades in, the outcome from t = 1 when ``outcome``."""
     if t < 0:
         return
     alpha = min(1.0, t / 0.3)
@@ -167,32 +183,86 @@ def card(image: Image.Image, values: dict, t: float, goal: bool) -> None:
             font=body,
             fill=(255, 255, 255, int(255 * alpha)),
         )
-    if t >= 1.0:
-        outcome = "GOAL" if goal else "NO GOAL"
+    if outcome and t >= 1.0:
+        result = "GOAL" if goal else "NO GOAL"
         d.rounded_rectangle(
             [x0 + w - 104, y0 + 12, x0 + w - 14, y0 + 40],
             8,
             fill=(27, 175, 122, 235) if goal else (82, 81, 78, 235),
         )
-        d.text((x0 + w - 95, y0 + 15), outcome, font=title, fill=(255, 255, 255, 255))
+        d.text((x0 + w - 95, y0 + 15), result, font=title, fill=(255, 255, 255, 255))
     image.alpha_composite(layer)
 
 
+def clean(frame: np.ndarray, shot_id: str) -> np.ndarray:
+    out = frame.copy()
+    for x0, y0, x1, y1 in WATERMARKS.get(shot_id, []):
+        out[y0:y1, x0:x1] = cv2.GaussianBlur(out[y0:y1, x0:x1], (0, 0), 9)
+    return out
+
+
+def freeze_frame(
+    shot_id: str, geo: geometry_xg.ShotGeometry, t: float, inset: Image.Image | None
+) -> Image.Image:
+    """The contact frame with the geometry building up, and the top-down view in the radar's place."""
+    frame = clean(
+        tv.VideoReader(SHOTS / "clips" / f"{shot_id}.mp4").read(ANCHOR), shot_id
+    )
+    image = geometry_xg.freeze_overlay(frame, geo, t)
+    alpha = float(np.clip((t - 2.2) / 0.35, 0, 1))
+    if inset is not None and alpha > 0:
+        panel = inset.copy()
+        panel.putalpha(panel.getchannel("A").point(lambda v: int(v * alpha)))
+        image.alpha_composite(
+            panel, (image.width - panel.width - 14, image.height - panel.height - 14)
+        )
+    return image
+
+
+def save_png(image: Image.Image, folder: Path, i: int) -> None:
+    image.convert("RGB").save(folder / f"{i:04d}.png")
+
+
 def clip(
-    shot_id: str, values: dict, goal: bool, seconds: tuple[float, float] = (-3.4, 2.6)
+    shot_id: str, values: dict, goal: bool, seconds: tuple[float, float] = (-3.4, 2.4)
 ) -> Path:
+    """Play up to contact, freeze while the measured geometry and the xG card appear, then play on."""
     result = analyse(shot_id)
+    geo = geometry_xg.load(shot_id)
+    geometry_xg.check(geo)
+    inset = geometry_inset(geo)
     reader = tv.VideoReader(SHOTS / "clips" / f"{shot_id}.mp4")
     start, end = ANCHOR + int(seconds[0] * FPS), ANCHOR + int(seconds[1] * FPS)
     path = MEDIA / "feature_clip.mp4"
     with tempfile.TemporaryDirectory() as tmp:
-        for i, index in enumerate(range(start, end)):
-            frame = draw(result, reader.read(index), index)
+        folder, i = Path(tmp), 0
+
+        def played(index: int, card_t: float | None) -> Image.Image:
+            frame = draw(
+                result,
+                clean(reader.read(index), shot_id),
+                index,
+                RADAR_CORNER.get(shot_id, "top-right"),
+            )
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert(
                 "RGBA"
             )
-            card(image, values, (index - ANCHOR) / FPS, goal)
-            image.convert("RGB").save(Path(tmp) / f"{i:04d}.png")
+            if card_t is not None:
+                card(image, values, card_t, goal)
+            return image
+
+        for index in range(start, ANCHOR):
+            save_png(played(index, None), folder, i)
+            i += 1
+        for k in range(int(FREEZE_SECONDS * FPS)):
+            t = k / FPS
+            image = freeze_frame(shot_id, geo, t, inset)
+            card(image, values, t - 2.9, goal, outcome=False)
+            save_png(image, folder, i)
+            i += 1
+        for index in range(ANCHOR, end):
+            save_png(played(index, 0.4 + (index - ANCHOR) / FPS), folder, i)
+            i += 1
         subprocess.run(
             [
                 "ffmpeg",
@@ -208,7 +278,7 @@ def clip(
                 "-preset",
                 "slow",
                 "-crf",
-                "27",
+                "26",
                 "-pix_fmt",
                 "yuv420p",
                 "-movflags",
@@ -217,14 +287,30 @@ def clip(
             ],
             check=True,
         )
+    still = freeze_frame(shot_id, geo, 10.0, None)
+    still.convert("RGB").save(MEDIA / "freeze.jpg", quality=88)
+    geometry_xg.diagram(geo, OUT / "xg/figures/geometry.svg")
     return path
+
+
+def geometry_inset(geo: geometry_xg.ShotGeometry) -> Image.Image:
+    path = CACHE / "geometry_inset.png"
+    geometry_xg.diagram(geo, path, inset=True)
+    panel = Image.open(path).convert("RGBA")
+    width = 300
+    panel = panel.resize(
+        (width, round(panel.height * width / panel.width)), Image.LANCZOS
+    )
+    backdrop = Image.new("RGBA", panel.size, (16, 18, 22, 215))
+    backdrop.alpha_composite(panel)
+    return backdrop
 
 
 def xg_rows(row) -> list:
     return [
         ("Video only", float(row.p_video), "#2a78d6"),
         ("Video + geometry", float(row.p_geometry), "#1baf7a"),
-        ("StatsBomb (event data)", float(row.p_vendor), "#9a9994"),
+        ("StatsBomb", float(row.p_vendor), "#9a9994"),
     ]
 
 
@@ -250,6 +336,7 @@ def main() -> None:
         print(name, "done", flush=True)
     row = shots.loc[FEATURE]
     clip(FEATURE, {"rows": xg_rows(row)}, bool(row.goal))
+    meta["feature"]["geometry"] = geometry_xg.load(FEATURE).features
     (MEDIA / "meta.json").write_text(json.dumps(meta, indent=1, default=float))
 
 

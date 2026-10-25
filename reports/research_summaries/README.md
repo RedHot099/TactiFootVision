@@ -9,10 +9,12 @@ xG from broadcast video (CPU only; about 15 min the first time, then cached):
 ```bash
 cd reports/research_summaries
 uv run python figures_xg.py                         # charts + numbers.json
-CUDA_VISIBLE_DEVICES= uv run python media_xg.py     # shot stills + 6 s clip
+CUDA_VISIBLE_DEVICES= uv run python media_xg.py     # shot stills, clip with a freeze at contact, Figure 2
 uv run python build.py xg                           # xg_summary.html (self-contained) + .pdf
 ```
 
 The PDF is printed by headless Chromium; there the clip is replaced by its poster frame.
+`geometry_xg.py` draws the measured inputs (cone, pressure, goalkeeper) from the research cache the
+stacked model was fitted on, and checks them against the cached features.
 Text and figure numbers are in `xg_summary.html`; the sources of every number are
 the reports on `research/xg-detector` and `claude-fable/xg-poc`.
