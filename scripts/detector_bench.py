@@ -122,6 +122,8 @@ OPERATING = {"conf": 0.3, "class_conf": {"ball": 0.15}}
 ROWS = {
     "640": {"imgsz": 640, "iou": 0.7, "input_size": None},
     "1280": {"imgsz": 1280, "iou": 0.7, "input_size": None},
+    # ball-detection 15: the 1600 detector's row
+    "1600": {"imgsz": 1600, "iou": 0.7, "input_size": None},
     # E3's extractor: 720p video frames, letterboxed to 1920, NMS IoU 0.5
     "e3": {"imgsz": 1920, "iou": 0.5, "input_size": (1280, 720)},
 }

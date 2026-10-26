@@ -737,11 +737,11 @@ def comparisons(
     return out
 
 
-def card_guards(card: Path) -> dict:
+def card_guards(card: Path, row: str = "1280") -> dict:
     """The guards (vs the card's reference) and the single-frame row of a card (`ball_scorecard.py card`)."""
     found = json.loads((card / "scorecard.json").read_text())
-    selection = found["cards"]["selection/1280"]
-    eks = found["cards"]["ekstraklasa/1280"]
+    selection = found["cards"][f"selection/{row}"]
+    eks = found["cards"][f"ekstraklasa/{row}"]
     return {
         "card": str(card),
         "weights_sha256": found["weights_sha256"],
@@ -762,7 +762,7 @@ def card_guards(card: Path) -> dict:
         "well_placed_vs_reference": selection["placement_vs_reference"]["well_placed"],
         "guard_people": bool(found["rule"]["guard_people"]),
         "guard_ekstraklasa": bool(found["rule"]["guard_ekstraklasa"]),
-        "ms_per_frame": found["cost"]["ms_per_frame"].get("gsr/1280"),
+        "ms_per_frame": found["cost"]["ms_per_frame"].get(f"gsr/{row}"),
     }
 
 

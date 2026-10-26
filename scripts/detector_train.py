@@ -225,6 +225,15 @@ for _arm in ("A", "B"):
         "settings": RUNS["run2c"]["settings"]
         | {"epochs": 1, "lr": 0.0005, "close_mosaic": 0, "warmup_epochs": 0},
     }
+# ball-detection 15 (2026-10-26, owner's go): 14's arm B (the recipe for 15) trained at imgsz 1600, nothing else
+# changed: same list (runs/bd14_B's, copied and hash-checked by scripts/ball_1600.py), same init, lr0, epoch, mosaic,
+# warmup, EMA and last.pt. Batch 3 (batch 4 does not fit 16 GB at 1600): Ultralytics accumulates gradients to its
+# nominal batch 64 (accumulate round(64 / 3) = 21: 63 images per step vs 16 x 4 = 64), so lr0 stays 0.0005.
+RUNS["bd15_1600"] = RUNS["bd14_B"] | {
+    "title": "ball-detection 15: arm B of 14 at imgsz 1600",
+    "builder": "scripts/ball_1600.py",
+    "settings": RUNS["bd14_B"]["settings"] | {"imgsz": 1600, "batch_size": 3},
+}
 
 logger = logging.getLogger("detector_train")
 

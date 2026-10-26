@@ -28,7 +28,8 @@ unchanged, so the tracked ball is placed exactly as the scorecard places it.
 imgsz 1280, NMS IoU 0.7, ``max_det`` 300) for every frame of the 58 clips; ``--variant tiles2x2`` dumps ticket 03's
 tiles instead (``ball_inference.Tiled`` unchanged, its candidates >= ``DUMP_CONF`` kept: NMS and the ball merge keep a
 candidate only against more confident ones, so these are the candidates a ``DUMP_CONF`` call would give) and
-``--post-filter`` drops the ball candidates longer than ``RULE["post_filter_long_side_px"]`` (ticket 08). `track
+``--post-filter`` drops the ball candidates longer than ``RULE["post_filter_long_side_px"]`` (ticket 08);
+``--variant 1600`` is the bench's row 1600 (native frames, imgsz 1600, NMS IoU 0.7; ticket 15's detector). `track
 --dump` tracks another 25 fps dump (the camera motion stays ``motion``'s: tiles take their people from the same full
 frame 1280 call); the scorecard dumps then take the reference dump's single row. `tune` runs a stage of ``GRIDS`` (or ``AROUND``) on the
 selection split (games 2 and 3) and scores it on the frames that are not benchmark frames (frame - 1 not a multiple
@@ -95,6 +96,8 @@ DUMP = OUT / "dump25"
 MOTION_DIR = OUT / "motion"
 WEIGHTS = bench.CHECKOUT / "models/detector_yolo11l_1280_dd2c.pt"
 ROW = "1280"
+# one model call on the native frame (the bench's row settings)
+SINGLE_ROWS = (ROW, "1600")
 DUMP_CONF = 0.01
 FPS = 25.0
 COLUMNS = ["x1", "y1", "x2", "y2"]
@@ -221,10 +224,10 @@ def read_ahead(paths: list[Path], flags: int = cv2.IMREAD_COLOR, depth: int = 16
 
 
 def dump_predictor(variant: str, weights: Path, device: str | None):
-    """``(predict, class_names, row settings)`` of a 25 fps dump: dd2c's row 1280 at ``DUMP_CONF``, or ticket 03's
-    tiles (``ball_inference``, dd2c's weights, candidates down to its 0.001 floor)."""
-    if variant == ROW:
-        settings = bench.ROWS[ROW]
+    """``(predict, class_names, row settings)`` of a 25 fps dump: a single-call row (1280, 1600) of ``weights`` at
+    ``DUMP_CONF``, or ticket 03's tiles (``ball_inference``, dd2c's weights, candidates down to its 0.001 floor)."""
+    if variant in SINGLE_ROWS:
+        settings = bench.ROWS[variant]
         model = tv.load_model(
             "yolo",
             weights,
@@ -1293,7 +1296,9 @@ def main() -> None:
         "dump", help="dd2c candidates on every GSR valid frame (GPU)"
     )
     d.add_argument("--weights", type=Path, default=WEIGHTS)
-    d.add_argument("--variant", choices=[ROW, "tiles2x2", "tiles3x2"], default=ROW)
+    d.add_argument(
+        "--variant", choices=[*SINGLE_ROWS, "tiles2x2", "tiles3x2"], default=ROW
+    )
     d.add_argument(
         "--post-filter",
         action="store_true",
