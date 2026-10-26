@@ -36,17 +36,18 @@ reasons in pitch coordinates gives the largest gain. Higher resolution and fine-
 </div>
 
 <h2>1&nbsp;&nbsp;Problem, data and measure</h2>
-<p>
-<b>Measure.</b> The question downstream models ask is where the ball is on the pitch. The measure is therefore the share of frames
-in which the predicted ball lies within 5&nbsp;m of the annotated ball after projection with the frame's homography, rather
-than box AP. A missed ball, a ball on the wrong object and a frame without a homography all count as failures.
-<b>Data.</b> SoccerNet Game State Reconstruction (GSR): 30-second broadcast clips at 25&nbsp;fps with annotated ball positions
-and camera calibration. The validation split has 58 clips from 3 games and the test split 49 clips from 3 other games.
-<b>Baseline.</b> Our retrained people-and-ball detector (YOLO11l at 1280&nbsp;px, ball AP@50 0.46). Its single most confident
-ball per frame is the reference every remedy is paired against.
-<b>Protocol.</b> Variants are chosen on two validation games and confirmed once on the third. Each experiment
-has one primary comparison, written down before its result is read. CIs are 95% bootstrap intervals that resample whole clips.
-</p>
+<ul>
+  <li><b>Measure.</b> Downstream models need to know where the ball is on the pitch, so the measure is not box AP.
+  It is the share of frames in which the predicted ball lies within 5&nbsp;m of the annotated ball after projection with the frame's
+  homography. A missed ball, a ball on the wrong object and a frame without a homography all count as failures.</li>
+  <li><b>Data.</b> SoccerNet Game State Reconstruction (GSR): 30-second broadcast clips at 25&nbsp;fps with annotated ball positions
+  and camera calibration. Validation: 58 clips from 3 games. Test: 49 clips from 3 other games.</li>
+  <li><b>Baseline.</b> Our retrained people-and-ball detector (YOLO11l at 1280&nbsp;px, ball AP@50 0.46). Its single most confident
+  ball per frame is the reference every remedy is paired against.</li>
+  <li><b>Protocol.</b> Variants are chosen on two validation games and confirmed once on the third. Each experiment
+  has one primary comparison, written down before its result is read.</li>
+  <li><b>Uncertainty.</b> 95% bootstrap intervals that resample whole clips.</li>
+</ul>
 <figure>
 <svg viewBox="0 0 760 120" width="100%" role="img" aria-label="Pipeline: frames, detector, size filter, tracker in pitch metres, ball per frame" style="font: 11px 'Noto Sans', sans-serif">
   <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#85837d"/></marker></defs>
