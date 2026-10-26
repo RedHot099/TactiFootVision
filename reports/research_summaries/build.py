@@ -64,11 +64,32 @@ def xg_values(root: Path) -> dict[str, str]:
     return values
 
 
+def ball_values(root: Path) -> dict[str, str]:
+    meta = json.loads((root / "media/meta.json").read_text())
+    values = {}
+    for name, m in meta.items():
+        if not name.startswith("g_"):
+            continue
+        for key in ("error_track", "error_top"):
+            value = m[key]
+            values[f"{name}_{key}"] = "–" if value is None else f"{value:.1f} m"
+        values[f"{name}_status"] = m["status"]
+    numbers = json.loads((root / "numbers.json").read_text())
+    gain = numbers["test_gain_pp"]
+    values["test_gain"] = f"+{gain[0]:.1f} pp [+{gain[1]:.1f}, +{gain[2]:.1f}]"
+    values["test_track"] = f"{100 * numbers['test_track']['value']:.1f}%"
+    values["test_top1"] = f"{100 * numbers['test_top1']['value']:.1f}%"
+    values["test_median"] = f"{numbers['test_track_median_m']['value']:.2f} m"
+    return values
+
+
 def main(name: str) -> None:
     root = OUT / name
-    values = assets(root)
+    values = assets(root) | {"css": (HERE / "summary.css").read_text()}
     if name == "xg":
         values |= xg_values(root)
+    if name == "ball":
+        values |= ball_values(root)
     html = fill((HERE / f"{name}_summary.html").read_text(), values)
     out_html = root / f"{name}_summary.html"
     out_html.write_text(html)

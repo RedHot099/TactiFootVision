@@ -13,7 +13,16 @@ CUDA_VISIBLE_DEVICES= uv run python media_xg.py     # shot stills, clip with a f
 uv run python build.py xg                           # xg_summary.html (self-contained) + .pdf
 ```
 
-The PDF is printed by headless Chromium; there the clip is replaced by its poster frame.
+Ball localisation (CPU only, about 2 min; reads the ball-detection phase outputs under
+`/mnt/storage/tactifoot_research/detector_data/ball/` and the 25 fps SoccerNet Tracking test frames):
+
+```bash
+uv run python figures_ball.py                       # error analysis, registered comparisons, breakdown
+uv run python media_ball.py                         # GSR test clip with a freeze + gallery crops
+uv run python build.py ball                         # ball_summary.html + .pdf
+```
+
+Both reports share `summary.css`. The PDF is printed by headless Chromium; there the clip is replaced by its poster frame.
 `geometry_xg.py` draws the measured inputs (cone, pressure, goalkeeper) from the research cache the
 stacked model was fitted on, and checks them against the cached features.
 Text and figure numbers are in `xg_summary.html`; the sources of every number are
