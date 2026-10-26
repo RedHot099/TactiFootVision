@@ -1,0 +1,132 @@
+{
+  "title": "ball-detection 14 arm B training view",
+  "created": "2026-10-26T10:12:55+00:00",
+  "builder": "scripts/ball_recipe.py",
+  "pool_index": "/mnt/storage/tactifoot_research/detector_data/pool_index.parquet",
+  "rule": {
+    "base_view": "run 2c's view (detector_train.build_view) without game 4 of GSR train (ball_holdout_game4.json: clips, SNMOT twins)",
+    "excluded_games": [
+      "gsr:11",
+      "gsr:2",
+      "gsr:3",
+      "gsr:5",
+      "gsr:7",
+      "gsr:8",
+      "gsr:4"
+    ],
+    "held_out_splits": {
+      "football_yolo": "test"
+    },
+    "oversample_by_set": {
+      "football_yolo": 20
+    },
+    "class_mask": "per image, the source's annotated_classes; classes outside it get no cls loss",
+    "negatives": {
+      "dark": "torso (0.25, 0.75, 0.15, 0.5) median HSV value < 80.0, saturation < 120.0, height >= 20.0 px at 1080p",
+      "false_ball": "a dd2c ball candidate >= 0.05 of /mnt/storage/tactifoot_research/detector_data/ball/13/candidates/candidates.parquet that is a negative under ticket 13's label rule has its centre in the referee box",
+      "screened": "A's view images whose source annotates referees, with a referee box; GSR train every 25th frame (games 6 and 9)",
+      "crop": "2 per box, image aspect, width fraction U(0.5, 0.8) (>= 1.1 x box), whole box in, no ball box touched, 50 draws, seed 0 + sha256(image|row|k)",
+      "labels": "non-ball boxes clipped to the crop, kept with >= 0.1 of their area and sides >= 2 px",
+      "folder": "/mnt/storage/tactifoot_research/detector_data/ball/14/negatives",
+      "crops": 4362,
+      "selected_boxes": {
+        "all": 2895,
+        "dark": 2838,
+        "false_ball": 66,
+        "both": 9
+      },
+      "per_source": {
+        "football_yolo": {
+          "selected_boxes": 33,
+          "dark": 33,
+          "false_ball": 0,
+          "source_images": 29,
+          "crops": 52
+        },
+        "roboflow": {
+          "selected_boxes": 214,
+          "dark": 214,
+          "false_ball": 0,
+          "source_images": 136,
+          "crops": 350
+        },
+        "soccana": {
+          "selected_boxes": 40,
+          "dark": 40,
+          "false_ball": 0,
+          "source_images": 40,
+          "crops": 67
+        },
+        "soccernet_gsr": {
+          "selected_boxes": 14,
+          "dark": 5,
+          "false_ball": 9,
+          "source_images": 14,
+          "crops": 24
+        },
+        "soccernet_v3": {
+          "selected_boxes": 2594,
+          "dark": 2546,
+          "false_ball": 57,
+          "source_images": 2254,
+          "crops": 3869
+        }
+      }
+    }
+  },
+  "init": "/mnt/storage/tactifoot_research/detector_data/runs/run2c/CANDIDATE_epoch1.pt",
+  "init_sha256": "05d706cfb57d85aa1b1cbdc0a1f31fd329b9a7e031caaf496dc425e51a29e2fc",
+  "after": "run2c",
+  "settings": {
+    "model": "yolo11l",
+    "imgsz": 1280,
+    "batch_size": 4,
+    "optimizer": "SGD",
+    "lr": 0.0005,
+    "epochs": 1,
+    "patience": null,
+    "workers": 12,
+    "seed": 0,
+    "cos_lr": true,
+    "close_mosaic": 0,
+    "save_period": 1,
+    "scale": 0.3,
+    "warmup_epochs": 0
+  },
+  "train": {
+    "images": 91076,
+    "lines_per_epoch": 105060,
+    "list_sha256": "3d7cbe201b8b98adc1dafba86fc3061fdec5fe863ec34d4ca422497f94408a93",
+    "per_source_lines": {
+      "football_yolo": 14772,
+      "issia": 3126,
+      "roboflow": 1365,
+      "soccana": 11501,
+      "soccer_player_detection": 1075,
+      "soccernet_gsr": 29274,
+      "soccernet_v3": 37855,
+      "sportsmot": 1952,
+      "teamtrack": 4140
+    }
+  },
+  "val": {
+    "rule": "every 4th GSR valid benchmark frame of games 2 and 3, then every Ekstraklasa dev image (training log only)",
+    "images": 1519,
+    "list_sha256": "ed0145bb545f371bb573244e323851caae10ff1cdfdd4b0fe26b7746764d4c23"
+  },
+  "label_paths": {
+    "train": {
+      "images": 91076,
+      "labels_found": 91076
+    },
+    "val": {
+      "images": 1519,
+      "labels_found": 1519
+    }
+  },
+  "files": {
+    "data_yaml": "/mnt/storage/tactifoot_research/detector_data/runs/bd14_B/data.yaml",
+    "annotated_classes": "/mnt/storage/tactifoot_research/detector_data/runs/bd14_B/annotated_classes.parquet",
+    "smoke_data_yaml": "/mnt/storage/tactifoot_research/detector_data/runs/bd14_B/smoke_data/data.yaml"
+  }
+}

@@ -212,6 +212,19 @@ for _arm in ("A", "B"):
         "builder": "scripts/ball_view.py",
         "settings": RUNS["run2c"]["settings"] | {"epochs": 2},
     }
+# ball-detection 14 (2026-10-26): the repaired recipe, one epoch from dd2c with mosaic to the end, no warmup and
+# lr0 0.0005 (constant: Ultralytics steps the cosine schedule per epoch, so a 1-epoch run stays at lr0); the
+# checkpoint is last.pt (the EMA after the epoch). A: run 2c's list without game 4; B: A + referee hard negatives.
+# Both lists and the validation list (games 2+3 + Ekstraklasa dev) come from scripts/ball_recipe.py.
+for _arm in ("A", "B"):
+    RUNS[f"bd14_{_arm}"] = RUNS["run2c"] | {
+        "title": f"ball-detection 14 arm {_arm} training view",
+        "init": DATA / "runs/run2c/CANDIDATE_epoch1.pt",  # dd2c, sha256 05d706cf...
+        "after": "run2c",
+        "builder": "scripts/ball_recipe.py",
+        "settings": RUNS["run2c"]["settings"]
+        | {"epochs": 1, "lr": 0.0005, "close_mosaic": 0, "warmup_epochs": 0},
+    }
 
 logger = logging.getLogger("detector_train")
 
