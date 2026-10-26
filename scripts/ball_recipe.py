@@ -850,9 +850,36 @@ def read(args: argparse.Namespace) -> None:
         "referees": referees,
     }
     (out / "read.json").write_text(json.dumps(record, indent=2, default=float) + "\n")
+    table_rows(found).to_csv(out / "table.csv", index=False)
+    pd.DataFrame(referees).to_csv(out / "referees.csv", index=False)
     text = markdown(record)
     (out / "read.md").write_text(text)
     print(text)
+
+
+def table_rows(found: dict) -> pd.DataFrame:
+    """One row per (group, comparison): well placed of both sides, the paired gain and > 5 m of all, with CIs."""
+    rows = []
+    for group, comparisons_ in found.items():
+        for name, c in comparisons_.items():
+            gain, far = c["gain"]["well_placed"], c["gain"]["far_of_all"]
+            rows.append(
+                {
+                    "group": group,
+                    "comparison": name,
+                    "reference_well_placed": c["reference"]["well_placed"]["value"],
+                    "variant_well_placed": c["variant"]["well_placed"]["value"],
+                    "gain_pp": 100 * gain["difference"],
+                    "gain_ci_low_pp": 100 * gain["ci"][0],
+                    "gain_ci_high_pp": 100 * gain["ci"][1],
+                    "far_of_all_pp": 100 * far["difference"],
+                    "far_ci_low_pp": 100 * far["ci"][0],
+                    "far_ci_high_pp": 100 * far["ci"][1],
+                    "barrier": c["verdict"]["barrier"],
+                    "wins_rule_11": c["verdict"]["wins"],
+                }
+            )
+    return pd.DataFrame(rows)
 
 
 def markdown(record: dict) -> str:
