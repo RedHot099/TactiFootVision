@@ -9,6 +9,7 @@
     uv run python scripts/ball_temporal.py read --tracks DIR     # placement of tracks vs top-1, paired (ticket 09)
     uv run python scripts/ball_temporal.py dump --split test --out DIR  # ticket 09: GSR test at 25 fps (SNMOT frames)
     uv run python scripts/ball_temporal.py dump --split holdout --out DIR  # ticket 10: game 4 of GSR train at 25 fps
+    uv run python scripts/ball_temporal.py track --fixes ball/12/chosen.json ...  # ticket 12's tracker (ball_track2)
 
 The tracker is the package's ``track_ball`` (``tactifoot_vision.pipeline``, ported from the prototype
 ``.scratch/ball-tracking/prototype/ball_track.py``: static and spot candidates and ball boxes on a person dropped, a
@@ -693,18 +694,29 @@ def setting_name(setting: dict) -> str:
 
 def _track_worker(job: tuple) -> list[pd.DataFrame]:
     """Tracks of one clip of the dump ``folder`` for every setting (``clip`` column added), the top-1 table first.
-    ``job`` = (clip, settings, folder, split, motion folder, post-filter limit); the tracker sees the candidates
-    without the balls over the limit, the top-1 table the dump's own."""
+    ``job`` = (clip, settings, folder, split, motion folder, post-filter limit, fixes); the tracker sees the
+    candidates without the balls over the limit, the top-1 table the dump's own. ``fixes`` (a dict of
+    ``ball_track2.Fixes``) tracks with ticket 12's ``track_ball2`` instead of the package's ``track_ball``."""
     logging.getLogger("tactifoot_vision").setLevel(logging.WARNING)
-    clip, settings, folder, split, motion_dir, limit = job
+    clip, settings, folder, split, motion_dir, limit, fixes = job
     candidates = clip_candidates(clip, folder)
     frames = len(clip_frames(bench.GSR / bench.gsr_folder(split) / clip))
     homographies = clip_homographies(clip, frames, _FROZEN, motion_dir)
     result = clip_result(drop_long_balls(candidates, limit), homographies)
     tables = [top_balls(candidates, frames)]
+    if fixes is not None:  # ticket 12's tracker
+        import ball_track2
+
+        moves = load_motion(clip, motion_dir)
     for setting in settings:
         clock = time.perf_counter()
-        table = chosen_balls(track_ball(result, **setting))
+        if fixes is None:
+            table = chosen_balls(track_ball(result, **setting))
+        else:
+            tracked, _ = ball_track2.track_ball2(
+                result, moves, ball_track2.Fixes(**fixes), **setting
+            )
+            table = chosen_balls(tracked)
         table["seconds"] = time.perf_counter() - clock
         tables.append(table)
     for table in tables:
@@ -727,10 +739,11 @@ def run_tracks(
     split: str = "valid",
     motion_dir: Path = MOTION_DIR,
     limit: float | None = None,
+    fixes: dict | None = None,
 ) -> tuple[pd.DataFrame, list[pd.DataFrame]]:
     """``(top-1 table, one tracks table per setting)`` over ``clips`` of the 25 fps dump ``folder`` (the tracker
-    without the ball candidates over the post-filter ``limit``)."""
-    jobs = [(c, settings, folder, split, motion_dir, limit) for c in clips]
+    without the ball candidates over the post-filter ``limit``; ``fixes``: ticket 12's tracker)."""
+    jobs = [(c, settings, folder, split, motion_dir, limit, fixes) for c in clips]
     with multiprocessing.Pool(
         workers, initializer=_init_worker, initargs=(split,)
     ) as pool:
@@ -939,9 +952,13 @@ def track(args: argparse.Namespace) -> None:
         args.games = split_games(args.split)
     clips = games_clips(args.games, args.split)
     limit = POST_FILTER if args.post_filter else None
+    fixes = None
+    if args.fixes:
+        found = json.loads(args.fixes.read_text())
+        fixes = found.get("fixes", found)
     clock = time.perf_counter()
     top1, (tracks,) = run_tracks(
-        clips, [setting], args.workers, args.dump, args.split, args.motion, limit
+        clips, [setting], args.workers, args.dump, args.split, args.motion, limit, fixes
     )
     seconds = time.perf_counter() - clock
     out = args.out
@@ -950,7 +967,12 @@ def track(args: argparse.Namespace) -> None:
     top1.to_parquet(out / "top1.parquet", index=False)
     note = {
         "setting": setting,
-        "tracker": f"tactifoot_vision.pipeline.track_ball on {args.dump} (conf >= {DUMP_CONF}, every frame)",
+        "tracker": (
+            "tactifoot_vision.pipeline.track_ball"
+            if fixes is None
+            else f"ball_track2.track_ball2 with fixes {fixes} ({args.fixes})"
+        )
+        + f" on {args.dump} (conf >= {DUMP_CONF}, every frame)",
         "split": args.split,
         "clips": len(clips),
         "motion": str(args.motion),
@@ -1305,6 +1327,11 @@ def main() -> None:
         "--post-filter",
         action="store_true",
         help="drop ball candidates longer than 45 px at 1080p before tracking",
+    )
+    k.add_argument(
+        "--fixes",
+        type=Path,
+        help="JSON of ball_track2.Fixes (or ticket 12's chosen.json): track with track_ball2",
     )
     k.add_argument(
         "--no-card-dumps",
