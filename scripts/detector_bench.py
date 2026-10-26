@@ -6,6 +6,9 @@
     uv run python scripts/detector_bench.py homographies --split test  # freeze GSR test homographies (ticket 05)
     uv run python scripts/detector_bench.py epochs --weights-dir RUN/yolo11l_1280/weights --out DIR  # every epoch
     uv run python scripts/detector_bench.py dump --weights W --out DIR  # every candidate, for scoring without weights
+    uv run python scripts/detector_bench.py holdout                   # ball-detection 10: the game-4 clip list
+    uv run python scripts/detector_bench.py homographies --split holdout  # freeze the holdout's homographies
+    uv run python scripts/detector_bench.py dump --weights W --out DIR --split holdout  # game 4 alone
 
 Benchmark: SoccerNet GSR valid (dev) and test (final, read once per candidate), every `STRIDE`-th frame of every clip
 (frames 1, 6, 11, ...: the frames GSR test is downloaded with and the frames of the pitch-keypoints homography
@@ -28,6 +31,13 @@ reported: the share of frames with a placed ball, its error and the share of pla
 uses the GSR test homographies of the same method (pitch-keypoints 03's single test scoring of its chosen keypoint
 model), frozen by `homographies --split test` and recorded in research/detector_bench.json (ticket 05). `--row 1280`
 (ball-detection 02) places the ball of the pipeline's row instead: native frames, imgsz 1280, NMS IoU 0.7.
+
+The holdout (ball-detection 10) is the read split `holdout`: game 4 of GSR train, its 18 clips listed in
+`HOLDOUT_FILE` (`holdout`; also phase 2's training exclusion list), read like GSR valid (the stride-5 frames,
+`placement_rows`' denominator, the card) on homographies of the same method and keypoint model, computed by
+pitch-keypoints' own evaluator at the test run's checkout and frozen by `homographies --split holdout` under
+`FROZEN_HOMOGRAPHY_KEYS["holdout"]` of research/detector_bench.json. `dump --split holdout` dumps game 4 alone (no
+Ekstraklasa dev).
 
 `dump` (ball-detection 01) runs the detector once per row on GSR valid and Ekstraklasa dev at `EVAL_CONF` with the
 row's NMS and writes every candidate box of every class (`candidates.parquet`, boxes in the labels' pixels as
@@ -79,11 +89,20 @@ PK_CANDIDATE = (
 HOMOGRAPHY_SOURCES = {
     "valid": PK_CANDIDATE / "retune_valid/per_frame.parquet",
     "test": PK_CANDIDATE / "test/per_frame.parquet",
+    # ball-detection 10: pitchkp_gsr_eval.py of the test run's checkout (c246e8d) and arguments on game 4 of GSR train
+    "holdout": Path(
+        "/mnt/storage/tactifoot_research/detector_data/ball/10/pk_holdout/per_frame.parquet"
+    ),
 }
 HOMOGRAPHY_METHOD = "kp03_r2_refined"
 # The valid record sits in the bench manifest (ticket 02); the test one was added in ticket 05 under this key of
-# research/detector_bench.json, outside the manifest so that the manifest's frozen sha256 still holds.
+# research/detector_bench.json, outside the manifest so that the manifest's frozen sha256 still holds; the holdout
+# one (ball-detection 10) likewise.
 TEST_HOMOGRAPHY_KEY = "placement_homographies_test"
+FROZEN_HOMOGRAPHY_KEYS = {
+    "test": TEST_HOMOGRAPHY_KEY,
+    "holdout": "placement_homographies_holdout",
+}
 
 
 def homography_file(split: str) -> str:
@@ -91,7 +110,12 @@ def homography_file(split: str) -> str:
 
 
 STRIDE = 5
-SPLITS = ("valid", "test")
+SPLITS = ("valid", "test")  # the GSR splits of the frozen benchmark
+# ball-detection 10: the holdout read split is game 4 of GSR train, its clips listed in HOLDOUT_FILE (also the
+# exclusion list of phase 2's training views). Read like GSR valid: same frames rule, frozen homographies, card.
+HOLDOUT = {"gsr_split": "train", "game": "4"}
+HOLDOUT_FILE = Path(__file__).resolve().parents[1] / "research/ball_holdout_game4.json"
+READ_SPLITS = (*SPLITS, "holdout")
 EVAL_CONF = 0.001
 MATCH_IOU = 0.5
 OPERATING = {"conf": 0.3, "class_conf": {"ball": 0.15}}
@@ -134,8 +158,38 @@ def labels_digest(files: list[Path], root: Path) -> str:
     return digest.hexdigest()
 
 
+def gsr_folder(split: str) -> str:
+    """The GSR split folder (and the ``Dataset`` split) a read split's clips sit in."""
+    return HOLDOUT["gsr_split"] if split == "holdout" else split
+
+
+def holdout_clips() -> list[str]:
+    """The holdout's clips, from ``HOLDOUT_FILE`` (written by `holdout`)."""
+    if not HOLDOUT_FILE.is_file():
+        raise SystemExit(f"no {HOLDOUT_FILE}: run `holdout`")
+    return list(json.loads(HOLDOUT_FILE.read_text())["clips"])
+
+
+def split_label_files(split: str) -> list[Path]:
+    """The ``Labels-GameState.json`` of every clip of a read split, in clip order."""
+    if split == "holdout":
+        return [
+            GSR / gsr_folder(split) / c / "Labels-GameState.json"
+            for c in holdout_clips()
+        ]
+    return sorted((GSR / split).glob("*/Labels-GameState.json"))
+
+
 def gsr_split(split: str) -> Dataset:
-    return Dataset.from_gsr(GSR, splits=(split,), stride=STRIDE)
+    """The scored frames of a read split; the holdout's sit in the ``train`` split of the ``Dataset``."""
+    if split != "holdout":
+        return Dataset.from_gsr(GSR, splits=(split,), stride=STRIDE)
+    dataset = Dataset.from_gsr(GSR, splits=(HOLDOUT["gsr_split"],), stride=STRIDE)
+    clips = set(holdout_clips())
+    samples = [s for s in dataset[gsr_folder(split)] if s.meta["sequence"] in clips]
+    if {s.meta["game"] for s in samples} != {HOLDOUT["game"]}:
+        raise SystemExit(f"holdout clips outside game {HOLDOUT['game']}")
+    return dataset.with_split(gsr_folder(split), samples)
 
 
 def counts(dataset: Dataset, split: str) -> dict:
@@ -263,23 +317,134 @@ def cache_homographies(source: Path, path: Path) -> dict:
     }
 
 
-def homographies(args: argparse.Namespace) -> None:
-    """Freeze the GSR test homographies (ticket 05): cache them in the bench folder and record them in FREEZE."""
-    if args.split != "test":
-        raise SystemExit("the valid homographies are frozen by `build`")
-    freeze = json.loads(FREEZE.read_text())
-    record = cache_homographies(
-        HOMOGRAPHY_SOURCES["test"], BENCH / homography_file("test")
+TRACKING = (
+    CHECKOUT / "data/soccernet/tracking/extracted"
+)  # SoccerNet Tracking: SNMOT-NNN = SNGS-NNN
+
+
+def tracking_game(sequence: Path) -> str:
+    """``gameID`` of a SoccerNet Tracking sequence (its ``gameinfo.ini``)."""
+    for line in (sequence / "gameinfo.ini").read_text().splitlines():
+        if line.startswith("gameID="):
+            return line.split("=", 1)[1].strip()
+    raise SystemExit(f"{sequence} has no gameID")
+
+
+def holdout(args: argparse.Namespace) -> None:
+    """Write ``HOLDOUT_FILE`` (ball-detection 10): the clips of game ``HOLDOUT["game"]`` of GSR train, their labels'
+    sha256, their SoccerNet Tracking twins (the 25 fps frames; every Tracking sequence of that game must be one) and
+    the stride-5 frame and box counts the reads check. A different clip set or labels never overwrite the file."""
+    folder = GSR / HOLDOUT["gsr_split"]
+    clips = [
+        p.parent.name
+        for p in sorted(folder.glob("*/Labels-GameState.json"))
+        if str(json.loads(p.read_text())["info"].get("game_id")) == HOLDOUT["game"]
+    ]
+    twins = {c: c.replace("SNGS-", "SNMOT-") for c in clips}
+    of_game = sorted(
+        f"{s.parent.name}/{s.name}"
+        for s in TRACKING.glob("*/SNMOT-*")
+        if tracking_game(s) == HOLDOUT["game"]
     )
-    frozen = freeze.get(TEST_HOMOGRAPHY_KEY)
-    if frozen and frozen["sha256"] != record["sha256"]:
-        raise SystemExit(f"{record['file']} differs from the frozen test homographies")
-    freeze[TEST_HOMOGRAPHY_KEY] = record | {
+    expected = sorted(f"{HOLDOUT['gsr_split']}/{t}" for t in twins.values())
+    if of_game != expected:
+        raise SystemExit(
+            f"Tracking sequences of game {HOLDOUT['game']} {of_game} != {expected}"
+        )
+    dataset = Dataset.from_gsr(GSR, splits=(HOLDOUT["gsr_split"],), stride=STRIDE)
+    samples = [s for s in dataset[HOLDOUT["gsr_split"]] if s.meta["sequence"] in clips]
+    record = {
+        "title": f"ball-detection phase 2 holdout: game {HOLDOUT['game']} of SoccerNet GSR train",
+        "ticket": "ball-detection 10",
+        "use": "read split `holdout` (ball_scorecard, ball_temporal read); the exclusion list of every phase-2 "
+        "training view (tickets 13-15): none of these clips, their SoccerNet Tracking twins or any image derived "
+        "from them may be trained on",
+        "gsr_split": HOLDOUT["gsr_split"],
+        "game": HOLDOUT["game"],
+        "clips": clips,
+        "tracking_twins": {
+            c: f"{TRACKING.relative_to(CHECKOUT)}/{HOLDOUT['gsr_split']}/{t}"
+            for c, t in twins.items()
+        },
+        "tracking_game_check": f"every sequence of {TRACKING.relative_to(CHECKOUT)} with gameID="
+        f"{HOLDOUT['game']} is a twin above",
+        "gsr_labels_sha256": {
+            c: sha256_file(folder / c / "Labels-GameState.json") for c in clips
+        },
+        "stride": STRIDE,
+        "counts": counts(
+            dataset.with_split(HOLDOUT["gsr_split"], samples), HOLDOUT["gsr_split"]
+        ),
+    }
+    if HOLDOUT_FILE.is_file():
+        frozen = json.loads(HOLDOUT_FILE.read_text())
+        keys = ("clips", "gsr_labels_sha256", "counts")
+        if any(frozen[k] != record[k] for k in keys):
+            raise SystemExit(f"{HOLDOUT_FILE} lists other clips, labels or counts")
+        record["created"] = frozen["created"]
+    else:
+        record["created"] = datetime.now(UTC).isoformat(timespec="seconds")
+    HOLDOUT_FILE.write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps(record, indent=2))
+
+
+def homography_run(source: Path) -> dict:
+    """What produced a pitch-keypoints ``per_frame.parquet``: its run's ``complete.json`` (sha256, split, model,
+    methods, code digest, git state)."""
+    complete = source.parent / "complete.json"
+    record = json.loads(complete.read_text())
+    return (
+        {
+            "complete_json": str(complete),
+            "complete_json_sha256": sha256_file(complete),
+            "per_frame_sha256_in_record": record["files"]["per_frame.parquet"],
+        }
+        | {k: record[k] for k in ("split", "model", "methods", "git", "sample")}
+        | {"code_digest": record["code"]["digest"]}
+    )
+
+
+HOMOGRAPHY_NOTES = {
+    "test": {
         "ticket": "detector-data 05",
         "frames_scored": "scored GSR test frames whose single truth ball (bbox_pitch) lies on the pitch",
-    }
+    },
+    "holdout": {
+        "ticket": "ball-detection 10",
+        "frames_scored": "scored frames of game 4 of GSR train (HOLDOUT_FILE's clips) whose single truth ball "
+        "(bbox_pitch) lies on the pitch",
+        "how": "pitch-keypoints' scripts/pitchkp_gsr_eval.py at research-xg-detector c246e8d (the GSR test run's "
+        "checkout, same code digest as the valid run) with the test run's arguments (keypoint model sha256 5be9954a..., "
+        "--input square --imgsz 960, research/pitchkp_methods/chosen.json), on the holdout clips as split train (the "
+        "only change: train added to the script's split choices); reproduced the frozen valid homographies exactly "
+        "on 3 valid clips first",
+    },
+}
+
+
+def homographies(args: argparse.Namespace) -> None:
+    """Freeze the GSR test (ticket 05) or holdout (ball-detection 10) homographies: cache them in the bench folder
+    and record them in FREEZE."""
+    if args.split == "valid":
+        raise SystemExit("the valid homographies are frozen by `build`")
+    key, source = FROZEN_HOMOGRAPHY_KEYS[args.split], HOMOGRAPHY_SOURCES[args.split]
+    freeze = json.loads(FREEZE.read_text())
+    record = cache_homographies(source, BENCH / homography_file(args.split))
+    frozen = freeze.get(key)
+    if frozen and frozen["sha256"] != record["sha256"]:
+        raise SystemExit(
+            f"{record['file']} differs from the frozen {args.split} homographies"
+        )
+    if args.split == "holdout":
+        record |= {"source_run": homography_run(source), "clips": holdout_clips()}
+        if (
+            record["source_run"]["per_frame_sha256_in_record"]
+            != record["source_sha256"]
+        ):
+            raise SystemExit(f"{source} is not the file its run recorded")
+    freeze[key] = record | HOMOGRAPHY_NOTES[args.split]
     FREEZE.write_text(json.dumps(freeze, indent=2) + "\n")
-    print(json.dumps(freeze[TEST_HOMOGRAPHY_KEY], indent=2))
+    print(json.dumps(freeze[key], indent=2))
 
 
 def frozen_homographies(split: str) -> dict[tuple[str, int], np.ndarray]:
@@ -289,10 +454,10 @@ def frozen_homographies(split: str) -> dict[tuple[str, int], np.ndarray]:
             "placement_homographies"
         ]
     else:
-        frozen = json.loads(FREEZE.read_text()).get(TEST_HOMOGRAPHY_KEY)
+        frozen = json.loads(FREEZE.read_text()).get(FROZEN_HOMOGRAPHY_KEYS[split])
         if frozen is None:
             raise SystemExit(
-                "no frozen test homographies: run `homographies --split test`"
+                f"no frozen {split} homographies: run `homographies --split {split}`"
             )
     path = BENCH / homography_file(split)
     if sha256_file(path) != frozen["sha256"]:
@@ -307,9 +472,12 @@ def frozen_homographies(split: str) -> dict[tuple[str, int], np.ndarray]:
 
 
 def check_manifest(dataset: Dataset, split: str) -> None:
-    """The split read now has the frozen frame and box counts."""
-    frozen = json.loads((BENCH / "manifest.json").read_text())["splits"][split]
-    now = counts(dataset, split)
+    """The split read now has the frozen frame and box counts (the holdout's: ``HOLDOUT_FILE``'s)."""
+    if split == "holdout":
+        frozen = json.loads(HOLDOUT_FILE.read_text())["counts"]
+    else:
+        frozen = json.loads((BENCH / "manifest.json").read_text())["splits"][split]
+    now = counts(dataset, gsr_folder(split))
     for key in ("frames", "boxes"):
         if now[key] != frozen[key]:
             raise SystemExit(
@@ -330,13 +498,13 @@ def ekstraklasa_dev() -> Dataset:
 
 
 def evaluation_sets(split: str, names: list[str] | None) -> dict[str, tuple]:
-    """``{set: (dataset, split)}`` to score; GSR test is scored alone."""
+    """``{set: (dataset, split)}`` to score; GSR test and the holdout are scored alone."""
     names = list(SETS) if names is None else names
-    if split == "test":
+    if split in ("test", "holdout"):
         names = ["gsr"]
     sets: dict[str, tuple] = {}
     if "gsr" in names:
-        sets["gsr"] = (gsr_split(split), split)
+        sets["gsr"] = (gsr_split(split), gsr_folder(split))
         check_manifest(sets["gsr"][0], split)
     if "roboflow" in names:
         sets["roboflow"] = (tv.load_dataset(ROBOFLOW), "valid")
@@ -531,9 +699,11 @@ def placement_rows(
     ``dump_top_ball``) gives the placed ball's centre in ``PLACEMENT["input_size"]`` pixels, asked only for frames
     with a homography."""
     rows = []
-    for labels_path in sorted((GSR / split).glob("*/Labels-GameState.json")):
+    for labels_path in split_label_files(split):
         labels = json.loads(labels_path.read_text())
         clip, game = labels_path.parent.name, str(labels["info"].get("game_id", ""))
+        if split == "holdout" and game != HOLDOUT["game"]:
+            raise SystemExit(f"{clip} is not a game {HOLDOUT['game']} clip")
         truth = ball_truth(labels)
         for image in labels["images"]:
             frame = int(Path(image["file_name"]).stem)
@@ -726,7 +896,7 @@ def gpu_name(device: str | None) -> str:
 def dump(args: argparse.Namespace) -> None:
     from ultralytics.cfg import DEFAULT_CFG_DICT
 
-    sets = evaluation_sets("valid", list(DUMP_SETS))
+    sets = evaluation_sets(args.split, list(DUMP_SETS))
     images, candidates = [], []
     seconds, ms_per_frame = {}, {}
     for row in args.rows:
@@ -797,6 +967,7 @@ def dump(args: argparse.Namespace) -> None:
         "agnostic_nms": DEFAULT_CFG_DICT["agnostic_nms"],
         "half": DEFAULT_CFG_DICT["half"],
         "classes": dict(enumerate(class_names)),
+        "read_split": args.split,
         "sets": {
             name: {
                 "split": split,
@@ -994,8 +1165,13 @@ def main() -> None:
         default="e3",
         help="inference row of the placed ball (e3: the frozen PLACEMENT setting; 1280: the pipeline's)",
     )
-    h = commands.add_parser("homographies", help="freeze the GSR test homographies")
-    h.add_argument("--split", choices=["test"], required=True)
+    h = commands.add_parser(
+        "homographies", help="freeze the GSR test or holdout homographies"
+    )
+    h.add_argument("--split", choices=["test", "holdout"], required=True)
+    commands.add_parser(
+        "holdout", help="write the holdout clip list (game 4 of GSR train)"
+    )
     e.add_argument("--rows", nargs="*", choices=list(ROWS), default=None)
     e.add_argument("--sets", nargs="*", choices=list(SETS), default=None)
     ep = commands.add_parser("epochs", help="score every epoch<N>.pt of a run folder")
@@ -1017,6 +1193,12 @@ def main() -> None:
     d.add_argument("--out", type=Path, required=True)
     d.add_argument("--device", default=None)
     d.add_argument("--rows", nargs="*", choices=list(ROWS), default=list(DUMP_ROWS))
+    d.add_argument(
+        "--split",
+        choices=["valid", "holdout"],
+        default="valid",
+        help="valid: GSR valid + Ekstraklasa dev; holdout: game 4 of GSR train alone",
+    )
     args = parser.parse_args()
     tv.setup_logging("INFO")
     {
@@ -1025,6 +1207,7 @@ def main() -> None:
         "placement": placement,
         "epochs": epochs,
         "homographies": homographies,
+        "holdout": holdout,
         "dump": dump,
     }[args.command](args)
 

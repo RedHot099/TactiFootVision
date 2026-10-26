@@ -257,5 +257,71 @@
     "convention": "720p frame pixels -> corner-origin metres (105 x 68)",
     "ticket": "detector-data 05",
     "frames_scored": "scored GSR test frames whose single truth ball (bbox_pitch) lies on the pitch"
+  },
+  "placement_homographies_holdout": {
+    "file": "/mnt/storage/tactifoot_research/detector_data/bench/gsr_holdout_homographies.parquet",
+    "sha256": "cd4138328d4a9dfb8cd0afb3079a66a5af9b215cea5e26cf0189d6fcfa12692b",
+    "frames": 2320,
+    "source": "/mnt/storage/tactifoot_research/detector_data/ball/10/pk_holdout/per_frame.parquet",
+    "source_sha256": "5e6c7d8c33b01246bba0548554ca936e279ff4933e5b9cabfcb65949d5ec031a",
+    "method": "kp03_r2_refined",
+    "convention": "720p frame pixels -> corner-origin metres (105 x 68)",
+    "source_run": {
+      "complete_json": "/mnt/storage/tactifoot_research/detector_data/ball/10/pk_holdout/complete.json",
+      "complete_json_sha256": "8e37699edb010cce938b1ddc57b2a519f4efad339ce1fd08b96c08c64fe3b6b7",
+      "per_frame_sha256_in_record": "5e6c7d8c33b01246bba0548554ca936e279ff4933e5b9cabfcb65949d5ec031a",
+      "split": "train",
+      "model": {
+        "imgsz": 960,
+        "input": "square",
+        "instance_conf": 0.1,
+        "sha256": "5be9954a0682bfd6827a4b293cf33e2b348c7a3ef7e086415de4c7d9199f005d",
+        "weights": "/home/kuba/projects/tactifoot_vision/models/pitch_yolo11m_pose_sn960.pt"
+      },
+      "methods": {
+        "kp03_r2_refined": {
+          "mask": "detector",
+          "min_confidence": 0.3,
+          "name": "kp03_r2_refined",
+          "ransac_threshold": 2.0,
+          "refine_with_lines": true,
+          "source": "keypoints"
+        }
+      },
+      "git": {
+        "dirty": false,
+        "sha": "c246e8daa3a3a8673816e711fbdbd0590ca4cfae"
+      },
+      "sample": {
+        "clips": 18,
+        "frames": 2700,
+        "labelled_frames": 2474,
+        "scored_frames": 2650
+      },
+      "code_digest": "9e4b8541dcda479e65fcf3655ea6fe23da56d01f86e5fe74351fc38624884296"
+    },
+    "clips": [
+      "SNGS-060",
+      "SNGS-061",
+      "SNGS-062",
+      "SNGS-063",
+      "SNGS-064",
+      "SNGS-065",
+      "SNGS-066",
+      "SNGS-067",
+      "SNGS-068",
+      "SNGS-069",
+      "SNGS-070",
+      "SNGS-071",
+      "SNGS-072",
+      "SNGS-073",
+      "SNGS-074",
+      "SNGS-075",
+      "SNGS-076",
+      "SNGS-077"
+    ],
+    "ticket": "ball-detection 10",
+    "frames_scored": "scored frames of game 4 of GSR train (HOLDOUT_FILE's clips) whose single truth ball (bbox_pitch) lies on the pitch",
+    "how": "pitch-keypoints' scripts/pitchkp_gsr_eval.py at research-xg-detector c246e8d (the GSR test run's checkout, same code digest as the valid run) with the test run's arguments (keypoint model sha256 5be9954a..., --input square --imgsz 960, research/pitchkp_methods/chosen.json), on the holdout clips as split train (the only change: train added to the script's split choices); reproduced the frozen valid homographies exactly on 3 valid clips first"
   }
 }

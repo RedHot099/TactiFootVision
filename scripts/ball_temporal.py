@@ -8,6 +8,7 @@
     uv run python scripts/ball_temporal.py breakdown             # the gain by ticket 01's categories (after the card)
     uv run python scripts/ball_temporal.py read --tracks DIR     # placement of tracks vs top-1, paired (ticket 09)
     uv run python scripts/ball_temporal.py dump --split test --out DIR  # ticket 09: GSR test at 25 fps (SNMOT frames)
+    uv run python scripts/ball_temporal.py dump --split holdout --out DIR  # ticket 10: game 4 of GSR train at 25 fps
 
 The tracker is the package's ``track_ball`` (``tactifoot_vision.pipeline``, ported from the prototype
 ``.scratch/ball-tracking/prototype/ball_track.py``: static and spot candidates and ball boxes on a person dropped, a
@@ -47,7 +48,12 @@ ball candidates longer than ``RULE["post_filter_long_side_px"]`` before ``track_
 unfiltered dump). `read` places the tracked ball and dd2c's top-1 ball (>= 0.15) on the split's placement frames
 (``detector_bench.placement_rows``: the scorecard's denominator, frames without a homography count as misses) and
 reads both with the scorecard's clip-bootstrap draws (``ball_scorecard.Draws``, ``placement_draws``, ``paired``), plus
-the measured / interpolated / no-ball breakdown; no scorecard dump is needed, so it reads GSR test too.
+the measured / interpolated / no-ball breakdown and phase 2's barrier (``ball_scorecard.barrier``: > 5 m of all
+placement frames, paired); no scorecard dump is needed, so it reads GSR test too.
+
+Ticket 10 (phase 2's holdout): ``--split holdout`` dumps, moves, tracks and reads game 4 of GSR train
+(``detector_bench.HOLDOUT_FILE``'s 18 clips) like GSR test: 25 fps frames from SoccerNet Tracking train (byte-checked
+against the local stride-5 GSR train frames), its frozen ``kp03_r2_refined`` homographies.
 """
 
 import argparse
@@ -95,9 +101,10 @@ CLASSES = ("ball", "goalkeeper", "player", "referee")
 # the pipeline's people threshold: the person boxes track_ball checks against
 PEOPLE_CONF = bench.OPERATING["conf"]
 SELECTION = be.SELECTION_GAMES
-# GSR test is downloaded at stride 5 only (data/SoccerNetGS/fetch_log.jsonl); its 25 fps frames are SoccerNet
-# Tracking's test sequences, the same clips (ball-detection spec, "Protokół oceny"; checked by ``check_frames``).
-FULL_FRAMES = {"test": bench.CHECKOUT / "data/soccernet/tracking/extracted/test"}
+# GSR test and train are downloaded at stride 5 only (data/SoccerNetGS/fetch_log.jsonl); their 25 fps frames are
+# SoccerNet Tracking's test / train sequences, the same clips (ball-detection spec, "Protokół oceny"; checked by
+# ``check_frames``). Keyed by the GSR split folder: GSR test (ticket 09), the holdout's GSR train clips (ticket 10).
+FULL_FRAMES = {folder: bench.TRACKING / folder for folder in ("test", "train")}
 POST_FILTER = bs.RULE["post_filter_long_side_px"]
 # Camera motion between consecutive frames, estimated at half resolution.
 MOTION = {
@@ -164,8 +171,8 @@ logger = logging.getLogger("ball_temporal")
 
 # ------------------------------------------------------------------ dump
 def clip_dirs(split: str = "valid") -> list[Path]:
-    """The GSR clip folders (labels) of ``split``."""
-    return sorted(p.parent for p in (bench.GSR / split).glob("*/Labels-GameState.json"))
+    """The GSR clip folders (labels) of the read split ``split`` (the holdout: its listed GSR train clips)."""
+    return [p.parent for p in bench.split_label_files(split)]
 
 
 def frames_dir(clip_dir: Path) -> Path:
@@ -269,7 +276,8 @@ def dump(args: argparse.Namespace) -> None:
     parts = args.out / "parts"
     parts.mkdir(parents=True, exist_ok=True)
     clips = clip_dirs(args.split)
-    checked = sum(check_frames(c) for c in clips) if args.split in FULL_FRAMES else None
+    folder = bench.gsr_folder(args.split)
+    checked = sum(check_frames(c) for c in clips) if folder in FULL_FRAMES else None
     timings, frames = [], []
     for clip_dir in clips:
         clip = clip_dir.name
@@ -302,7 +310,7 @@ def dump(args: argparse.Namespace) -> None:
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "ticket": args.ticket,
         "split": args.split,
-        "frames_source": str(FULL_FRAMES.get(args.split, bench.GSR / args.split)),
+        "frames_source": str(FULL_FRAMES.get(folder, bench.GSR / folder)),
         "gsr_frames_checked_identical": checked,
         "weights": str(args.weights),
         "weights_sha256": bench.sha256_file(args.weights),
@@ -690,7 +698,7 @@ def _track_worker(job: tuple) -> list[pd.DataFrame]:
     logging.getLogger("tactifoot_vision").setLevel(logging.WARNING)
     clip, settings, folder, split, motion_dir, limit = job
     candidates = clip_candidates(clip, folder)
-    frames = len(clip_frames(bench.GSR / split / clip))
+    frames = len(clip_frames(bench.GSR / bench.gsr_folder(split) / clip))
     homographies = clip_homographies(clip, frames, _FROZEN, motion_dir)
     result = clip_result(drop_long_balls(candidates, limit), homographies)
     tables = [top_balls(candidates, frames)]
@@ -972,8 +980,12 @@ def track(args: argparse.Namespace) -> None:
 
 # ------------------------------------------------------------------ read (ticket 09)
 # The reads of `read` per split: the GSR valid groups of the scorecard (game 5 only inside the full split, ticket
-# 09), GSR test whole.
-READS = {"valid": {"selection": SELECTION, "full": ("2", "3", "5")}, "test": None}
+# 09), GSR test whole, the holdout (game 4, ticket 10) whole.
+READS = {
+    "valid": {"selection": SELECTION, "full": ("2", "3", "5")},
+    "test": None,
+    "holdout": None,
+}
 
 
 def table_top_ball(table: pd.DataFrame):
@@ -1062,6 +1074,7 @@ def read_placement(
             "top1": bs.summary(reference),
             "track_vs_top1": bs.paired(found, reference),
             "status": status_rows(group_rows, group_top, tracks),
+            "barrier": bs.barrier(group_rows, group_top, draws),
             "rows": group_rows,
             "top1_rows": group_top,
         }
@@ -1105,6 +1118,19 @@ def read_markdown(found: dict, title: str) -> str:
                 f"| {name} | {s['status']} | {s['frames']} ({100 * s['share']:.1f}%) | "
                 f"{100 * s['track_well']:.1f}% | {100 * s['track_far']:.1f}% | {100 * s['top1_well']:.1f}% | "
                 f"{s['gain_pp_of_all']:+.2f} |"
+            )
+    if all("barrier" in g for g in found.values()):
+        lines += [
+            "",
+            "| group | > 5 m of all frames: reference / tracking | paired, pp [95%] | barrier (<= +1 pp) |",
+            "|---|---|---|---|",
+        ]
+        for name, g in found.items():
+            b = g["barrier"]
+            low, high = (100 * v for v in b["ci"])
+            lines.append(
+                f"| {name} | {100 * b['reference']:.2f}% / {100 * b['variant']:.2f}% | "
+                f"{100 * b['difference']:+.2f} [{low:+.2f}; {high:+.2f}] | {'met' if b['met'] else 'NOT met'} |"
             )
     gate = bs.RULE["gate_1280"]
     lines += [
@@ -1252,7 +1278,7 @@ def main() -> None:
         help="drop ball candidates longer than 45 px at 1080p (ticket 03's post-filter)",
     )
     d.add_argument("--out", type=Path, default=DUMP)
-    d.add_argument("--split", choices=bench.SPLITS, default="valid")
+    d.add_argument("--split", choices=bench.READ_SPLITS, default="valid")
     d.add_argument("--device", default=None)
     d.add_argument(
         "--ticket", default="ball-detection 04", help="the dump record's ticket"
@@ -1303,8 +1329,8 @@ def main() -> None:
         default=be.ROOT / "ball/02/truth/balls_gsr_games_23.parquet",
     )
     for command in (m, k):
-        command.add_argument("--split", choices=bench.SPLITS, default="valid")
-    r.add_argument("--split", choices=bench.SPLITS, default="valid")
+        command.add_argument("--split", choices=bench.READ_SPLITS, default="valid")
+    r.add_argument("--split", choices=bench.READ_SPLITS, default="valid")
     for command in (m, t, k):
         command.add_argument("--workers", type=int, default=12)
     args = parser.parse_args()

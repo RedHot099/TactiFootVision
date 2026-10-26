@@ -2,6 +2,7 @@
 
     uv run python scripts/ball_scorecard.py card --weights W --out OUT [--confirm]  # dump W (GPU), then score it
     uv run python scripts/ball_scorecard.py card --dump DUMP --out OUT [--confirm]  # score a dump (ticket 01 format)
+    uv run python scripts/ball_scorecard.py card --weights W --out OUT --holdout --reference DUMP  # game 4 alone
     uv run python scripts/ball_scorecard.py agree OUT_A OUT_B                       # max |difference| of two cards
     uv run python scripts/ball_scorecard.py references                              # reference rows + file check
 
@@ -9,7 +10,9 @@
 >= 0.001, boxes in the images' pixels; tiles, flip TTA or a tracker write the same files) and writes
 `scorecard.json` and `scorecard.md`. With `--weights` it dumps the weights first (rows `--rows`, default 1280 and e3)
 into `OUT/dump`. Per GSR valid split (`selection` = games 2 and 3, always; `confirm` = game 5 and `full` = all
-three only with `--confirm`, the confirm read of a ticket winner or the dd2c reference row) and per row:
+three only with `--confirm`, the confirm read of a ticket winner or the dd2c reference row), or with `--holdout`
+(ticket 10) the holdout alone (`holdout` = game 4 of GSR train, from dumps of `detector_bench.py dump --split
+holdout`, the reference's too, without Ekstraklasa dev), and per row:
 
 - detection (`detector_bench.image_scores`, exactly `evaluate`'s numbers): ball AP50 / AP50-95, ball precision /
   recall at the operating point (ball conf 0.15, IoU >= 0.5), people mAP50-95 (mean AP50-95 of goalkeeper, player,
@@ -34,6 +37,9 @@ of the per-draw differences. The reference is dd2c's ticket 01 dump (`--referenc
 reference row of the same name, else with a single-row reference's only row (e.g. tiles + filter against dd2c 1280 +
 filter), else with the reference's 1280 row (e.g. a 1920 variant against dd2c 1280).
 Bootstrap APs are supervision's AP on the drawn images (`resampled_ap`), equal to `evaluate`'s on the original set.
+
+Phase 2's barrier (``BARRIER_PP``): per GSR split, the share of all denominator frames with a ball placed > 5 m,
+paired against the reference; met when its point rise is at most 1 pp.
 
 `references` dumps and cards the reference rows (dd2c from its weights, run 1 best, the base model) and checks
 them against their result files (`REFERENCES`); for run 1 and the base model the whole-valid numbers needed for that
@@ -64,7 +70,12 @@ TRUTH = OUT / "truth"
 DD2C_DUMP = (
     be.DUMP
 )  # ticket 01: dd2c, rows 1280 and e3, checked against the result files
-SPLITS = {"selection": ("2", "3"), "confirm": ("5",), "full": ("2", "3", "5")}
+SPLITS = {
+    "selection": ("2", "3"),
+    "confirm": ("5",),
+    "full": ("2", "3", "5"),
+    "holdout": (bench.HOLDOUT["game"],),  # ticket 10: game 4 of GSR train, carded alone
+}
 PEOPLE = ("goalkeeper", "player", "referee")
 BALL_CONF = bench.OPERATING["class_conf"]["ball"]
 BIN_FEATURES = tuple(
@@ -85,6 +96,9 @@ RULE = {
     "ekstraklasa_ball_ap50_direction": 0.40,
     "post_filter_long_side_px": 45,  # ticket 03's registered variant: drop ball candidates longer (1080p px)
 }
+# Phase 2's barrier (spec-phase2, "Punkt odniesienia i miara"): the share of denominator frames with a ball placed
+# > 5 m from the truth rises by at most this many pp (point value) over the reference.
+BARRIER_PP = 1.0
 CHECKOUT = bench.CHECKOUT
 REFERENCES = {
     "dd2c": {
@@ -127,6 +141,14 @@ def check_dump(record: dict) -> None:
             raise SystemExit(
                 f"dump row {row} {settings} is not the bench's {bench.ROWS[row]}"
             )
+
+
+def check_dump_split(record: dict, folder: str) -> None:
+    """The dump's GSR images are of the card's GSR split folder (valid, or train for the holdout; dumps without
+    the record entry are GSR valid ones)."""
+    dumped = record.get("sets", {}).get("gsr", {}).get("split", "valid")
+    if dumped != folder:
+        raise SystemExit(f"the dump holds GSR {dumped} images, the card reads {folder}")
 
 
 def _settings(settings: dict) -> tuple:
@@ -330,11 +352,20 @@ def split_top_ball(found: dict[str, sv.Detections], scale, clips: set[str]):
     return top
 
 
+def read_split(split: str) -> str:
+    """The bench's read split of a card split: the holdout's, else GSR valid."""
+    return "holdout" if split == "holdout" else "valid"
+
+
 def placement_table(
-    found: dict[str, sv.Detections], images: pd.DataFrame, homographies: dict, games
+    found: dict[str, sv.Detections],
+    images: pd.DataFrame,
+    homographies: dict,
+    games,
+    split: str = "valid",
 ) -> pd.DataFrame:
-    """`placement_rows` of the frames of ``games`` with the dump row's top ball (boxes in the images' pixels,
-    scaled to the homographies' ``PLACEMENT["input_size"]``)."""
+    """`placement_rows` of the frames of ``games`` of the read split ``split`` with the dump row's top ball (boxes
+    in the images' pixels, scaled to the homographies' ``PLACEMENT["input_size"]``)."""
     gsr = images[images.set == "gsr"]
     sizes = {(int(w), int(h)) for w, h in zip(gsr.width, gsr.height, strict=True)}
     if len(sizes) != 1:
@@ -344,7 +375,7 @@ def placement_table(
     rows = bench.placement_rows(
         split_top_ball(found, (width / size[0], height / size[1]), clips),
         homographies,
-        "valid",
+        split,
     )
     return rows[rows.game.isin(games)].reset_index(drop=True)
 
@@ -385,6 +416,29 @@ def placement_draws(rows: pd.DataFrame, draws: Draws) -> dict:
     return found
 
 
+def barrier(rows: pd.DataFrame, reference_rows: pd.DataFrame, draws: Draws) -> dict:
+    """Phase 2's barrier on frame-paired placement rows: the share of all denominator frames with a ball placed
+    > 5 m (no homography or no ball: not far) of the variant and the reference, the paired difference with its
+    interval, and whether the point difference is at most ``BARRIER_PP``."""
+    if not rows[["clip", "frame"]].equals(reference_rows[["clip", "frame"]]):
+        raise SystemExit("the barrier needs the same placement frames")
+    found = {}
+    for name, part in (("variant", rows), ("reference", reference_rows)):
+        far = part.error_m.to_numpy(float) > bench.PLACEMENT["far_m"]
+        found[name] = {
+            "far_of_all": ratio_draws(
+                draws,
+                draws.per_clip(part["clip"], far),
+                draws.per_clip(part["clip"], np.ones(len(part))),
+            )
+        }
+    entry = paired(found["variant"], found["reference"])["far_of_all"]
+    return entry | {
+        "limit_pp": BARRIER_PP,
+        "met": bool(100 * entry["difference"] <= BARRIER_PP),
+    }
+
+
 def placement_counts(rows: pd.DataFrame) -> dict:
     return {
         "frames": len(rows),
@@ -395,12 +449,13 @@ def placement_counts(rows: pd.DataFrame) -> dict:
 
 
 # ------------------------------------------------------------------ hits
-def truth_table(gsr: tv.data.Dataset, games) -> pd.DataFrame:
-    """``ball_errors.gsr_balls`` of ``games`` (per truth ball: box and ticket 01's features), cached in ``TRUTH``."""
+def truth_table(gsr: tv.data.Dataset, games, folder: str = "valid") -> pd.DataFrame:
+    """``ball_errors.gsr_balls`` of ``games`` (per truth ball: box and ticket 01's features) of the GSR split
+    ``folder``, cached in ``TRUTH``."""
     path = TRUTH / f"balls_gsr_games_{''.join(games)}.parquet"
     if path.is_file():
         return pd.read_parquet(path)
-    table = be.gsr_balls(gsr, games)
+    table = be.gsr_balls(gsr, games, folder)
     path.parent.mkdir(parents=True, exist_ok=True)
     table.to_parquet(path, index=False)
     return pd.read_parquet(path)
@@ -486,26 +541,32 @@ def pair_row(row: str, reference: Model) -> str:
     return reference.rows[0] if len(reference.rows) == 1 else "1280"
 
 
-def subset(dataset: tv.data.Dataset, games) -> tv.data.Dataset:
+def subset(dataset: tv.data.Dataset, games, split: str = "valid") -> tv.data.Dataset:
     return dataset.with_split(
-        "valid", [s for s in dataset["valid"] if s.meta["game"] in games]
+        split, [s for s in dataset[split] if s.meta["game"] in games]
     )
 
 
 def score_model(
-    model: Model, sets: dict, splits: dict, homographies: dict, truths: dict
+    model: Model,
+    sets: dict,
+    splits: dict,
+    homographies: dict,
+    truths: dict,
+    split_read: str = "valid",
 ) -> dict:
     """Point and per-draw values of every card number: ``{(split, row): {section: {name: (value, draws)}}}``,
-    plus the bins and counts that are not bootstrapped."""
+    plus the bins and counts that are not bootstrapped. ``sets``: ``{set: (dataset, its split, draws per card
+    split)}``; ``split_read``: the bench's read split of the GSR card splits (valid or holdout)."""
     out = {}
     for row in model.rows:
-        for set_name, (dataset, draws_by_split) in sets.items():
+        for set_name, (dataset, dataset_split, draws_by_split) in sets.items():
             mapping = dump_class_map(model.record, set_name, dataset.class_names)
             unmapped = sorted(k for k, v in mapping.items() if v is None)
             if unmapped:
                 logger.info("%s: classes %s are not scored", set_name, unmapped)
             found = model.found[(set_name, row)]
-            scores = bench.image_scores(dataset, "valid", found, set_name)
+            scores = bench.image_scores(dataset, dataset_split, found, set_name)
             for split, draws in draws_by_split.items():
                 keep = (
                     scores.keys["game"].isin(splits[split]).to_numpy()
@@ -524,7 +585,7 @@ def score_model(
                         found, scores.keys[keep].reset_index(drop=True), truth, draws
                     )
                     rows = placement_table(
-                        found, model.images, homographies, splits[split]
+                        found, model.images, homographies, splits[split], split_read
                     )
                     numbers["placement"] = placement_draws(rows, draws)
                     entry |= {
@@ -554,32 +615,44 @@ def check_point(found: dict, exact: dict) -> None:
 def card(
     model: Model, reference: Model, splits: list[str], out: Path, primary_row: str
 ) -> dict:
-    """Score ``model`` (and ``reference`` for the paired differences) on ``splits`` and write the card."""
-    gsr = bench.gsr_split("valid")
-    bench.check_manifest(gsr, "valid")
+    """Score ``model`` (and ``reference`` for the paired differences) on ``splits`` and write the card. The GSR
+    valid splits come with Ekstraklasa dev; the holdout (ticket 10: game 4 of GSR train, dumps of
+    `detector_bench.py dump --split holdout`) is carded alone, without it."""
+    reads = {read_split(s) for s in splits}
+    if len(reads) != 1:
+        raise SystemExit("the holdout is carded alone")
+    split_read = reads.pop()
+    folder = bench.gsr_folder(split_read)
+    for dumped in (model, reference):
+        check_dump_split(dumped.record, folder)
+    gsr = bench.gsr_split(split_read)
+    bench.check_manifest(gsr, split_read)
     games = sorted({g for s in splits for g in SPLITS[s]})
-    gsr = subset(gsr, games)
-    ekstraklasa = bench.ekstraklasa_dev()
+    gsr = subset(gsr, games, folder)
     split_games = {s: SPLITS[s] for s in splits}
     clips = {
-        s: sorted({x.meta["sequence"] for x in gsr["valid"] if x.meta["game"] in g})
+        s: sorted({x.meta["sequence"] for x in gsr[folder] if x.meta["game"] in g})
         for s, g in split_games.items()
     }
-    eks_clips = sorted(
-        {bench.image_key("ekstraklasa", x)["clip"] for x in ekstraklasa["valid"]}
-    )
-    sets = {
-        "gsr": (gsr, {s: Draws(clips[s]) for s in splits}),
-        "ekstraklasa": (ekstraklasa, {"ekstraklasa": Draws(eks_clips)}),
-    }
-    homographies = bench.frozen_homographies("valid")
-    truths = {s: truth_table(gsr, SPLITS[s]) for s in splits}
-    scored = score_model(model, sets, split_games, homographies, truths)
+    sets = {"gsr": (gsr, folder, {s: Draws(clips[s]) for s in splits})}
+    if split_read == "valid":
+        ekstraklasa = bench.ekstraklasa_dev()
+        eks_clips = sorted(
+            {bench.image_key("ekstraklasa", x)["clip"] for x in ekstraklasa["valid"]}
+        )
+        sets["ekstraklasa"] = (
+            ekstraklasa,
+            "valid",
+            {"ekstraklasa": Draws(eks_clips)},
+        )
+    homographies = bench.frozen_homographies(split_read)
+    truths = {s: truth_table(gsr, SPLITS[s], folder) for s in splits}
+    scored = score_model(model, sets, split_games, homographies, truths, split_read)
     if reference.folder.resolve() == model.folder.resolve():
         reference_scored = scored
     else:
         reference_scored = score_model(
-            reference, sets, split_games, homographies, truths
+            reference, sets, split_games, homographies, truths, split_read
         )
 
     result: dict = {
@@ -591,7 +664,7 @@ def card(
         "classes": model.record["classes"],
         "class_map": {
             name: dump_class_map(model.record, name, d.class_names)
-            for name, (d, _) in sets.items()
+            for name, (d, _, _) in sets.items()
         },
         "reference": {
             "dump": str(reference.folder),
@@ -600,6 +673,7 @@ def card(
         "splits": {
             s: {"games": list(SPLITS[s]), "clips": len(clips[s])} for s in splits
         },
+        "read_split": split_read,
         "bootstrap": BOOTSTRAP,
         "cost": cost(model.record, model.images),
         "primary_row": primary_row,
@@ -625,6 +699,11 @@ def card(
         if split != "ekstraklasa":
             sections["bins"] = entry["bins"]
             sections["placement_counts"] = entry["placement_counts"]
+            sections["barrier"] = barrier(
+                entry["placement_rows"],
+                reference_entry["placement_rows"],
+                sets["gsr"][2][split],
+            )
             entry["placement_rows"].to_parquet(
                 out / f"placement_{split}_{row}.parquet", index=False
             )
@@ -639,7 +718,8 @@ def card(
 
 def verdict(result: dict, primary_row: str) -> dict:
     """The selection rule's reads of this card (``RULE``): primary and guards on the selection split, confirm on
-    game 5, the absolute gates on the full split; ``None`` where the card lacks the split."""
+    game 5, the absolute gates on the full split, the holdout's paired gain (ticket 10), phase 2's barrier
+    (``BARRIER_PP``) on the selection and the holdout; ``None`` where the card lacks the split."""
     cards = result["cards"]
     out: dict = {"rule": RULE, "primary_row": primary_row}
     selection = cards.get(f"selection/{primary_row}")
@@ -662,6 +742,19 @@ def verdict(result: dict, primary_row: str) -> dict:
             eks["detection"]["ball_ap50"]["value"]
             >= RULE["ekstraklasa_ball_ap50_direction"]
         )
+    if selection:
+        out["barrier"] = selection["barrier"]["met"]
+    holdout = cards.get(f"holdout/{primary_row}")
+    if (
+        holdout
+    ):  # ticket 10: phase 2's holdout read (game 4), same rule as the selection's
+        gain = holdout["placement_vs_reference"]["well_placed"]
+        out["holdout"] = {
+            "difference": gain["difference"],
+            "ci": gain["ci"],
+            "confirmed": gain["ci"][0] > 0,
+            "barrier": holdout["barrier"]["met"],
+        }
     confirm = cards.get(f"confirm/{primary_row}")
     if confirm:
         gain = confirm["placement_vs_reference"]["well_placed"]
@@ -760,6 +853,14 @@ def markdown(result: dict) -> str:
                 f"\n{key}: {counts['frames']} frames ({counts['without_homography']} without homography, "
                 f"ceiling {100 * c['placement']['ceiling']['value']:.1f}%), {counts['clips']} clips"
             )
+            if "barrier" in c:
+                b = c["barrier"]
+                low, high = (100 * v for v in b["ci"])
+                lines.append(
+                    f"{key}: > 5 m of all frames {100 * b['reference']:.2f}% (reference) -> "
+                    f"{100 * b['variant']:.2f}%, {100 * b['difference']:+.2f} pp [{low:+.2f}; {high:+.2f}]; "
+                    f"barrier (<= +{b['limit_pp']:g} pp) {'met' if b['met'] else 'NOT met'}"
+                )
     size_bins = [
         (key, b)
         for key, c in result["cards"].items()
@@ -1016,8 +1117,12 @@ def reference_markdown(table: pd.DataFrame, checks: dict) -> str:
 
 
 # ------------------------------------------------------------------ commands
-def dump_weights(weights: Path, out: Path, rows: list[str], device: str | None) -> None:
-    bench.dump(SimpleNamespace(weights=weights, out=out, rows=rows, device=device))
+def dump_weights(
+    weights: Path, out: Path, rows: list[str], device: str | None, split: str = "valid"
+) -> None:
+    bench.dump(
+        SimpleNamespace(weights=weights, out=out, rows=rows, device=device, split=split)
+    )
 
 
 def card_command(args: argparse.Namespace) -> None:
@@ -1026,8 +1131,13 @@ def card_command(args: argparse.Namespace) -> None:
     folder = args.dump
     if args.weights is not None:
         folder = args.out / "dump"
-        dump_weights(args.weights, folder, args.rows, args.device)
+        split = "holdout" if args.holdout else "valid"
+        dump_weights(args.weights, folder, args.rows, args.device, split)
+    if args.holdout and args.confirm:
+        raise SystemExit("--holdout is carded alone")
     splits = ["selection", "confirm", "full"] if args.confirm else ["selection"]
+    if args.holdout:
+        splits = ["holdout"]
     result = card(
         Model(folder), Model(args.reference), splits, args.out, args.primary_row
     )
@@ -1057,6 +1167,11 @@ def main() -> None:
         "--confirm",
         action="store_true",
         help="also read game 5 (confirm split) and the full GSR valid: a ticket winner's confirm read only",
+    )
+    c.add_argument(
+        "--holdout",
+        action="store_true",
+        help="read game 4 of GSR train alone (ticket 10; --reference: a `dump --split holdout` dump)",
     )
     c.add_argument("--primary-row", default="1280", help="the row the rule's reads use")
     a = commands.add_parser("agree", help="max |difference| of two cards' numbers")

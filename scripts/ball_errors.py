@@ -289,14 +289,15 @@ def clip_labels(
     return table, people
 
 
-def gsr_balls(dataset: tv.data.Dataset, games=SELECTION_GAMES) -> pd.DataFrame:
-    """One row per truth ball of the scored GSR valid frames of ``games`` (the bench's boxes) with its features."""
-    samples = [s for s in dataset["valid"] if s.meta["game"] in games]
+def gsr_balls(
+    dataset: tv.data.Dataset, games=SELECTION_GAMES, split: str = "valid"
+) -> pd.DataFrame:
+    """One row per truth ball of the scored GSR frames of ``games`` (the bench's boxes) with its features;
+    ``split``: the GSR split folder and ``dataset`` split of the frames (valid; train for ticket 10's holdout)."""
+    samples = [s for s in dataset[split] if s.meta["game"] in games]
     rows = []
     for clip in sorted({s.meta["sequence"] for s in samples}):
-        balls, people = clip_labels(
-            bench.GSR / "valid" / clip / "Labels-GameState.json"
-        )
+        balls, people = clip_labels(bench.GSR / split / clip / "Labels-GameState.json")
         balls = track_motion(balls).sort_values("order")
         by_frame = {f: g for f, g in balls.groupby("frame")}
         for sample in (s for s in samples if s.meta["sequence"] == clip):
