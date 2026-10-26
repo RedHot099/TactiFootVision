@@ -260,9 +260,11 @@ def read(args: argparse.Namespace) -> None:
         found.to_parquet(out / f"track_{name}/tracks.parquet", index=False)
         top.to_parquet(out / f"track_{name}/top1.parquet", index=False)
         tracks[name], top1[name] = found, top
-    control = pd.read_parquet(B_TRACKS)
+    control = pd.read_parquet(B_TRACKS).drop(columns="seconds")  # seconds: wall time
     b_same = bool(
-        control.reset_index(drop=True).equals(tracks["B"].reset_index(drop=True))
+        control.reset_index(drop=True).equals(
+            tracks["B"].drop(columns="seconds").reset_index(drop=True)
+        )
     )
     if not b_same:
         raise SystemExit("B's tracks differ from 14's")
