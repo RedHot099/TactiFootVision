@@ -77,8 +77,10 @@ dla dd2c łatwiejszy (jak gra 5 w 04). Na teście trochę rośnie odsetek pozycj
    bandzie), reszta domyślna. Koszt: detekcja 19,6 ms/klatkę GPU, śledzenie 0,2 ms CPU. Ruch kamery (ok. 10 ms
    CPU) był potrzebny tylko dlatego, że homografie mieliśmy co 5. klatkę; pipeline z homografią na każdej klatce go
    nie potrzebuje.
-2. **Filtr 45 px zawsze**, przed `track_ball` (opcja detektora, np. `ball_max_side_px=45` przy 1080p, skalowana
-   wysokością klatki). Nic nie kosztuje, a ludzie i Ekstraklasa się nie zmieniają.
+2. **Filtr 45 px** przed `track_ball` (opcja detektora, np. `ball_max_side_px=45` przy 1080p, skalowana wysokością
+   klatki). Nic nie kosztuje, a ludzie i Ekstraklasa się nie zmieniają. Zastrzeżenie: zysk pochodzi prawie wyłącznie
+   z gry 3 (687 fałszywych piłek > 45 px na grze 3, 3 na grze 2, 0 na grze 5 i GSR test), więc to zabezpieczenie
+   przed jednym znanym typem błędu (sędziowie w czerni), a nie dowód ogólnego zysku; poza GSR nie był testowany.
 3. **Pojedyncze klatki bez trackera** (np. t0 strzału w xG): kafle 2×2 + filtr, potwierdzone w 08 (+5,29 pp na
    grze 5), za 3,8× czasu detekcji. W wideo kafli nie dokładać: ze śledzeniem gra 5 dała −1,25 pp [−2,79; +0,24].
 4. Pozycje interpolowane oznaczać flagą `interpolated` (pakiet już ją ma), bo co czwarta leży dalej niż 5 m.
@@ -86,18 +88,23 @@ dla dd2c łatwiejszy (jak gra 5 w 04). Na teście trochę rośnie odsetek pozycj
 ## Co nie działało
 
 - **Wyższa rozdzielczość jednego wywołania** (03): 1920 natywnie −0,21 pp, 1600 +0,96 pp (przedział obejmuje 0).
-  Detektor znajduje więcej piłek, ale też więcej pewnych fałszywych, więc top-1 częściej trafia w fałszywą.
-- **Nadpróbkowanie koszyków porażek ×2** (05): B − A +0,26 pp [−0,80; +1,35] po ostatniej epoce.
+  Detektor znajduje więcej piłek, ale też więcej pewnych fałszywych, więc top-1 częściej trafia w fałszywą. Wniosek
+  ma małą moc: przedziały dla zmian rozdzielczości mają połowę szerokości ok. 2,5 pp (1920 + filtr: +0,80
+  [−1,70; +2,96]), więc efekt rzędu +2 pp nie jest wykluczony.
+- **Nadpróbkowanie koszyków porażek ×2** (05): B − A +0,26 pp [−0,80; +1,35] po ostatniej epoce. To nie jest
+  czysty test nadpróbkowania: przerzedzenie klatek GSR train (dla równej długości epoki) zmniejszyło też udział GSR
+  w widoku B, a epoka 1 ramienia B była wznowiona (inna kolejność danych).
 - **Epoka bez mozaiki na restartowanym harmonogramie** (05): −8,5 pp wobec dd2c w obu ramionach, fałszywe piłki
-  rosną z 0,2 do 0,5 na klatkę.
+  rosną z 0,2 do 0,5 na klatkę. Wyłączenie mozaiki i rozgrzewka (`warmup_epochs` 3, cały 2-epokowy przebieg w
+  rozgrzewce) nie zostały rozdzielone, więc przyczyna jest prawdopodobna, a nie ustalona.
 - Kafle bez filtra (03: −0,73 pp) i kafle dokładane do śledzenia (08: gra 5 −1,25 pp).
 - Bramki 68,18% ani AP50 piłki ≥ 0,45 nie osiągnął żaden wariant samego detektora; bramkę daje dopiero tracker.
   Piłek < 8 px nie wykrywa żaden wariant (recall IoU ≤ 0,06).
 
 ## Otwarte tropy
 
-- **1600 + TTA + filtr** (03: +6,45 pp na grach 2+3, 55,5 ms/klatkę): niezarejestrowany, bez odczytu
-  potwierdzającego. Grę 5 czytały już 04 i 08, więc kolejny odczyt na niej słabiej chroni przed doborem po danych.
+- **1600 + TTA + filtr** (03: +6,45 pp na grach 2+3, 55,5 ms/klatkę): zarejestrowany w 03 jako wariant opisowy
+  (TTA na najlepszym wariancie, filtr na zwycięzcy), bez odczytu potwierdzającego. Grę 5 czytały już 04 i 08, więc kolejny odczyt na niej słabiej chroni przed doborem po danych.
 - **Poprawiony przepis dotrenowania:** `close_mosaic` 0 albo `warmup_epochs` dopasowane do długości przebiegu, z
   B − A po epoce 0 jako porównaniem głównym (opisowo B e0 miało +2,82 pp nad A). Do tego **twarde negatywy**:
   sędziowie i liniowi w czerni z klasą „piłka” (55% umieszczeń > 5 m w 01).
