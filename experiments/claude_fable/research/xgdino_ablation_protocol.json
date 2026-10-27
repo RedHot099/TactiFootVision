@@ -1,0 +1,1462 @@
+{
+  "purpose": "xg-dino ticket 01: the frozen A/B/C ablation protocol, written before any real fit",
+  "frozen": {
+    "population": {
+      "primary": "stack_location.inputs.build_population(location.FEET_T0, e3=cache/xgd_full4_feet_t0/E3)",
+      "secondary": "stack.inputs.build_population(e3=cache/xgd_full3/E3): old-E3 geometry, descriptive",
+      "expected": {
+        "primary": {
+          "shots": 7062,
+          "matches": 328
+        },
+        "no_v3": {
+          "shots": 1028,
+          "matches": 47
+        },
+        "unseen": {
+          "shots": 3249
+        }
+      },
+      "expected_goals": {
+        "primary": 902,
+        "no_v3": 137
+      }
+    },
+    "features": {
+      "geometry_allowlist": [
+        "dist@0",
+        "angle@0",
+        "shot_x@0",
+        "shot_missing@0",
+        "ff_def_cone@0",
+        "ff_def_cone_missing@0",
+        "def_cone_ge1@0",
+        "def_cone_ge1_missing@0",
+        "def_cone_ge2@0",
+        "def_cone_ge2_missing@0",
+        "ff_near_opp@0",
+        "ff_near_opp_missing@0",
+        "ff_opp_3m@0",
+        "ff_opp_3m_missing@0",
+        "gk_depth@0",
+        "gk_depth_missing@0",
+        "gk_off_line_abs@0",
+        "gk_off_line_abs_missing@0",
+        "gk_dist_net@0",
+        "gk_dist_net_missing@0",
+        "dist@-400",
+        "angle@-400",
+        "shot_x@-400",
+        "shot_missing@-400",
+        "ff_def_cone@-400",
+        "ff_def_cone_missing@-400",
+        "def_cone_ge1@-400",
+        "def_cone_ge1_missing@-400",
+        "def_cone_ge2@-400",
+        "def_cone_ge2_missing@-400",
+        "ff_near_opp@-400",
+        "ff_near_opp_missing@-400",
+        "ff_opp_3m@-400",
+        "ff_opp_3m_missing@-400",
+        "gk_depth@-400",
+        "gk_depth_missing@-400",
+        "gk_off_line_abs@-400",
+        "gk_off_line_abs_missing@-400",
+        "gk_dist_net@-400",
+        "gk_dist_net_missing@-400"
+      ],
+      "quality_descriptive": [
+        "ball_none@0",
+        "ball_own@0",
+        "ball_m400@0",
+        "ball_m800@0",
+        "shot_from_ball@0",
+        "shooter_by_net@0",
+        "kp_instance_conf@0",
+        "kp_conf_missing@0",
+        "n_keypoints@0",
+        "n_players@0",
+        "frame_missing@0",
+        "homography_ok@0",
+        "shooter_ok@0",
+        "teams_ok@0",
+        "gk_ok@0",
+        "gk_detected@0",
+        "gk_proxy@0",
+        "shot_masked@0",
+        "gk_masked@0",
+        "n_valid@0",
+        "n_masked@0",
+        "ball_none@-400",
+        "ball_own@-400",
+        "ball_m800@-400",
+        "shot_from_ball@-400",
+        "shooter_by_net@-400",
+        "kp_instance_conf@-400",
+        "kp_conf_missing@-400",
+        "n_keypoints@-400",
+        "n_players@-400",
+        "frame_missing@-400",
+        "homography_ok@-400",
+        "shooter_ok@-400",
+        "teams_ok@-400",
+        "gk_ok@-400",
+        "gk_detected@-400",
+        "gk_proxy@-400",
+        "shot_masked@-400",
+        "gk_masked@-400",
+        "n_valid@-400",
+        "n_masked@-400"
+      ],
+      "excluded_from_confirmatory": "SoccerNet flags and every quality covariate (ball source, shot_from_ball, shooter_by_net, detection flags, counts, keypoint confidence, sanitation indicators)"
+    },
+    "arms": {
+      "primary": {
+        "A": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo"
+          ],
+          "spline": [],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        },
+        "B_DA": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_missing@0",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "B": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "C": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        },
+        "BQ": {
+          "status": "descriptive",
+          "columns": [
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "ball_none@0",
+            "ball_own@0",
+            "ball_m400@0",
+            "ball_m800@0",
+            "shot_from_ball@0",
+            "shooter_by_net@0",
+            "kp_instance_conf@0",
+            "kp_conf_missing@0",
+            "n_keypoints@0",
+            "n_players@0",
+            "homography_ok@0",
+            "shooter_ok@0",
+            "teams_ok@0",
+            "gk_ok@0",
+            "gk_detected@0",
+            "gk_proxy@0",
+            "gk_masked@0",
+            "n_valid@0",
+            "n_masked@0",
+            "ball_none@-400",
+            "ball_own@-400",
+            "ball_m800@-400",
+            "shot_from_ball@-400",
+            "shooter_by_net@-400",
+            "kp_instance_conf@-400",
+            "kp_conf_missing@-400",
+            "n_keypoints@-400",
+            "n_players@-400",
+            "homography_ok@-400",
+            "shooter_ok@-400",
+            "teams_ok@-400",
+            "gk_ok@-400",
+            "gk_detected@-400",
+            "gk_proxy@-400",
+            "shot_masked@-400",
+            "gk_masked@-400",
+            "n_valid@-400",
+            "n_masked@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": [
+            "frame_missing@0",
+            "shot_masked@0",
+            "frame_missing@-400"
+          ]
+        },
+        "CQ": {
+          "status": "descriptive",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "ball_none@0",
+            "ball_own@0",
+            "ball_m400@0",
+            "ball_m800@0",
+            "shot_from_ball@0",
+            "shooter_by_net@0",
+            "kp_instance_conf@0",
+            "kp_conf_missing@0",
+            "n_keypoints@0",
+            "n_players@0",
+            "homography_ok@0",
+            "shooter_ok@0",
+            "teams_ok@0",
+            "gk_ok@0",
+            "gk_detected@0",
+            "gk_proxy@0",
+            "gk_masked@0",
+            "n_valid@0",
+            "n_masked@0",
+            "ball_none@-400",
+            "ball_own@-400",
+            "ball_m800@-400",
+            "shot_from_ball@-400",
+            "shooter_by_net@-400",
+            "kp_instance_conf@-400",
+            "kp_conf_missing@-400",
+            "n_keypoints@-400",
+            "n_players@-400",
+            "homography_ok@-400",
+            "shooter_ok@-400",
+            "teams_ok@-400",
+            "gk_ok@-400",
+            "gk_detected@-400",
+            "gk_proxy@-400",
+            "shot_masked@-400",
+            "gk_masked@-400",
+            "n_valid@-400",
+            "n_masked@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": [
+            "frame_missing@0",
+            "shot_masked@0",
+            "frame_missing@-400"
+          ]
+        },
+        "B_legacy": {
+          "status": "descriptive",
+          "columns": [
+            "angle@0",
+            "shot_missing@0",
+            "ball_none@0",
+            "sn_direct_fk",
+            "sn_indirect_fk_3s",
+            "sn_corner_20s",
+            "sn_prev_shot_5s",
+            "shot_x@0",
+            "shot_from_ball@0",
+            "shooter_by_net@0",
+            "kp_instance_conf@0",
+            "kp_conf_missing@0",
+            "n_keypoints@0",
+            "n_players@0",
+            "ball_own@0",
+            "ball_m400@0",
+            "ball_m800@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "homography_ok@0",
+            "shooter_ok@0",
+            "teams_ok@0",
+            "gk_ok@0",
+            "gk_detected@0",
+            "gk_proxy@0",
+            "gk_masked@0",
+            "n_valid@0",
+            "n_masked@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ball_none@-400",
+            "ball_own@-400",
+            "ball_m800@-400",
+            "shot_from_ball@-400",
+            "shooter_by_net@-400",
+            "kp_instance_conf@-400",
+            "kp_conf_missing@-400",
+            "n_keypoints@-400",
+            "n_players@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "homography_ok@-400",
+            "shooter_ok@-400",
+            "teams_ok@-400",
+            "gk_ok@-400",
+            "gk_detected@-400",
+            "gk_proxy@-400",
+            "shot_masked@-400",
+            "gk_masked@-400",
+            "n_valid@-400",
+            "n_masked@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "C_legacy": {
+          "status": "descriptive",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_missing@0",
+            "ball_none@0",
+            "sn_direct_fk",
+            "sn_indirect_fk_3s",
+            "sn_corner_20s",
+            "sn_prev_shot_5s",
+            "shot_x@0",
+            "shot_from_ball@0",
+            "shooter_by_net@0",
+            "kp_instance_conf@0",
+            "kp_conf_missing@0",
+            "n_keypoints@0",
+            "n_players@0",
+            "ball_own@0",
+            "ball_m400@0",
+            "ball_m800@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "homography_ok@0",
+            "shooter_ok@0",
+            "teams_ok@0",
+            "gk_ok@0",
+            "gk_detected@0",
+            "gk_proxy@0",
+            "gk_masked@0",
+            "n_valid@0",
+            "n_masked@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ball_none@-400",
+            "ball_own@-400",
+            "ball_m800@-400",
+            "shot_from_ball@-400",
+            "shooter_by_net@-400",
+            "kp_instance_conf@-400",
+            "kp_conf_missing@-400",
+            "n_keypoints@-400",
+            "n_players@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "homography_ok@-400",
+            "shooter_ok@-400",
+            "teams_ok@-400",
+            "gk_ok@-400",
+            "gk_detected@-400",
+            "gk_proxy@-400",
+            "shot_masked@-400",
+            "gk_masked@-400",
+            "n_valid@-400",
+            "n_masked@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        }
+      },
+      "secondary": {
+        "A": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo"
+          ],
+          "spline": [],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        },
+        "B_DA": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_missing@0",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "B": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "C": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        }
+      },
+      "refit:no_v3": {
+        "A": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo"
+          ],
+          "spline": [],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        },
+        "B_DA": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_missing@0",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "B": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "C": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        }
+      },
+      "refit:unseen": {
+        "A": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo"
+          ],
+          "spline": [],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        },
+        "B_DA": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_missing@0",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "B": {
+          "status": "confirmatory",
+          "columns": [
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [],
+          "dropped_zero_variance": []
+        },
+        "C": {
+          "status": "confirmatory",
+          "columns": [
+            "z_g_combo",
+            "angle@0",
+            "shot_x@0",
+            "shot_missing@0",
+            "ff_def_cone@0",
+            "ff_def_cone_missing@0",
+            "def_cone_ge1@0",
+            "def_cone_ge1_missing@0",
+            "def_cone_ge2@0",
+            "def_cone_ge2_missing@0",
+            "ff_near_opp@0",
+            "ff_near_opp_missing@0",
+            "ff_opp_3m@0",
+            "ff_opp_3m_missing@0",
+            "gk_depth@0",
+            "gk_depth_missing@0",
+            "gk_off_line_abs@0",
+            "gk_off_line_abs_missing@0",
+            "gk_dist_net@0",
+            "gk_dist_net_missing@0",
+            "dist@-400",
+            "angle@-400",
+            "shot_x@-400",
+            "shot_missing@-400",
+            "ff_def_cone@-400",
+            "ff_def_cone_missing@-400",
+            "def_cone_ge1@-400",
+            "def_cone_ge1_missing@-400",
+            "def_cone_ge2@-400",
+            "def_cone_ge2_missing@-400",
+            "ff_near_opp@-400",
+            "ff_near_opp_missing@-400",
+            "ff_opp_3m@-400",
+            "ff_opp_3m_missing@-400",
+            "gk_depth@-400",
+            "gk_depth_missing@-400",
+            "gk_off_line_abs@-400",
+            "gk_off_line_abs_missing@-400",
+            "gk_dist_net@-400",
+            "gk_dist_net_missing@-400",
+            "dist@0_ns1",
+            "dist@0_ns2",
+            "dist@0_ns3"
+          ],
+          "spline": [
+            "dist@0"
+          ],
+          "df": 3,
+          "unpenalised": [
+            "z_g_combo"
+          ],
+          "dropped_zero_variance": []
+        }
+      }
+    },
+    "model": {
+      "class": "L2 logistic regression on the standardised design, Newton (xgpoc.stack.fit.logistic_fit)",
+      "candidate": "bc",
+      "spline": [
+        "dist@0"
+      ],
+      "df": 3,
+      "c_grid": [
+        0.001,
+        0.003,
+        0.01,
+        0.03,
+        0.1,
+        0.3,
+        1.0,
+        3.0,
+        10.0,
+        30.0,
+        100.0
+      ],
+      "penalty": "lambda = 1/C on every design column except the one named z_g_combo (xgpoc.dino.ablation.NamedModel); B_DA and B have every column penalised",
+      "inner_cv": "C chosen inside each outer training fold over the other host folds, summed inner held-out log-loss, ties to the smaller C (xgpoc.stack.fit.chosen_c); arms without a penalised column (A) need none; a grid-edge flag per fold (smallest or largest C)",
+      "recalibration": "none beyond each arm's own per-outer-fold logistic fit: A is a Platt fit on z per outer fold; B and C get no extra Platt layer; calibration slope and intercept reported",
+      "folds": "the host folds of cache/folds_xgv_home5.csv (5), shared by every arm and block"
+    },
+    "read_out": {
+      "contrasts": {
+        "C-B": [
+          "C",
+          "B"
+        ],
+        "C-A": [
+          "C",
+          "A"
+        ],
+        "B-A": [
+          "B",
+          "A"
+        ]
+      },
+      "descriptive_contrasts": {
+        "B_DA-A": [
+          "B_DA",
+          "A"
+        ],
+        "C-B_DA": [
+          "C",
+          "B_DA"
+        ],
+        "BQ-B": [
+          "BQ",
+          "B"
+        ],
+        "CQ-C": [
+          "CQ",
+          "C"
+        ],
+        "CQ-BQ": [
+          "CQ",
+          "BQ"
+        ],
+        "C_legacy-B_legacy": [
+          "C_legacy",
+          "B_legacy"
+        ],
+        "B_legacy-A": [
+          "B_legacy",
+          "A"
+        ],
+        "C_legacy-A": [
+          "C_legacy",
+          "A"
+        ]
+      },
+      "metrics": [
+        "delta log-loss (p clipped 1e-6)",
+        "delta Brier",
+        "delta AUC",
+        "delta log-loss among goals and among non-goals",
+        "delta log-loss standardised to the primary goal rate"
+      ],
+      "per_arm": [
+        "log-loss",
+        "Brier",
+        "AUC",
+        "calibration slope and intercept",
+        "10-bin equal-count reliability table"
+      ],
+      "bootstrap": {
+        "draws": 2000,
+        "seed": 0,
+        "unit": "match",
+        "definition": "xgpoc.detector.testrule.match_weights"
+      },
+      "p_one_sided": "(1 + #{d >= 0}) / (B + 1): superiority of the first arm",
+      "p_two_sided": "min(1, 2 min(1 + #{d >= 0}, 1 + #{d <= 0}) / (B + 1))",
+      "holm": {
+        "family": [
+          "C-B",
+          "C-A"
+        ],
+        "test": "one-sided superiority",
+        "alpha": 0.05
+      },
+      "tost": {
+        "contrasts": [
+          "C-B",
+          "C-A"
+        ],
+        "delta": 0.002,
+        "alpha_each_side": 0.05,
+        "rule": "P(d <= -delta) <= alpha and P(d >= delta) <= alpha over the draws (xgpoc.vendor.ladder.equivalence_curve)",
+        "curve": "margins 0 to 0.01 step 1e-4, smallest equivalent margin reported"
+      }
+    },
+    "decision_table": {
+      "C-B": [
+        "'DINOv2 adds' if the one-sided superiority test is Holm-rejected and the one-sided 95% upper bound < 0",
+        "else 'equivalent for this stacker at \u03b4 = 0.002' if the 90% interval lies within \u00b10.002",
+        "else 'inconclusive at \u03b4 = 0.002; smallest margin shown = X'"
+      ],
+      "C-A": "'geometry adds over the image' if Holm-rejected (one-sided)",
+      "B-A": "two-sided, descriptive"
+    },
+    "leak_controls": {
+      "estimand": "the primary out-of-fold predictions restricted to the subsets, no refit, the primary draws",
+      "heterogeneity": {
+        "seen-unseen": [
+          "seen",
+          "unseen"
+        ],
+        "v3-no_v3": [
+          "v3",
+          "no_v3"
+        ]
+      },
+      "verdict": "'not decidable' if a heterogeneity 95% interval excludes 0 or the restricted no_v3 C-B 95% interval excludes the primary point estimate; else 'decidable'",
+      "unseen": "descriptive (outcome-selected): goal / non-goal split and the sensitivity standardised to the primary goal rate",
+      "refit": "each subset refitted on its own (as xgs_detector_leak.py), descriptive",
+      "limits": "these controls cannot resolve \u03b4",
+      "subsets": {
+        "no_v3": "matches without any soccernet_v3 image in the detector pool index",
+        "unseen": "results/xgs_stack_dd2c_leak/seen.csv seen = false (v3 pool image within 3 s)"
+      }
+    },
+    "validation": {
+      "controls": "xgpoc.dino.controls: clustered label-free simulations (null, image-specific plant), run before the freeze",
+      "expected_c_minus_b_half_width_90": {
+        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
+        "value": null
+      }
+    },
+    "dry_run": {
+      "labels": "permuted within matches (xgpoc.compare.stats.permute_within_matches, seed 0)",
+      "role": "diagnostic only (C1)"
+    },
+    "probes": {
+      "rules": {
+        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
+        "value": null
+      },
+      "encodes_thresholds": {
+        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
+        "value": null
+      }
+    },
+    "agreement": {
+      "tolerances": {
+        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
+        "value": null
+      }
+    },
+    "statsbomb": "never read: every input path and the read-out run inside xgpoc.detector.guard.no_statsbomb_reads",
+    "disclosures": [
+      "Development comparisons on the 328 training matches, not an independent test: the 172 held-out matches are spent; the descriptive row on them (frozen test models) is the size check.",
+      "G-combo's epoch and temperature were chosen on each scored fold (C6 disclosure 3): A and C carry optimism that B does not, so C-B is tilted toward 'DINOv2 adds'.",
+      "Stacking provenance: the training-fold z values of the stacker come from G-combo models that saw the scored fold (C6 disclosure).",
+      "The retrained detector dd2c (feet_t0 geometry) was trained on SoccerNet-v3 pool frames of 3,813 of the 7,062 shots, more often goals; the no_v3 and unseen controls (D1, C1) cannot resolve \u03b4.",
+      "results/xgs_stack_feet_t0 used the historical feet_t0_own_flags variant (scripts/feet_rerun.py), not the frozen feet_t0 rule with E3's t0 ball-source flags used here; it is not an exact baseline.",
+      "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes."
+    ]
+  },
+  "inputs": {
+    "primary": {
+      "index": {
+        "path": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+        "sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee"
+      },
+      "folds": {
+        "path": "cache/folds_xgv_home5.csv",
+        "sha256": "47a83fd3b9fc8fb076731bda34f6741fc26cc0b32cdca96857b09ea120ae5372"
+      },
+      "plan": {
+        "path": "results/xgv_split_plan/plan.csv",
+        "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+      },
+      "oof": {
+        "path": "results/xgd_a1_ensemble/oof.csv",
+        "sha256": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb"
+      },
+      "location_rule": "feet_t0",
+      "e3_frames": {
+        "path": "cache/xgd_full4_feet_t0/E3/frames.parquet",
+        "sha256": "913b1bd9bd3a737a28126308113c44f060d2479a5351ac82bd8cccb666c19e78"
+      },
+      "e3_features": {
+        "path": "cache/xgd_full4_feet_t0/E3/features.parquet",
+        "sha256": "93b4b580dcec76ee2c315440e9b7d069bb5e62f07dc3ebb06db69b328b219a1d"
+      },
+      "labels_v2": {
+        "root": "/home/kuba/projects/football_data/xg_shots_full/soccernet_labels",
+        "files": 328,
+        "digest": "5060482fa608bb9e310b07f4d1a487f20c26c646a203be3156de266aa47bd65c"
+      }
+    },
+    "secondary": {
+      "index": {
+        "path": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+        "sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee"
+      },
+      "folds": {
+        "path": "cache/folds_xgv_home5.csv",
+        "sha256": "47a83fd3b9fc8fb076731bda34f6741fc26cc0b32cdca96857b09ea120ae5372"
+      },
+      "plan": {
+        "path": "results/xgv_split_plan/plan.csv",
+        "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+      },
+      "oof": {
+        "path": "results/xgd_a1_ensemble/oof.csv",
+        "sha256": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb"
+      },
+      "e3_frames": {
+        "path": "cache/xgd_full3/E3/frames.parquet",
+        "sha256": "59c127472036636c1f1a1db014af20a884ff2cf6524fcc8bf1d157c490ef12ff"
+      },
+      "e3_features": {
+        "path": "cache/xgd_full3/E3/features.parquet",
+        "sha256": "6f17d71e467864178a5e612d1ee29f770ebe699832e0b7187fe051f18f709326"
+      },
+      "labels_v2": {
+        "root": "/home/kuba/projects/football_data/xg_shots_full/soccernet_labels",
+        "files": 328,
+        "digest": "5060482fa608bb9e310b07f4d1a487f20c26c646a203be3156de266aa47bd65c"
+      }
+    },
+    "seen": {
+      "path": "results/xgs_stack_dd2c_leak/seen.csv",
+      "sha256": "70c2514103dae3ebba985aa9366573fbe77ca1d9a7c9a423cd5deee0c025c7fe"
+    },
+    "pool_index": {
+      "path": "/mnt/storage/tactifoot_research/detector_data/pool_index.parquet",
+      "sha256": "a719f805929126db63fe062446109feca1bf348821e5e377b7fb9238d5479b2a"
+    }
+  },
+  "counts": {
+    "primary": {
+      "shots": 7062,
+      "matches": 328
+    },
+    "no_v3": {
+      "shots": 1028,
+      "matches": 47
+    },
+    "unseen": {
+      "shots": 3249,
+      "matches": 326
+    },
+    "populations": {
+      "primary": {
+        "shots": 7062,
+        "matches": 328,
+        "folds": 5,
+        "shots_per_fold": {
+          "0": 1434,
+          "1": 1373,
+          "2": 1490,
+          "3": 1367,
+          "4": 1398
+        },
+        "matches_per_fold": {
+          "0": 66,
+          "1": 66,
+          "2": 66,
+          "3": 65,
+          "4": 65
+        },
+        "flags": {
+          "sn_direct_fk": 484,
+          "sn_indirect_fk_3s": 59,
+          "sn_corner_20s": 884,
+          "sn_prev_shot_5s": 233,
+          "sn_team_unknown": 0
+        },
+        "e3_t0": {
+          "shot_missing": 65,
+          "frame_missing": 0,
+          "kp_conf_missing": 1
+        },
+        "angles_wrapped": {
+          "0": 4,
+          "-400": 10
+        }
+      },
+      "secondary": {
+        "shots": 7062,
+        "matches": 328,
+        "folds": 5,
+        "shots_per_fold": {
+          "0": 1434,
+          "1": 1373,
+          "2": 1490,
+          "3": 1367,
+          "4": 1398
+        },
+        "matches_per_fold": {
+          "0": 66,
+          "1": 66,
+          "2": 66,
+          "3": 65,
+          "4": 65
+        },
+        "flags": {
+          "sn_direct_fk": 484,
+          "sn_indirect_fk_3s": 59,
+          "sn_corner_20s": 884,
+          "sn_prev_shot_5s": 233,
+          "sn_team_unknown": 0
+        },
+        "e3_t0": {
+          "shot_missing": 260,
+          "frame_missing": 0,
+          "kp_conf_missing": 1
+        },
+        "angles_wrapped": {
+          "0": 20,
+          "-400": 15
+        }
+      }
+    },
+    "v3_games_in_pool": 400
+  },
+  "code": {
+    "digest": "174e235584629209d4d237101bd249f3d3c755ee1b50310216409570e9c142cc",
+    "files": {
+      "scripts/xgdino_ablation.py (pin normalised)": "d58ab789c5d108abc51b83a40b019038393ac25e4c9e4e94185acddf4e045998",
+      "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+      "xgpoc/compare/__init__.py": "901c6e1fdbacc65489e5a16792ee86adc1b61e3ed4beb534b78e330860f98d14",
+      "xgpoc/compare/categories.py": "8d6824de4af819269ff65b33661890bf45d8437b0f51e5b51224715c0b4e4046",
+      "xgpoc/compare/power.py": "f0cbd01efbe994da3f3700e1eef361250cd7d2abe3cccdec4b0297aeff7f69d6",
+      "xgpoc/compare/protocol.py": "47afa10632b3a580593a9871b3fa9e156ad58ab6a9c7f3cb9e91c90f3dd8fa6e",
+      "xgpoc/compare/stats.py": "bc083cc77fe3bed0c72325c964886377803ebf4270abc9c23d02a8587d7c1982",
+      "xgpoc/data/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/data/canonical_frames.py": "4d0c1c03f13e6282f3087877a2369bf9a7077a247ffe6349e8058a84e2bde46b",
+      "xgpoc/data/datasets.py": "ff9bf7bc81491f9e13d4433a8f934e47bead61c85134a2e940b6494e91603c2d",
+      "xgpoc/data/offset_frames.py": "cefb22618a37d910f1a77fa562abe83598dbfaf0af33b669f69975fcb823d195",
+      "xgpoc/detector/__init__.py": "35c71c872bb693848189ea078461a51ba4b8ed91293f8fa7bed4a9a1556cf7a1",
+      "xgpoc/detector/approach1.py": "f3020856dbca4f5a4b1d7f5f51ab043a5a3c0f3214e85fbf84280a8da10e21c5",
+      "xgpoc/detector/conventions.py": "b2ad2e2c1b0a8c3589b58cbcf6f757936ba3ff3ff771b7d13fe10e7fcd8d90a1",
+      "xgpoc/detector/extract.py": "16f8893dca3376181667eba9c39ed7534a3579bc34ef51ab21f312f81e3e4ef8",
+      "xgpoc/detector/extract3.py": "08b818ac297e2f525a8b3c4b609ff3abe16eb684bf6ec85c5c939c531ce4bc0c",
+      "xgpoc/detector/features.py": "e602514c78c6fa892d667b83ebfdaa4f81afbbf5cbfbd5f73902f0e1e8719575",
+      "xgpoc/detector/guard.py": "de338fb5040c178003e4dfe7f4c67032e4b8b05390925a00ed0159d8678ea3f6",
+      "xgpoc/detector/location.py": "cc785ac1300867a2d435e4ab766493084515e4f3254f271d119733f38b549438",
+      "xgpoc/detector/records.py": "dfe2c1f3e86efc54f2ce29a6b144564349e5bcf2c3a4b79063d8e664566dbf9f",
+      "xgpoc/detector/sanitation.py": "fa6b525d7a6bd6226dfbf42f0b08a2839f30f703c10c960f797227c908a71705",
+      "xgpoc/detector/seal.py": "ef42c7997b0de5bedeaed80bda27b0feb97a657275fe4304cba31cc75474f4a3",
+      "xgpoc/detector/testrule.py": "1a27a59bfa807cd2e1586578188790c9ee8d0206961fd1be5565d1d100986674",
+      "xgpoc/dino/__init__.py": "731809db0e735dbe800a4d6c7f5c095e1d0eb7aa3e2e1229f55735e2f9c66ca3",
+      "xgpoc/dino/ablation.py": "951273cd127cd64725b258fe82ec5d5b39bc69c99cdaf6aa7e4e87015e4d6f05",
+      "xgpoc/dino/controls.py": "ff3ba1bffb531c739795f8ff2b5b67c8aaf11eb1f58bdfe4fb190dd815c36e11",
+      "xgpoc/dino/records.py": "772dcd94f1ae27458f1ff5bcb8f724e7ec7be65fce295ac75782821ae9b1dce4",
+      "xgpoc/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/eval/metrics.py": "835dbfff1ff938ab5a12e08568d5dc3d367d5bf5e4ca63aacae51b11e201896d",
+      "xgpoc/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/models/common.py": "b2034c23fe33c37ff470d08a599f55609e256e9ff227d41c6a6563b13ab549dc",
+      "xgpoc/models/d_foundation.py": "9baba0d66c90eb4e4fecd035c5f7c86dee0b5d046505f90e316affb0a2af223b",
+      "xgpoc/models/g_bundle.py": "e306bfe43a1a322d5dbfdf7a39bf7b11b361888cf247527cf1b144113d3efa4d",
+      "xgpoc/paths.py": "4beca7070d9ecfa1c3f5c1f62e40d048f2c611de56283be9a6033151513fa8f2",
+      "xgpoc/probe/__init__.py": "f651a9148861c806c0a4e3851509d456f3d278593f2b99fba861a08d33ecf4d2",
+      "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+      "xgpoc/probe/table.py": "92432bd890c4bfb98b0d7158e88bb53fff6d8eeb9908b2d41efcc0f628f27d21",
+      "xgpoc/stack/__init__.py": "350fc6c0d84b87eed432b480116cfdcb946c834330cc9bdc8138aac112ee78e7",
+      "xgpoc/stack/analysis.py": "bb3adc25e183f7f8c83047cec7bfd775e2a082198410b3ebff23f35cdfada838",
+      "xgpoc/stack/controls.py": "84b224aefa0f24b79d5277f1547fc9fd1791697b829f257310ef4f3767433bec",
+      "xgpoc/stack/fit.py": "0da330d2d9fcfb1488ad1902fa0a5dcd3f9b7811952f8ac0378c95a9723df9d6",
+      "xgpoc/stack/inputs.py": "77bb8876dfa8a5eab9108deff8506cd716c56c80e2f46fce175b3430e3f38801",
+      "xgpoc/stack/provenance.py": "58956d1c0e9dab66e9adc13d8901a543426a9121a8cfaba6183d437f9e3059de",
+      "xgpoc/stack/stats.py": "34586b8dfcce7c0b1e020cdf916bb593cfb2ad4a847683b930bfde936b20cb74",
+      "xgpoc/stack_location/__init__.py": "75571ff5531268cbd6c77f92d8f77ba48a5a768060593bfa3f312bb88fcd8720",
+      "xgpoc/stack_location/inputs.py": "33fad5062423d281fe2650329fc399993676093da55a0f4b4feaba01a5d31b5c",
+      "xgpoc/vendor/__init__.py": "aa7741ce1a94ea50fc915f440569855ed2e33c435c81cb1c47fc0912168ea195",
+      "xgpoc/vendor/draws.py": "fc88a16636cd4e558b5264081a7a6d245d6a4b981f0c1cad7b33ba9649bfe62c",
+      "xgpoc/vendor/evaltable.py": "e6220255f3dc4723a40f4f37ba1044aa33cc016ca30d8746aca3c29d5cbc31f7",
+      "xgpoc/vendor/ladder.py": "a2de6fff3ade4b7741896aaf6f78df1071d3e67e1e5db983ea434d0bbd5428b1",
+      "xgpoc/vendor/refit.py": "1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02"
+    }
+  },
+  "git": {
+    "sha": "0d1a194594303f32a52b389b6aa486cd89cadd55",
+    "dirty": false
+  },
+  "written": "2026-10-27T21:29:22+00:00"
+}
