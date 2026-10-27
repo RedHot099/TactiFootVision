@@ -1,5 +1,5 @@
 {
-  "purpose": "xg-dino ticket 01: the frozen A/B/C ablation protocol, written before any real fit",
+  "purpose": "xg-dino tickets 01 and 01b: the frozen A/B/C ablation protocol, written before any real fit",
   "frozen": {
     "population": {
       "primary": "stack_location.inputs.build_population(location.FEET_T0, e3=cache/xgd_full4_feet_t0/E3)",
@@ -1062,6 +1062,8 @@
       ],
       "df": 3,
       "c_grid": [
+        0.0001,
+        0.0003,
         0.001,
         0.003,
         0.01,
@@ -1200,10 +1202,315 @@
       }
     },
     "validation": {
-      "controls": "xgpoc.dino.controls: clustered label-free simulations (null, image-specific plant), run before the freeze",
-      "expected_c_minus_b_half_width_90": {
-        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
-        "value": null
+      "controls": {
+        "path": "results/xgdino_ablation/controls_r2000",
+        "complete_sha256": "c2203b75a0162e3e937888cf6ae92201f0c888bbf77cdcf1ac01eb7918b7dd49",
+        "seeds": {
+          "null": 30521,
+          "plant": 30522
+        },
+        "truth": {
+          "goal_rate": 0.1277258566978193,
+          "cluster_sd": 0.25,
+          "beta_plant": 0.18309909988031173,
+          "oracle_plant_clustered": -0.0019999999999854023,
+          "oracle_plant_unclustered": -0.0020081424179796414,
+          "mean_p_null": 0.12772585669781844,
+          "corr_r_geometry_max": 6.613145161599871e-15,
+          "plus_0.002": "not constructible: C nests B, its oracle C-B is <= 0",
+          "hermite_nodes": 40,
+          "replicates": 2000
+        },
+        "scenarios": {
+          "null": {
+            "replicates": 2000,
+            "oracle_C-B": 0.0,
+            "mean_C-B": 0.00015623653306296348,
+            "sd_C-B": 0.00026367003653621885,
+            "mean_half_width_90_C-B": 0.00045954679616584275,
+            "mean_C-A": -0.00814828213193,
+            "rate_DINOv2": {
+              "rate": 0.008,
+              "mc_se": 0.0019919839356781974,
+              "wilson95": [
+                0.0049302968532159265,
+                0.012956077671536958
+              ],
+              "count": 16
+            },
+            "rate_equivalent": {
+              "rate": 0.9885,
+              "mc_se": 0.0023840878758971907,
+              "wilson95": [
+                0.9828022720924287,
+                0.9923247727137873
+              ],
+              "count": 1977
+            },
+            "rate_inconclusive": {
+              "rate": 0.0035,
+              "mc_se": 0.0013205585939290994,
+              "wilson95": [
+                0.0016964316970424177,
+                0.007207196253241745
+              ],
+              "count": 7
+            },
+            "rate_geometry_adds": {
+              "rate": 0.9995,
+              "mc_se": 0.000499874984371065,
+              "wilson95": [
+                0.9971731374967338,
+                0.9999117322692944
+              ],
+              "count": 1999
+            },
+            "raw": {
+              "upper_below_0": {
+                "rate": 0.008,
+                "mc_se": 0.0019919839356781974,
+                "wilson95": [
+                  0.0049302968532159265,
+                  0.012956077671536958
+                ],
+                "count": 16
+              },
+              "holm_rejected": {
+                "rate": 0.008,
+                "mc_se": 0.0019919839356781974,
+                "wilson95": [
+                  0.0049302968532159265,
+                  0.012956077671536958
+                ],
+                "count": 16
+              },
+              "tost_pass": {
+                "rate": 0.996,
+                "mc_se": 0.0014113823011501884,
+                "wilson95": [
+                  0.9921265357039621,
+                  0.9979717533930348
+                ],
+                "count": 1992
+              }
+            },
+            "coverage_oracle": {
+              "interval_95": {
+                "rate": 0.883,
+                "mc_se": 0.007187176079657434,
+                "wilson95": [
+                  0.86817353316771,
+                  0.8963580086148503
+                ],
+                "count": 1766
+              },
+              "interval_90": {
+                "rate": 0.8105,
+                "mc_se": 0.008763268511234835,
+                "wilson95": [
+                  0.7927352161406862,
+                  0.8270742974976557
+                ],
+                "count": 1621
+              },
+              "upper_one_sided_95": {
+                "rate": 0.992,
+                "mc_se": 0.001991983935678198,
+                "wilson95": [
+                  0.9870439223284629,
+                  0.995069703146784
+                ],
+                "count": 1984
+              }
+            },
+            "coverage_expected": {
+              "interval_95": {
+                "rate": 0.9495,
+                "mc_se": 0.0048964145045124596,
+                "wilson95": [
+                  0.9390120477558316,
+                  0.958264526738322
+                ],
+                "count": 1899
+              },
+              "interval_90": {
+                "rate": 0.9185,
+                "mc_se": 0.006117914268768402,
+                "wilson95": [
+                  0.9056914879040412,
+                  0.92970394352155
+                ],
+                "count": 1837
+              },
+              "upper_one_sided_95": {
+                "rate": 0.966,
+                "mc_se": 0.004052406692324946,
+                "wilson95": [
+                  0.9571215720934327,
+                  0.9730917398404393
+                ],
+                "count": 1932
+              }
+            },
+            "grid_edge_share": {
+              "B": 0.00030000000000000003,
+              "C": 0.00030000000000000003
+            },
+            "beta": 0.0
+          },
+          "plant": {
+            "replicates": 2000,
+            "oracle_C-B": -0.0019999999999854023,
+            "mean_C-B": -0.002398431532546597,
+            "sd_C-B": 0.001042370643290031,
+            "mean_half_width_90_C-B": 0.0018109781320847093,
+            "mean_C-A": -0.0033035675843957,
+            "rate_DINOv2": {
+              "rate": 0.744,
+              "mc_se": 0.00975868843646522,
+              "wilson95": [
+                0.7244181803933457,
+                0.7626463005334029
+              ],
+              "count": 1488
+            },
+            "rate_equivalent": {
+              "rate": 0.035,
+              "mc_se": 0.004109440351191388,
+              "wilson95": [
+                0.027795569156293554,
+                0.04398728481527167
+              ],
+              "count": 70
+            },
+            "rate_inconclusive": {
+              "rate": 0.221,
+              "mc_se": 0.009277903858092086,
+              "wilson95": [
+                0.2033600655726267,
+                0.23970964681031237
+              ],
+              "count": 442
+            },
+            "rate_geometry_adds": {
+              "rate": 0.9185,
+              "mc_se": 0.006117914268768402,
+              "wilson95": [
+                0.9056914879040412,
+                0.92970394352155
+              ],
+              "count": 1837
+            },
+            "raw": {
+              "upper_below_0": {
+                "rate": 0.763,
+                "mc_se": 0.009508706536643142,
+                "wilson95": [
+                  0.7438701413329122,
+                  0.7811214917971488
+                ],
+                "count": 1526
+              },
+              "holm_rejected": {
+                "rate": 0.744,
+                "mc_se": 0.00975868843646522,
+                "wilson95": [
+                  0.7244181803933457,
+                  0.7626463005334029
+                ],
+                "count": 1488
+              },
+              "tost_pass": {
+                "rate": 0.035,
+                "mc_se": 0.004109440351191388,
+                "wilson95": [
+                  0.027795569156293554,
+                  0.04398728481527167
+                ],
+                "count": 70
+              }
+            },
+            "coverage_oracle": {
+              "interval_95": {
+                "rate": 0.957,
+                "mc_se": 0.004536022486716751,
+                "wilson95": [
+                  0.9471988913295474,
+                  0.9650489274553872
+                ],
+                "count": 1914
+              },
+              "interval_90": {
+                "rate": 0.9045,
+                "mc_se": 0.006571900410079265,
+                "wilson95": [
+                  0.890832875631817,
+                  0.9166162331176492
+                ],
+                "count": 1809
+              },
+              "upper_one_sided_95": {
+                "rate": 0.9395,
+                "mc_se": 0.005331029450303197,
+                "wilson95": [
+                  0.9281849047504186,
+                  0.94913001068936
+                ],
+                "count": 1879
+              }
+            },
+            "coverage_expected": {
+              "interval_95": {
+                "rate": 0.9505,
+                "mc_se": 0.004850244839180801,
+                "wilson95": [
+                  0.9400999950103993,
+                  0.9591727453891917
+                ],
+                "count": 1901
+              },
+              "interval_90": {
+                "rate": 0.9075,
+                "mc_se": 0.006478570444164362,
+                "wilson95": [
+                  0.89400918458776,
+                  0.9194284218780187
+                ],
+                "count": 1815
+              },
+              "upper_one_sided_95": {
+                "rate": 0.9765,
+                "mc_se": 0.0033873108803297025,
+                "wilson95": [
+                  0.9688912783026569,
+                  0.9822817756383091
+                ],
+                "count": 1953
+              }
+            },
+            "grid_edge_share": {
+              "B": 0.0002,
+              "C": 0.0002
+            },
+            "beta": 0.18309909988031173
+          }
+        },
+        "gates": {
+          "false_adds_null": 0.008,
+          "false_equivalence_plant": 0.035,
+          "limit": 0.05,
+          "passed": true
+        }
+      },
+      "expected_precision": {
+        "null_half_width_90_r200": 0.00047,
+        "plant_half_width_90_r200_provisional": 0.00178,
+        "size_check_half_width_7062": 0.0037,
+        "size_check": "the 172 descriptive sweep's stack ALL interval scaled to 7,062 shots (C2)",
+        "reading": "a straddle of \u00b1\u03b4 is the likely outcome; worded as C1 ('inconclusive at \u03b4 = 0.002; smallest margin shown = X')",
+        "null_half_width_90": 0.00045954679616584275,
+        "plant_half_width_90": 0.0018109781320847093,
+        "null_overfit_shift": 0.00015623653306296348
       }
     },
     "dry_run": {
@@ -1211,20 +1518,70 @@
       "role": "diagnostic only (C1)"
     },
     "probes": {
-      "rules": {
-        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
-        "value": null
-      },
-      "encodes_thresholds": {
-        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
-        "value": null
+      "fit": "only on automatic geometry targets (feet_t0 E3) of the 328 matches; on the 2,721 paired shots the frozen probe predictions and the detector are evaluated against StatsBomb targets, nothing fitted to StatsBomb",
+      "routing": "outer fold k: probe fitted on fold model k's embeddings of folds != k (inner 3 for the penalty), read on fold k; frozen DINOv2 on the same splits; paired shots read with each fold model's probe, averaged",
+      "references": [
+        "constant",
+        "flexible distance-only",
+        "distance + embedding (incremental held-out gain)",
+        "shuffled-target control"
+      ],
+      "gk_strata": "goalkeeper targets also by detected / proxy strata",
+      "best_layer": {
+        "metric": "mean out-of-fold metric of the embedding-only probe per encoder x target: R\u00b2 (continuous / count), AUC (binary)",
+        "tie": "within 0.01 R\u00b2 / 0.005 AUC of the maximum -> the later block",
+        "encodes_ci": "the layer is selected inside the training folds (nested)",
+        "paired": "the layer chosen on all development out-of-fold readings"
       }
+    },
+    "encodes_thresholds": {
+      "encodes_beyond_distance": {
+        "rule": "distance + embedding over the distance-only probe, 95% match-bootstrap lower bound > 0 and gain >= threshold",
+        "delta_r2_min": 0.05,
+        "delta_auc_min": 0.03
+      },
+      "readable": {
+        "rule": "embedding-only probe",
+        "r2_min": 0.3,
+        "auc_min": 0.7
+      },
+      "distance_itself": {
+        "rule": "embedding-only against the constant",
+        "r2_min": 0.5
+      },
+      "else": "does not encode at this threshold"
     },
     "agreement": {
       "tolerances": {
-        "status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)",
-        "value": null
-      }
+        "distance_m": 2.0,
+        "angle_deg": 5.0,
+        "near_opp_m": 1.5,
+        "opp_3m_count": 0,
+        "def_cone_count": 0,
+        "gk_depth_m": 1.0,
+        "gk_lateral_abs_m": 1.0
+      },
+      "right": "|error| <= \u03c4, the same \u03c4 for both sources",
+      "detector_wrong": "|error| > \u03c4 and above the detector's own 75th percentile (C1)",
+      "gk_undetected": "the missing-detector cell, never 'wrong'"
+    },
+    "timing_bands": {
+      "bands_ms": [
+        "<= 50",
+        "50-200",
+        "> 200"
+      ],
+      "min_shots": 100,
+      "merge": "a band below 100 shots merges with its lower neighbour",
+      "pre_registered_likely": "<= 50 / > 50 with the raw > 200 count shown"
+    },
+    "cell_permutation_null": {
+      "strata": "10 distance deciles of the paired shots, a stratum below 100 merged",
+      "permutations": 10000,
+      "seed": 0,
+      "permuted": "the probe's right / wrong status within stratum, the detector's status fixed",
+      "p": "(1 + #{>= observed}) / (N + 1), one-sided",
+      "reported": "the fraction permutable"
     },
     "statsbomb": "never read: every input path and the read-out run inside xgpoc.detector.guard.no_statsbomb_reads",
     "disclosures": [
@@ -1233,7 +1590,16 @@
       "Stacking provenance: the training-fold z values of the stacker come from G-combo models that saw the scored fold (C6 disclosure).",
       "The retrained detector dd2c (feet_t0 geometry) was trained on SoccerNet-v3 pool frames of 3,813 of the 7,062 shots, more often goals; the no_v3 and unseen controls (D1, C1) cannot resolve \u03b4.",
       "results/xgs_stack_feet_t0 used the historical feet_t0_own_flags variant (scripts/feet_rerun.py), not the frozen feet_t0 rule with E3's t0 ball-source flags used here; it is not an exact baseline.",
-      "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes."
+      "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes.",
+      "The control simulations are label-free (C1 departure 1, accepted by C2): the truths are the geometry projection of z and its image-specific residual, not a fit of C on the real labels.",
+      "Under the label-free null B is exactly well-specified, so the null C-B half-width (0.00047 at r200) is a floor of the real precision (C2).",
+      "shooter_by_net (a no-ball shooter-pick flag) and the detection flags (homography_ok, shooter_ok, teams_ok, gk_ok, gk_detected, gk_proxy) count as quality covariates, not geometry (C1 departure 2).",
+      "B_DA is the C6 spec minus ball_none@0 (ball source is a quality covariate; C1 departure 3).",
+      "The kept gk_*_missing indicators carry gk_detected by construction (the C1 compromise).",
+      "'DINOv2 adds' needs both a Holm rejection of the one-sided C-B test and its one-sided 95% upper bound < 0 (C1 departure 4); the raw superiority and TOST flags are reported separately beside the headline (C2).",
+      "Linearly dependent columns are reduced only in the unpenalised oracle projections of the controls (duplicated missing indicators make them singular), never in the arms (C1 departure 5).",
+      "The procedure's C-B carries a known overfit shift under the null (+0.00013 at r200; C2): no bias correction; the 90% interval is kept unless the boundary false-equivalence rate exceeds 0.05.",
+      "A true C-B of +0.002 cannot be simulated: C nests B, so the oracle C-B is <= 0 (disclosed, no control)."
     ]
   },
   "inputs": {
@@ -1397,9 +1763,9 @@
     "v3_games_in_pool": 400
   },
   "code": {
-    "digest": "174e235584629209d4d237101bd249f3d3c755ee1b50310216409570e9c142cc",
+    "digest": "3ea7498a8af66f5e4d1488880f98168f0b9ed094a1dc472cdfd6e5107e4cba58",
     "files": {
-      "scripts/xgdino_ablation.py (pin normalised)": "d58ab789c5d108abc51b83a40b019038393ac25e4c9e4e94185acddf4e045998",
+      "scripts/xgdino_ablation.py (pin normalised)": "ec58a720f487a4f0389406bb39f6995cdd8bc7f55a30795dad8259c72cffe6da",
       "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
       "xgpoc/compare/__init__.py": "901c6e1fdbacc65489e5a16792ee86adc1b61e3ed4beb534b78e330860f98d14",
@@ -1424,8 +1790,8 @@
       "xgpoc/detector/seal.py": "ef42c7997b0de5bedeaed80bda27b0feb97a657275fe4304cba31cc75474f4a3",
       "xgpoc/detector/testrule.py": "1a27a59bfa807cd2e1586578188790c9ee8d0206961fd1be5565d1d100986674",
       "xgpoc/dino/__init__.py": "731809db0e735dbe800a4d6c7f5c095e1d0eb7aa3e2e1229f55735e2f9c66ca3",
-      "xgpoc/dino/ablation.py": "951273cd127cd64725b258fe82ec5d5b39bc69c99cdaf6aa7e4e87015e4d6f05",
-      "xgpoc/dino/controls.py": "ff3ba1bffb531c739795f8ff2b5b67c8aaf11eb1f58bdfe4fb190dd815c36e11",
+      "xgpoc/dino/ablation.py": "1afe0b89827bf72927ad111f3f19e31e2f68022a3d9673f24a40a1be4ab57b50",
+      "xgpoc/dino/controls.py": "4f543a8241234f0378a08f30e569b36f9e87e0b6253660353d77b919168ba779",
       "xgpoc/dino/records.py": "772dcd94f1ae27458f1ff5bcb8f724e7ec7be65fce295ac75782821ae9b1dce4",
       "xgpoc/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
@@ -1455,8 +1821,8 @@
     }
   },
   "git": {
-    "sha": "0d1a194594303f32a52b389b6aa486cd89cadd55",
-    "dirty": false
+    "sha": "97ba175d62ea12d0ac340773a365e34259774099",
+    "dirty": true
   },
-  "written": "2026-10-27T21:29:22+00:00"
+  "written": "2026-10-27T23:38:23+00:00"
 }

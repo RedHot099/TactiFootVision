@@ -20,7 +20,8 @@ Arms (`arm_set`; the C6 spec's candidate `bc`: dist natural spline 3 df, standar
              secondary block (old-E3 geometry: B_DA, B, C)
     The zero-variance rule (`fit.constant_columns`) drops constant inputs per table. The penalty is by column name
     (`NamedModel`): only a column named z_g_combo is free. C is chosen per outer fold by inner match-grouped CV over the
-    other host folds (`fit.chosen_c`) on `C_GRID` (C6's grid extended by 3, 10, 30, 100), a grid-edge flag per fold.
+    other host folds (`fit.chosen_c`) on `C_GRID` (C6's grid extended by 3, 10, 30, 100 (C1) and 1e-4, 3e-4 (C2)), a
+    grid-edge flag per fold.
     Every arm uses the same outer and inner folds. No arm gets an extra Platt layer.
 Read-out (`read_out`, on any outcome vector: real, permuted or simulated)
     per block and arm: log-loss, Brier, AUC, calibration slope and intercept, a 10-bin (equal-count) reliability table;
@@ -69,7 +70,7 @@ QUALITY = tuple(c for c in si.E3_COLUMNS if c not in GEOMETRY)                 #
 SPLINE = sf.CANDIDATES[CANDIDATE].spline
 DF = sf.CANDIDATES[CANDIDATE].df
 B_DA_LINEAR = (si.col("angle", 0), si.col("shot_missing", 0))
-C_GRID = (*sf.C_GRID, 3.0, 10.0, 30.0, 100.0)
+C_GRID = (1e-4, 3e-4, *sf.C_GRID, 3.0, 10.0, 30.0, 100.0)   # C6 + C1 top + C2 bottom
 CONFIRMATORY_ARMS = ("A", "B_DA", "B", "C")
 DESCRIPTIVE_ARMS = ("BQ", "CQ", "B_legacy", "C_legacy")
 SECONDARY_ARMS = CONFIRMATORY_ARMS
@@ -101,8 +102,63 @@ DISCLOSURES = (
     "results/xgs_stack_feet_t0 used the historical feet_t0_own_flags variant (scripts/feet_rerun.py), not the frozen "
     "feet_t0 rule with E3's t0 ball-source flags used here; it is not an exact baseline.",
     "E3's configuration was chosen on 135 of the 172 held-out matches by StatsBomb position error, with no outcomes.",
+    "The control simulations are label-free (C1 departure 1, accepted by C2): the truths are the geometry projection of "
+    "z and its image-specific residual, not a fit of C on the real labels.",
+    "Under the label-free null B is exactly well-specified, so the null C-B half-width (0.00047 at r200) is a floor of "
+    "the real precision (C2).",
+    "shooter_by_net (a no-ball shooter-pick flag) and the detection flags (homography_ok, shooter_ok, teams_ok, gk_ok, "
+    "gk_detected, gk_proxy) count as quality covariates, not geometry (C1 departure 2).",
+    "B_DA is the C6 spec minus ball_none@0 (ball source is a quality covariate; C1 departure 3).",
+    "The kept gk_*_missing indicators carry gk_detected by construction (the C1 compromise).",
+    "'DINOv2 adds' needs both a Holm rejection of the one-sided C-B test and its one-sided 95% upper bound < 0 (C1 "
+    "departure 4); the raw superiority and TOST flags are reported separately beside the headline (C2).",
+    "Linearly dependent columns are reduced only in the unpenalised oracle projections of the controls (duplicated "
+    "missing indicators make them singular), never in the arms (C1 departure 5).",
+    "The procedure's C-B carries a known overfit shift under the null (+0.00013 at r200; C2): no bias correction; the "
+    "90% interval is kept unless the boundary false-equivalence rate exceeds 0.05.",
+    "A true C-B of +0.002 cannot be simulated: C nests B, so the oracle C-B is <= 0 (disclosed, no control).",
 )
-TODO = {"status": "TODO: filled by the orchestrator before the freeze (not set by ticket 01)", "value": None}
+EXPECTED_PRECISION = {
+    "null_half_width_90_r200": 0.00047, "plant_half_width_90_r200_provisional": 0.00178,
+    "size_check_half_width_7062": 0.0037,
+    "size_check": "the 172 descriptive sweep's stack ALL interval scaled to 7,062 shots (C2)",
+    "reading": "a straddle of ±δ is the likely outcome; worded as C1 ('inconclusive at δ = 0.002; smallest margin shown "
+               "= X')"}
+C2_RULES = {
+    "probes": {
+        "fit": "only on automatic geometry targets (feet_t0 E3) of the 328 matches; on the 2,721 paired shots the frozen "
+               "probe predictions and the detector are evaluated against StatsBomb targets, nothing fitted to StatsBomb",
+        "routing": "outer fold k: probe fitted on fold model k's embeddings of folds != k (inner 3 for the penalty), read "
+                   "on fold k; frozen DINOv2 on the same splits; paired shots read with each fold model's probe, averaged",
+        "references": ["constant", "flexible distance-only", "distance + embedding (incremental held-out gain)",
+                       "shuffled-target control"],
+        "gk_strata": "goalkeeper targets also by detected / proxy strata",
+        "best_layer": {"metric": "mean out-of-fold metric of the embedding-only probe per encoder x target: R² "
+                                 "(continuous / count), AUC (binary)",
+                       "tie": "within 0.01 R² / 0.005 AUC of the maximum -> the later block",
+                       "encodes_ci": "the layer is selected inside the training folds (nested)",
+                       "paired": "the layer chosen on all development out-of-fold readings"}},
+    "encodes_thresholds": {
+        "encodes_beyond_distance": {"rule": "distance + embedding over the distance-only probe, 95% match-bootstrap lower "
+                                            "bound > 0 and gain >= threshold",
+                                    "delta_r2_min": 0.05, "delta_auc_min": 0.03},
+        "readable": {"rule": "embedding-only probe", "r2_min": 0.30, "auc_min": 0.70},
+        "distance_itself": {"rule": "embedding-only against the constant", "r2_min": 0.50},
+        "else": "does not encode at this threshold"},
+    "agreement": {
+        "tolerances": {"distance_m": 2.0, "angle_deg": 5.0, "near_opp_m": 1.5, "opp_3m_count": 0, "def_cone_count": 0,
+                       "gk_depth_m": 1.0, "gk_lateral_abs_m": 1.0},
+        "right": "|error| <= τ, the same τ for both sources",
+        "detector_wrong": "|error| > τ and above the detector's own 75th percentile (C1)",
+        "gk_undetected": "the missing-detector cell, never 'wrong'"},
+    "timing_bands": {"bands_ms": ["<= 50", "50-200", "> 200"], "min_shots": 100,
+                     "merge": "a band below 100 shots merges with its lower neighbour",
+                     "pre_registered_likely": "<= 50 / > 50 with the raw > 200 count shown"},
+    "cell_permutation_null": {"strata": "10 distance deciles of the paired shots, a stratum below 100 merged",
+                              "permutations": 10000, "seed": 0,
+                              "permuted": "the probe's right / wrong status within stratum, the detector's status fixed",
+                              "p": "(1 + #{>= observed}) / (N + 1), one-sided", "reported": "the fraction permutable"},
+}
 
 
 # ------------------------------------------------------------------ paths and inputs
@@ -379,8 +435,10 @@ def decision(c_b: dict, c_a: dict, holm: dict[str, bool]) -> dict:
         wording = f"equivalent for this stacker at δ = {DELTA}"
     else:
         wording = f"inconclusive at δ = {DELTA}; smallest margin shown = {tost['smallest_margin']:.4f}"
+    flags = {c: {"upper_below_0": bool(r["upper_one_sided_95"] < 0), "holm_rejected": bool(holm[c]),
+                 "tost_pass": bool(r["tost"]["equivalent"])} for c, r in (("C-B", c_b), ("C-A", c_a))}
     return {"C-B": wording, "C-A": "geometry adds over the image" if holm["C-A"] and c_a["upper_one_sided_95"] < 0
-            else "no detectable gain of geometry over the image", "holm_rejected": holm}
+            else "no detectable gain of geometry over the image", "holm_rejected": holm, "flags": flags}
 
 
 def _read_block(name: str, y: np.ndarray, p: dict[str, np.ndarray], weights: np.ndarray, goal_rate: float) -> dict:
@@ -476,10 +534,22 @@ def dry_run_check(summary: dict) -> dict:
 
 
 # ------------------------------------------------------------------ protocol
-def protocol(inputs: Inputs) -> dict:
+def validation(record: dict, complete_sha256: str, path: str) -> dict:
+    """The protocol's validation section from the controls' completion record (`scripts/xgdino_ablation.py
+    --controls`): its hash, the truth, every scenario's rates and the gates."""
+    controls = record["controls"]
+    return {"controls": {"path": path, "complete_sha256": complete_sha256, "seeds": controls["seeds"],
+                         "truth": controls["truth"], "scenarios": controls["scenarios"], "gates": controls["gates"]},
+            "expected_precision": EXPECTED_PRECISION | {
+                "null_half_width_90": controls["scenarios"]["null"]["mean_half_width_90_C-B"],
+                "plant_half_width_90": controls["scenarios"]["plant"]["mean_half_width_90_C-B"],
+                "null_overfit_shift": controls["scenarios"]["null"]["mean_C-B"]}}
+
+
+def protocol(inputs: Inputs, checked: dict) -> dict:
     """The frozen part of the protocol: arms with their exact design columns and free columns per block, the model,
-    the folds, the read-out, decision and leak rules, TODO sections for later tickets and the disclosures (written by
-    `scripts/xgdino_ablation.py --protocol`)."""
+    the folds, the read-out, decision and leak rules, the validation (`validation`, from the controls), the C2 rules
+    of the later tickets and the disclosures (written by `scripts/xgdino_ablation.py --protocol`)."""
     table = inputs.primary.table
     tables = {"primary": (table, (*CONFIRMATORY_ARMS, *DESCRIPTIVE_ARMS))}
     if inputs.secondary is not None:
@@ -544,13 +614,12 @@ def protocol(inputs: Inputs) -> dict:
             "limits": "these controls cannot resolve δ",
             "subsets": {"no_v3": "matches without any soccernet_v3 image in the detector pool index",
                         "unseen": "results/xgs_stack_dd2c_leak/seen.csv seen = false (v3 pool image within 3 s)"}},
-        "validation": {"controls": "xgpoc.dino.controls: clustered label-free simulations (null, image-specific plant), "
-                                   "run before the freeze",
-                       "expected_c_minus_b_half_width_90": TODO},
+        "validation": checked,
         "dry_run": {"labels": "permuted within matches (xgpoc.compare.stats.permute_within_matches, seed 0)",
                     "role": "diagnostic only (C1)"},
-        "probes": {"rules": TODO, "encodes_thresholds": TODO},
-        "agreement": {"tolerances": TODO},
+        "probes": C2_RULES["probes"], "encodes_thresholds": C2_RULES["encodes_thresholds"],
+        "agreement": C2_RULES["agreement"], "timing_bands": C2_RULES["timing_bands"],
+        "cell_permutation_null": C2_RULES["cell_permutation_null"],
         "statsbomb": "never read: every input path and the read-out run inside xgpoc.detector.guard.no_statsbomb_reads",
         "disclosures": list(DISCLOSURES),
     }
