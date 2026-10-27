@@ -80,6 +80,13 @@ def ball_values(root: Path) -> dict[str, str]:
     values["test_track"] = f"{100 * numbers['test_track']['value']:.1f}%"
     values["test_top1"] = f"{100 * numbers['test_top1']['value']:.1f}%"
     values["test_median"] = f"{numbers['test_track_median_m']['value']:.2f} m"
+    # acc_<row>_<key> and acc_<row>_<key>_ci: games 2+3 thresholds (shares -> %) and percentiles (m)
+    for row, keys in numbers["accuracy_games_2_3"].items():
+        for key, stat in keys.items():
+            scale, unit, digits = (1, " m", 2) if key.endswith("_m") else (100, "%", 1)
+            values[f"acc_{row}_{key}"] = f"{scale * stat['value']:.{digits}f}{unit}"
+            lo, hi = (scale * c for c in stat["ci"])
+            values[f"acc_{row}_{key}_ci"] = f"[{lo:.{digits}f}, {hi:.{digits}f}]"
     return values
 
 

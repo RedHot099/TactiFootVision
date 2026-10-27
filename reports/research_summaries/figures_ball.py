@@ -2,7 +2,7 @@
 
 Run: uv run python reports/research_summaries/figures_ball.py
 Numbers come from the ball-detection reports on research/ball-detection (paths next to each table);
-the final test row is read from the ticket 09 record.
+the final test row is read from the ticket 09 record, the accuracy curve and its numbers from ticket 17.
 """
 
 import json
@@ -13,6 +13,7 @@ matplotlib.use("Agg")
 import ball_data
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from figures_xg import GRID, INK, MUTED  # same style as the xG summary
 from sources import OUT
 
@@ -102,7 +103,7 @@ def registered_chart(test: tuple[float, float, float]) -> None:
         *REGISTERED,
         ("Tracking + size filter (final)", "GSR test", *test, TRACKING),
     ]
-    fig, ax = plt.subplots(figsize=(6.6, 2.5))
+    fig, ax = plt.subplots(figsize=(6.6, 2.2))
     for i, (_name, _split, m, lo, hi, color) in enumerate(rows):
         ax.plot([lo, hi], [i, i], color=color, lw=2)
         ax.scatter(m, i, color=color, s=40, zorder=3, edgecolor="white", lw=0.8)
@@ -135,42 +136,85 @@ def registered_chart(test: tuple[float, float, float]) -> None:
     plt.close(fig)
 
 
-def breakdown_chart(status: list[dict]) -> None:
-    """Well-placed share by kind of tracked frame (GSR test, ticket 09 record)."""
-    rows = {r["status"]: r for r in status}
-    BREAKDOWN = [
+def accuracy_numbers() -> dict:
+    """Games 2+3 thresholds and percentiles of ticket 17 (read.json), value and 95% clip-bootstrap CI."""
+    groups = json.loads((ball_data.BALL / "17/read.json").read_text())["splits"]
+    g = groups["valid"]["groups"]["games_2_3"]
+    keys = ("le1_all", "le2_all", "le5_all", "p50_m", "p90_m", "no_position")
+    return {
+        "reference_centre": {k: g["reference"]["centre"][k] for k in keys},
+        **{
+            name: {k: g["predictors"][name]["summary"][k] for k in keys}
+            for name in ("top1", "phase1")
+        },
+    }
+
+
+def accuracy_chart(acc: dict) -> None:
+    """Share of all denominator frames (games 2+3) with the ball within d metres (ticket 17 per-frame tables).
+
+    A frame without a position (no ball or no homography) never counts as within d, as in the report.
+    """
+    root = ball_data.BALL / "17"
+    curves = [
         (
-            f"{kind}\n({100 * rows[kind]['share']:.1f}% of frames)",
-            100 * rows[kind]["top1_well"],
-            100 * rows[kind]["track_well"],
-        )
-        for kind in ("measured", "interpolated")
+            "GSR reference",
+            pd.read_parquet(root / "truth_valid.parquet")
+            .query("game in ['2', '3']")
+            .ref_centre_m,
+            NEUTRAL,
+            "--",
+        ),
+        (
+            "detector top-1",
+            pd.read_parquet(root / "placement_games_2_3_top1.parquet").error_m,
+            DETECTOR,
+            "-",
+        ),
+        (
+            "final pipeline",
+            pd.read_parquet(root / "placement_games_2_3_phase1.parquet").error_m,
+            TRACKING,
+            "-",
+        ),
     ]
-    fig, ax = plt.subplots(figsize=(3.2, 2.4))
-    x = np.arange(len(BREAKDOWN))
-    for k, (label, color) in enumerate(
-        (("detector top-1", NEUTRAL), ("tracked", TRACKING))
-    ):
-        vals = [row[1 + k] for row in BREAKDOWN]
-        ax.bar(x + (k - 0.5) * 0.36, vals, width=0.34, color=color, label=label)
-        for i, v in enumerate(vals):
-            ax.text(
-                x[i] + (k - 0.5) * 0.36,
-                v + 2,
-                f"{v:.0f}%",
-                ha="center",
-                fontsize=7.8,
-                color=INK,
-            )
-    ax.set_xticks(x, [row[0] for row in BREAKDOWN], fontsize=7.8)
-    ax.set_ylim(0, 105)
-    ax.set_ylabel("Ball within 5 m (%)")
-    ax.legend(frameon=False, fontsize=7.5, loc="upper right")
-    ax.grid(axis="y", color=GRID, lw=0.6)
+    d = np.logspace(np.log10(0.1), np.log10(30), 300)
+    fig, ax = plt.subplots(figsize=(4.1, 2.45))
+    for label, err, color, ls in curves:
+        e = err.to_numpy(dtype=float)
+        share = [(e <= x).sum() / len(e) * 100 for x in d]  # NaN counts as not within
+        ax.plot(d, share, color=color, lw=1.8, ls=ls, label=label)
+    ref_p50 = acc["reference_centre"]["p50_m"]["value"]
+    ax.axvline(ref_p50, color=MUTED, lw=0.8, ls=":")
+    ax.text(
+        ref_p50 * 1.07,
+        97,
+        f"reference median\n{ref_p50:.2f} m",
+        ha="left",
+        va="top",
+        fontsize=7,
+        color=INK,
+    )
+    ax.axvline(5, color=INK, lw=0.8)
+    ax.text(5.3, 40, "5 m", fontsize=7.5, color=INK)
+    ax.set_xscale("log")
+    ax.set_xticks(
+        [0.1, 0.25, 0.5, 1, 2, 5, 10, 25],
+        ["0.1", "0.25", "0.5", "1", "2", "5", "10", "25"],
+    )
+    ax.set_xlim(0.1, 30)
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("Distance on the pitch d (m)", fontsize=8.5)
+    ax.set_ylabel("Frames within d (%)")
+    ax.legend(frameon=False, fontsize=7, loc="upper left")
+    ax.grid(color=GRID, lw=0.6)
     ax.set_axisbelow(True)
     fig.tight_layout()
-    fig.savefig(FIG / "breakdown.svg")
+    fig.savefig(FIG / "accuracy.svg")
     plt.close(fig)
+    for label, err, *_ in curves:  # the curve must match the report's thresholds
+        e = err.to_numpy(dtype=float)
+        print(label, {x: round(100 * (e <= x).sum() / len(e), 1) for x in (1, 2, 5)})
 
 
 def main() -> None:
@@ -192,7 +236,8 @@ def main() -> None:
     numbers["status"] = test["status"]
     errors_chart()
     registered_chart(gain)
-    breakdown_chart(test["status"])
+    numbers["accuracy_games_2_3"] = accuracy_numbers()
+    accuracy_chart(numbers["accuracy_games_2_3"])
     (OUT / "ball/numbers.json").write_text(json.dumps(numbers, indent=1))
     print(json.dumps(numbers, indent=1))
 

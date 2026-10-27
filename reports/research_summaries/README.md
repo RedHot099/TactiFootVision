@@ -14,11 +14,11 @@ uv run python build.py xg                           # xg_summary.html (self-cont
 ```
 
 Ball localisation (CPU only, about 2 min; reads the ball-detection phase outputs under
-`/mnt/storage/tactifoot_research/detector_data/ball/` and the 25 fps SoccerNet Tracking test frames):
+`/mnt/storage/tactifoot_research/detector_data/ball/` (phases 1-3, tickets 01-23) and the 25 fps SoccerNet Tracking test frames):
 
 ```bash
-uv run python figures_ball.py                       # error analysis, registered comparisons, breakdown
-uv run python media_ball.py                         # GSR test clip with a freeze + gallery crops
+uv run python figures_ball.py                       # error analysis, registered comparisons, accuracy curve
+uv run python media_ball.py                         # GSR test clip with a freeze (gallery crops, not used now)
 uv run python build.py ball                         # ball_summary.html + .pdf
 ```
 
