@@ -35,13 +35,18 @@ R_stos to samo z_g_combo (G-combo), a nie ramię lokalizacji R.
 
 ## Wynik (ramię stosu ALL, ΔLL wobec F)
 
-| ramię | LL | AUC | Brier | kalibracja: nachylenie / wyraz wolny | ΔLL vs F [95%] | p poprawy | p TOST ±0,002 | werdykt D3 (p_T = 1) |
+| ramię | LL | AUC | Brier | kalibracja: nachylenie / wyraz wolny | ΔLL vs F [95%] | p poprawy | p TOST ±0,002 | werdykt D3 (Holm na C, S2, T; T z ticketu 20) |
 |---|---|---|---|---|---|---|---|---|
 | F | 0,3314 | 0,760 | 0,0983 | 0,93 / −0,12 | – | | | |
 | R (odniesienie) | 0,3375 | 0,747 | 0,1004 | 0,98 / −0,04 | +0,0061 [+0,0029; +0,0090] | | | bez werdyktu |
 | **C** | 0,3330 | 0,756 | 0,0988 | 0,95 / −0,08 | **+0,0016 [+0,0001; +0,0029]** | 0,98 | 0,25 | **nierozstrzygnięte** |
 | **S2** | 0,3324 | 0,762 | 0,0987 | 0,94 / −0,10 | **+0,0010 [−0,0014; +0,0035]** | 0,77 | 0,23 | **nierozstrzygnięte** |
+| **T** (ticket 20, piłka śledzona przyczynowo) | 0,3314 | 0,761 | 0,0984 | 0,99 / −0,02 | **−0,0000 [−0,0026; +0,0025]** | 0,49 | 0,062 | **nierozstrzygnięte** |
 | S2_reguła (opisowo) | 0,3320 | 0,762 | 0,0986 | 0,95 / −0,08 | +0,0006 [−0,0019; +0,0031] | | | poza rodziną |
+
+Wiersz T dopisany 2026-10-27 przez ticket 20 (`results_reports/ball_detection/20/results.md`). Holm liczony wspólnie
+dla C, S2 i T z prawdziwym p_T: żadne ramię nie wnosi wartości ani nie jest równoważne; wszystkie trzy są
+nierozstrzygnięte. T: przedziały na poziomach Holma [−0,0031; +0,0030] / [−0,0029; +0,0028] / [−0,0026; +0,0025].
 
 Przedziały na poziomach Holma (k = 3 / 2 / 1, poziom dwustronny 1 − 0,05/k): C [−0,0003; +0,0031] /
 [−0,0001; +0,0031] / [+0,0001; +0,0029]; S2 [−0,0020; +0,0041] / [−0,0017; +0,0039] / [−0,0014; +0,0035].
