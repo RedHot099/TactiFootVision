@@ -112,9 +112,19 @@ cel, nic nie jest dobierane. Kontrole: wiersz X0 jest równy wierszowi 17, a mie
   [1,02; 1,20] wobec 1,16 m przy F, a odsetek ≤ 2 m 69,0% wobec 66,9%. Przedziały mocno się nakładają, różnicy
   parami nie testowałem. To odczyt opisowy na zbiorze zużytym.
 
-## Wariant dwustronny ±2 s
+## Wariant dwustronny ±2 s (rekonstrukcja offline, opisowo, poza rodziną)
 
-Opis jest w sekcji dopisanej po przebiegu (poniżej, jeśli jest).
+Ten sam tor, ale okno sięga też 2 s za t0 (k = −50…+50), do ostatniej klatki przed pierwszym cięciem po t0 (ten sam
+detektor cięć co w 19). Zrzut klatek po t0 i kotwice co 5 klatek liczyłem tak samo jak w T, a odczyt
+(`read --two-sided`, `xg_two_sided/read.json`) tym samym kodem. Kontrole F, C i S2 przeszły tak samo. Wariant
+korzysta z klatek po strzale, więc nie nadaje się do przewidywania przed strzałem. Werdyktu D3 tu nie ma.
+
+- Piłka t0: 4 845 zmierzonych, 1 938 interpolowanych (tor ma piłkę po t0), 164 strzały z piłką F. Nowa piłka t0
+  tam, gdzie F jej nie miało: 2 489. Miejsce strzału zmienia się w 23,1% strzałów (> 5 m w odległości: 5,9%).
+- ΔLL vs F (ALL): **−0,0010 [−0,0040; +0,0019]** (p jednostronne 0,26). T_flagiF −0,0004 [−0,0033; +0,0023].
+  LL 0,3304, AUC 0,764, Brier 0,0981, kalibracja 0,99 / −0,02.
+- Punkt jest niżej niż w T przyczynowym, ale przedział obejmuje zero z dużym zapasem. Nawet piłka zrekonstruowana
+  z klatkami po strzale nie daje wykrywalnej poprawy wobec stóp.
 
 ## Odstępstwa i uwagi
 
@@ -132,5 +142,6 @@ Opis jest w sekcji dopisanej po przebiegu (poniżej, jeśli jest).
 ## Koszt
 
 GPU (pod blokadą): zrzut T 1,56 h (dwa procesy, 360 tys. klatek dd2c przy 26,6 ms, 61 tys. klatek punktów),
-detekcja 172 0,04 h, przerwany start, test szybkości i profil 0,16 h. Razem ok. 1,8 GPU-h do odczytu T. CPU: śledzenie
-ok. 8,2 h CPU (11 procesów, ok. 45 min), odczyt xG ok. 2 min.
+detekcja 172 0,04 h, przerwany start, test szybkości i profil 0,16 h. Razem ok. 1,8 GPU-h do odczytu T. Wariant dwustronny: zrzut klatek po t0 1,61 GPU-h. **Razem ok. 3,4 GPU-h** (limit 8).
+CPU: śledzenie T ok. 8,2 h CPU (11 procesów, ok. 45 min), dwustronne ok. 16 h CPU (14 procesów, ok. 70 min), odczyty
+xG po ok. 2 min.
