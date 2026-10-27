@@ -22,8 +22,9 @@ Real read-out rules (ticket 04; the protocol records them through `xgpoc.tempora
                              bound, the 5th percentile of 2,000 match-bootstrap draws (seed 0) over the non-goal shots'
                              matches (`xgpoc.probe.readability.weighted_auc`), above `VETO_AUC` blocks every
                              "practical candidate".
-    leak curve (`leak_rules`) start -1600, o_max -1000 ... +400, every point with the same match draws (the main
-                             population's weights restricted to the point's shots): the method's positive control is
+    leak curve (`leak_rules`) start -1600, o_max -1000 ... +400, every point on the shots common to every window
+                             (`protocol.common_populations`, the arms refitted there) with the same match draws (the
+                             main population's weights restricted to those shots): the method's positive control is
                              S - R at +400 with hi95 < 0; the jump rule (C9 Q3) fits the least-squares line through
                              o_max -1000, -800, -600 (`LEAK_TREND`) and takes the excess e(o) = Δ(o) - line(o) at -400
                              and -200, with its match-bootstrap interval (the line refitted in every draw); a jump is
@@ -115,11 +116,12 @@ def claims(result: dict, veto: dict, chosen: dict[str, list], leak: dict) -> dic
 
 
 def curve_point(y: np.ndarray, probabilities: dict[str, np.ndarray], weights: np.ndarray) -> dict[str, dict]:
-    """contrast -> `paired_delta` with its draws (`draws`, one per row of `weights`) for one leak-curve point."""
+    """contrast -> `paired_delta` with its bootstrap means (`boot`, one per row of `weights`) for one leak-curve
+    point."""
     out = {}
     for name, (a, b) in (CONFIRMATORY | DESCRIPTIVE).items():
         d = shot_log_loss(y, probabilities[a], ss.CLIP) - shot_log_loss(y, probabilities[b], ss.CLIP)
-        out[name] = ss.summarise(d.mean(), boot := ss.boot_means(weights, d)) | {"draws": boot}
+        out[name] = ss.summarise(d.mean(), boot := ss.boot_means(weights, d)) | {"boot": boot}
     return out
 
 
@@ -131,7 +133,7 @@ def trend_weights(at: int, through: tuple[int, ...] = LEAK_TREND) -> np.ndarray:
 
 def leak_rules(curve: dict[int, dict]) -> dict:
     """The method's positive control and the jump rule on the leak curve (module docstring): o_max -> contrast ->
-    `curve_point` entry (delta_ll, hi95, draws)."""
+    `curve_point` entry (delta_ll, hi95, boot)."""
     positive = curve[METHOD_POSITIVE_O_MAX]["S-R"]
     out = {"method_positive": {"contrast": "S-R", "o_max": METHOD_POSITIVE_O_MAX, "delta_ll": positive["delta_ll"],
                                "hi95": positive["hi95"], "passed": bool(positive["hi95"] < 0)},
@@ -141,7 +143,7 @@ def leak_rules(curve: dict[int, dict]) -> dict:
         for o in LEAK_TESTED:
             c = trend_weights(o)
             point = curve[o][name]["delta_ll"] - sum(ci * curve[t][name]["delta_ll"] for ci, t in zip(c, LEAK_TREND, strict=True))
-            draws = curve[o][name]["draws"] - sum(ci * curve[t][name]["draws"] for ci, t in zip(c, LEAK_TREND, strict=True))
+            draws = curve[o][name]["boot"] - sum(ci * curve[t][name]["boot"] for ci, t in zip(c, LEAK_TREND, strict=True))
             draws = draws[np.isfinite(draws)]
             excess[str(o)] = {"excess": float(point), "lo95": float(np.percentile(draws, 2.5)),
                               "hi95": float(np.percentile(draws, 97.5))}

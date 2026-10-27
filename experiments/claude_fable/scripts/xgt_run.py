@@ -18,25 +18,30 @@ output, so each is made once, and runs inside `no_statsbomb_reads()`.
                summary.json, complete.json.
 --controls     the label-free gates and reports of `xgpoc.temporal.controls` (fits in `--jobs` worker processes, one
                BLAS thread each). A run is the protocol's controls (`protocol_controls` in its record) only with the
-               main source g_xgv, the main window, k = 32, 200 replicates and every simulation; anything else is a
-               trial run and is refused in the default folder. Writes population.csv, <simulation>.csv, controls.json,
+               main source g_xgv, the main window, k = 32, 200 replicates and every simulation (the descriptive
+               rich_nulls_-0.002 may be left out, C8, and the record names it in `omitted_simulations`); anything else
+               is a trial run and is refused in the default folder. Writes population.csv, <simulation>.csv, controls.json,
                complete.json (`label_free_passed`).
---permutation  refuses unless the protocol has the SHA-256 pinned here (`PROTOCOL_SHA256`), its frozen part equals
+--permutation  refuses unless the protocol has the SHA-256 pinned here (`PROTOCOL_SHA256`) and is committed as it is
+               (`git show HEAD:research/xgt_protocol.json`, `check_committed`), its frozen part equals
                `xgpoc.temporal.protocol.frozen()`, its code digest equals the current package's, its population equals
-               the rebuilt one, and the label-free controls' record is the one it pins. Then reads goal inside the
-               label seal (`xgpoc.temporal.labels`), runs the read-out on the labels permuted within matches and writes
+               the rebuilt one, the xgv extraction's complete.json is the one it pins, and the label-free controls'
+               record is the one it pins. Then reads goal inside the label seal (`xgpoc.temporal.labels`), runs the
+               read-out on the labels permuted within matches and writes
                results/xgt/controls/permutation.json and complete.json with every gate and `all_passed`.
 --real         the same protocol checks, then refuses unless results/xgt/controls/complete.json matches its files, was
                written under this protocol and code and has `all_passed: true` (`check_controls`). Then reads the
                categories' E3 columns, refused unless their files have the protocol's SHA-256 (`check_e3`), reads goal
                and on_target inside the label seal and writes the read-out (`real_run`): results/xgt/real/summary.json
-               (scores, ΔLL, Holm, claims, readability veto, chosen C, the leak curve with its rules, the controls'
-               power curve), categories.csv, leak_curve.csv and complete.json; the out-of-fold probabilities (no
+               (scores, ΔLL, Holm, claims, readability veto, chosen C, the leak curve's rules on the shots common to
+               every leak-curve window and, descriptive, on each window's own population, the controls' power
+               curve), categories.csv, leak_curve.csv (both populations) and complete.json; the out-of-fold probabilities (no
                label) go to outputs/xgt_real/probabilities.csv, named in complete.json by path and SHA-256.
 """
 
 import argparse
 import json
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -112,10 +117,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def omitted_simulations(simulations) -> list[str] | None:
+    """The simulations left out of `tco.SIMULATIONS` (in run order), or None when `simulations` is not
+    `tco.SIMULATIONS` in its order with only `tco.DROPPABLE` ones left out."""
+    omitted = [s for s in tco.SIMULATIONS if s not in simulations]
+    if list(simulations) != [s for s in tco.SIMULATIONS if s not in omitted] or not set(omitted) <= set(tco.DROPPABLE):
+        return None
+    return omitted
+
+
 def protocol_controls(args: argparse.Namespace) -> bool:
-    """The run is the protocol's label-free controls (module docstring)."""
+    """The run is the protocol's label-free controls (module docstring): every simulation, or all but the descriptive
+    `tco.DROPPABLE` (C8: the first to drop when CPU time binds), recorded as omitted."""
     return (args.source == tpr.MAIN_SOURCE and (args.start, args.o_max, args.k) == (ti.START, ti.O_MAX, tf.K)
-            and not args.control and args.replicates == tco.N_REPLICATES and list(args.simulations) == list(tco.SIMULATIONS))
+            and not args.control and args.replicates == tco.N_REPLICATES
+            and omitted_simulations(args.simulations) is not None)
 
 
 def write_json(path: Path, obj) -> None:
@@ -137,10 +153,11 @@ class Stages:
 
 
 def prepared(source: str, window: ti.Window, k: int, plan: pd.DataFrame, stages: Stages,
-             restrict_to=None) -> tuple[ti.Population, dict, dict, tf.DesignData, dict]:
-    """(population, its arms' columns, the provenance record, the design data, the fold designs), the run stopped when
-    a leak assertion fails; with `restrict_to` the population is restricted to those shot ids first."""
-    population, files = ti.build_population(ti.SOURCES[source], window, plan)
+             restrict_to=None, files: ti.SourceFiles | None = None) -> tuple[ti.Population, dict, dict, tf.DesignData, dict]:
+    """(population, its arms' columns, the provenance record, the design data, {designs, pca, files}), the run
+    stopped when a leak assertion fails; with `restrict_to` the population is restricted to those shot ids first;
+    `files` (the verified source) is verified again when not given."""
+    population, files = ti.build_population(ti.SOURCES[source], window, plan, files=files)
     if restrict_to is not None:
         population = ti.restrict(population, restrict_to)
     columns = tf.arm_columns(window, k)
@@ -152,7 +169,7 @@ def prepared(source: str, window: ti.Window, k: int, plan: pd.DataFrame, stages:
     data = tf.DesignData(window, population.z, population.folds, position, embeddings, k)
     designs, pca = tf.fold_designs(data)
     stages(f"designs_{window.label()}")
-    return population, columns, provenance, data, {"designs": designs, "pca": pca}
+    return population, columns, provenance, data, {"designs": designs, "pca": pca, "files": files}
 
 
 def population_csv(population: ti.Population, path: Path) -> None:
@@ -262,6 +279,8 @@ def run_controls(args: argparse.Namespace, plan: pd.DataFrame, stages: Stages, s
     gates = {g: {"passed": summary["gates"][g]["passed"], "criterion": summary["gates"][g]["criterion"]}
              for g in tco.LABEL_FREE_GATES}
     completion(args.out, {"mode": "controls", "source": args.source, "protocol_controls": args.protocol_controls,
+                          "simulations": list(args.simulations),
+                          "omitted_simulations": omitted_simulations(args.simulations),
                           "settings": tco.settings(), "label_free_passed": summary["label_free_passed"], "gates": gates,
                           "columns": columns, **population.record()}, started)
     print(json.dumps({"gates": gates, "label_free_passed": summary["label_free_passed"],
@@ -284,7 +303,20 @@ def opened_protocol() -> dict:
         raise SystemExit("the protocol's frozen part differs from xgpoc.temporal.protocol.frozen()")
     if protocol["data"]["code"]["digest"] != tr_records.package_hashes()["digest"]:
         raise SystemExit("the code differs from the code the protocol pins; re-freeze after a code change")
+    check_committed(path)
     return protocol
+
+
+def committed(path: Path) -> bytes | None:
+    """`path` as the checkout's HEAD commit holds it (None when HEAD does not hold it or there is no repository)."""
+    run = subprocess.run(["git", "-C", str(path.parent), "show", f"HEAD:./{path.name}"], capture_output=True)
+    return run.stdout if run.returncode == 0 else None
+
+
+def check_committed(path: Path) -> None:
+    """The protocol file is the one the HEAD commit holds, byte for byte (so its pinned SHA-256 is a committed one)."""
+    if committed(path) != path.read_bytes():
+        raise SystemExit(f"{path} is not committed as it is (git show HEAD:{tpr.PROTOCOL} differs or is missing)")
 
 
 def json_equal(a, b) -> bool:
@@ -322,6 +354,9 @@ def main_population(protocol: dict, plan: pd.DataFrame, stages: Stages):
     check_population(built[0], protocol["data"]["main"], "main")
     if not json_equal(built[1], protocol["data"]["main"]["columns"]):
         raise SystemExit("the arms' columns differ from the protocol's")
+    record = built[4]["files"].source.folder / ti.RECORD
+    if sha256_file(record) != protocol["data"]["main"]["source_files"]["complete_json"]["sha256"]:
+        raise SystemExit(f"{record} differs from the extraction record the protocol pins")
     return built
 
 
@@ -360,13 +395,46 @@ def read_window(designs: dict, y: np.ndarray, weights: np.ndarray) -> tuple[dict
     return probabilities, chosen, tr.contrasts(y, probabilities, weights)
 
 
+def leak_populations(protocol: dict, plan: pd.DataFrame, main: ti.Population, files: ti.SourceFiles) -> tuple[dict, dict]:
+    """(o_max -> the leak-curve window's population ∩ P_G, o_max -> its population on the common shots), each checked
+    against the protocol (data.cells, data.leak_common), label-free."""
+    cells = {(c["start"], c["o_max"]): c for c in protocol["data"]["cells"]}
+    windows = tpr.leak_populations(tpr.MAIN_SOURCE, plan, main, files)
+    for o_max, population in windows.items():
+        check_population(population, cells[(-1600, o_max)], f"cell -1600/{o_max}")
+    common = tpr.common_populations(windows)
+    frozen = protocol["data"]["leak_common"]
+    for o_max, population in common.items():
+        check_population(population, frozen["cells"][str(o_max)], f"common leak population -1600/{o_max}")
+    return windows, common
+
+
+def curve_entry(population: ti.Population, plan: pd.DataFrame, stages: Stages, files: ti.SourceFiles, labels: tl.Labels,
+                weights: np.ndarray, main_ids: pd.Index) -> tuple[dict, list]:
+    """One leak-curve point on `population` (a checked subset of P_G): the arms refitted on its shots, `curve_point`
+    with the main population's match draws restricted to them, and T's chosen C per outer fold."""
+    window = population.window
+    built, _, _, _, cell = prepared(tpr.MAIN_SOURCE, window, tf.K, plan, stages, population.table.index, files)
+    if not json_equal(built.record(), population.record()):
+        raise SystemExit(f"the leak-curve population at {window.label()} changed while the run read it")
+    position = main_ids.get_indexer(built.table.index)
+    if (position < 0).any():
+        raise SystemExit("a leak-curve shot is not in the main population")
+    cell_labels = labels.aligned(built)
+    probabilities, chosen = tr.out_of_fold(cell["designs"], cell_labels.goal)
+    return tr.curve_point(cell_labels.goal, probabilities, weights[:, position]), chosen["T"]
+
+
 def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, large: Path) -> dict:
     """The read-out of ticket 04 (module docstring); returns the summary. Every leak-curve point uses the main
-    population's match draws restricted to its shots, so the jump rule's excess has a paired interval."""
+    population's match draws restricted to its shots, so the jump rule's excess has a paired interval; the jump rule
+    and the method's positive control read the curve on the shots common to every window (`leak`), the curve on each
+    window's own population is descriptive (`leak_by_window`)."""
     population, columns, provenance, _, built = main_population(protocol, plan, stages)
     e3, e3_hashes = tc.e3_inputs(population.table.index, ROOT / protocol["data"]["e3"]["source"])     # label-free first
     check_e3(e3_hashes, protocol["data"]["e3"]["hashes"])
-    stages("e3")
+    windows, common = leak_populations(protocol, plan, population, built["files"])
+    stages("label_free_checks")
     labels = tl.load_labels(population, INDEX, ti.PLAN_CSV)
     stages("labels")
     weights = ss.bootstrap_weights(population.games)
@@ -374,26 +442,21 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
     veto = tr.readability_veto(labels.goal, labels.on_target, probabilities["T"], probabilities["S"], population.games)
     categories = tc.category_table(e3, labels.goal, probabilities, weights)
     stages("main_read_out")
-    curve, rows = {ti.O_MAX: tr.curve_point(labels.goal, probabilities, weights)}, []
-    cells = {(c["start"], c["o_max"]): c for c in protocol["data"]["cells"]}
-    main_ids = population.table.index
-    for o_max in tpr.LEAK_CURVE:
-        if o_max != ti.O_MAX:
-            window = ti.Window(-1600, o_max, o_max > tp.LEAK_LIMIT)
-            cell_population, _, _, _, cell = prepared(tpr.MAIN_SOURCE, window, tf.K, plan, stages, main_ids)
-            check_population(cell_population, cells[(-1600, o_max)], f"cell -1600/{o_max}")
-            cell_labels = labels.aligned(cell_population)
-            cell_weights = weights[:, main_ids.get_indexer(cell_population.table.index)]
-            cell_probabilities, cell_chosen = tr.out_of_fold(cell["designs"], cell_labels.goal)
-            curve[o_max] = tr.curve_point(cell_labels.goal, cell_probabilities, cell_weights)
-            n = cell_population.counts["shots"]
-        else:
-            cell_chosen, n = chosen, population.counts["shots"]
-        for name, d in curve[o_max].items():
-            rows.append({"start": -1600, "o_max": o_max, "control": o_max > tp.LEAK_LIMIT, "contrast": name, "shots": n,
-                         **{k: d[k] for k in ("delta_ll", "lo95", "hi95", "bound_one_sided_95", "p_one_sided")},
-                         "near_reference_T": tr.near_reference(cell_chosen["T"])})
-    leak = tr.leak_rules(curve)
+    main_ids, curves, rows = population.table.index, {"window": {}, "common": {}}, []
+    for scope, populations in (("window", windows), ("common", common)):
+        for o_max in tpr.LEAK_CURVE:
+            cell = populations[o_max]
+            if scope == "window" and o_max == ti.O_MAX:
+                curves[scope][o_max], chosen_t = tr.curve_point(labels.goal, probabilities, weights), chosen["T"]
+            else:
+                curves[scope][o_max], chosen_t = curve_entry(cell, plan, stages, built["files"], labels, weights, main_ids)
+            for name, d in curves[scope][o_max].items():
+                rows.append({"population": scope, "start": -1600, "o_max": o_max, "control": o_max > tp.LEAK_LIMIT,
+                             "contrast": name, "shots": cell.counts["shots"],
+                             **{k: d[k] for k in ("delta_ll", "lo95", "hi95", "bound_one_sided_95", "p_one_sided")},
+                             "near_reference_T": tr.near_reference(chosen_t)})
+    leak = tr.leak_rules(curves["common"]) | {"population": "common", "shots": common[ti.O_MAX].counts["shots"]}
+    leak_by_window = tr.leak_rules(curves["window"]) | {"population": "window", "descriptive": True}
     claims = tr.claims(result, veto, chosen, leak)
     stages("leak_curve")
     large.mkdir(parents=True)
@@ -405,8 +468,8 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
     label_free = json.loads((ROOT / tpr.LABEL_FREE / "controls.json").read_text())
     summary = {"scores": result["scores"], "deltas": result["deltas"], "readings": result["readings"], "claims": claims,
                "readability_veto": veto, "chosen_c": chosen, "population": population.counts, "provenance": provenance,
-               "leak": leak, "e3": e3_hashes, "power_curve": label_free["reports"]["power_curve"],
-               "pca": built["pca"], "run": stages.record()}
+               "leak": leak, "leak_by_window": leak_by_window, "e3": e3_hashes,
+               "power_curve": label_free["reports"]["power_curve"], "pca": built["pca"], "run": stages.record()}
     write_json(out / "summary.json", summary)
     return summary
 

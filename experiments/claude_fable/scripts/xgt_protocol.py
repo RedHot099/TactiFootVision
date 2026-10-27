@@ -12,6 +12,8 @@ The file holds `frozen` (`xgpoc.temporal.protocol.frozen()`, every rule the code
                           SHA-256 of the source folder's complete.json (results/xgt_xgv_embeddings/complete.json)
     cells                 every window of the ticket 07 grid and the leakage-control rows, its population (window
                           population ∩ main) recorded the same way
+    leak_common           the leak curve's common population (the shots of every leak-curve window), its shot list and
+                          every window's population on it: the jump rule's population
     descriptive_sources   g_xgc and dinov2: their files and their main-window populations
     safe_margin           ticket 02's result.json (pinned SHA-256, checked against its completion record): STOP and the
                           owner's decision
@@ -19,14 +21,16 @@ The file holds `frozen` (`xgpoc.temporal.protocol.frozen()`, every rule the code
                           cache/xgd_full3/E3, else cache/xgd_full4_feet_t0/E3), its hashes and the category counts
     label_free_controls   the record of `scripts/xgt_run.py --controls` (results/xgt/controls/label_free), refused
                           unless it matches its files, is the protocol's controls (source g_xgv, 200 replicates, every
-                          simulation), was written under the current package code, has the same settings and
-                          population, and passed every label-free gate
+                          simulation but at most the descriptive rich_nulls_-0.002, `controls.DROPPABLE`, recorded as
+                          omitted), was written under the current package code, has the same settings and population,
+                          and passed every label-free gate
     code                  `xgpoc.temporal.records.package_hashes()`
 Without results/xgt_xgv_embeddings (ticket 01b) or the label-free controls the protocol cannot be written; `--draft`
 writes a draft instead (another --source allowed, missing parts recorded as pending, `draft: true`, never to the
 protocol's path), which `scripts/xgt_run.py` refuses. An existing protocol is refused unless `--refreeze --reason`, which
-keeps the previous file's SHA-256 and the reason in `history` and refuses any change of `frozen` (a re-freeze is for a
-code change, never for a rule). Prints the file's SHA-256; the ticket records it and `scripts/xgt_run.py` pins it.
+keeps the previous file's SHA-256 and the reason in `history` and refuses any change of `frozen` and an unchanged
+package digest (a re-freeze is for a code change, never for a rule). Prints the file's SHA-256; the ticket records it
+and `scripts/xgt_run.py` pins it.
 """
 
 import argparse
@@ -105,6 +109,21 @@ def cell_records(source: str, plan, main: ti.Population) -> list[dict]:
     return out
 
 
+def leak_common_record(source: str, plan, main: ti.Population) -> dict:
+    """The leak curve's common population (`protocol.common_populations`): its size, shot list and every window's
+    population on it, recorded like the cells."""
+    files = ti.verify_source(ti.SOURCES[source])
+    common = tpr.common_populations(tpr.leak_populations(source, plan, main, files))
+    for o_max, population in common.items():
+        window = tpr.leak_window(o_max)
+        if not tp.control(population, tf.arm_columns(window, tf.K), plan)["passed"]:
+            raise SystemExit(f"provenance failed in the common leak population at -1600/{o_max}")
+    first = common[tpr.LEAK_CURVE[0]]
+    return {"rule": tpr.leak_record()["common_population"], "shots": first.counts["shots"],
+            "shot_list_sha256": ti.shot_list_sha256(first.table),
+            "cells": {str(o_max): population.record() for o_max, population in common.items()}}
+
+
 def descriptive_sources(plan) -> dict:
     out = {}
     for name in tpr.DESCRIPTIVE_SOURCES:
@@ -161,10 +180,15 @@ def label_free_controls(folder: Path, main: dict, draft: bool) -> dict:
         problems.append("another population")
     if not record["label_free_passed"]:
         problems.append("a label-free gate failed")
+    omitted = record.get("omitted_simulations")
+    if omitted is None or not set(omitted) <= set(tco.DROPPABLE) \
+            or record.get("simulations") != [s for s in tco.SIMULATIONS if s not in omitted]:
+        problems.append(f"simulations other than the protocol's (only {list(tco.DROPPABLE)} may be left out)")
     if problems and not draft:
         raise SystemExit(f"the label-free controls cannot enter the protocol: {problems}")
     return {"status": "recorded", "path": ti.recorded_path(folder), "complete_sha256": sha256_file(path),
             "gates": record["gates"], "label_free_passed": record["label_free_passed"],
+            "simulations": record.get("simulations"), "omitted_simulations": omitted,
             "protocol_controls": record.get("protocol_controls"), "problems": problems}
 
 
@@ -174,6 +198,8 @@ def refreeze_history(path: Path, reason: str | None, record: dict) -> list[dict]
     previous = json.loads(path.read_text())
     if previous["frozen"] != json.loads(json.dumps(record["frozen"], default=tr_records.json_default)):
         raise SystemExit("a re-freeze may not change the frozen rules")
+    if previous["data"]["code"]["digest"] == record["data"]["code"]["digest"]:
+        raise SystemExit("a re-freeze needs a code change: the package digest is the previous protocol's")
     return [*previous.get("history", []), {"sha256": sha256_file(path), "written": previous["written"],
                                            "git": previous["git"], "replaced_because": reason}]
 
@@ -187,6 +213,7 @@ def build(args: argparse.Namespace) -> dict:
             raise SystemExit(f"{e}: the {args.source} embeddings are not there yet (ticket 01b for g_xgv); a draft on "
                              "another source needs --draft --source g_xgc") from None
         data = {"main": main, "cells": cell_records(args.source, plan, population),
+                "leak_common": leak_common_record(args.source, plan, population),
                 "descriptive_sources": descriptive_sources(plan), "safe_margin": safe_margin(),
                 "e3": e3_record(population),
                 "label_free_controls": label_free_controls(args.controls, main, args.draft),

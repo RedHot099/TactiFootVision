@@ -8,7 +8,8 @@ parts:
                descriptive arms, the disclosures). `scripts/xgt_run.py` refuses a protocol whose `frozen` part differs
                from what the current code builds, so the file and the code cannot drift apart.
     data       written by the script from the label-free inputs: input hashes (the g_xgv completion record included),
-               population counts and shot-list hashes of the main population and of every grid cell, the arms'
+               population counts and shot-list hashes of the main population, of every grid cell and of the leak
+               curve's common population (`leak_common`), the arms'
                columns, the provenance checks, the ticket 02 result with its hash, the label-free controls' record
                with its hash, and the package code digest (`records.package_hashes`).
 `load` opens the file only at the pinned SHA-256.
@@ -66,6 +67,31 @@ def grid_cells() -> list[dict]:
 
 def cell_window(cell: dict) -> ti.Window:
     return ti.Window(cell["start"], cell["o_max"], cell["control_flag"])
+
+
+# ------------------------------------------------------------------ the leak curve's populations
+def leak_window(o_max: int) -> ti.Window:
+    return ti.Window(-1600, o_max, o_max > tp.LEAK_LIMIT)
+
+
+def leak_populations(source: str, plan, main: ti.Population, files: ti.SourceFiles) -> dict[int, ti.Population]:
+    """o_max -> the leak-curve window's population ∩ P_G (at the main o_max P_G itself, restricted to its own shots so
+    it is recorded like the grid cell), label-free."""
+    out = {}
+    for o_max in LEAK_CURVE:
+        if o_max == ti.O_MAX:
+            out[o_max] = ti.restrict(main, main.table.index)
+        else:
+            population, _ = ti.build_population(ti.SOURCES[source], leak_window(o_max), plan, files=files)
+            out[o_max] = ti.restrict(population, main.table.index)
+    return out
+
+
+def common_populations(populations: dict[int, ti.Population]) -> dict[int, ti.Population]:
+    """o_max -> the window's population restricted to the shots of every leak-curve window (`leak_record`), on which
+    the jump rule and the method's positive control are read."""
+    common = ti.common_shots(populations.values())
+    return {o_max: ti.restrict(population, common) for o_max, population in populations.items()}
 
 
 # ------------------------------------------------------------------ the frozen part
@@ -152,15 +178,24 @@ def leak_record() -> dict:
         "cell_population": "each cell's window population (>= 1 usable frame in [start, o_max]) intersected with the "
                            "main population P_G, so every cell is read on a subset of the same shots (equal to P_G "
                            "for start -1600 and o_max >= -600); R refitted on the cell's shots",
+        "common_population": "the shots in the population of every leak-curve window (start -1600, o_max -1000 ... +400; "
+                             "in practice the -1000 window's population ∩ P_G), frozen in data.leak_common; every "
+                             "arm is refitted on it in every window. The jump rule and the method's positive control "
+                             "are read on this curve, so the trend and the tested points share one population (the "
+                             "window populations differ: an earlier o_max has fewer shots with a usable frame); the "
+                             "curve on each window's own population (cell_population) is descriptive (orchestrator, "
+                             "in the spirit of C9 Q3)",
         "method_positive_control": {"contrast": "S-R", "o_max": tr.METHOD_POSITIVE_O_MAX, "start": -1600,
+                                    "population": "the common population",
                                     "pass": "hi95 < 0 (the 95% interval below zero)",
                                     "if_failed": "the leak curve cannot detect leakage; the report says so and makes no "
                                                  "'no leakage' statement"},
         "jump_rule": {"source": "council C9 Q3 (b)", "contrasts": ["T-R", "T-S"],
                       "trend": f"the least-squares line through o_max {list(tr.LEAK_TREND)} (start -1600)",
+                      "population": "the common population of the leak curve (common_population)",
                       "excess": "e(o) = Δ(o) - line(o) for o in {-400, -200}, with its 95% match-bootstrap interval "
                                 "(the same 2,000 draws at every point: the main population's match weights restricted "
-                                "to the point's shots; the line refitted in every draw)",
+                                "to the common population's shots; the line refitted in every draw)",
                       "signal": f"e(-400) <= {tr.LEAK_EXCESS} or e(-200) <= {tr.LEAK_EXCESS}, per contrast",
                       "consequence": "a jump blocks the 'practical candidate' wording of that contrast; the wording is "
                                      f"'{tr.AMBIGUOUS}'; the Holm reading itself is unchanged"},
@@ -234,6 +269,10 @@ def disclosures() -> list[str]:
         "The gating motion plant is a fixed-seed combination of every pooled-PCA motion column residualised on S's pooled "
         "inputs (C9 Q1); the pc01_vs_start plant is reported beside it. T's motion columns come from the fold PCAs, so "
         "the plants lie in T's span only approximately.",
+        "The leak curve's jump rule and method positive control are read on the shots common to every leak-curve "
+        "window, not on P_G: the window populations shrink as o_max moves earlier, and a trend fitted across "
+        "different populations could hide or fake a jump. The curve on each window's own population is reported "
+        "descriptively.",
         "Every truth of the label-free controls uses z_g_combo with intercept 0 and slope 1; no real label sets it.",
         "z_g_combo is the averaged pre-Platt logit of the two G-combo models that held each shot out; each member's "
         "epoch and temperature were chosen on its own scored fold (xg-stack C6).",

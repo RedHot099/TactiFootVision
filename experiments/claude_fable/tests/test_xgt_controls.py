@@ -220,7 +220,7 @@ def test_the_leak_rules_read_the_method_control_and_the_jump_with_its_interval()
     def curve(late: float, positive_hi: float) -> dict:
         values = {-1000: 0.0, -800: -0.0005, -600: -0.001, -400: -0.0015, -200: late, 0: -0.01, 400: -0.02}
         noise = rng.normal(0, 1e-4, 200)
-        return {o: {n: {"delta_ll": v, "draws": v + noise, "hi95": positive_hi if (o, n) == (400, "S-R") else 0.0}
+        return {o: {n: {"delta_ll": v, "boot": v + noise, "hi95": positive_hi if (o, n) == (400, "S-R") else 0.0}
                     for n in ("T-R", "T-S", "S-R")} for o, v in values.items()}
     flat = tr.leak_rules(curve(-0.002, -0.01))
     assert flat["method_positive"]["passed"] and not flat["leak_signal"]
@@ -238,6 +238,7 @@ def test_a_curve_point_keeps_its_draws_paired_with_the_main_weights():
     y = (rng.random(len(games)) < 0.2).astype(int)
     probabilities = {arm: np.clip(0.2 + 0.05 * rng.normal(size=len(games)), 0.01, 0.99) for arm in ("R", "S", "T")}
     point = tr.curve_point(y, probabilities, weights)
-    assert set(point) == {"T-R", "T-S", "S-R"} and point["T-S"]["draws"].shape == (ss.N_BOOT,)
+    assert set(point) == {"T-R", "T-S", "S-R"} and point["T-S"]["boot"].shape == (ss.N_BOOT,)
+    assert point["T-S"]["draws"] == ss.N_BOOT                              # summarise's count, not overwritten
     assert point["T-R"]["delta_ll"] == pytest.approx(ss.paired_delta(y, probabilities["T"], probabilities["R"],
                                                                      weights)["delta_ll"])

@@ -49,6 +49,7 @@ Extraction list of ticket 01b (`extraction_shots`)
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -277,18 +278,29 @@ def population_from(base: pd.DataFrame, frames: pd.DataFrame, window: Window, so
 
 def restrict(population: Population, shot_ids) -> Population:
     """The shots of `population` that are in `shot_ids` (a grid cell's window population intersected with the main
-    population P_G, so every cell is read on a subset of the same shots); counts recomputed, inputs kept."""
+    population P_G, so every cell is read on a subset of the same shots, or with the leak curve's common population);
+    counts recomputed, inputs kept, `window_shots` the unrestricted window population's size however often restricted."""
     keep = population.table.index.isin(pd.Index(shot_ids))
     table = population.table.loc[keep]
     refs = population.refs[keep]
     frames = population.frames[population.frames.shot_id.isin(table.index)].reset_index(drop=True)
     counts = {"shots": len(table), "matches": int(table.game.nunique()), "complete_shots": int(table.complete.sum()),
-              "window_shots": len(population.table), "restricted_to_main": True,
+              "window_shots": population.counts.get("window_shots", len(population.table)), "restricted_to_main": True,
               "shots_per_fold": {str(k): int(v) for k, v in table.fold.value_counts().sort_index().items()},
               "matches_per_fold": {str(k): int(v) for k, v in table.groupby("fold").game.nunique().items()},
               "usable_frames": int((refs >= 0).sum()),
               "usable_by_offset": {str(o): int((refs[:, i] >= 0).sum()) for i, o in enumerate(population.window.offsets)}}
     return replace(population, table=table, refs=refs, frames=frames, counts=counts)
+
+
+def common_shots(populations: Iterable[Population]) -> pd.Index:
+    """The shot ids in every one of `populations`, in the first one's order."""
+    populations = list(populations)
+    ids = populations[0].table.index
+    keep = np.ones(len(ids), dtype=bool)
+    for population in populations[1:]:
+        keep &= ids.isin(population.table.index)
+    return ids[keep]
 
 
 def shot_list_sha256(table: pd.DataFrame) -> str:

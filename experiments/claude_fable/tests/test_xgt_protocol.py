@@ -121,6 +121,39 @@ def test_a_trial_run_of_the_controls_is_refused_in_the_protocols_folder():
     assert not args.protocol_controls
 
 
+def test_the_common_shots_are_in_every_population_and_restriction_keeps_the_window_size():
+    population, _, _ = synthetic_population(ti.Window())
+    ids = population.table.index
+    other = SimpleNamespace(table=pd.DataFrame(index=ids[: len(ids) - 3][::-1]))   # another order
+    third = SimpleNamespace(table=pd.DataFrame(index=ids[2:]))
+    common = ti.common_shots([population, other, third])
+    assert list(common) == list(ids[2: len(ids) - 3])                         # in the first population's order
+    once = ti.restrict(population, ids[1:])
+    twice = ti.restrict(once, common)
+    assert twice.counts == ti.restrict(population, common).counts
+    assert twice.counts["window_shots"] == len(ids) and twice.counts["shots"] == len(common)
+
+
+def git_commit(root: Path, path: Path) -> None:
+    """Commit `path` in a repository at `root` (created when missing), as the protocol's freeze does."""
+    git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    if not (root / ".git").exists():
+        subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", str(path)], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "protocol"], check=True)
+
+
+def test_only_the_descriptive_rich_null_may_be_left_out_of_the_protocols_controls():
+    assert tco.DROPPABLE == ("rich_nulls_-0.002",) and tco.DROPPABLE[0] in tco.SIMULATIONS
+    kept = [s for s in tco.SIMULATIONS if s not in tco.DROPPABLE]
+    assert xgt_run.omitted_simulations(tco.SIMULATIONS) == [] and xgt_run.omitted_simulations(kept) == list(tco.DROPPABLE)
+    assert xgt_run.parse_args(["--controls", "--simulations", *kept]).protocol_controls
+    for other in ([s for s in tco.SIMULATIONS if s != "clustered_nulls"], list(reversed(tco.SIMULATIONS))):
+        assert xgt_run.omitted_simulations(other) is None
+        with pytest.raises(SystemExit):
+            xgt_run.parse_args(["--controls", "--simulations", *other])
+
+
 # ------------------------------------------------------------------ the chain on synthetic inputs
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
@@ -151,10 +184,10 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(tco, "POSITIVE_WINDOW", (-1.0, 1.0))
     rng = np.random.default_rng(1)
 
-    def labels(population, index, plan_csv):
-        n = len(population.table)
-        return tl.Labels(population.table.index.to_numpy(), (rng.random(n) < 0.15).astype(int),
-                         (rng.random(n) < 0.4).astype(int))
+    def labels(population, index, plan_csv):                      # the same labels on every read
+        n, own = len(population.table), np.random.default_rng(1)
+        return tl.Labels(population.table.index.to_numpy(), (own.random(n) < 0.15).astype(int),
+                         (own.random(n) < 0.4).astype(int))
     monkeypatch.setattr(xgt_run.tl, "load_labels", labels)
 
     def e3(shot_ids, source=None):
@@ -202,11 +235,21 @@ def test_controls_then_protocol_then_permutation_then_the_real_run(lab, monkeypa
     assert not protocol["draft"] and protocol["data"]["label_free_controls"]["complete_sha256"] == sha256_file(
         label_free / "complete.json")
     assert protocol["data"]["code"]["digest"] == tr_records.package_hashes()["digest"]
+    assert protocol["data"]["label_free_controls"]["omitted_simulations"] == []
+    common = protocol["data"]["leak_common"]
+    assert set(common["cells"]) == {str(o) for o in tpr.LEAK_CURVE}
+    assert {c["shot_list_sha256"] for c in common["cells"].values()} == {common["shot_list_sha256"]}
+    assert common["shots"] <= min(c["counts"]["shots"] for c in protocol["data"]["cells"] if c["start"] == -1600)
+    with pytest.raises(SystemExit, match="code change"):
+        xgt_protocol.main(["--refreeze", "--reason", "nothing changed"])
 
     monkeypatch.setattr(xgt_run, "PROTOCOL_SHA256", "0" * 64)
     with pytest.raises(SystemExit, match="SHA-256"):
         xgt_run.main(["--permutation"])
     monkeypatch.setattr(xgt_run, "PROTOCOL_SHA256", sha256_file(path))
+    with pytest.raises(SystemExit, match="not committed"):
+        xgt_run.main(["--permutation"])                             # pinned, but not in the HEAD commit
+    git_commit(lab, path)
     with pytest.raises(SystemExit, match="does not exist"):
         xgt_run.main(["--real"])                                    # no permutation yet
     xgt_run.main(["--permutation"])
@@ -217,12 +260,24 @@ def test_controls_then_protocol_then_permutation_then_the_real_run(lab, monkeypa
         xgt_run.main(["--permutation"])
 
     assert controls["all_passed"]                                   # the synthetic labels are seeded: deterministic
+    extraction = lab / "source/complete.json"
+    extraction.write_text('{"changed": true}')
+    with pytest.raises(SystemExit, match="extraction record"):
+        xgt_run.main(["--real"])
+    assert not (lab / xgt_run.REAL_OUT / "summary.json").exists()
+    extraction.write_text("{}")
+    import shutil
+    shutil.rmtree(lab / xgt_run.REAL_OUT)                          # the refused run made only its empty folder
     xgt_run.main(["--real"])
     summary = json.loads((lab / xgt_run.REAL_OUT / "summary.json").read_text())
     assert {"T-R", "T-S", "S-R"} == set(summary["deltas"]) and "readability_veto" in summary
-    assert set(summary["leak"]) == {"method_positive", "trend", "jump", "leak_signal"} and "motion_helps" in summary["claims"]
+    assert set(summary["leak"]) == {"method_positive", "trend", "jump", "leak_signal", "population", "shots"} and "motion_helps" in summary["claims"]
     assert set(summary["leak"]["jump"]["T-S"]["excess"]["-200"]) == {"excess", "lo95", "hi95"}
-    assert set(pd.read_csv(lab / xgt_run.REAL_OUT / "leak_curve.csv").o_max) == set(tpr.LEAK_CURVE)
+    assert summary["leak"]["population"] == "common" and summary["leak_by_window"]["descriptive"]
+    assert summary["leak"]["shots"] == common["shots"]
+    curve = pd.read_csv(lab / xgt_run.REAL_OUT / "leak_curve.csv")
+    assert set(curve.o_max) == set(tpr.LEAK_CURVE) and set(curve.population) == {"window", "common"}
+    assert set(curve[curve.population == "common"].shots) == {common["shots"]}
     assert set(pd.read_csv(lab / xgt_run.REAL_OUT / "categories.csv").category) == set(tpr.tc.CATEGORIES)
     probabilities = pd.read_csv(lab / xgt_run.REAL_LARGE / "probabilities.csv")
     assert not set(probabilities.columns) & {"goal", "on_target", "label", "y"}
@@ -275,4 +330,11 @@ def test_a_draft_or_a_changed_protocol_is_refused(lab, monkeypatch):
             xgt_run.opened_protocol()
     path.write_text(json.dumps(record, default=float))
     monkeypatch.setattr(xgt_run, "PROTOCOL_SHA256", sha256_file(path))
+    with pytest.raises(SystemExit, match="not committed"):
+        xgt_run.opened_protocol()
+    git_commit(lab, path)
     assert xgt_run.opened_protocol()["draft"] is False
+    path.write_text(json.dumps(record, default=float) + " ")      # edited after the commit, re-pinned
+    monkeypatch.setattr(xgt_run, "PROTOCOL_SHA256", sha256_file(path))
+    with pytest.raises(SystemExit, match="not committed"):
+        xgt_run.opened_protocol()

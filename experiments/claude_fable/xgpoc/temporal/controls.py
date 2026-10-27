@@ -102,6 +102,7 @@ GATES = ("provenance", "plain_nulls", "rich_nulls", "positive", "permutation")
 LABEL_FREE_GATES = GATES[:-1]
 SIMULATIONS = ("plain_nulls", "rich_nulls", "positive_-0.002", "positive_-0.004", "curve_-0.003", "clustered_nulls",
                "positive_pc01_-0.002", "rich_nulls_-0.002")     # run order; the last is the first to drop when CPU time binds (C8)
+DROPPABLE = ("rich_nulls_-0.002",)      # the only simulation the protocol's controls may leave out (C8), recorded as omitted
 CONTRASTS = (*tr.CONFIRMATORY, *tr.DESCRIPTIVE)
 
 Designs = dict[str, list[sf.FoldDesign]]
@@ -179,7 +180,9 @@ def settings() -> dict:
                                   "commit (compare.stats.permute_within_matches)", "pass": "no Holm rejection",
                         "seed": SEEDS["permutation"]},
         "monte_carlo_se": "sqrt(p (1 - p) / n) for every share",
-        "time_budget": "if CPU time binds, rich_nulls_-0.002 drops first, never a gating set (C8)",
+        "time_budget": "if CPU time binds, rich_nulls_-0.002 drops first, never a gating set (C8); it is the only "
+                       "simulation the protocol's controls may leave out, and the protocol records the omission",
+        "droppable": list(DROPPABLE),
         "parallel": "outcomes drawn in the parent in replicate order; fits in spawned workers with one BLAS thread "
                     "each; results do not depend on the number of workers",
     }
