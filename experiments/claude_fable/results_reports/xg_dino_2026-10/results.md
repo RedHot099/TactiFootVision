@@ -224,6 +224,7 @@ Nic nie dopasowano do StatsBomb. Sprawdzono dwie stałe reguły: średnia detekt
 - Najprostsze wyjaśnienie: wkład DINOv2 to informacja inna niż te cechy, na przykład postawa ciała, część ciała przy strzale, ruch piłki albo kontekst akcji. To hipoteza. Nie testowaliśmy jej.
 - Rekomendacja: zostawić C, czyli DINOv2 razem z geometrią. Usunięcie DINOv2 pogarsza model i mało skraca czas.
 - Co sprawdziłoby hipotezę: sondy na cechach spoza geometrii (część ciała, strzał z pierwszej piłki, typ akcji), odczytane z tych samych embeddingów; ablacja C z maskowaniem strzelca albo bramki na klatce; porównanie C−B w podzbiorach według typu strzału.
+- Hipotezę sprawdza raport xg-dino-info: [info.md](info.md).
 
 ## 7. Odpowiedź dla recenzenta
 

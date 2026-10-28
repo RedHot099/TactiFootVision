@@ -1,0 +1,250 @@
+# Sources of every number in info.md (ticket 16), the Polish report of xg-dino-info and the addendum to the reviewer
+# reply. Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings for the
+# tag and claim scheme. Paths are relative to experiments/claude_fable; "alias:file" resolves through [folders].
+# Every result is a development result on the 328 training matches (dev = true): the report's title carries
+# "wyniki rozwojowe", so every heading below it does. No folder is confirmatory.
+# xg-dino's ablation numbers (ab) are the frozen baseline this phase builds on. The report folder (ir) holds a ratio
+# read from the outputs after the runs (scripts/xgdino_info_report.py).
+
+[report]
+# Design constants, not results: frame offsets, the +300 ms flag window, the caption window edge, DINOv2 block indices,
+# the 95th-percentile rule name, the hash name.
+untagged = ["400 ms", "300 ms", "60 s", "20–23", "blok 23", "95. percentyl", "SHA-256"]
+
+[folders]
+pr = { path = "research" }
+ab = { path = "results/xgdino_ablation/real", dev = true }
+at = { path = "results/xgdino_info_attributes", dev = true }
+lb = { path = "results/xgdino_info_labels", dev = true }
+ct = { path = "results/xgdino_info_protocol/controls_r1000", dev = true }
+pb = { path = "results/xgdino_info_probes", dev = true }
+rd = { path = "results/xgdino_info_redundancy", dev = true }
+ms = { path = "results/xgdino_info_masked", dev = true }
+mk = { path = "results/xgdino_info_mask", dev = true }
+ir = { path = "results/xgdino_info_report", dev = true }
+
+[claims]
+
+# --- pinned protocols (xg-dino 01b; ticket 11) ---
+"p.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.primary.shots"], fmt = "{:,d}" }
+"p.matches" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.primary.matches"], fmt = "{:d}" }
+"p.goals" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected_goals.primary"], fmt = "{:d}" }
+"p.nov3.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.no_v3.shots"], fmt = "{:,d}" }
+"p.unseen.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.unseen.shots"], fmt = "{:,d}" }
+"p.draws" = { src = "pr:xgdino_info_protocol.json", keys = ["frozen.model.bootstrap.draws"], fmt = "{:,d}" }
+"p.gain.r2" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.encodes_thresholds.encodes_beyond_distance.delta_r2_min"], fmt = "{:.2f}" }
+"p.gain.auc" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.encodes_thresholds.encodes_beyond_distance.delta_auc_min"], fmt = "{:.2f}" }
+"p.ci95" = { src = "pr:xgdino_ablation_protocol.json", quote = "95% match-bootstrap lower bound > 0", values = [95], fmt = "{:d}%" }
+"p.held" = { src = "pr:xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [172], fmt = "{:d}" }
+"pr.most" = { src = "pr:xgdino_info_protocol.json", quote = "the 5th percentile of R - 0.5 G > 0", values = [0.5], fmt = "{:.1f}" }
+"pr.part" = { src = "pr:xgdino_info_protocol.json", quote = "the same with R - 0.25 G", values = [0.25], fmt = "{:.2f}" }
+"pr.minsup" = { src = "pr:xgdino_info_protocol.json", keys = ["frozen.subgroups.min_support"], fmt = "{:d}" }
+
+# --- xg-dino baseline (ticket 02) and the report ratio ---
+"ab.C-B.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.log_loss.delta", "blocks.primary.contrasts.C-B.log_loss.lo95", "blocks.primary.contrasts.C-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.BQ-B.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.BQ-B.log_loss.delta", "blocks.primary.contrasts.BQ-B.log_loss.lo95", "blocks.primary.contrasts.BQ-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ir.bqshare" = { src = "ir:derived.json", keys = ["bq_minus_b_share_of_c_minus_b"], scale = 100, fmt = "{:.0f}%" }
+
+# --- attributes (ticket 09) ---
+"at.replay" = { src = "at:coverage.json", keys = ["replay_reproduces_shot_xy.0.reproduced"], fmt = "{:,d}" }
+"at.motion" = { src = "at:coverage.json", keys = ["motion_status.ok"], fmt = "{:,d}" }
+
+# --- labels (ticket 10) ---
+"lb.sample" = { src = "lb:complete.json", keys = ["sample.size"], fmt = "{:,d}" }
+"lb.cap.present" = { src = "lb:complete.json", keys = ["caption_files.present"], fmt = "{:d}" }
+"lb.cap.head" = { src = "lb:caption_coverage_by_outcome.csv", row = { outcome = "all" }, cols = ["header"], fmt = "{:d}" }
+"lb.cap.head.goal" = { src = "lb:caption_coverage_by_outcome.csv", row = { outcome = "goal" }, cols = ["header"], fmt = "{:d}" }
+"lb.cap.head.nogoal" = { src = "lb:caption_coverage_by_outcome.csv", row = { outcome = "no_goal" }, cols = ["header"], fmt = "{:d}" }
+"lb.cap.foot" = { src = "lb:caption_coverage_by_outcome.csv", row = { outcome = "all" }, cols = ["foot"], fmt = "{:d}" }
+"lb.cap.unknown" = { src = "lb:caption_coverage_by_outcome.csv", row = { outcome = "all" }, cols = ["unknown"], fmt = "{:,d}" }
+"lb.gpt.head" = { src = "lb:header_gpt.csv", row = { gpt_answer = "head" }, cols = [], agg = "count", fmt = "{:d}" }
+"lb.gpt.foot" = { src = "lb:header_gpt.csv", row = { gpt_answer = "foot" }, cols = [], agg = "count", fmt = "{:d}" }
+"lb.gpt.unclear" = { src = "lb:header_gpt.csv", row = { gpt_answer = "unclear" }, cols = [], agg = "count", fmt = "{:d}" }
+"lb.n" = { src = "lb:caption_vs_gpt.json", keys = ["overall.n"], fmt = "{:d}" }
+"lb.prec" = { src = "lb:caption_vs_gpt.json", keys = ["overall.caption_header.precision", "goal.caption_header.precision", "no_goal.caption_header.precision"], fmt = "{:.3f} | {:.3f} | {:.3f}" }
+"lb.recall" = { src = "lb:caption_vs_gpt.json", keys = ["overall.gpt_head.recall", "goal.gpt_head.recall", "no_goal.gpt_head.recall"], fmt = "{:.3f} | {:.3f} | {:.3f}" }
+"lb.recall.unw" = { src = "lb:caption_vs_gpt.json", keys = ["overall.gpt_head.recall_unweighted"], fmt = "{:.3f}" }
+"lb.unknown" = { src = "lb:caption_vs_gpt.json", keys = ["overall.caption_unknown.gpt_head_share", "goal.caption_unknown.gpt_head_share", "no_goal.caption_unknown.gpt_head_share"], fmt = "{:.3f} | {:.3f} | {:.3f}" }
+
+# --- controls r1000 (ticket 11) ---
+"ct.reps" = { src = "ct:controls.json", keys = ["replicates"], fmt = "{:,d}" }
+"ct.g" = { src = "ct:controls.json", keys = ["truth.g_target"], fmt = "{:.4f}" }
+"ct.null.xc" = { src = "ct:controls.json", keys = ["scenarios.null.blocks.Xc.rates.explains part.rate"], fmt = "{:.3f}" }
+"ct.null.wilson" = { src = "ct:controls.json", keys = ["scenarios.null.blocks.Xc.rates.explains part.wilson95.1"], fmt = "{:.3f}" }
+"ct.null.fam" = { src = "ct:controls.json", keys = ["scenarios.null.family_false_part_or_most.rate"], fmt = "{:.3f}" }
+"ct.p50.power" = { src = "ct:controls.json", keys = ["scenarios.plant50.blocks.Xc.false_part_or_most.rate"], fmt = "{:.3f}" }
+"ct.p25.not" = { src = "ct:controls.json", keys = ["scenarios.plant25.blocks.Xc.rates.does not explain.rate"], fmt = "{:.3f}" }
+"ct.p25.inc" = { src = "ct:controls.json", keys = ["scenarios.plant25.blocks.Xc.rates.inconclusive.rate"], fmt = "{:.3f}" }
+"ct.limit" = { src = "ct:controls.json", keys = ["gates.limit"], fmt = "{:.2f}" }
+"ct.p25.meanR" = { src = "ct:controls.json", keys = ["scenarios.plant25.blocks.Xc.mean_R"], fmt = "{:.5f}" }
+"ct.p25.oracleR" = { src = "ct:controls.json", keys = ["scenarios.plant25.oracle.R"], fmt = "{:.5f}" }
+
+# --- probes (ticket 12): G-combo and frozen DINOv2 at offset 0, nested block ---
+"pb.dino.enc" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", encodes = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+"pb.dino.n" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", encodes = ["True", "False"] }, cols = [], agg = "count", fmt = "{:d}" }
+"pb.g.enc" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", encodes = "True" }, cols = [], agg = "count", fmt = "{:d}" }
+"pb.g.n" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", encodes = ["True", "False"] }, cols = [], agg = "count", fmt = "{:d}" }
+
+"pb.box.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "box_players@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.box.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "box_players@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.box.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "box_players@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.near5.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "near5_players@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.near5.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "near5_players@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.near5.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "near5_players@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.sh.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "shooter_h_px@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.sh.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "shooter_h_px@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.sh.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "shooter_h_px@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.asp.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "shooter_aspect@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.asp.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "shooter_aspect@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.asp.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "shooter_aspect@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.ppm.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "px_per_m@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.ppm.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "px_per_m@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.ppm.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "px_per_m@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.np.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "n_players@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.np.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "n_players@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.np.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "n_players@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.sp.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "set_piece" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.sp.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "set_piece" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.sp.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "set_piece" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.corner.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "sn_corner_20s" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.corner.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "sn_corner_20s" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.corner.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "sn_corner_20s" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.above.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "ball_above@0" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.above.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "ball_above@0" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.above.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "ball_above@0" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.mot.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "motion_shot_disp_m" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.mot.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "motion_shot_disp_m" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.mot.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "motion_shot_disp_m" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.hg.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "header_gpt" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.hg.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_gpt" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.hg.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_gpt" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.hc.d" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "dino", target = "header_caption" }, cols = ["embedding_point"], fmt = "{:.3f}" }
+"pb.hc.g" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_caption" }, cols = ["embedding_point", "distance_only_point", "gain_nested_point", "gain_nested_lo", "gain_nested_hi"], fmt = "{:.3f} | {:.3f} | {:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.hc.v" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_caption" }, cols = ["encodes"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"pb.head.goal" = { src = "pb:header_by_outcome.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_gpt", weighted = "True", outcome = "goal", probe = "gain_over_distance" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.head.nogoal" = { src = "pb:header_by_outcome.csv", row = { offset_ms = "0", encoder = "g_combo", target = "header_gpt", weighted = "True", outcome = "no_goal", probe = "gain_over_distance" }, cols = ["point", "lo", "hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pb.z.alone" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "z_C_minus_z_B" }, cols = ["embedding_point", "embedding_lo", "embedding_hi"], fmt = "{:.3f} [{:.3f}; {:.3f}]" }
+"pb.z.geo" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "z_C_minus_z_B" }, cols = ["geometry_only_point"], fmt = "{:+.3f}" }
+"pb.z.beyond" = { src = "pb:summary.csv", row = { offset_ms = "0", encoder = "g_combo", target = "z_C_minus_z_B" }, cols = ["gain_beyond_geometry_point", "gain_beyond_geometry_lo", "gain_beyond_geometry_hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+
+# --- subgroups (ticket 13): d = l_C - l_B; goal counts from goal_count (the pinned summary overwrites "goals") ---
+"sg.hg.in" = { src = "rd:subgroups.csv", row = { key = "header_gpt", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.hg.out" = { src = "rd:subgroups.csv", row = { key = "header_gpt", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.hg.holm" = { src = "rd:subgroups.csv", row = { key = "header_gpt", side = "out" }, cols = ["holm_rejected"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"sg.sp.in" = { src = "rd:subgroups.csv", row = { key = "set_piece", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.sp.out" = { src = "rd:subgroups.csv", row = { key = "set_piece", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.sp.holm" = { src = "rd:subgroups.csv", row = { key = "set_piece", side = "out" }, cols = ["holm_rejected"], labels = { "True" = "tak", "False" = "nie" }, fmt = "{}" }
+"sg.dist.in" = { src = "rd:subgroups.csv", row = { key = "distance_tercile", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.dist.out" = { src = "rd:subgroups.csv", row = { key = "distance_tercile", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.crowd.in" = { src = "rd:subgroups.csv", row = { key = "crowding_tercile", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.crowd.out" = { src = "rd:subgroups.csv", row = { key = "crowding_tercile", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.frame.in" = { src = "rd:subgroups.csv", row = { key = "framing_tercile", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.frame.out" = { src = "rd:subgroups.csv", row = { key = "framing_tercile", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.ball.in" = { src = "rd:subgroups.csv", row = { key = "ball_detected", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.ball.out" = { src = "rd:subgroups.csv", row = { key = "ball_detected", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.gk.in" = { src = "rd:subgroups.csv", row = { key = "gk_detected", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.gk.out" = { src = "rd:subgroups.csv", row = { key = "gk_detected", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"sg.hc.in" = { src = "rd:subgroups.csv", row = { key = "header_caption", side = "in" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"sg.hc.out" = { src = "rd:subgroups.csv", row = { key = "header_caption", side = "out" }, cols = ["shots", "goal_count", "mean_d_delta", "mean_d_lo95", "mean_d_hi95", "contrast_delta", "contrast_lo95", "contrast_hi95", "contrast_p_two_sided"], fmt = "{:,d} | {:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+
+# --- redundancy (ticket 13) ---
+"rd.Xc.row" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.Xc.v" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.crowding.row" = { src = "rd:verdicts.csv", row = { block = "crowding" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.crowding.v" = { src = "rd:verdicts.csv", row = { block = "crowding" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.shooter.row" = { src = "rd:verdicts.csv", row = { block = "shooter" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.shooter.v" = { src = "rd:verdicts.csv", row = { block = "shooter" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.ball_t0.row" = { src = "rd:verdicts.csv", row = { block = "ball_t0" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.ball_t0.v" = { src = "rd:verdicts.csv", row = { block = "ball_t0" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.ball_m400.row" = { src = "rd:verdicts.csv", row = { block = "ball_m400" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.ball_m400.v" = { src = "rd:verdicts.csv", row = { block = "ball_m400" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.motion.row" = { src = "rd:verdicts.csv", row = { block = "motion" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.motion.v" = { src = "rd:verdicts.csv", row = { block = "motion" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.flags.row" = { src = "rd:verdicts.csv", row = { block = "flags" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.flags.v" = { src = "rd:verdicts.csv", row = { block = "flags" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.flags_le0.row" = { src = "rd:verdicts.csv", row = { block = "flags_le0" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.flags_le0.v" = { src = "rd:verdicts.csv", row = { block = "flags_le0" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.Xq.row" = { src = "rd:verdicts.csv", row = { block = "Xq" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.Xq.v" = { src = "rd:verdicts.csv", row = { block = "Xq" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.Q.row" = { src = "rd:verdicts.csv", row = { block = "Q" }, cols = ["gain_delta", "gain_lo95", "gain_hi95", "R_over_G", "R_over_G_lo95", "R_over_G_hi95", "C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.5f} [{:+.5f}; {:+.5f}] | {:.2f} [{:.2f}; {:.2f}] | {:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.Q.v" = { src = "rd:verdicts.csv", row = { block = "Q" }, cols = ["raw_verdict", "verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{} | {}" }
+"rd.Xc.rg" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["R_over_G", "R_over_G_lo95", "R_over_G_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"rd.Xq.rg" = { src = "rd:verdicts.csv", row = { block = "Xq" }, cols = ["R_over_G", "R_over_G_lo95", "R_over_G_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"rd.Q.rg" = { src = "rd:verdicts.csv", row = { block = "Q" }, cols = ["R_over_G", "R_over_G_lo95", "R_over_G_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"rd.G" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["G_delta", "G_lo95", "G_hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.Xc.cbx" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["C_minus_BX_delta", "C_minus_BX_lo95", "C_minus_BX_hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.Xc.cxc" = { src = "rd:verdicts.csv", row = { block = "Xc" }, cols = ["CX_minus_C_delta", "CX_minus_C_lo95", "CX_minus_C_hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"rd.nov3.Xc" = { src = "rd:estimands.csv", row = { estimand = "no_v3", block = "Xc" }, cols = ["R_over_G"], fmt = "{:.2f}" }
+"rd.nov3.Xq" = { src = "rd:estimands.csv", row = { estimand = "no_v3", block = "Xq" }, cols = ["R_over_G"], fmt = "{:.2f}" }
+"rd.nov3.Q" = { src = "rd:estimands.csv", row = { estimand = "no_v3", block = "Q" }, cols = ["R_over_G"], fmt = "{:.2f}" }
+"rd.nov3.Xc.v" = { src = "rd:estimands.csv", row = { estimand = "no_v3", block = "Xc" }, cols = ["verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{}" }
+"rd.unseen.Xc" = { src = "rd:estimands.csv", row = { estimand = "unseen", block = "Xc" }, cols = ["R_over_G"], fmt = "{:.2f}" }
+"rd.unseen.Xc.v" = { src = "rd:estimands.csv", row = { estimand = "unseen", block = "Xc" }, cols = ["verdict"], labels = { "inconclusive" = "nierozstrzygnięte", "does not explain" = "nie wyjaśnia", "explains part" = "wyjaśnia część", "explains most" = "wyjaśnia większość" }, fmt = "{}" }
+"rd.leak.Xc.R" = { src = "rd:leak.csv", row = { block = "Xc", statistic = "R" }, cols = ["leak_verdict"], labels = { "decidable" = "rozstrzygalny", "not decidable" = "nierozstrzygalny" }, fmt = "{}" }
+"rd.leak.Xc.cbx" = { src = "rd:leak.csv", row = { block = "Xc", statistic = "C-BX" }, cols = ["leak_verdict"], labels = { "decidable" = "rozstrzygalny", "not decidable" = "nierozstrzygalny" }, fmt = "{}" }
+"rd.leak.Xq.R" = { src = "rd:leak.csv", row = { block = "Xq", statistic = "R" }, cols = ["leak_verdict"], labels = { "not decidable" = "nierozstrzygalne" }, fmt = "{}" }
+"rd.leak.Q.R" = { src = "rd:leak.csv", row = { block = "Q", statistic = "R" }, cols = ["leak_verdict"], labels = { "decidable" = "rozstrzygalny", "not decidable" = "nierozstrzygalny" }, fmt = "{}" }
+"rd.leak.crowding.R" = { src = "rd:leak.csv", row = { block = "crowding", statistic = "R" }, cols = ["leak_verdict"], labels = { "decidable" = "rozstrzygalny", "not decidable" = "nierozstrzygalny" }, fmt = "{}" }
+"rd.leak.shooter.R" = { src = "rd:leak.csv", row = { block = "shooter", statistic = "R" }, cols = ["leak_verdict"], labels = { "decidable" = "rozstrzygalny", "not decidable" = "nierozstrzygalny" }, fmt = "{}" }
+"rd.chk.refit" = { src = "rd:checks.json", keys = ["refit_vs_frozen_xgdino.max_abs_delta_p_C"], fmt = "{:.1e}" }
+"rd.chk.bxc" = { src = "rd:checks.json", keys = ["arm_refit.B+Xc.max_abs_delta_p"], fmt = "{:.1e}" }
+
+# --- masking (tickets 14, 15) ---
+"ms.frames" = { src = "ms:summary.json", keys = ["pool.shape.0"], fmt = "{:,d}" }
+"mk.gate.max" = { src = "mk:checks.json", keys = ["max_abs_dz_replay_vs_stored"], fmt = "{:.5f}" }
+"mk.gate.mean" = { src = "mk:checks.json", keys = ["mean_abs_dz"], fmt = "{:.1e}" }
+"mk.cont" = { src = "mk:checks.json", keys = ["C_refit_replay_vs_frozen_xgdino_max_abs_dp"], fmt = "{:.1e}" }
+"mk.players.placebo" = { src = "mk:summary.json", keys = ["population.players.placebo_feasible"], fmt = "{:d}" }
+"mk.goal.placebo" = { src = "mk:summary.json", keys = ["population.goal.placebo_feasible"], fmt = "{:,d}" }
+"mk.goal.present" = { src = "mk:summary.json", keys = ["population.goal.present"], fmt = "{:,d}" }
+"mr.shooter" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "shooter" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mr.shooter.v" = { src = "mk:summary.json", keys = ["decisions.refit.holm.mean.shooter", "decisions.refit.holm.blur.shooter", "decisions.refit.agreement.shooter"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mr.goalkeeper" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "goalkeeper" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mr.goalkeeper.v" = { src = "mk:summary.json", keys = ["decisions.refit.holm.mean.goalkeeper", "decisions.refit.holm.blur.goalkeeper", "decisions.refit.agreement.goalkeeper"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mr.ball" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "ball" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mr.ball.v" = { src = "mk:summary.json", keys = ["decisions.refit.holm.mean.ball", "decisions.refit.holm.blur.ball", "decisions.refit.agreement.ball"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mr.sb" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "shooter+ball" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mr.sb.v" = { src = "mk:summary.json", keys = ["decisions.refit.holm.mean.shooter+ball", "decisions.refit.holm.blur.shooter+ball", "decisions.refit.agreement.shooter+ball"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mr.goal" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "goal" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mr.goal.v" = { src = "mk:summary.json", keys = ["decisions.refit.holm.mean.goal", "decisions.refit.holm.blur.goal", "decisions.refit.agreement.goal"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mf.shooter" = { src = "mk:regions.csv", row = { arm = "C", estimand = "frozen", fill = "mean", region = "shooter" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mf.shooter.v" = { src = "mk:summary.json", keys = ["decisions.frozen.holm.mean.shooter", "decisions.frozen.holm.blur.shooter", "decisions.frozen.agreement.shooter"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mf.goalkeeper" = { src = "mk:regions.csv", row = { arm = "C", estimand = "frozen", fill = "mean", region = "goalkeeper" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mf.goalkeeper.v" = { src = "mk:summary.json", keys = ["decisions.frozen.holm.mean.goalkeeper", "decisions.frozen.holm.blur.goalkeeper", "decisions.frozen.agreement.goalkeeper"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mf.ball" = { src = "mk:regions.csv", row = { arm = "C", estimand = "frozen", fill = "mean", region = "ball" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mf.ball.v" = { src = "mk:summary.json", keys = ["decisions.frozen.holm.mean.ball", "decisions.frozen.holm.blur.ball", "decisions.frozen.agreement.ball"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mf.sb" = { src = "mk:regions.csv", row = { arm = "C", estimand = "frozen", fill = "mean", region = "shooter+ball" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mf.sb.v" = { src = "mk:summary.json", keys = ["decisions.frozen.holm.mean.shooter+ball", "decisions.frozen.holm.blur.shooter+ball", "decisions.frozen.agreement.shooter+ball"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mf.goal" = { src = "mk:regions.csv", row = { arm = "C", estimand = "frozen", fill = "mean", region = "goal" }, cols = ["test_shots", "vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95", "vs_placebo_delta", "vs_placebo_lo95", "vs_placebo_hi95", "p"], fmt = "{:,d} | {:+.4f} [{:+.4f}; {:+.4f}] | {:+.4f} [{:+.4f}; {:+.4f}] | {:.3f}" }
+"mf.goal.v" = { src = "mk:summary.json", keys = ["decisions.frozen.holm.mean.goal", "decisions.frozen.holm.blur.goal", "decisions.frozen.agreement.goal"], labels = { "true" = "tak", "false" = "nie", "no detectable sensitivity" = "brak wykrywalnej wrażliwości", "inconclusive (fills disagree)" = "nierozstrzygnięte (wypełnienia się różnią)", "sensitive to the intervention" = "wrażliwe na interwencję" }, fmt = "{} | {} | {}" }
+"mr.goalkeeper.blur" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "blur", region = "goalkeeper" }, cols = ["p"], fmt = "{:.3f}" }
+"md.background" = { src = "mk:regions.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "background" }, cols = ["present_vs_unmasked_delta", "present_vs_unmasked_lo95", "present_vs_unmasked_hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"gl.shooter.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "shooter" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.shooter.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "shooter" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.goalkeeper.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "goalkeeper" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.goalkeeper.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "goalkeeper" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.ball.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.ball.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.sb.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "shooter+ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.sb.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "shooter+ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.goal.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "goal" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.goal.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "goal" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.background.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "background" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.background.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "background" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.players.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "players" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.players.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "players" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_persons.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "keep_persons" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_persons.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "keep_persons" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_goal.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "keep_goal" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_goal.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "keep_goal" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_sb.r" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "keep_shooter_ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.keep_sb.f" = { src = "mk:gain_left.csv", row = { estimand = "frozen", fill = "mean", region = "keep_shooter_ball" }, cols = ["all_point", "all_lo95", "all_hi95"], fmt = "{:.2f} [{:.2f}; {:.2f}]" }
+"gl.goal.pt" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "goal" }, cols = ["all_point"], fmt = "{:.2f}" }
+"gl.ball.pt" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "ball" }, cols = ["all_point"], fmt = "{:.2f}" }
+"gl.players.pt" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "players" }, cols = ["all_point"], fmt = "{:.2f}" }
+"gl.keep_sb.pt" = { src = "mk:gain_left.csv", row = { estimand = "refit", fill = "mean", region = "keep_shooter_ball" }, cols = ["all_point"], fmt = "{:.2f}" }
+"ov.ball.shooter" = { src = "mk:overlap.csv", row = { a = "ball", b = "shooter" }, cols = ["share_of_a_in_b"], scale = 100, fmt = "{:.0f}%" }
+"ov.jacc" = { src = "mk:overlap.csv", row = { a = "ball", b = "shooter" }, cols = ["jaccard"], fmt = "{:.2f}" }
+"ov.gk.goal" = { src = "mk:overlap.csv", row = { a = "goalkeeper", b = "goal" }, cols = ["share_of_a_in_b"], scale = 100, fmt = "{:.0f}%" }
+"sb.gk.large.n" = { src = "mk:size_bins.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "goalkeeper", bin = "large" }, cols = ["shots"], fmt = "{:d}" }
+"sb.gk.large" = { src = "mk:size_bins.csv", row = { arm = "C", estimand = "refit", fill = "mean", region = "goalkeeper", bin = "large" }, cols = ["vs_unmasked_delta", "vs_unmasked_lo95", "vs_unmasked_hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
