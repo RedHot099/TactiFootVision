@@ -27,12 +27,23 @@ Truths (`Truths`, built once per population from the pooled PCA of `pooled_score
     clustered    y* ~ Bernoulli(sigmoid(z + u_m)), a match random intercept u_m ~ N(0, CLUSTER_SD²) drawn per replicate
                  before the outcomes: no arm can use it.
 Each simulation draws its replicates from its own `default_rng(seed)` in replicate order (`draw`): the truth's random
-effect, if any, then y* = (rng.random(n) < p). The seeds (`SEEDS`) are fixed here, distinct from the tracer's (0), the
-PCA's and the bootstrap's (0) and xg-stack's (200-206).
+effect, if any, then y* = (rng.random(n) < p). The seeds are fixed here, distinct from the tracer's (0), the PCA's and
+the bootstrap's (0) and xg-stack's (200-206): `SEEDS` were the first attempt's, `REMEDY_SEEDS` (each + 100, the truths'
+projection seeds rich_projection and motion_plant unchanged) are the protocol's controls' after the remedy, and
+`RUN_SEEDS` is both together as the protocol's controls and the permutation use them.
 
-One replicate (`replicate_row`): R, S and T out of fold under `readout.MODEL`, ΔLL T - R, T - S and S - R with the
-paired match bootstrap, Holm over {T - R, T - S} (`readout.CONFIRMATORY`), the oracle ΔLL LL(p_true) - LL(R) with its
-one-sided p, and the share of outer folds whose inner CV chose the grid's smallest C (S and T).
+The first attempt and the remedy (`FIRST_ATTEMPT`, `REMEDY`). The protocol's first label-free run (results/xgt/controls/
+label_free, HEAD cded06d, one penalty shared by T's static and motion blocks) failed the positive gate by shrinkage
+(mean recovered T - S -0.00032, above -0.001) and the rich-null gate (Holm T - S rejection 0.11 > 0.09). The
+pre-registered remedy of C9 Q2 is now built (`readout.T_MODEL`: T keeps S's C for the static block and chooses its own
+motion-block C); C8 Q3 names the same change as the fix of a rich-null failure. The protocol's controls are rerun once
+on `REMEDY_SEEDS` (`scripts/xgt_run.py --controls --remedy`, results/xgt/controls/label_free_remedy); the first
+attempt's record stays and the protocol cites it. A second positive-control miss stops the phase for the council.
+
+One replicate (`replicate_row`): R, S out of fold under `readout.MODEL` and T under `readout.T_MODEL`, ΔLL T - R,
+T - S and S - R with the paired match bootstrap, Holm over {T - R, T - S} (`readout.CONFIRMATORY`), the oracle ΔLL
+LL(p_true) - LL(R) with its one-sided p, and the share of outer folds whose inner CV chose the grid's smallest C (S's
+C, and T's motion-block C_M).
 
 Gates (`GATES`; a failed gate is fixed in the code, never by loosening the criterion)
     provenance   every leak assertion of `provenance.control` passes.
@@ -42,7 +53,8 @@ Gates (`GATES`; a failed gate is fixed in the code, never by loosening the crite
     positive     the motion plant at true T - S ΔLL -0.002: the mean recovered out-of-fold T - S ΔLL in
                  [-0.003, -0.001]; Holm power of T - S (and T - R, reported only) with Monte Carlo SE
                  sqrt(p (1 - p) / n). A miss with the recovered T - S above -0.001 (shrinkage) triggers the
-                 pre-registered remedy (`REMEDY`, C9 Q2), built only then; any other miss is fixed in the code.
+                 pre-registered remedy (`REMEDY`, C9 Q2), built only then (it was: `FIRST_ATTEMPT`); any other miss is
+                 fixed in the code; a miss after the remedy stops the phase.
     permutation  after the protocol commit, inside the label seal: the read-out on the real labels permuted within
                  matches (`permutation`); no Holm rejection.
 Reports (not gating)
@@ -96,7 +108,9 @@ MOTION_CONTRAST = "T-S"
 SEEDS = {"plain_nulls": 30301, "rich_projection": 30302, "rich_nulls": 30303, "rich_nulls_-0.002": 30304,
          "positive_-0.002": 30305, "positive_-0.004": 30306, "curve_-0.003": 30307, "clustered_nulls": 30308,
          "permutation": 30309, "motion_plant": 30310, "positive_pc01_-0.002": 30311}
-REMEDY_SEEDS = {name: seed + 100 for name, seed in SEEDS.items() if name not in ("rich_projection", "motion_plant")}
+TRUTH_SEEDS = ("rich_projection", "motion_plant")
+REMEDY_SEEDS = {name: seed + 100 for name, seed in SEEDS.items() if name not in TRUTH_SEEDS}
+RUN_SEEDS = REMEDY_SEEDS | {name: SEEDS[name] for name in TRUTH_SEEDS}     # the protocol's controls after the remedy
 TRACER_SEED = 0                         # scripts/xgt_run.py --synthetic's default
 GATES = ("provenance", "plain_nulls", "rich_nulls", "positive", "permutation")
 LABEL_FREE_GATES = GATES[:-1]
@@ -117,8 +131,11 @@ def quiet(_: str) -> None:
 mc_se = sc.mc_se
 
 
+REMEDY_TRIGGER = POSITIVE_WINDOW[1]     # a positive miss with the mean recovered T - S above this is shrinkage (C9 Q2)
+
 REMEDY = {
     "source": "council C9 Q2 (b), pre-registered; built only on a miss, not before",
+    "status": "built after the first attempt's miss (first_attempt); T's model is readout.T_MODEL for every T-type arm",
     "trigger": f"the positive gate fails with the mean recovered T-S ΔLL above {POSITIVE_WINDOW[1]} (shrinkage); a miss "
                f"below {POSITIVE_WINDOW[0]} is a code bug, fixed in the code",
     "change": "T keeps, per outer fold, the C that S's inner CV chose for the static block (z unpenalised, the S "
@@ -130,6 +147,24 @@ REMEDY = {
     "seeds": REMEDY_SEEDS,
     "second_miss": "a second positive-control miss stops the phase and goes to the council (D9)",
     "refreeze": "the protocol is re-frozen after the code change, with the reason, before any label",
+    "rich_nulls": "council C8 Q3: a rich-null failure is fixed in the code (e.g. a separate motion-block penalty), never "
+                  "by loosening 0.09; this remedy is that fix, so the rich-null gate is rerun under it unchanged",
+}
+
+FIRST_ATTEMPT = {
+    "path": "results/xgt/controls/label_free", "code": "HEAD cded06d (one C shared by T's static and motion blocks)",
+    "run": "--controls --jobs 8, 200 replicates, every simulation, seeds SEEDS; 5,580 s",
+    "label_free_passed": False,
+    "gates": {"provenance": True, "plain_nulls": True, "rich_nulls": False, "positive": False},
+    "positive": {"target": POSITIVE_TARGET, "mean_recovered_T-S": -0.00032, "window": list(POSITIVE_WINDOW),
+                 "power_T-S": 0.15, "power_T-S_mc_se": 0.025, "oracle_power": 0.895,
+                 "grid_floor_share": {"S": 0.54, "T": 0.12}, "trigger": "mean recovered T-S above "
+                 f"{REMEDY_TRIGGER}: shrinkage, the pre-registered remedy (C9 Q2)"},
+    "rich_nulls": {"scale": RICH_SCALE, "holm_rejection_T-S": 0.11, "mc_se": 0.022, "limit": NULL_MAX_REJECTION_RATE,
+                   "mean_T-S": 0.00014, "fix": "C8 Q3: in the code (the same remedy), the 0.09 unchanged"},
+    "plain_nulls": {"holm_rejection_any": 0.01},
+    "reported": {"positive_-0.004_mean_recovered_T-S": -0.00106, "curve_-0.003_mean_recovered_T-S": -0.00066,
+                 "positive_pc01_-0.002_mean_recovered_T-S": -0.00073},
 }
 
 
@@ -137,7 +172,8 @@ def settings() -> dict:
     """The controls' frozen settings (module docstring), as the protocol records them."""
     lo, hi = POSITIVE_WINDOW
     return {
-        "replicates": N_REPLICATES, "seeds": dict(SEEDS), "simulations": list(SIMULATIONS),
+        "replicates": N_REPLICATES, "seeds": dict(RUN_SEEDS), "first_attempt_seeds": dict(SEEDS),
+        "simulations": list(SIMULATIONS),
         "seeds_fresh": {"tracer": TRACER_SEED, "pca": tf.PCA_SEED, "bootstrap": ss.BOOT_SEED,
                         "distinct": not ({TRACER_SEED, tf.PCA_SEED, ss.BOOT_SEED, *range(200, 207)}
                                          & {*SEEDS.values(), *REMEDY_SEEDS.values()})
@@ -167,7 +203,9 @@ def settings() -> dict:
                      "pass": f"at {POSITIVE_TARGET}: mean recovered {MOTION_CONTRAST} ΔLL in [{lo}, {hi}]",
                      "reported": "Holm power of T-S and T-R with Monte Carlo SE sqrt(p (1 - p) / n), the oracle ΔLL "
                                  "and its unadjusted power, the grid-floor share of S and T"},
-        "remedy": REMEDY,
+        "remedy": REMEDY, "first_attempt": FIRST_ATTEMPT,
+        "t_model": {"name": tr.T_MODEL, "grid_floor_share_T": "the share of outer folds whose motion-block C_M is the "
+                                                             "grid's smallest; T's static C is S's"},
         "power_curve": {"contrast": MOTION_CONTRAST, "targets": list(CURVE), "seeds": "positive_-0.002, curve_-0.003, "
                         "positive_-0.004", "smallest_detectable": f"Holm power >= {DETECTABLE_POWER}, linear "
                                                                   "interpolation along the grid"},
@@ -178,7 +216,7 @@ def settings() -> dict:
                                        "Monte Carlo SE", "gating": False},
         "permutation": {"labels": "real goal labels permuted within matches inside the label seal, after the protocol "
                                   "commit (compare.stats.permute_within_matches)", "pass": "no Holm rejection",
-                        "seed": SEEDS["permutation"]},
+                        "seed": RUN_SEEDS["permutation"]},
         "monte_carlo_se": "sqrt(p (1 - p) / n) for every share",
         "time_budget": "if CPU time binds, rich_nulls_-0.002 drops first, never a gating set (C8); it is the only "
                        "simulation the protocol's controls may leave out, and the protocol records the omission",
@@ -382,7 +420,8 @@ def draw(truth: Truth, n: int, seed: int, size: int) -> list[tuple[np.ndarray, n
 
 
 def grid_floor_share(chosen: list) -> float | None:
-    """Share of outer folds whose inner CV chose the grid's smallest C (None for an arm with z alone)."""
+    """Share of outer folds whose inner CV chose the grid's smallest C (None for an arm with z alone; for T its
+    motion-block C_M)."""
     values = [c for c in chosen if c is not None]
     return float(np.mean([c == tr.C_GRID[0] for c in values])) if values else None
 
@@ -541,7 +580,7 @@ def run_label_free(fitter: Fitter, weights: np.ndarray, truths: Truths, provenan
 
 # ------------------------------------------------------------------ the permutation (after the protocol commit)
 def permutation(designs: Designs, weights: np.ndarray, y: np.ndarray, games: np.ndarray,
-                seed: int = SEEDS["permutation"]) -> dict:
+                seed: int = RUN_SEEDS["permutation"]) -> dict:
     """The read-out on `y` permuted within matches (`compare.stats.permute_within_matches`): ΔLL, one-sided p and the
     Holm readings only (neither the labels nor the probabilities are returned); passes without a Holm rejection."""
     permuted = permute_within_matches(pd.DataFrame({"y": np.asarray(y, int)}), np.asarray(games), seed).y.to_numpy()

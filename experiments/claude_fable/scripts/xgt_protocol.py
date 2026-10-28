@@ -19,11 +19,17 @@ The file holds `frozen` (`xgpoc.temporal.protocol.frozen()`, every rule the code
                           owner's decision
     e3                    the categories' E3 source after the label-free coverage check of P_G (C9 Q5:
                           cache/xgd_full3/E3, else cache/xgd_full4_feet_t0/E3), its hashes and the category counts
-    label_free_controls   the record of `scripts/xgt_run.py --controls` (results/xgt/controls/label_free), refused
-                          unless it matches its files, is the protocol's controls (source g_xgv, 200 replicates, every
-                          simulation but at most the descriptive rich_nulls_-0.002, `controls.DROPPABLE`, recorded as
-                          omitted), was written under the current package code, has the same settings and population,
-                          and passed every label-free gate
+    label_free_controls   the record of `scripts/xgt_run.py --controls --remedy` (results/xgt/controls/
+                          label_free_remedy), refused unless it matches its files, is the protocol's controls (the
+                          C9 Q2 remedy's run on `controls.REMEDY_SEEDS`, source g_xgv, 200 replicates, every simulation
+                          but at most the descriptive rich_nulls_-0.002, `controls.DROPPABLE`, recorded as omitted),
+                          was written under the current package code, has the same settings and population, and passed
+                          every label-free gate; a record without the remedy (the first attempt's or any other) is
+                          refused
+    first_attempt         the failed first run of the protocol's controls (results/xgt/controls/label_free): its
+                          controls.json at the pinned SHA-256 (`protocol.FIRST_ATTEMPT_CONTROLS_SHA256`), its
+                          complete.json's SHA-256, its gates and the numbers that triggered the remedy (the positive
+                          miss above -0.001, the rich-null failure)
     code                  `xgpoc.temporal.records.package_hashes()`
 Without results/xgt_xgv_embeddings (ticket 01b) or the label-free controls the protocol cannot be written; `--draft`
 writes a draft instead (another --source allowed, missing parts recorded as pending, `draft: true`, never to the
@@ -61,6 +67,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--draft", action="store_true", help="a draft: another source, pending parts; never the protocol")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--controls", type=Path, default=ROOT / tpr.LABEL_FREE, help="the label-free controls' folder")
+    parser.add_argument("--first-attempt", type=Path, default=ROOT / tpr.FIRST_ATTEMPT,
+                        help="the failed first attempt's folder")
     parser.add_argument("--refreeze", action="store_true")
     parser.add_argument("--reason", default=None)
     args = parser.parse_args(argv)
@@ -169,6 +177,8 @@ def label_free_controls(folder: Path, main: dict, draft: bool) -> dict:
     problems = []
     if not record.get("protocol_controls"):
         problems.append("not the protocol's controls (a trial run)")
+    if not record.get("remedy") or record.get("seeds") != tco.REMEDY_SEEDS:
+        problems.append("not the remedy's run on REMEDY_SEEDS (the first attempt failed; C9 Q2)")
     if record["source"] != main["source"]:
         problems.append(f"source {record['source']}")
     if record["code"]["package"]["digest"] != tr_records.package_hashes()["digest"]:
@@ -189,7 +199,40 @@ def label_free_controls(folder: Path, main: dict, draft: bool) -> dict:
     return {"status": "recorded", "path": ti.recorded_path(folder), "complete_sha256": sha256_file(path),
             "gates": record["gates"], "label_free_passed": record["label_free_passed"],
             "simulations": record.get("simulations"), "omitted_simulations": omitted,
-            "protocol_controls": record.get("protocol_controls"), "problems": problems}
+            "protocol_controls": record.get("protocol_controls"), "remedy": record.get("remedy"),
+            "seeds": record.get("seeds"), "problems": problems}
+
+
+def first_attempt(folder: Path, draft: bool) -> dict:
+    """The failed first attempt (module docstring): refused unless its files match its record, its controls.json is
+    the pinned one and its positive gate missed by shrinkage (the remedy's trigger); pending in a draft when missing."""
+    path, controls = folder / "complete.json", folder / "controls.json"
+    if not path.exists():
+        if draft:
+            return {"status": PENDING, "path": ti.recorded_path(folder)}
+        raise SystemExit(f"{path} does not exist: the protocol cites the first attempt of the controls")
+    record = json.loads(path.read_text())
+    for name, digest in record["files"].items():
+        if not (folder / name).exists() or sha256_file(folder / name) != digest:
+            raise SystemExit(f"{folder / name} does not match {path}")
+    if sha256_file(controls) != tpr.FIRST_ATTEMPT_CONTROLS_SHA256:
+        raise SystemExit(f"{controls} is not the first attempt the code pins ({tpr.FIRST_ATTEMPT_CONTROLS_SHA256[:8]}...)")
+    summary = json.loads(controls.read_text())
+    positive, rich = summary["gates"]["positive"], summary["gates"]["rich_nulls"]
+    recovered = positive[f"mean_recovered_delta_{tco.MOTION_CONTRAST}"]
+    if positive["passed"] or not recovered > tco.REMEDY_TRIGGER:
+        raise SystemExit("the first attempt's positive gate did not miss by shrinkage: the remedy has no trigger")
+    return {"status": "recorded", "path": ti.recorded_path(folder), "complete_sha256": sha256_file(path),
+            "controls_sha256": sha256_file(controls), "protocol_controls": record.get("protocol_controls"),
+            "label_free_passed": record["label_free_passed"],
+            "gates": {g: bool(summary["gates"][g]["passed"]) for g in tco.LABEL_FREE_GATES},
+            "positive": {"mean_recovered_T-S": recovered, "power_T-S": positive["power_T-S"],
+                         "power_T-S_mc_se": positive["power_T-S_mc_se"], "oracle_power": positive["oracle_power"],
+                         "grid_floor_share": positive["grid_floor_share"], "trigger": tco.REMEDY_TRIGGER},
+            "rich_nulls": {"holm_rejection_T-S": rich["holm_rejection"]["T-S"], "mean_delta_T-S": rich["mean_delta"]["T-S"]},
+            "seeds": summary["seeds"], "seconds": summary["run"]["seconds"],
+            "consequence": "the pre-registered remedy of C9 Q2 (controls.remedy, model.t_variant), every label-free "
+                           "gate rerun once on controls.REMEDY_SEEDS (label_free_controls)"}
 
 
 def refreeze_history(path: Path, reason: str | None, record: dict) -> list[dict]:
@@ -217,11 +260,13 @@ def build(args: argparse.Namespace) -> dict:
                 "descriptive_sources": descriptive_sources(plan), "safe_margin": safe_margin(),
                 "e3": e3_record(population),
                 "label_free_controls": label_free_controls(args.controls, main, args.draft),
+                "first_attempt": first_attempt(args.first_attempt, args.draft),
                 "code": tr_records.package_hashes()}
     if args.draft:
         xgv = ti.SOURCES[tpr.MAIN_SOURCE].folder / ti.RECORD
         data["pending"] = {"g_xgv_complete_json": None if xgv.exists() else ti.recorded_path(xgv),
-                           "label_free_controls": data["label_free_controls"]["status"] == PENDING}
+                           "label_free_controls": data["label_free_controls"]["status"] == PENDING,
+                           "first_attempt": data["first_attempt"]["status"] == PENDING}
     purpose = ("xg-temporal ticket 03: the frozen protocol, written before any label is read" if not args.draft else
                "xg-temporal ticket 03: a DRAFT of the protocol (not frozen; refused by scripts/xgt_run.py)")
     return {"purpose": purpose, "draft": bool(args.draft), "frozen": tpr.frozen(), "data": data,

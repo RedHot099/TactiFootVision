@@ -45,7 +45,10 @@ def test_the_frozen_part_is_deterministic_json_with_the_c8_grid_the_c9_rules_and
     assert json.loads(json.dumps(frozen)) == json.loads(json.dumps(tpr.frozen()))
     assert frozen["model"]["c_grid"][:5] == [1e-5, 3e-5, 1e-4, 3e-4, 0.001] and frozen["model"]["z_unpenalised"]
     assert frozen["o_max"]["value"] == -600 and "STOP" in frozen["o_max"]["ticket_02"]
-    assert frozen["arms"]["k"] == 32 and frozen["controls"]["seeds"] == tco.SEEDS
+    assert frozen["arms"]["k"] == 32 and frozen["controls"]["seeds"] == tco.RUN_SEEDS
+    assert frozen["controls"]["first_attempt_seeds"] == tco.SEEDS and frozen["controls"]["first_attempt"]["gates"]["positive"] is False
+    assert frozen["model"]["t_variant"]["name"] == frozen["arms"]["T"]["model"] == "inner_cv_c8_motion_block_c9q2"
+    assert any("First attempt" in d and "-0.00032" in d and "0.11" in d for d in frozen["disclosures"])
     assert frozen["readings"]["holm"]["contrasts"] == ["T-R", "T-S"]
     assert set(frozen["descriptive"]) == {"L", "S_xgc/T_xgc", "F_S/F_T", "k_sensitivity", "seed_sensitivity", "N"}
     assert frozen["descriptive"]["k_sensitivity"]["k"] == [16, 64]
@@ -112,13 +115,18 @@ def test_the_real_and_permutation_modes_refuse_settings_and_an_unpinned_protocol
 
 
 def test_a_trial_run_of_the_controls_is_refused_in_the_protocols_folder():
-    assert xgt_run.parse_args(["--controls"]).protocol_controls
-    for argv in (["--controls", "--replicates", "3"], ["--controls", "--source", "g_xgc"],
-                 ["--controls", "--simulations", "plain_nulls", "rich_nulls", "positive_-0.002"]):
+    args = xgt_run.parse_args(["--controls", "--remedy"])
+    assert args.protocol_controls and args.remedy and args.out == xgt_run.ROOT / tpr.LABEL_FREE
+    assert tpr.LABEL_FREE != tpr.FIRST_ATTEMPT
+    for argv in (["--controls"], ["--controls", "--remedy", "--replicates", "3"], ["--controls", "--remedy", "--source", "g_xgc"],
+                 ["--controls", "--remedy", "--simulations", "plain_nulls", "rich_nulls", "positive_-0.002"],
+                 ["--controls", "--remedy", "--out", str(xgt_run.ROOT / tpr.FIRST_ATTEMPT)], ["--real", "--remedy"],
+                 ["--synthetic", "--source", "g_xgv", "--remedy"]):
         with pytest.raises(SystemExit):
             xgt_run.parse_args(argv)
     args = xgt_run.parse_args(["--controls", "--replicates", "3", "--out", "/tmp/x"])
     assert not args.protocol_controls
+    assert not xgt_run.parse_args(["--controls", "--out", "/tmp/x"]).protocol_controls        # without the remedy
 
 
 def test_the_common_shots_are_in_every_population_and_restriction_keeps_the_window_size():
@@ -147,14 +155,29 @@ def test_only_the_descriptive_rich_null_may_be_left_out_of_the_protocols_control
     assert tco.DROPPABLE == ("rich_nulls_-0.002",) and tco.DROPPABLE[0] in tco.SIMULATIONS
     kept = [s for s in tco.SIMULATIONS if s not in tco.DROPPABLE]
     assert xgt_run.omitted_simulations(tco.SIMULATIONS) == [] and xgt_run.omitted_simulations(kept) == list(tco.DROPPABLE)
-    assert xgt_run.parse_args(["--controls", "--simulations", *kept]).protocol_controls
+    assert xgt_run.parse_args(["--controls", "--remedy", "--simulations", *kept]).protocol_controls
     for other in ([s for s in tco.SIMULATIONS if s != "clustered_nulls"], list(reversed(tco.SIMULATIONS))):
         assert xgt_run.omitted_simulations(other) is None
         with pytest.raises(SystemExit):
-            xgt_run.parse_args(["--controls", "--simulations", *other])
+            xgt_run.parse_args(["--controls", "--remedy", "--simulations", *other])
 
 
 # ------------------------------------------------------------------ the chain on synthetic inputs
+def write_first_attempt(folder: Path, recovered: float = -0.00032, passed: bool = False) -> str:
+    """A synthetic failed first attempt (controls.json, complete.json naming it); returns controls.json's SHA-256."""
+    folder.mkdir(parents=True)
+    gates = {g: {"passed": True, "criterion": "c"} for g in tco.LABEL_FREE_GATES}
+    gates["positive"] = {"passed": passed, "criterion": "c", "mean_recovered_delta_T-S": recovered, "power_T-S": 0.15,
+                         "power_T-S_mc_se": 0.025, "oracle_power": 0.895, "grid_floor_share": {"S": 0.54, "T": 0.12}}
+    gates["rich_nulls"] |= {"passed": False, "holm_rejection": {"T-S": {"rate": 0.11, "mc_se": 0.022}},
+                            "mean_delta": {"T-S": 0.00014}}
+    (folder / "controls.json").write_text(json.dumps({"gates": gates, "seeds": tco.SEEDS, "run": {"seconds": 5580.6}}))
+    (folder / "complete.json").write_text(json.dumps({
+        "protocol_controls": True, "label_free_passed": False,
+        "files": {"controls.json": sha256_file(folder / "controls.json")}}))
+    return sha256_file(folder / "controls.json")
+
+
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
     """Every input of the scripts made synthetic, every output under tmp_path; the controls' sample size and
@@ -196,6 +219,7 @@ def lab(tmp_path, monkeypatch):
                               "dist@0": rng.uniform(2, 30, n), "gk_depth@0": rng.uniform(0, 8, n)}, index=shot_ids)
         return frame, {"frames.parquet": {"sha256": "e3"}}
     monkeypatch.setattr(xgt_run.tc, "e3_inputs", e3)
+    monkeypatch.setattr(tpr, "FIRST_ATTEMPT_CONTROLS_SHA256", write_first_attempt(tmp_path / tpr.FIRST_ATTEMPT))
     return tmp_path
 
 
@@ -214,20 +238,57 @@ def test_the_draft_records_the_missing_parts_as_pending(lab):
         xgt_protocol.main(["--out", str(lab / "protocol.json")])
     trial = lab / "trial"
     xgt_run.main(["--controls", "--jobs", "1", "--replicates", "1", "--out", str(trial)])
+    assert json.loads((trial / "complete.json").read_text())["seeds"] == tco.SEEDS            # a trial: the first seeds
     xgt_protocol.main(["--draft", "--source", "g_xgc", "--controls", str(trial), "--out", str(lab / "draft2.json")])
     recorded = json.loads((lab / "draft2.json").read_text())["data"]["label_free_controls"]
     assert "not the protocol's controls (a trial run)" in recorded["problems"] and "source g_xgv" in recorded["problems"]
+    assert "not the remedy's run on REMEDY_SEEDS (the first attempt failed; C9 Q2)" in recorded["problems"]
     with pytest.raises(SystemExit, match="cannot enter"):
         xgt_protocol.main(["--controls", str(trial), "--out", str(lab / "protocol.json")])
 
 
+def test_once_the_remedy_exists_the_protocol_refuses_every_controls_record_without_it(lab):
+    xgt_run.main(["--controls", "--jobs", "1", "--out", str(lab / "no_remedy")])    # the protocol's settings, no --remedy
+    record = json.loads((lab / "no_remedy" / "complete.json").read_text())
+    assert not record["protocol_controls"] and not record["remedy"] and record["seeds"] == tco.SEEDS
+    with pytest.raises(SystemExit, match="not the remedy's run on REMEDY_SEEDS"):
+        xgt_protocol.main(["--controls", str(lab / "no_remedy"), "--out", str(lab / "protocol.json")])
+    assert not (lab / "protocol.json").exists()
+    complete = lab / "no_remedy" / "complete.json"                                  # forged: protocol_controls, no remedy
+    complete.write_text(json.dumps(record | {"protocol_controls": True}))
+    with pytest.raises(SystemExit, match=r"not the remedy's run on REMEDY_SEEDS"):
+        xgt_protocol.main(["--controls", str(lab / "no_remedy"), "--out", str(lab / "protocol.json")])
+    complete.write_text(json.dumps(record | {"protocol_controls": True, "remedy": True}))      # remedy, wrong seeds
+    with pytest.raises(SystemExit, match=r"not the remedy's run on REMEDY_SEEDS"):
+        xgt_protocol.main(["--controls", str(lab / "no_remedy"), "--out", str(lab / "protocol.json")])
+
+
+def test_the_first_attempt_is_pinned_and_must_be_a_shrinkage_miss(lab, monkeypatch):
+    recorded = xgt_protocol.first_attempt(lab / tpr.FIRST_ATTEMPT, False)
+    assert recorded["controls_sha256"] == tpr.FIRST_ATTEMPT_CONTROLS_SHA256 and not recorded["label_free_passed"]
+    assert recorded["positive"]["mean_recovered_T-S"] == -0.00032 and recorded["rich_nulls"]["holm_rejection_T-S"]["rate"] == 0.11
+    assert recorded["gates"] == {"provenance": True, "plain_nulls": True, "rich_nulls": False, "positive": False}
+    assert xgt_protocol.first_attempt(lab / "missing", True)["status"] == "pending"
+    with pytest.raises(SystemExit, match="does not exist"):
+        xgt_protocol.first_attempt(lab / "missing", False)
+    for name, kwargs in (("passed", {"passed": True}), ("too_low", {"recovered": -0.0035})):
+        sha = write_first_attempt(lab / name, **kwargs)
+        monkeypatch.setattr(tpr, "FIRST_ATTEMPT_CONTROLS_SHA256", sha)
+        with pytest.raises(SystemExit, match="no trigger"):
+            xgt_protocol.first_attempt(lab / name, False)
+    with pytest.raises(SystemExit, match="pins"):
+        xgt_protocol.first_attempt(lab / tpr.FIRST_ATTEMPT, False)                 # another pinned hash
+
+
 def test_controls_then_protocol_then_permutation_then_the_real_run(lab, monkeypatch):
-    xgt_run.main(["--controls", "--jobs", "1"])
+    xgt_run.main(["--controls", "--remedy", "--jobs", "1"])
     label_free = lab / tpr.LABEL_FREE
     record = json.loads((label_free / "complete.json").read_text())
     assert record["protocol_controls"] and record["label_free_passed"] and set(record["gates"]) == set(tco.LABEL_FREE_GATES)
+    assert record["remedy"] and record["seeds"] == tco.REMEDY_SEEDS and record["t_model"] == tpr.tr.T_MODEL
+    assert json.loads((label_free / "controls.json").read_text())["gates"]["positive"]["seed"] == tco.REMEDY_SEEDS["positive_-0.002"]
     with pytest.raises(SystemExit, match="exists"):
-        xgt_run.main(["--controls", "--jobs", "1"])
+        xgt_run.main(["--controls", "--remedy", "--jobs", "1"])
 
     xgt_protocol.main([])
     path = lab / tpr.PROTOCOL
@@ -236,6 +297,10 @@ def test_controls_then_protocol_then_permutation_then_the_real_run(lab, monkeypa
         label_free / "complete.json")
     assert protocol["data"]["code"]["digest"] == tr_records.package_hashes()["digest"]
     assert protocol["data"]["label_free_controls"]["omitted_simulations"] == []
+    assert protocol["data"]["label_free_controls"]["remedy"] and protocol["data"]["label_free_controls"]["seeds"] == tco.REMEDY_SEEDS
+    first = protocol["data"]["first_attempt"]
+    assert first["controls_sha256"] == tpr.FIRST_ATTEMPT_CONTROLS_SHA256 == sha256_file(lab / tpr.FIRST_ATTEMPT / "controls.json")
+    assert first["complete_sha256"] == sha256_file(lab / tpr.FIRST_ATTEMPT / "complete.json") and not first["label_free_passed"]
     common = protocol["data"]["leak_common"]
     assert set(common["cells"]) == {str(o) for o in tpr.LEAK_CURVE}
     assert {c["shot_list_sha256"] for c in common["cells"].values()} == {common["shot_list_sha256"]}

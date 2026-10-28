@@ -3,8 +3,9 @@ permutation control and the single real run (tickets 03 and 04, after the frozen
 
     ./run.sh --no-sync python scripts/xgt_run.py --synthetic --source dinov2 [--start -1600 --o-max -600] [--k 32]
         [--replicates 1] [--seed 0] [--control] [--out results/xgt_synthetic_<source>_<start>_<o_max>]
-    ./run.sh --no-sync python scripts/xgt_run.py --controls [--source g_xgv] [--replicates 200] [--jobs 8]
-        [--simulations ...] [--out results/xgt/controls/label_free]
+    ./run.sh --no-sync python scripts/xgt_run.py --controls --remedy [--jobs 8]   # -> results/xgt/controls/label_free_remedy
+    ./run.sh --no-sync python scripts/xgt_run.py --controls [--remedy] [--source ...] [--replicates ...]
+        [--simulations ...] --out <trial folder>
     ./run.sh --no-sync python scripts/xgt_run.py --permutation       # after the protocol commit -> results/xgt/controls
     ./run.sh --no-sync python scripts/xgt_run.py --real              # ticket 04 -> results/xgt/real
 
@@ -17,11 +18,14 @@ output, so each is made once, and runs inside `no_statsbomb_reads()`.
                S - R with the match bootstrap (`xgpoc.temporal.readout`). Writes population.csv, replicates.csv,
                summary.json, complete.json.
 --controls     the label-free gates and reports of `xgpoc.temporal.controls` (fits in `--jobs` worker processes, one
-               BLAS thread each). A run is the protocol's controls (`protocol_controls` in its record) only with the
-               main source g_xgv, the main window, k = 32, 200 replicates and every simulation (the descriptive
-               rich_nulls_-0.002 may be left out, C8, and the record names it in `omitted_simulations`); anything else
-               is a trial run and is refused in the default folder. Writes population.csv, <simulation>.csv, controls.json,
-               complete.json (`label_free_passed`).
+               BLAS thread each; T under `readout.T_MODEL`, the C9 Q2 remedy). With `--remedy` the simulations draw
+               from `controls.REMEDY_SEEDS` (the remedy's fresh seeds), without it from the first attempt's `SEEDS`.
+               A run is the protocol's controls (`protocol_controls` in its record) only with `--remedy`, the main
+               source g_xgv, the main window, k = 32, 200 replicates and every simulation (the descriptive
+               rich_nulls_-0.002 may be left out, C8, and the record names it in `omitted_simulations`); it goes to
+               results/xgt/controls/label_free_remedy (`protocol.LABEL_FREE`), next to the failed first attempt
+               (results/xgt/controls/label_free, kept). Anything else is a trial run and is refused there. Writes
+               population.csv, <simulation>.csv, controls.json, complete.json (`label_free_passed`, `remedy`, `seeds`).
 --permutation  refuses unless the protocol has the SHA-256 pinned here (`PROTOCOL_SHA256`) and is committed as it is
                (`git show HEAD:research/xgt_protocol.json`, `check_committed`), its frozen part equals
                `xgpoc.temporal.protocol.frozen()`, its code digest equals the current package's, its population equals
@@ -85,11 +89,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="--synthetic only")
     parser.add_argument("--jobs", type=int, default=tco.default_jobs(), help="--controls: worker processes")
     parser.add_argument("--simulations", nargs="+", choices=tco.SIMULATIONS, default=list(tco.SIMULATIONS))
+    parser.add_argument("--remedy", action="store_true", help="--controls: the C9 Q2 remedy's run on REMEDY_SEEDS")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     args.mode = next((name for name in MODES if getattr(args, name)), None)
     if args.mode is None:
         parser.error(f"choose one of {['--' + m for m in MODES]}")
+    if args.remedy and args.mode != "controls":
+        parser.error("--remedy belongs to --controls")
     if args.mode in ("permutation", "real"):
         if args.source not in (None, tpr.MAIN_SOURCE) or (args.start, args.o_max, args.k) != (ti.START, ti.O_MAX, tf.K) \
                 or args.control or args.out is not None:
@@ -112,8 +119,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if args.out is None:
             args.out = ROOT / tpr.LABEL_FREE
         if Path(args.out).resolve() == (ROOT / tpr.LABEL_FREE).resolve() and not args.protocol_controls:
-            parser.error(f"a trial run of the controls (source, window, k, replicates or simulations other than the "
-                         f"protocol's) needs its own --out, not {tpr.LABEL_FREE}")
+            parser.error(f"a trial run of the controls (without --remedy, or source, window, k, replicates or "
+                         f"simulations other than the protocol's) needs its own --out, not {tpr.LABEL_FREE}")
+        if Path(args.out).resolve() == (ROOT / tpr.FIRST_ATTEMPT).resolve():
+            parser.error(f"{tpr.FIRST_ATTEMPT} holds the first attempt; it is kept as it is")
     return args
 
 
@@ -127,9 +136,9 @@ def omitted_simulations(simulations) -> list[str] | None:
 
 
 def protocol_controls(args: argparse.Namespace) -> bool:
-    """The run is the protocol's label-free controls (module docstring): every simulation, or all but the descriptive
-    `tco.DROPPABLE` (C8: the first to drop when CPU time binds), recorded as omitted."""
-    return (args.source == tpr.MAIN_SOURCE and (args.start, args.o_max, args.k) == (ti.START, ti.O_MAX, tf.K)
+    """The run is the protocol's label-free controls (module docstring): the remedy's run, every simulation, or all but
+    the descriptive `tco.DROPPABLE` (C8: the first to drop when CPU time binds), recorded as omitted."""
+    return (args.remedy and args.source == tpr.MAIN_SOURCE and (args.start, args.o_max, args.k) == (ti.START, ti.O_MAX, tf.K)
             and not args.control and args.replicates == tco.N_REPLICATES
             and omitted_simulations(args.simulations) is not None)
 
@@ -263,8 +272,9 @@ def run_controls(args: argparse.Namespace, plan: pd.DataFrame, stages: Stages, s
     weights = ss.bootstrap_weights(population.games)
     print(f"controls: {population.counts['shots']} shots, {population.counts['matches']} matches, "
           f"{args.replicates} replicates, {args.jobs} worker processes", flush=True)
+    seeds = tco.REMEDY_SEEDS if args.remedy else tco.SEEDS
     with tco.Fitter(built["designs"], args.jobs) as fitter:
-        frames, summary = tco.run_label_free(fitter, weights, truths, provenance, args.replicates,
+        frames, summary = tco.run_label_free(fitter, weights, truths, provenance, args.replicates, seeds,
                                              simulations=tuple(args.simulations), log=lambda m: print(m, flush=True))
     stages("simulations")
     args.out.mkdir(parents=True)
@@ -272,13 +282,14 @@ def run_controls(args: argparse.Namespace, plan: pd.DataFrame, stages: Stages, s
     for name, frame in frames.items():
         frame.to_csv(args.out / f"{name}.csv", index=False, float_format="%.9g")
     summary |= {"source": args.source, "window": window_record(window), "k": args.k,
-                "protocol_controls": args.protocol_controls, "jobs": args.jobs, "model": {"name": tr.MODEL.name,
-                                                                                     "c_grid": list(tr.C_GRID)},
+                "protocol_controls": args.protocol_controls, "remedy": args.remedy, "jobs": args.jobs,
+                "model": {"name": tr.MODEL.name, "t_model": tr.T_MODEL, "c_grid": list(tr.C_GRID)},
                 "pca": built["pca"], "run": stages.record()}
     write_json(args.out / "controls.json", summary)
     gates = {g: {"passed": summary["gates"][g]["passed"], "criterion": summary["gates"][g]["criterion"]}
              for g in tco.LABEL_FREE_GATES}
     completion(args.out, {"mode": "controls", "source": args.source, "protocol_controls": args.protocol_controls,
+                          "remedy": args.remedy, "seeds": dict(seeds), "t_model": tr.T_MODEL,
                           "simulations": list(args.simulations),
                           "omitted_simulations": omitted_simulations(args.simulations),
                           "settings": tco.settings(), "label_free_passed": summary["label_free_passed"], "gates": gates,
@@ -410,9 +421,9 @@ def leak_populations(protocol: dict, plan: pd.DataFrame, main: ti.Population, fi
 
 
 def curve_entry(population: ti.Population, plan: pd.DataFrame, stages: Stages, files: ti.SourceFiles, labels: tl.Labels,
-                weights: np.ndarray, main_ids: pd.Index) -> tuple[dict, list]:
+                weights: np.ndarray, main_ids: pd.Index) -> tuple[dict, dict]:
     """One leak-curve point on `population` (a checked subset of P_G): the arms refitted on its shots, `curve_point`
-    with the main population's match draws restricted to them, and T's chosen C per outer fold."""
+    with the main population's match draws restricted to them, and every arm's chosen C per outer fold."""
     window = population.window
     built, _, _, _, cell = prepared(tpr.MAIN_SOURCE, window, tf.K, plan, stages, population.table.index, files)
     if not json_equal(built.record(), population.record()):
@@ -422,7 +433,7 @@ def curve_entry(population: ti.Population, plan: pd.DataFrame, stages: Stages, f
         raise SystemExit("a leak-curve shot is not in the main population")
     cell_labels = labels.aligned(built)
     probabilities, chosen = tr.out_of_fold(cell["designs"], cell_labels.goal)
-    return tr.curve_point(cell_labels.goal, probabilities, weights[:, position]), chosen["T"]
+    return tr.curve_point(cell_labels.goal, probabilities, weights[:, position]), chosen
 
 
 def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, large: Path) -> dict:
@@ -447,14 +458,14 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
         for o_max in tpr.LEAK_CURVE:
             cell = populations[o_max]
             if scope == "window" and o_max == ti.O_MAX:
-                curves[scope][o_max], chosen_t = tr.curve_point(labels.goal, probabilities, weights), chosen["T"]
+                curves[scope][o_max], cell_chosen = tr.curve_point(labels.goal, probabilities, weights), chosen
             else:
-                curves[scope][o_max], chosen_t = curve_entry(cell, plan, stages, built["files"], labels, weights, main_ids)
+                curves[scope][o_max], cell_chosen = curve_entry(cell, plan, stages, built["files"], labels, weights, main_ids)
             for name, d in curves[scope][o_max].items():
                 rows.append({"population": scope, "start": -1600, "o_max": o_max, "control": o_max > tp.LEAK_LIMIT,
                              "contrast": name, "shots": cell.counts["shots"],
                              **{k: d[k] for k in ("delta_ll", "lo95", "hi95", "bound_one_sided_95", "p_one_sided")},
-                             "near_reference_T": tr.near_reference(chosen_t)})
+                             "near_reference_T": tr.near_reference(cell_chosen, "T")})
     leak = tr.leak_rules(curves["common"]) | {"population": "common", "shots": common[ti.O_MAX].counts["shots"]}
     leak_by_window = tr.leak_rules(curves["window"]) | {"population": "window", "descriptive": True}
     claims = tr.claims(result, veto, chosen, leak)

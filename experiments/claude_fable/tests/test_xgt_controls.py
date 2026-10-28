@@ -1,12 +1,14 @@
 """xg-temporal controls and read-out rules (ticket 03) on synthetic inputs: the label-free truths hit their analytic
 targets, the motion plant is invisible to S, the fits do not depend on the number of worker processes, the gates'
-criteria, the permutation keeps each match's labels, the readability veto, the claims and the leak-curve rules."""
+criteria, the permutation keeps each match's labels, the readability veto, the claims and the leak-curve rules; T's
+model under the C9 Q2 remedy (S's C for the static block, its own inner-CV C for the motion block by rescaling)."""
 
 import json
 
 import numpy as np
 import pandas as pd
 import pytest
+from xgpoc.stack import fit as sf
 from xgpoc.stack import stats as ss
 from xgpoc.temporal import controls as tco
 from xgpoc.temporal import features as tf
@@ -29,6 +31,11 @@ def test_the_seeds_are_fresh_and_the_settings_serialise():
     assert tco.TRACER_SEED not in tco.SEEDS.values() and settings["replicates"] == 200
     assert not set(tco.REMEDY_SEEDS.values()) & set(tco.SEEDS.values()) and "positive_-0.002" in tco.REMEDY_SEEDS
     assert settings["remedy"]["seeds"] == tco.REMEDY_SEEDS and settings["positive"]["second_plant"]["gating"] is False
+    assert tco.REMEDY_SEEDS == {n: v + 100 for n, v in tco.SEEDS.items() if n not in ("rich_projection", "motion_plant")}
+    assert settings["seeds"] == tco.RUN_SEEDS and settings["first_attempt_seeds"] == tco.SEEDS
+    assert {n: tco.RUN_SEEDS[n] for n in tco.TRUTH_SEEDS} == {n: tco.SEEDS[n] for n in tco.TRUTH_SEEDS}
+    assert settings["permutation"]["seed"] == tco.REMEDY_SEEDS["permutation"] == 30409
+    assert settings["first_attempt"]["positive"]["mean_recovered_T-S"] > tco.REMEDY_TRIGGER == -0.001
     assert settings["rich_nulls"]["scale"] == -0.004 and settings["positive"]["gated_contrast"] == "T-S"
     assert json.loads(json.dumps(settings)) == settings
 
@@ -242,3 +249,78 @@ def test_a_curve_point_keeps_its_draws_paired_with_the_main_weights():
     assert point["T-S"]["draws"] == ss.N_BOOT                              # summarise's count, not overwritten
     assert point["T-R"]["delta_ll"] == pytest.approx(ss.paired_delta(y, probabilities["T"], probabilities["R"],
                                                                      weights)["delta_ll"])
+
+
+# ------------------------------------------------------------------ T's model: the C9 Q2 remedy
+def block_problem(seed: int = 0, n: int = 600, n_static: int = 5, n_motion: int = 4):
+    rng = np.random.default_rng(seed)
+    x = rng.normal(size=(n, n_static + n_motion))
+    eta = -1.5 + x[:, 0] + 0.3 * x[:, 1] + 0.4 * x[:, n_static]
+    return x, (rng.random(n) < 1 / (1 + np.exp(-eta))).astype(float), n_static
+
+
+@pytest.mark.parametrize("c_static, c_motion", [(1e-3, 1e-5), (1e-5, 1.0), (0.03, 0.03), (3e-4, 0.1)])
+def test_a_motion_block_c_by_rescaling_equals_the_fit_with_block_penalties(c_static, c_motion):
+    x, y, n_static = block_problem()
+    beta, scale = tr.fit_blocks(x, y, n_static, c_static, c_motion)
+    penalties = np.r_[0.0, np.full(n_static - 1, 1 / c_static), np.full(x.shape[1] - n_static, 1 / c_motion)]
+    direct = sf.logistic_fit(x, y, penalties)
+    assert scale == pytest.approx(np.sqrt(c_motion / c_static))
+    assert np.allclose(beta[:n_static + 1], direct[:n_static + 1], atol=1e-7)
+    assert np.allclose(beta[n_static + 1:] * scale, direct[n_static + 1:], atol=1e-7)      # b = w sqrt(C_M / C_S)
+    assert np.allclose(tr.predict_blocks(beta, scale, x, n_static), sf.predict(direct, x), atol=1e-9)
+    if c_static == c_motion:                                                              # one C: the shared penalty
+        assert np.allclose(direct, sf.logistic_fit(x, y, tr.MODEL.penalties(x.shape[1], c_static)), atol=1e-9)
+
+
+def test_t_keeps_ss_chosen_c_for_the_static_block_and_chooses_its_motion_c_by_inner_cv(built):
+    _, designs, truths, _ = built
+    p, _ = truths.positive(-0.01)
+    y = (np.random.default_rng(4).random(len(p)) < p).astype(float)
+    probabilities, chosen = tr.out_of_fold(designs, y)
+    assert len(chosen["T"]) == len(designs["T"]) and all(c in tr.C_GRID for c in chosen["T"])
+    for t, s, c_s, c_m in zip(designs["T"], designs["S"], chosen["S"], chosen["T"], strict=True):
+        n = s.x_train.shape[1]
+
+        def block_fit(d, c, n=n, c_s=c_s):
+            lam = np.r_[0.0, np.full(n - 1, 1 / c_s), np.full(d.x_train.shape[1] - n, 1 / c)]
+            return sf.predict(sf.logistic_fit(d.x_train, y[d.train], lam), d.x_test)
+        losses = [sum(sf.mean_log_loss(y[d.test], block_fit(d, c)) * len(d.test) for d in t.inner) for c in tr.C_GRID]
+        assert c_m == tr.C_GRID[int(np.argmin(losses))]                        # the inner CV with the static block at C_S
+        assert np.allclose(probabilities["T"][t.test], block_fit(t, c_m), atol=1e-8)
+    with pytest.raises(ValueError, match="before it"):
+        tr.out_of_fold({"R": designs["R"], "T": designs["T"], "S": designs["S"]}, y)
+
+
+def test_t_still_nests_s(built):
+    _, designs, truths, _ = built
+    y = (np.random.default_rng(5).random(len(truths.z)) < 1 / (1 + np.exp(-truths.z))).astype(float)
+    t, s = designs["T"][0], designs["S"][0]
+    n = tr.check_nested(t, s)
+    assert n == s.x_train.shape[1] < t.x_train.shape[1]
+    c_s = sf.chosen_c(s, y, tr.MODEL)
+    p_s = sf.predict(sf.logistic_fit(s.x_train, y[s.train], tr.MODEL.penalties(n, c_s)), s.x_test)
+    beta, scale = tr.fit_blocks(t.x_train, y[t.train], n, c_s, 1e-12)                  # the motion block shut: T = S
+    assert np.allclose(tr.predict_blocks(beta, scale, t.x_test, n), p_s, atol=1e-6)
+    broken = sf.FoldDesign(t.fold, t.train, t.test, t.x_train[:, ::-1], t.x_test[:, ::-1], t.inner)
+    with pytest.raises(ValueError, match="T ⊃ S"):
+        tr.check_nested(broken, s)
+
+
+def test_t_is_near_r_only_when_both_of_its_cs_are_at_the_floor():
+    floor, high = tr.C_GRID[0], 1.0
+    chosen = {"S": [high] * 5, "T": [floor] * 5}
+    assert not tr.near_reference(chosen, "T") and not tr.near_reference(chosen, "S")       # motion shut: T ≈ S, not R
+    chosen = {"S": [floor] * 3 + [high] * 2, "T": [floor] * 4 + [high]}
+    assert tr.near_reference(chosen, "T") and tr.near_reference(chosen, "S")
+
+
+def test_the_remedy_seeds_reach_every_simulation(built):
+    _, designs, truths, weights = built
+    with tco.Fitter(designs) as fitter:
+        _, summary = tco.run_label_free(fitter, weights, truths, {"passed": True, "checks": []}, 1, tco.REMEDY_SEEDS,
+                                        simulations=("plain_nulls", "rich_nulls", "positive_-0.002"))
+    assert summary["seeds"] == tco.REMEDY_SEEDS
+    assert summary["gates"]["positive"]["seed"] == 30405 and summary["gates"]["rich_nulls"]["seed"] == 30403
+    assert summary["gates"]["positive"]["w_seed"] == tco.SEEDS["motion_plant"]           # the truth is unchanged
+    assert summary["gates"]["rich_nulls"]["truth"]["w_seed"] == tco.SEEDS["rich_projection"]

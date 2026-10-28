@@ -11,7 +11,9 @@ parts:
                population counts and shot-list hashes of the main population, of every grid cell and of the leak
                curve's common population (`leak_common`), the arms'
                columns, the provenance checks, the ticket 02 result with its hash, the label-free controls' record
-               with its hash, and the package code digest (`records.package_hashes`).
+               with its hash (the remedy's run, `LABEL_FREE`), the failed first attempt's record with its hashes
+               (`FIRST_ATTEMPT`, its controls.json pinned by `FIRST_ATTEMPT_CONTROLS_SHA256`), and the package code
+               digest (`records.package_hashes`).
 `load` opens the file only at the pinned SHA-256.
 """
 
@@ -31,7 +33,9 @@ from xgpoc.temporal import readout as tr
 PROTOCOL = Path("research/xgt_protocol.json")              # relative to experiments/claude_fable
 SAFE_MARGIN = Path("results/xgt_safe_margin/result.json")
 CONTROLS = Path("results/xgt/controls")                    # the permutation's record (complete.json) and the gate of --real
-LABEL_FREE = CONTROLS / "label_free"                       # the label-free controls, before the protocol
+LABEL_FREE = CONTROLS / "label_free_remedy"               # the protocol's label-free controls (after the C9 Q2 remedy)
+FIRST_ATTEMPT = CONTROLS / "label_free"                    # the first attempt: failed, kept, cited by the protocol
+FIRST_ATTEMPT_CONTROLS_SHA256 = "ecbe44c203ac3dd7ccb0f9084f154e052c7b95a2d537a617833566edeffd08ff"
 MAIN_SOURCE = "g_xgv"
 DESCRIPTIVE_SOURCES = ("g_xgc", "dinov2")
 
@@ -104,7 +108,20 @@ def model_record() -> dict:
                       "preprocessed on its own inner training rows, summed inner held-out log-loss, ties to the "
                       "smaller C; refit on the whole outer training fold",
             "newton": {"iterations": sf.NEWTON_ITERATIONS, "tolerance": sf.NEWTON_TOLERANCE},
-            "applies_to": ["R", "S", "T", "L", "S_xgc", "T_xgc", "F_S", "F_T", "k sensitivity"]}
+            "applies_to": ["R", "S", "T", "L", "S_xgc", "T_xgc", "F_S", "F_T", "k sensitivity"],
+            "t_variant": {
+                "name": tr.T_MODEL, "source": "council C9 Q2 (b), the pre-registered remedy (controls.remedy), built "
+                                              "after the first attempt's positive miss (controls.first_attempt)",
+                "rule": "per outer fold T keeps S's chosen C (C_S) for the static block (S's columns, z unpenalised) "
+                        "and chooses a separate C_M for the motion block over c_grid by the same inner match-grouped "
+                        "CV, the static block at C_S in every inner fit, ties to the smaller C_M; implemented exactly "
+                        "by rescaling the motion columns by sqrt(C_M / C_S) under the common penalty 1 / C_S; T's "
+                        "design starts with S's design fold by fold (checked), so T nests S",
+                "chosen_c": "T's chosen C per fold is C_M; 'arm ≈ R' for T needs C_S and C_M both at the grid's "
+                            "smallest C in the same fold",
+                "applies_to": ["T", "T_xgc", "F_T", "T of the k and seed sensitivities", "T of every ticket 07 grid "
+                               "cell and leak-curve point"],
+                "static_partner": {"T": "S", "T_xgc": "S_xgc", "F_T": "F_S"}}}
 
 
 def preprocessing_record() -> dict:
@@ -130,7 +147,8 @@ def preprocessing_record() -> dict:
 def arms_record() -> dict:
     return {"R": {"status": "reference", "inputs": "z_g_combo (results/xgd_a1_ensemble/oof.csv)"},
             "S": {"status": "static control", "inputs": "R + pc01..pc32@o_max + missing@<offset> for every window offset"},
-            "T": {"status": "confirmatory (H1, H2)", "inputs": "S + pcJ_vs_start@o_max + pcJ_vs_mid@o_max + "
+            "T": {"status": "confirmatory (H1, H2)", "model": tr.T_MODEL,
+                  "inputs": "S + pcJ_vs_start@o_max + pcJ_vs_mid@o_max + "
                                                                 "pcJ_slope@o_max, J = 1..32"},
             "source": MAIN_SOURCE, "k": tf.K,
             "k_rule": "k = 32 fixed without labels (ticket 01: explained variance 16/32/64 on the training folds); "
@@ -273,6 +291,15 @@ def disclosures() -> list[str]:
         "window, not on P_G: the window populations shrink as o_max moves earlier, and a trend fitted across "
         "different populations could hide or fake a jump. The curve on each window's own population is reported "
         "descriptively.",
+        "First attempt of the label-free controls failed (results/xgt/controls/label_free, controls.json sha256 "
+        "ecbe44c2..., HEAD cded06d, one C shared by T's static and motion blocks, 200 replicates, 5,580 s): positive "
+        "gate (motion plant, target T-S -0.002) mean recovered T-S -0.00032 outside [-0.003, -0.001], Holm power of "
+        "T-S 0.15 against oracle power 0.895, grid-floor share S 0.54, T 0.12; rich-null gate Holm T-S rejection 0.11 "
+        "(MC SE 0.022) above 0.09, mean T-S +0.00014; provenance and plain nulls passed (0.01). Reported: T-S "
+        "recovered -0.00106 at -0.004, -0.00066 at -0.003, -0.00073 for the pc01 plant. The positive miss was "
+        "shrinkage (above -0.001), so the pre-registered remedy of C9 Q2 was built (model.t_variant), which is also "
+        "C8 Q3's code fix of the rich-null failure; no criterion changed. Every label-free gate is rerun once on the "
+        "remedy's fresh seeds; a second positive miss stops the phase for the council.",
         "Every truth of the label-free controls uses z_g_combo with intercept 0 and slope 1; no real label sets it.",
         "z_g_combo is the averaged pre-Platt logit of the two G-combo models that held each shot out; each member's "
         "epoch and temperature were chosen on its own scored fold (xg-stack C6).",
@@ -310,8 +337,9 @@ def frozen() -> dict:
         "on_failure": "a failed control is fixed in the code, never by loosening a criterion; a re-freeze only after "
                       "a code change, with the reason; a positive-control miss by shrinkage (recovered T - S above "
                       "-0.001) triggers the pre-registered remedy of controls.remedy (C9 Q2: separate inner-CV C for "
-                      "the motion block, run once, every label-free gate rerun on its fresh seeds); a second miss stops "
-                      "the phase for the council (D9)",
+                      "the motion block, run once, every label-free gate rerun on its fresh seeds); it was triggered "
+                      "(controls.first_attempt) and is built (model.t_variant); a second miss stops the phase for the "
+                      "council (D9)",
     }
 
 
