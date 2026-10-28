@@ -147,25 +147,25 @@ def _logistic(x: torch.Tensor, y: torch.Tensor, z: torch.Tensor, lam: float, sta
 
 def logistic_paths(x: np.ndarray, y: np.ndarray, zs: dict[str, np.ndarray], evals: Sequence[tuple[np.ndarray, dict]],
                    lambdas: Sequence[float] = LAMBDAS, valid_y: np.ndarray | None = None,
-                   down_to: dict[str, float] | None = None) -> dict[str, list[np.ndarray]]:
+                   down_to: dict[str, float] | None = None, device: str = "cpu") -> dict[str, list[np.ndarray]]:
     """`ridge_paths` for one binary target with L2 logistic; predictions are logits (len(lambdas), n_eval, 1),
     warm-started from the largest penalty down. The path stops early (later penalties NaN): below `down_to[variant]`
     (the outer fit needs only the chosen penalty), and, given `valid_y`, once the log-loss on the first eval set has
-    risen at two consecutive penalties (inner CV; the chosen penalty lies before)."""
-    xt = torch.from_numpy(x.astype(np.float64))
-    yt = torch.from_numpy(np.asarray(y, np.float64).reshape(-1))
+    risen at two consecutive penalties (inner CV; the chosen penalty lies before). `device`: where L-BFGS runs."""
+    xt = torch.from_numpy(x.astype(np.float64)).to(device)
+    yt = torch.from_numpy(np.asarray(y, np.float64).reshape(-1)).to(device)
     out = {}
     order = np.argsort(lambdas)[::-1]
     for variant, z in zs.items():
-        zt = torch.from_numpy(z.astype(np.float64))
-        w = torch.zeros(z.shape[1] + x.shape[1], dtype=torch.float64)
+        zt = torch.from_numpy(z.astype(np.float64)).to(device)
+        w = torch.zeros(z.shape[1] + x.shape[1], dtype=torch.float64, device=device)
         preds = [[np.full((len(xe), 1), np.nan)] * len(lambdas) for xe, _ in evals]
         losses = []
         for j in order:
             if down_to is not None and lambdas[j] < down_to[variant]:
                 break
             w = _logistic(xt, yt, zt, lambdas[j], w)
-            coef = w.numpy()
+            coef = w.cpu().numpy()
             for i, (xe, ze) in enumerate(evals):
                 preds[i] = [*preds[i][:j], (ze[variant] @ coef[:z.shape[1]] + xe @ coef[z.shape[1]:])[:, None], *preds[i][j + 1:]]
             if valid_y is not None:
@@ -268,7 +268,7 @@ def inner_splits(games: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
 
 
 def _fold_fit(x_all: np.ndarray, data: ProbeData, rows: np.ndarray, y: np.ndarray, binary: bool, k: int,
-              x_paired: np.ndarray | None) -> dict:
+              x_paired: np.ndarray | None, device: str = "cpu") -> dict:
     """Inner CV, outer fit and reads of one row group in outer fold k."""
     dist = data.targets.distance.to_numpy()
     train, test = rows[data.folds[rows] != k], rows[data.folds[rows] == k]
@@ -284,7 +284,7 @@ def _fold_fit(x_all: np.ndarray, data: ProbeData, rows: np.ndarray, y: np.ndarra
         for (_, de), xse in zip(evals, xs[1:], strict=True):
             ze = np.nan_to_num(spline(de, knots))
             ev.append((xse, {"embedding": ze[:, :1], "distance_embedding": ze}))
-        return paths(xs[0], ytrain, zs, ev, grid, **(stop if binary else {})), ztr, knots
+        return paths(xs[0], ytrain, zs, ev, grid, **(stop | {"device": device} if binary else {})), ztr, knots
 
     loss = {v: 0.0 for v in VARIANTS}
     inner_pred = {v: np.empty((len(grid), len(train), y.shape[1])) for v in VARIANTS}
@@ -317,8 +317,8 @@ def _fold_fit(x_all: np.ndarray, data: ProbeData, rows: np.ndarray, y: np.ndarra
 
 
 def run(data: ProbeData, encoder: Encoder, targets: Sequence[str] = tg.TARGETS, folds: Sequence[int] | None = None,
-        log: Callable[[str], None] | None = None) -> Run:
-    """Out-of-fold probes of every target for one encoder (module docstring)."""
+        log: Callable[[str], None] | None = None, device: str = "cpu") -> Run:
+    """Out-of-fold probes of every target for one encoder (module docstring); `device` for the logistic fits."""
     folds = sorted(np.unique(data.folds)) if folds is None else list(folds)
     groups = row_groups(data, targets)
     results: dict[str, TargetRun] = {}
@@ -343,7 +343,7 @@ def run(data: ProbeData, encoder: Encoder, targets: Sequence[str] = tg.TARGETS, 
         x_paired = np.asarray(encoder.paired(k), np.float32) if encoder.paired is not None and data.paired is not None else None
         for rows, cols, y, binary in plan:
             t0, c0 = time.perf_counter(), time.process_time()
-            res = _fold_fit(x_all, data, rows, y, binary, k, x_paired)
+            res = _fold_fit(x_all, data, rows, y, binary, k, x_paired, device)
             timing.append({"encoder": encoder.name, "fold": k, "targets": cols[0] if binary else "+".join(c for c in cols if not c.endswith(SHUFFLED)),
                            "model": "logistic" if binary else "ridge", "rows": len(rows), "dim": x_all.shape[1],
                            "wall_s": time.perf_counter() - t0, "cpu_s": time.process_time() - c0})
