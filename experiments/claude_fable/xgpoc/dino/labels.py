@@ -300,3 +300,80 @@ One line per id, in this exact format, nothing else:
 
 Give an answer for every id in the folder. Do not guess the result of the shot and do not answer about it.
 """
+
+
+# ------------------------------------------------------------------ GPT answers and caption agreement (step 4)
+ANSWER_DIR = GPT_DIR / "answers"
+GPT_NOTE = ("GPT labels are a noisy measurement, not ground truth: a 'head' answer can be inferred from the cross context "
+            "(the ball still at the crosser's foot at t0) rather than seen. `unclear` is missing for probes.")
+
+
+def read_answers(paths) -> pd.Series:
+    """{anon_id: answer} from header-less `anon_id,answer` files; every id once, every answer in `ANSWERS`."""
+    rows = pd.concat([pd.read_csv(p, header=None, names=["anon_id", "answer"], dtype=str) for p in paths])
+    rows["answer"] = rows.answer.str.strip().str.lower()
+    rows["anon_id"] = rows.anon_id.str.strip()
+    if rows.anon_id.duplicated().any():
+        raise ValueError("an id is answered twice")
+    if bad := sorted(set(rows.answer) - set(ANSWERS)):
+        raise ValueError(f"answers outside {ANSWERS}: {bad}")
+    return rows.set_index("anon_id").answer
+
+
+def gpt_labels(answers: pd.Series, key: pd.DataFrame, sample: pd.DataFrame) -> pd.DataFrame:
+    """`header_gpt` per sampled shot (index shot_id): label = the answer, `header_gpt` = 1 head / 0 foot or other / NaN
+    unclear (missing for probes), source = "gpt". Raises unless the answers cover the key exactly."""
+    if set(answers.index) != set(key.anon_id):
+        raise ValueError("the answers do not cover the sample exactly")
+    out = key.set_index("shot_id").anon_id.map(answers).rename("gpt_answer").to_frame().loc[sample.index]
+    out["header_gpt"] = out.gpt_answer.map({"head": 1.0, "foot": 0.0, "other": 0.0, "unclear": np.nan})
+    out["source"] = "gpt"
+    return out
+
+
+def _w(x: pd.Series, w: pd.Series, mask: pd.Series) -> float:
+    return float(w[mask].sum())
+
+
+def _rate(num: float, den: float) -> float:
+    return num / den if den > 0 else float("nan")
+
+
+def agreement_block(d: pd.DataFrame) -> dict:
+    """Caption vs GPT on `d` (columns caption_label, gpt_answer, weight; GPT `unclear` rows dropped). Positive class: head.
+    Weights are the stratum weights (population share), counts are raw."""
+    d = d[d.gpt_answer != "unclear"]
+    w = d.weight
+    head, ch = d.gpt_answer == "head", d.caption_label == "header"
+    cf, cl = d.caption_label == "foot", d.caption_label.isin(["header", "foot"])
+    gf = d.gpt_answer.isin(["foot", "other"])
+    unk = d.caption_label == "unknown"
+    return {
+        "n": len(d), "population_weight": float(w.sum()),
+        "caption_header": {"n": int(ch.sum()), "gpt_head_n": int((ch & head).sum()),
+                           "precision": _rate(w[ch & head].sum(), w[ch].sum()), "precision_unweighted": _rate((ch & head).sum(), ch.sum())},
+        "gpt_head": {"n": int(head.sum()), "caption_header_n": int((ch & head).sum()),
+                     "recall": _rate(w[ch & head].sum(), w[head].sum()), "recall_unweighted": _rate((ch & head).sum(), head.sum()),
+                     "caption_foot_n": int((cf & head).sum()), "caption_unknown_n": int((unk & head).sum())},
+        "caption_foot": {"n": int(cf.sum()), "gpt_foot_n": int((cf & gf).sum()),
+                         "precision": _rate(w[cf & gf].sum(), w[cf].sum()), "precision_unweighted": _rate((cf & gf).sum(), cf.sum())},
+        "gpt_foot": {"n": int(gf.sum()), "caption_foot_n": int((cf & gf).sum()), "recall": _rate(w[cf & gf].sum(), w[gf].sum())},
+        "agreement_on_caption_labelled": {"n": int(cl.sum()), "agree_n": int(((ch & head) | (cf & gf))[cl].sum()),
+                                          "weighted": _rate(w[(ch & head) | (cf & gf)][cl[(ch & head) | (cf & gf)]].sum(), w[cl].sum()),
+                                          "unweighted": _rate(((ch & head) | (cf & gf))[cl].sum(), cl.sum())},
+        "caption_unknown": {"n": int(unk.sum()), "gpt_head_n": int((unk & head).sum()), "gpt_foot_n": int((unk & gf).sum()),
+                            "gpt_head_share": _rate(w[unk & head].sum(), w[unk].sum()),
+                            "gpt_head_share_unweighted": _rate((unk & head).sum(), unk.sum())},
+        "share_of_gpt_head_with_caption_header": {"n": int(head.sum()), "caption_header_n": int((ch & head).sum()),
+                                                  "weighted": _rate(w[ch & head].sum(), w[head].sum()),
+                                                  "unweighted": _rate((ch & head).sum(), head.sum())},
+        "gpt_head_prevalence": {"weighted": _rate(w[head].sum(), w.sum()), "unweighted": _rate(head.sum(), len(d))},
+    }
+
+
+def agreement(d: pd.DataFrame) -> dict:
+    """`agreement_block` overall and by outcome (`d` has outcome 0/1), with the GPT answer counts and the note."""
+    counts = d.groupby(["outcome", "gpt_answer"]).size().unstack(fill_value=0).reindex(columns=list(ANSWERS), fill_value=0)
+    return {"note": GPT_NOTE, "answers_by_outcome": {("goal" if k else "no_goal"): v for k, v in counts.to_dict("index").items()},
+            "overall": agreement_block(d),
+            "goal": agreement_block(d[d.outcome == 1]), "no_goal": agreement_block(d[d.outcome == 0])}

@@ -92,3 +92,38 @@ def test_reserved_names_refused():
     for bad in ("a/CON/b", "a/b./c", "a/b:c"):
         with pytest.raises(ValueError):
             lb.check_reserved(bad)
+
+
+def test_gpt_answers_join_and_validation(tmp_path):
+    (tmp_path / "part1.csv").write_text("s00001,head\ns00002,foot\n")
+    (tmp_path / "part2.csv").write_text("s00003,unclear\n")
+    answers = lb.read_answers(sorted(tmp_path.glob("part*.csv")))
+    key = pd.DataFrame({"anon_id": ["s00001", "s00002", "s00003"], "shot_id": ["a", "b", "c"]})
+    sample = pd.DataFrame(index=pd.Index(["a", "b", "c"], name="shot_id"))
+    g = lb.gpt_labels(answers, key, sample)
+    assert g.header_gpt["a"] == 1 and g.header_gpt["b"] == 0 and np.isnan(g.header_gpt["c"]) and set(g.source) == {"gpt"}
+    (tmp_path / "bad.csv").write_text("s00001,head\ns00001,foot\n")
+    with pytest.raises(ValueError):
+        lb.read_answers([tmp_path / "bad.csv"])
+    (tmp_path / "bad2.csv").write_text("s00001,arm\n")
+    with pytest.raises(ValueError):
+        lb.read_answers([tmp_path / "bad2.csv"])
+    with pytest.raises(ValueError):
+        lb.gpt_labels(answers.iloc[:2], key, sample)
+
+
+def test_agreement_weighted_by_outcome():
+    d = pd.DataFrame({
+        "outcome": [0, 0, 0, 0, 0, 1, 1, 1],
+        "caption_label": ["header", "header", "foot", "unknown", "unknown", "header", "unknown", "unknown"],
+        "gpt_answer": ["head", "foot", "foot", "head", "unclear", "head", "foot", "head"],
+        "weight": [1, 3, 1, 2, 5, 2, 1, 1]})
+    r = lb.agreement(d)
+    ng, g = r["no_goal"], r["goal"]
+    assert ng["caption_header"]["precision"] == pytest.approx(1 / 4) and ng["caption_header"]["precision_unweighted"] == 0.5
+    assert ng["gpt_head"]["recall"] == pytest.approx(1 / 3) and ng["gpt_head"]["n"] == 2        # unclear dropped
+    assert ng["agreement_on_caption_labelled"]["weighted"] == pytest.approx(2 / 5)
+    assert ng["caption_unknown"]["gpt_head_n"] == 1 and ng["caption_unknown"]["gpt_foot_n"] == 0
+    assert g["share_of_gpt_head_with_caption_header"]["weighted"] == pytest.approx(2 / 3)
+    assert g["caption_unknown"]["gpt_head_share"] == pytest.approx(1 / 2)
+    assert r["answers_by_outcome"]["no_goal"]["unclear"] == 1 and "noisy" in r["note"]
