@@ -1,7 +1,7 @@
 """The number check of the xg-detector audit note (xg-detector 02 and 09) and final report (xg-detector 07), audit 3
 (pitch-keypoints 04), the pitch-keypoints report (pitch-keypoints 06), the xg-compare report (xg-compare 03) and the
-xg-stack report (xg-stack 03), the xg-stack test report (xg-stack 04) and the sweep report (sweep-report): the real
-documents, and changed copies."""
+xg-stack report (xg-stack 03), the xg-stack test report (xg-stack 04), the sweep report (sweep-report) and the
+xg-temporal report (xg-temporal 05): the real documents, and changed copies."""
 
 import sys
 from pathlib import Path
@@ -21,6 +21,7 @@ from check_xgd_audit import (  # noqa: E402
     XGC_REPORT,
     XGS_REPORT,
     XGS_TEST,
+    XGT_REPORT,
     main,
 )
 from test_check_vendor_report import write_tree  # noqa: E402
@@ -86,7 +87,8 @@ def test_without_a_path_the_check_reads_every_document(monkeypatch):
                     [str(XGC_REPORT), "--claims", str(XGC_REPORT.with_name("claims.toml")), "--root", "/x"],
                     [str(XGS_REPORT), "--claims", str(XGS_REPORT.with_name("claims.toml")), "--root", "/x"],
                     [str(XGS_TEST), "--claims", str(XGS_TEST.with_name("test_claims.toml")), "--root", "/x"],
-                    [str(SWEEP_REPORT), "--claims", str(SWEEP_REPORT.with_name("claims.toml")), "--root", "/x"]]
+                    [str(SWEEP_REPORT), "--claims", str(SWEEP_REPORT.with_name("claims.toml")), "--root", "/x"],
+                    [str(XGT_REPORT), "--claims", str(XGT_REPORT.with_name("claims.toml")), "--root", "/x"]]
     assert main(["other.md", "--claims", "c.toml"]) == 0 and seen[-1] == ["other.md", "--claims", "c.toml", "--root", str(EXP)]
 
 
@@ -360,3 +362,34 @@ def test_an_untagged_number_in_the_sweep_report_fails(tmp_path):
     errors = check(copy, SWEEP_CLAIMS, EXP)
     assert any("'−0.0031' is not tied to a source" in e for e in errors)
     assert any("integer '4096'" in e for e in errors)
+
+
+# --- the xg-temporal closing report (xg-temporal 05) ---
+
+XGT_CLAIMS = XGT_REPORT.with_name("claims.toml")
+XGT_RESULTS = ("results/xgt/controls/label_free", "results/xgt/controls/label_free_remedy",
+               "results/xgt/controls/label_free_c10", "results/xgt_report", "results/xgt_safe_margin",
+               "results/xgt_xgv_embeddings", "results/xgt_inputs_xgv")
+XGT_READY = XGT_REPORT.is_file() and all((EXP / folder / "complete.json").is_file() for folder in XGT_RESULTS)
+needs_xgt_report = pytest.mark.skipif(not XGT_READY, reason="needs the xg-temporal report and the controls' results")
+
+
+@needs_xgt_report
+def test_the_real_xgt_report_passes():
+    assert DOCUMENTS[XGT_REPORT] == XGT_CLAIMS
+    assert check(XGT_REPORT, XGT_CLAIMS, EXP) == []
+
+
+@needs_xgt_report
+@pytest.mark.parametrize("claim", ["c3.m2", "c1.rich", "rp.share.max", "sm.cp", "em.r", "rp.x2.m"])
+def test_a_changed_number_in_the_xgt_report_fails(tmp_path, claim):
+    assert any(f"{claim} expects" in e for e in check(changed_copy(XGT_REPORT, tmp_path, claim), XGT_CLAIMS, EXP))
+
+
+@needs_xgt_report
+def test_an_untagged_number_in_the_xgt_report_fails(tmp_path):
+    copy = tmp_path / "REPORT.md"
+    copy.write_text(XGT_REPORT.read_text() + "\nDodatkowo T − S −0.0011 na 9000 strzałach bez źródła.\n")
+    errors = check(copy, XGT_CLAIMS, EXP)
+    assert any("'−0.0011' is not tied to a source" in e for e in errors)
+    assert any("integer '9000'" in e for e in errors)

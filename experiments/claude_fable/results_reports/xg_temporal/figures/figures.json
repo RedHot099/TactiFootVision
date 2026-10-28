@@ -1,0 +1,43 @@
+{
+  "code": {
+    "digest": "2cc1d3e151a6e47492e275dc4236c00a2b450b2f3aff806e3796437dfcf28af8",
+    "files": {
+      "scripts/xgt_report.py": "fd1e53e5ba7b192e8b7b36923e77d59b099adbd102c788167d24de234054e93b",
+      "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+      "xgpoc/detector/__init__.py": "35c71c872bb693848189ea078461a51ba4b8ed91293f8fa7bed4a9a1556cf7a1",
+      "xgpoc/detector/guard.py": "de338fb5040c178003e4dfe7f4c67032e4b8b05390925a00ed0159d8678ea3f6",
+      "xgpoc/detector/records.py": "dfe2c1f3e86efc54f2ce29a6b144564349e5bcf2c3a4b79063d8e664566dbf9f",
+      "xgpoc/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/eval/metrics.py": "835dbfff1ff938ab5a12e08568d5dc3d367d5bf5e4ca63aacae51b11e201896d",
+      "xgpoc/paths.py": "4beca7070d9ecfa1c3f5c1f62e40d048f2c611de56283be9a6033151513fa8f2",
+      "xgpoc/temporal/__init__.py": "afe4072596a249eb5b6414da00851d081d278c0d25ae223fb2019e9904c8e7d4",
+      "xgpoc/temporal/categories.py": "868f971654f9b080b27cc074d6fbe25a606e0d478dfc48387fbfc9bc63dafb56",
+      "xgpoc/temporal/controls.py": "daf03d10393d9f51e563cf244758bcd200f75185dd626af874bc67729efec32d",
+      "xgpoc/temporal/features.py": "d390a6afc0a78017ddb4bdc5e6bcb204fbddab93bb2ca38c77887726caf32178",
+      "xgpoc/temporal/inputs.py": "1ca3124d87c6ac2d0b34bd2d7add12be05f05648f2e6712e9644ce7b9c0c3cf1",
+      "xgpoc/temporal/labels.py": "8ba4b8aa77d5334eef6c6550adf4046c74315707cc25afa221451fecc070ae71",
+      "xgpoc/temporal/protocol.py": "abbe71dcd170191823de6a7287451e234846305216cc7ed49632e1a9386d38c8",
+      "xgpoc/temporal/provenance.py": "118f74867ea84312a2c55886c4ab73e0a82e1e19285e23e0a5b1066861c3300c",
+      "xgpoc/temporal/readout.py": "6cf3e13670de10b54cd674ea36719a18ade53af782dbf45f8fc03b440c87a43b",
+      "xgpoc/temporal/records.py": "cdc76a495b57543eee538f0908ee6f544ecc48ee2b8b3531dfc6f0aa2c21bc27"
+    }
+  },
+  "files": {
+    "null_rejections.png": "a712e73ba8bd6f4bc87db3ee5725895bc1d3014b764f328e563cf44c565228b6",
+    "recovery_power.png": "9944250cb51d4e40887c265168f6ca28bd47410c60e8bcd0d54f5a4735456bc7"
+  },
+  "git": {
+    "dirty": false,
+    "sha": "44c41f8ae219876b8367b02dc7eee35f0d7697bb"
+  },
+  "inputs": {
+    "results/xgd_a1_ensemble/oof.csv": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb",
+    "results/xgt/controls/label_free/controls.json": "ecbe44c203ac3dd7ccb0f9084f154e052c7b95a2d537a617833566edeffd08ff",
+    "results/xgt/controls/label_free_c10/complete.json": "5469aa8c460982d7dfe7ea49d7b76dedb12e99ede0bbac971f0a7c5d9d44f530",
+    "results/xgt/controls/label_free_c10/controls.json": "218d42fb7c2634971b995e0555c0b2d601eca1d8f23774a4ce9fed5e673d40a9",
+    "results/xgt/controls/label_free_c10/population.csv": "e46cde405f83c16cb718ddc99cbc481c8316afe89723b7f5c467cc9a8800d693",
+    "results/xgt/controls/label_free_remedy/controls.json": "4bb1a75712b5b1f0c600396438e757e3c69171823f5e3339bc0d0ac8d10973ba"
+  }
+}

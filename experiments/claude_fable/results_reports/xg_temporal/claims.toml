@@ -1,0 +1,148 @@
+# Sources of every number in REPORT.md (xg-temporal 05), the closing report of the xg-temporal phase.
+# Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both docstrings.
+# Paths are relative to experiments/claude_fable. "alias:file" resolves through [folders].
+# The phase closed before any label was read: every source is label-free (synthetic outcomes, frame masks, model
+# logits, AI timing answers). No folder is a development result on labels (dev = false) and none is confirmatory.
+
+[report]
+# Design constants and names, not results: the window's frame offsets, the PCA size, the motion block sizes of the
+# earlier designs, the held-out match count, the k sensitivities, the hash name.
+untagged = ["−1600", "−1400", "−1200", "−1000", "−800", "−600", "−400", "−200", "+400", "200 ms", "PCA-32",
+            "96 kolumn", "172 mecz", "k = 16", "k = 64", "SHA-256"]
+
+[folders]
+c1 = { path = "results/xgt/controls/label_free" }
+c2 = { path = "results/xgt/controls/label_free_remedy" }
+c3 = { path = "results/xgt/controls/label_free_c10" }
+rp = { path = "results/xgt_report" }
+sm = { path = "results/xgt_safe_margin" }
+em = { path = "results/xgt_xgv_embeddings" }
+iv = { path = "results/xgt_inputs_xgv" }
+
+[claims]
+
+# --- population and inputs (tickets 01, 01b) ---
+"pop.shots" = { src = "iv:summary.json", keys = ["sources.g_xgv.main_population.shots"], fmt = "{:,d}" }
+"pop.matches" = { src = "iv:summary.json", keys = ["sources.g_xgv.main_population.matches"], fmt = "{:d}" }
+"pop.complete" = { src = "iv:summary.json", keys = ["sources.g_xgv.main_population.complete_shots"], fmt = "{:,d}" }
+"pop.base" = { src = "iv:summary.json", keys = ["base.shots"], fmt = "{:,d}" }
+"pop.pca32" = { src = "iv:summary.json", keys = ["sources.g_xgv.pca_explained_variance.mean.32"], fmt = "{:.3f}" }
+"pop.xg" = { src = "rp:readings.json", keys = ["population.expected_goals"], fmt = "{:.0f}" }
+"pop.xgrate" = { src = "rp:readings.json", keys = ["population.expected_goal_rate"], scale = 100, fmt = "{:.1f}%" }
+"pop.spm" = { src = "rp:readings.json", keys = ["population.shots_per_match"], fmt = "{:.1f}" }
+"em.frames" = { src = "em:complete.json", keys = ["summary.frames_scored"], fmt = "{:,d}" }
+"em.sec" = { src = "em:complete.json", keys = ["summary.seconds_this_run"], fmt = "{:,.0f}" }
+"em.gpu" = { src = "em:complete.json", keys = ["summary.gpu_peak_allocated_bytes"], scale = 1e-9, fmt = "{:.2f}" }
+"em.d0" = { src = "em:complete.json", keys = ["spot_check.offset0_vs_z_g_combo.mean_abs_dlogit"], fmt = "{:.3f}" }
+"em.d0.max" = { src = "em:complete.json", keys = ["spot_check.offset0_vs_z_g_combo.max_abs_dlogit"], fmt = "{:.2f}" }
+"em.r" = { src = "em:complete.json", keys = ["spot_check.offset0_vs_z_g_combo.pearson_r"], fmt = "{:.3f}" }
+"em.d0.n" = { src = "em:complete.json", keys = ["spot_check.offset0_vs_z_g_combo.shots"], fmt = "{:,d}" }
+"em.jpeg.n" = { src = "em:complete.json", keys = ["spot_check.index_jpeg_control.shots"], fmt = "{:d}" }
+"em.roles" = { src = "em:complete.json", keys = ["spot_check.roles.match_roles.training"], fmt = "{:d}" }
+
+# --- ticket 02: the o_max -600 check ---
+"sm.ci" = { src = "sm:result.json", quote = "one-sided 95% Clopper-Pearson", values = [95], fmt = "{:.0f}%" }
+"sm.v" = { src = "sm:result.json", keys = ["violations"], fmt = "{:d}" }
+"sm.n" = { src = "sm:result.json", keys = ["n"], fmt = "{:d}" }
+"sm.cp" = { src = "sm:result.json", keys = ["cp_upper_95"], scale = 100, fmt = "{:.2f}%" }
+"sm.max" = { src = "sm:result.json", keys = ["max_rate"], scale = 100, fmt = "{:.0f}%" }
+"sm.agree" = { src = "sm:result.json", keys = ["per_offset.-600.agreement"], scale = 100, fmt = "{:.1f}%" }
+"sm.kappa" = { src = "sm:result.json", keys = ["per_offset.-600.cohen_kappa"], fmt = "{:+.2f}" }
+"sm.yes" = { src = "sm:result.json", keys = ["per_offset.-600.both_yes"], fmt = "{:d}" }
+"sm.v800" = { src = "sm:result.json", keys = ["per_offset.-800.worst_case_struck"], fmt = "{:d}" }
+"sm.cp800" = { src = "sm:result.json", keys = ["per_offset.-800.cp_upper_95"], scale = 100, fmt = "{:.2f}%" }
+"sm.v400" = { src = "sm:result.json", keys = ["per_offset.-400.worst_case_struck"], fmt = "{:d}" }
+"sm.cp400" = { src = "sm:result.json", keys = ["per_offset.-400.cp_upper_95"], scale = 100, fmt = "{:.2f}%" }
+"sm.skip" = { src = "sm:result.json", keys = ["evidence.v15_skipped_evaluation"], fmt = "{:d}" }
+"sm.gsr" = { src = "sm:result.json", keys = ["evidence.gsr_kicks"], fmt = "{:d}" }
+"sm.v15" = { src = "sm:result.json", keys = ["evidence.v15_bounded_training"], fmt = "{:d}" }
+"sm.d6" = { src = "sm:result.json", keys = ["spread_check_d6.shot_share_within_200ms"], scale = 100, fmt = "{:.1f}%" }
+"sm.d6.n" = { src = "sm:result.json", keys = ["spread_check_d6.n_shots"], fmt = "{:,d}" }
+
+# --- design constants of the controls (C10 run's record) ---
+"k.reps" = { src = "c3:controls.json", keys = ["replicates"], fmt = "{:d}" }
+"k.k" = { src = "c3:controls.json", keys = ["k"], fmt = "{:d}" }
+"k.t2" = { src = "c3:controls.json", keys = ["gates.positive.target"], fmt = "{:+.3f}" }
+"k.t3" = { src = "rp:readings.json", keys = ["attempts.c10.m3.oracle_T-S"], fmt = "{:+.3f}" }
+"k.t4" = { src = "rp:readings.json", keys = ["attempts.c10.m4.oracle_T-S"], fmt = "{:+.3f}" }
+"k.gate" = { src = "c3:controls.json", quote = "in [-0.003, -0.001]", values = [0.003, 0.001], fmt = "[−{:.3f}; −{:.3f}]" }
+"k.lo" = { src = "c3:controls.json", quote = "in [-0.003, -0.001]", values = [0.001], fmt = "−{:.3f}" }
+"k.null" = { src = "c3:controls.json", quote = "<= 0.09", values = [0.09], fmt = "{:.2f}" }
+"k.pow8" = { src = "c3:controls.json", keys = ["reports.power_curve.power_level"], fmt = "{:.1f}" }
+"k.pow" = { src = "c3:controls.json", keys = ["reports.power_curve.power_level"], scale = 100, fmt = "{:.0f}%" }
+"k.span" = { src = "c3:complete.json", quote = "the 8-column block spans 0.31 of the C9 plant", values = [0.31], fmt = "{:.2f}" }
+
+# --- attempt 1: T = S + 96 motion columns, shared C (results/xgt/controls/label_free) ---
+"c1.m2" = { src = "c1:controls.json", keys = ["gates.positive.mean_recovered_delta_T-S"], fmt = "{:+.5f}" }
+"c1.m2.p" = { src = "c1:controls.json", keys = ["gates.positive.power_T-S"], fmt = "{:.3f}" }
+"c1.m2.o" = { src = "c1:controls.json", keys = ["gates.positive.oracle_power"], fmt = "{:.3f}" }
+"c1.m3" = { src = "rp:readings.json", keys = ["attempts.first.m3.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c1.m3.p" = { src = "rp:readings.json", keys = ["attempts.first.m3.power_T-S"], fmt = "{:.3f}" }
+"c1.m4" = { src = "rp:readings.json", keys = ["attempts.first.m4.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c1.m4.p" = { src = "rp:readings.json", keys = ["attempts.first.m4.power_T-S"], fmt = "{:.3f}" }
+"c1.pc01" = { src = "rp:readings.json", keys = ["pc01_m2.first.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c1.plain" = { src = "c1:controls.json", keys = ["gates.plain_nulls.holm_rejection_any.rate"], fmt = "{:.3f}" }
+"c1.rich" = { src = "c1:controls.json", keys = ["gates.rich_nulls.holm_rejection.T-S.rate"], fmt = "{:.3f}" }
+"c1.rich.se" = { src = "c1:controls.json", keys = ["gates.rich_nulls.holm_rejection.T-S.mc_se"], fmt = "{:.3f}" }
+"c1.rich.d" = { src = "c1:controls.json", keys = ["gates.rich_nulls.mean_delta.T-S"], fmt = "{:+.5f}" }
+"c1.floor.T" = { src = "c1:controls.json", keys = ["gates.positive.grid_floor_share.T"], fmt = "{:.2f}" }
+"c1.sec" = { src = "c1:controls.json", keys = ["run.seconds"], fmt = "{:,.0f}" }
+
+# --- attempt 2: the C9 Q2 remedy, separate motion-block C (results/xgt/controls/label_free_remedy) ---
+"c2.m2" = { src = "c2:controls.json", keys = ["gates.positive.mean_recovered_delta_T-S"], fmt = "{:+.5f}" }
+"c2.m2.p" = { src = "c2:controls.json", keys = ["gates.positive.power_T-S"], fmt = "{:.3f}" }
+"c2.m2.o" = { src = "c2:controls.json", keys = ["gates.positive.oracle_power"], fmt = "{:.3f}" }
+"c2.m3" = { src = "rp:readings.json", keys = ["attempts.remedy.m3.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c2.m3.p" = { src = "rp:readings.json", keys = ["attempts.remedy.m3.power_T-S"], fmt = "{:.3f}" }
+"c2.m4" = { src = "rp:readings.json", keys = ["attempts.remedy.m4.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c2.m4.p" = { src = "rp:readings.json", keys = ["attempts.remedy.m4.power_T-S"], fmt = "{:.3f}" }
+"c2.pc01" = { src = "rp:readings.json", keys = ["pc01_m2.remedy.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c2.plain" = { src = "c2:controls.json", keys = ["gates.plain_nulls.holm_rejection_any.rate"], fmt = "{:.3f}" }
+"c2.rich" = { src = "c2:controls.json", keys = ["gates.rich_nulls.holm_rejection.T-S.rate"], fmt = "{:.3f}" }
+"c2.floor.T" = { src = "c2:controls.json", keys = ["gates.positive.grid_floor_share.T"], fmt = "{:.2f}" }
+"c2.sec" = { src = "c2:controls.json", keys = ["run.seconds"], fmt = "{:,.0f}" }
+
+# --- attempt 3: C10, T = S + 8 vs_start columns (results/xgt/controls/label_free_c10) ---
+"c3.m2" = { src = "c3:controls.json", keys = ["gates.positive.mean_recovered_delta_T-S"], fmt = "{:+.5f}" }
+"c3.m2.sd" = { src = "c3:controls.json", keys = ["gates.positive.sd_recovered_delta_T-S"], fmt = "{:.5f}" }
+"c3.m2.p" = { src = "c3:controls.json", keys = ["gates.positive.power_T-S"], fmt = "{:.3f}" }
+"c3.m2.pse" = { src = "c3:controls.json", keys = ["gates.positive.power_T-S_mc_se"], fmt = "{:.3f}" }
+"c3.m2.o" = { src = "c3:controls.json", keys = ["gates.positive.oracle_power"], fmt = "{:.3f}" }
+"c3.m2.tr" = { src = "c3:controls.json", keys = ["gates.positive.mean_recovered_delta_T-R"], fmt = "{:+.5f}" }
+"c3.m3" = { src = "rp:readings.json", keys = ["attempts.c10.m3.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c3.m3.p" = { src = "rp:readings.json", keys = ["attempts.c10.m3.power_T-S"], fmt = "{:.3f}" }
+"c3.m4" = { src = "rp:readings.json", keys = ["attempts.c10.m4.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c3.m4.p" = { src = "rp:readings.json", keys = ["attempts.c10.m4.power_T-S"], fmt = "{:.3f}" }
+"c3.pc01" = { src = "rp:readings.json", keys = ["pc01_m2.c10.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c3.dif" = { src = "rp:readings.json", keys = ["c9_diffuse_c10.mean_recovered_T-S"], fmt = "{:+.5f}" }
+"c3.dif.p" = { src = "rp:readings.json", keys = ["c9_diffuse_c10.power_T-S"], fmt = "{:.3f}" }
+"c3.plain" = { src = "c3:controls.json", keys = ["gates.plain_nulls.holm_rejection_any.rate"], fmt = "{:.3f}" }
+"c3.rich" = { src = "c3:controls.json", keys = ["gates.rich_nulls.holm_rejection.T-S.rate"], fmt = "{:.3f}" }
+"c3.floor.T" = { src = "c3:controls.json", keys = ["gates.positive.grid_floor_share.T"], fmt = "{:.2f}" }
+"c3.cov" = { src = "c3:controls.json", keys = ["reports.clustered_nulls.coverage.T-S.coverage_of_expected"], fmt = "{:.3f}" }
+"c3.sec" = { src = "c3:controls.json", keys = ["run.seconds"], fmt = "{:,.0f}" }
+
+# --- derived readings (scripts/xgt_report.py, results/xgt_report) ---
+"rp.pred" = { src = "rp:readings.json", keys = ["prediction_c10.in_block_m2.0", "prediction_c10.in_block_m2.1"], fmt = "{:+.4f} do {:+.4f}" }
+"rp.pred.dif" = { src = "rp:readings.json", keys = ["prediction_c10.c9_diffuse_m2"], fmt = "{:+.4f}" }
+"rp.share.min" = { src = "rp:readings.json", keys = ["recovery_share_range_m2.min"], scale = 100, fmt = "{:.0f}%" }
+"rp.share.max" = { src = "rp:readings.json", keys = ["recovery_share_range_m2.max"], scale = 100, fmt = "{:.0f}%" }
+"rp.maxpow" = { src = "rp:readings.json", keys = ["max_power_T-S"], fmt = "{:.3f}" }
+"rp.c1.s2" = { src = "rp:readings.json", keys = ["attempts.first.m2.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.c2.s2" = { src = "rp:readings.json", keys = ["attempts.remedy.m2.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.c3.s2" = { src = "rp:readings.json", keys = ["attempts.c10.m2.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.c1.s4" = { src = "rp:readings.json", keys = ["attempts.first.m4.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.c2.s4" = { src = "rp:readings.json", keys = ["attempts.remedy.m4.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.c3.s4" = { src = "rp:readings.json", keys = ["attempts.c10.m4.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.dif.s" = { src = "rp:readings.json", keys = ["c9_diffuse_c10.recovery_share"], scale = 100, fmt = "{:.0f}%" }
+"rp.x2.n" = { src = "rp:readings.json", keys = ["extrapolation.c10.m2.shots_80"], scale = 0.001, fmt = "{:.0f}" }
+"rp.x2.m" = { src = "rp:readings.json", keys = ["extrapolation.c10.m2.matches_80"], fmt = "{:,.0f}" }
+"rp.x2.f" = { src = "rp:readings.json", keys = ["extrapolation.c10.m2.factor"], fmt = "{:.1f}" }
+"rp.x3.n" = { src = "rp:readings.json", keys = ["extrapolation.c10.m3.shots_80"], scale = 0.001, fmt = "{:.0f}" }
+"rp.x3.m" = { src = "rp:readings.json", keys = ["extrapolation.c10.m3.matches_80"], fmt = "{:,.0f}" }
+"rp.x4.n" = { src = "rp:readings.json", keys = ["extrapolation.c10.m4.shots_80"], scale = 0.001, fmt = "{:.1f}" }
+"rp.x4.m" = { src = "rp:readings.json", keys = ["extrapolation.c10.m4.matches_80"], fmt = "{:,.0f}" }
+"rp.xd.n" = { src = "rp:readings.json", keys = ["extrapolation.c10_c9_diffuse.shots_80"], scale = 0.001, fmt = "{:,.0f}" }
+"rp.xd.m" = { src = "rp:readings.json", keys = ["extrapolation.c10_c9_diffuse.matches_80"], fmt = "{:,.0f}" }
+"rp.xr.n" = { src = "rp:readings.json", keys = ["extrapolation.remedy_m4.shots_80"], scale = 0.001, fmt = "{:.0f}" }
+"rp.xr.m" = { src = "rp:readings.json", keys = ["extrapolation.remedy_m4.matches_80"], fmt = "{:,.0f}" }
