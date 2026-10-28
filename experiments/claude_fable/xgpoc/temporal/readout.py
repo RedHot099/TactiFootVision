@@ -8,8 +8,9 @@ Model (`MODEL`): the L2 logistic regression of `xgpoc.stack.fit` (Newton's metho
     `xgpoc.stack.fit.C_GRID`, frozen before any label, with no fallback to R (as C goes to 0 an arm tends to R by
     itself). `xgpoc.stack` keeps its own grid: other protocols pin it.
 T's model (`T_MODEL`, the pre-registered remedy of council C9 Q2, built after the first label-free control run missed
-    the positive gate by shrinkage; `xgpoc.temporal.controls.REMEDY`): T's design is S's columns (the static block, z
-    first) followed by the motion block. Per outer fold T keeps the C that S's inner CV chose there (C_S) for the static
+    the positive gate by shrinkage; `xgpoc.temporal.controls.REMEDY`; kept by council C10 Q4 (a) for C10's smaller
+    motion block, `xgpoc.temporal.features.MOTION_K` columns): T's design is S's columns (the static block, z first)
+    followed by the motion block. Per outer fold T keeps the C that S's inner CV chose there (C_S) for the static
     block, z unpenalised, and chooses a separate C_M for the motion block over `C_GRID` by the same inner match-grouped
     CV (the static block at C_S in every inner fit; ties to the smaller C_M). The block penalty is implemented exactly by
     rescaling the motion columns by sqrt(C_M / C_S) under the common penalty 1 / C_S (`rescaled`): a coefficient b of

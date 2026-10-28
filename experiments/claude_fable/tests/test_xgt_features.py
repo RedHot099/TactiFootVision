@@ -12,28 +12,32 @@ from xgpoc.temporal import readout as tr
 from xgt_fixtures import synthetic_inputs
 
 
-def test_main_window_arms_hold_k_scores_the_missing_indicators_and_three_motion_blocks():
+def test_t_is_s_plus_the_o_max_minus_start_change_of_the_first_8_components():
     columns = tf.arm_columns(ti.Window(), 32)
     missing = ["missing@-1600", "missing@-1400", "missing@-1200", "missing@-1000", "missing@-800", "missing@-600"]
     assert columns["R"] == ["z_g_combo"]
     assert columns["S"] == ["z_g_combo", *[f"pc{j:02d}@-600" for j in range(1, 33)], *missing]
     motion = columns["T"][len(columns["S"]):]
-    assert columns["T"][:len(columns["S"])] == columns["S"] and len(motion) == 3 * 32
-    assert motion[0] == "pc01_vs_start@-600" and motion[32] == "pc01_vs_mid@-600" and motion[64] == "pc01_slope@-600"
-    assert not [c for c in motion if c.startswith("missing")]        # T - S is the motion scores only
+    assert columns["T"][:len(columns["S"])] == columns["S"] and len(columns["T"]) == 39 + 8      # council C10 Q1 (c)
+    assert motion == [f"pc{j:02d}_vs_start@-600" for j in range(1, 9)] and tf.MOTION_K == 8
+    assert not [c for c in motion if "vs_mid" in c or "slope" in c or c.startswith("missing")]
     for names in columns.values():
         tp.check_columns(names, -600)
+    assert tf.arm_columns(ti.Window(), 16)["T"][-8:] == motion                 # k sensitivity: the block stays 8
+    with pytest.raises(ValueError, match="motion block"):
+        tf.arm_columns(ti.Window(), 4)
 
 
-@pytest.mark.parametrize(("start", "o_max", "control", "kinds"), [
+@pytest.mark.parametrize(("start", "o_max", "control", "c9_kinds"), [
     (-800, -600, False, ["vs_start"]),                      # two frames: no middle difference, no slope
     (-1200, -800, False, ["vs_start", "vs_mid"]),           # three frames: the slope is the start difference / 0.4 s
     (-1200, -400, True, ["vs_start", "vs_mid", "slope"]),
 ])
-def test_short_windows_drop_the_columns_that_repeat_the_start_difference(start, o_max, control, kinds):
+def test_every_window_has_the_same_8_motion_columns_and_the_c9_kinds_drop_repeats(start, o_max, control, c9_kinds):
     window = ti.Window(start, o_max, control)
-    motion = tf.motion_columns(window, 2)
-    assert motion == [f"pc0{j}_{kind}@{o_max}" for kind in kinds for j in (1, 2)]
+    assert tf.motion_columns(window, 2) == [f"pc0{j}_vs_start@{o_max}" for j in (1, 2)]
+    assert tf.arm_columns(window)["T"][-8:] == [f"pc{j:02d}_vs_start@{o_max}" for j in range(1, 9)]
+    assert tf.c9_motion_kinds(window) == c9_kinds                       # the C9 diffuse plant's columns only
     assert tf.static_columns(window, 2)[2:] == [f"missing@{o}" for o in window.offsets]
 
 
@@ -44,20 +48,20 @@ def test_motion_features_are_differences_to_the_reference_frames_and_the_least_s
     window = ti.Window(start, o_max, control)
     m = len(window.offsets)
     rng = np.random.default_rng(1)
-    scores, missing, z = rng.normal(size=(5, m, 2)), rng.random((5, m)) < 0.3, rng.normal(size=5)
-    table = tf.feature_table(scores, missing, z, window)
-    assert list(table.columns) == tf.arm_columns(window, 2)["T"]
+    scores, missing, z = rng.normal(size=(5, m, 3)), rng.random((5, m)) < 0.3, rng.normal(size=5)
+    table = tf.feature_table(scores, missing, z, window, motion_k=2)
+    assert list(table.columns) == tf.arm_columns(window, 3, 2)["T"]
+    assert f"pc03_vs_start@{o_max}" not in table                           # only the first motion_k components
     assert np.allclose(table["pc02@" + str(o_max)], scores[:, -1, 1])
     assert np.allclose(table[f"pc01_vs_start@{o_max}"], scores[:, -1, 0] - scores[:, 0, 0])
-    if middle_index is None:
-        assert f"pc01_vs_mid@{o_max}" not in table
-    else:
+    assert np.allclose(table[f"pc02_vs_start@{o_max}"], scores[:, -1, 1] - scores[:, 0, 1])
+    if middle_index is not None:                                           # the C9 kinds, for the diffuse plant
         assert window.offsets[middle_index] == window.middle
-        assert np.allclose(table[f"pc02_vs_mid@{o_max}"], scores[:, -1, 1] - scores[:, middle_index, 1])
+        assert np.allclose(tf.motion_scores(scores, window, "vs_mid")[:, 1], scores[:, -1, 1] - scores[:, middle_index, 1])
     if m > 3:
         t = np.asarray(window.offsets) / 1000.0
         expected = [np.polyfit(t, scores[i, :, 0], 1)[0] for i in range(5)]
-        assert np.allclose(table[f"pc01_slope@{o_max}"], expected)
+        assert np.allclose(tf.motion_scores(scores, window, "slope")[:, 0], expected)
     assert (table[f"missing@{start}"] == missing[:, 0]).all() and (table[f"missing@{o_max}"] == missing[:, -1]).all()
     assert np.allclose(table["z_g_combo"], z)
 
@@ -71,7 +75,7 @@ def test_pca_scaler_and_imputer_see_only_the_training_folds():
     embeddings[frames[frames >= 0]] += np.float16(50.0)           # change every fold-0 frame
     position = data.position.copy()
     position[test, :3] = -1                                        # and the usable-frame mask of the fold-0 shots
-    changed = tf.DesignData(data.window, data.z, data.folds, position, embeddings, data.k)
+    changed = tf.DesignData(data.window, data.z, data.folds, position, embeddings, data.k, data.motion_k)
     again, _ = tf.fold_designs(changed)
     for arm in tf.ARMS:
         before, after = designs[arm][0], again[arm][0]

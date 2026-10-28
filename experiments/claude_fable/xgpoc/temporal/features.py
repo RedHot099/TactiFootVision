@@ -1,20 +1,19 @@
 """Frame PCA, the window features and the fold-wise design matrices of arms R, S and T (ticket 01; spec, "Dane i
-arms").
+arms"; T's motion block from council C10 Q1 (c)).
 
 Arms (`arm_columns`; every column but z_g_combo is named `<feature>@<offset>`, the offset being the latest frame the
 column uses, `provenance.check_columns`)
     R   z_g_combo                                                                   reference
     S   R + pc01..pcK@o_max (the PCA-K scores of the o_max frame)
           + missing@<offset> for every window offset                                static control
-    T   S + pcJ_vs_start@o_max  (score at o_max minus score at the window start)
-          + pcJ_vs_mid@o_max    (score at o_max minus score at the middle frame; omitted when the middle frame is the
-                                 start, a two-frame window)
-          + pcJ_slope@o_max     (least-squares slope per second of the score over every window frame; omitted when the
-                                 window holds at most three frames, where it is the start difference divided by the
-                                 window length)                                     confirmatory
-    Every missing indicator is in S, so T - S holds only the motion scores: which frames a cut removed (the cut
+    T   S + pc01_vs_start@o_max .. pcM_vs_start@o_max (score at o_max minus score at the window start of the first
+          M = `MOTION_K` = 8 components of the same fold-wise PCA-K as S)          confirmatory
+    Every missing indicator is in S, so T - S holds only the M motion scores: which frames a cut removed (the cut
     pattern) cannot by itself make T beat S.
-    K = 32 (`K`), fixed without labels; 16 and 64 are a descriptive sensitivity.
+    K = 32 (`K`), fixed without labels; 16 and 64 are a descriptive sensitivity (T's motion block stays the first 8
+    components of that PCA). M = 8 (`MOTION_K`) is council C10 Q1 (c), chosen without labels after the positive
+    control missed twice with the earlier T of 3 x 32 motion columns (vs_start, vs_mid and the slope of every
+    component; `C9_MOTION_KINDS`, now only the C9 diffuse plant of `xgpoc.temporal.controls` uses them).
 Fold-wise preprocessing (`fold_designs`), fitted on the training rows only, never on y
     1. imputation (`inputs.impute`): an unusable frame takes the nearest earlier usable window frame, else the nearest
        later one, with a missing indicator per offset (row-wise, no fitted state);
@@ -40,6 +39,10 @@ from xgpoc.temporal import inputs as ti
 from xgpoc.temporal.provenance import REFERENCE
 
 K = 32
+MOTION_K = 8                    # council C10 Q1 (c): T's motion block is the o_max - start change of pc01..pc08
+MOTION_KIND = "vs_start"
+T_DESIGN = "c10_vs_start_pc01_pc08"
+C9_MOTION_KINDS = ("vs_start", "vs_mid", "slope")     # the earlier T's motion features (C9 plant only)
 VARIANCE_KS = (16, 32, 64)
 PCA_SEED = 0
 CHUNK = 8192
@@ -54,8 +57,9 @@ def pc(j: int) -> str:
     return f"pc{j:02d}"
 
 
-def motion_kinds(window: ti.Window) -> list[str]:
-    """The motion features of `window` (module docstring), in column order."""
+def c9_motion_kinds(window: ti.Window) -> list[str]:
+    """The earlier T's motion features of `window` (`C9_MOTION_KINDS`; vs_mid omitted when the middle frame is the
+    start, the slope when the window holds at most three frames), in column order: the C9 plant's columns only."""
     return ["vs_start", *(["vs_mid"] if window.middle != window.start else []),
             *(["slope"] if len(window.offsets) > 3 else [])]
 
@@ -73,13 +77,16 @@ def static_columns(window: ti.Window, k: int = K) -> list[str]:
     return [*score_columns("", window, k), *missing_columns(window)]
 
 
-def motion_columns(window: ti.Window, k: int = K) -> list[str]:
-    return [c for kind in motion_kinds(window) for c in score_columns(f"_{kind}", window, k)]
+def motion_columns(window: ti.Window, motion_k: int = MOTION_K) -> list[str]:
+    """T's motion block: pc01_vs_start@o_max .. pcM_vs_start@o_max."""
+    return score_columns(f"_{MOTION_KIND}", window, motion_k)
 
 
-def arm_columns(window: ti.Window, k: int = K) -> dict[str, list[str]]:
+def arm_columns(window: ti.Window, k: int = K, motion_k: int = MOTION_K) -> dict[str, list[str]]:
+    if not 1 <= motion_k <= k:
+        raise ValueError(f"T's motion block needs 1 <= {motion_k} components <= k = {k}")
     static = [REFERENCE, *static_columns(window, k)]
-    return {"R": [REFERENCE], "S": static, "T": [*static, *motion_columns(window, k)]}
+    return {"R": [REFERENCE], "S": static, "T": [*static, *motion_columns(window, motion_k)]}
 
 
 # ------------------------------------------------------------------ PCA
@@ -137,15 +144,16 @@ def motion_scores(scores: np.ndarray, window: ti.Window, kind: str) -> np.ndarra
     raise ValueError(f"unknown motion feature {kind!r}")
 
 
-def feature_table(scores: np.ndarray, missing: np.ndarray, z: np.ndarray, window: ti.Window) -> pd.DataFrame:
+def feature_table(scores: np.ndarray, missing: np.ndarray, z: np.ndarray, window: ti.Window,
+                  motion_k: int = MOTION_K) -> pd.DataFrame:
     """Every column of arm T (z_g_combo first) from the window scores (shots, offsets, k) and missing indicators;
     each block is named by the helpers `arm_columns` uses, and the order is checked against it."""
     k = scores.shape[2]
     blocks = [([REFERENCE], np.asarray(z, float)[:, None]), (score_columns("", window, k), scores[:, -1, :]),
-              (missing_columns(window), np.asarray(missing, float))]
-    blocks += [(score_columns(f"_{kind}", window, k), motion_scores(scores, window, kind)) for kind in motion_kinds(window)]
+              (missing_columns(window), np.asarray(missing, float)),
+              (motion_columns(window, motion_k), motion_scores(scores, window, MOTION_KIND)[:, :motion_k])]
     columns = [c for names, _ in blocks for c in names]
-    if columns != arm_columns(window, k)["T"]:
+    if columns != arm_columns(window, k, motion_k)["T"]:
         raise ValueError("the feature blocks are not in arm T's column order")
     return pd.DataFrame(np.hstack([values for _, values in blocks]), columns=columns)
 
@@ -168,6 +176,7 @@ class DesignData:
     position: np.ndarray
     embeddings: np.ndarray
     k: int = K
+    motion_k: int = MOTION_K
 
     @property
     def imputation(self) -> tuple[np.ndarray, np.ndarray]:
@@ -181,8 +190,8 @@ def split_designs(data: DesignData, train: np.ndarray, test: np.ndarray,
     pca = FramePCA.fit(data.embeddings[training_frames(data.position, train)], data.k)
     rows = np.r_[train, test]
     table = feature_table(window_scores(pca, data.embeddings, data.position, take, rows), missing[rows], data.z[rows],
-                          data.window)
-    columns = arm_columns(data.window, data.k)
+                          data.window, data.motion_k)
+    columns = arm_columns(data.window, data.k, data.motion_k)
     return {arm: standardise(table[columns[arm]].to_numpy(float), len(train)) for arm in columns}, pca
 
 
@@ -206,7 +215,7 @@ def fold_designs(data: DesignData) -> tuple[dict[str, list[sf.FoldDesign]], dict
         for arm in ARMS:
             nested = () if arm == "R" else tuple(inner[arm])
             designs[arm].append(sf.FoldDesign(int(f), train, test, *outer[arm], nested))
-    return designs, {"explained_variance_k": variance, "k": data.k}
+    return designs, {"explained_variance_k": variance, "k": data.k, "motion_k": data.motion_k}
 
 
 def explained_variance(data: DesignData, ks: tuple[int, ...] = VARIANCE_KS) -> dict:

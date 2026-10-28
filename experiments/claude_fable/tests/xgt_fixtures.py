@@ -10,10 +10,10 @@ MOTION_SCALE = 6.0
 
 
 def synthetic_inputs(window: ti.Window | None = None, games: int = 40, shots_per_game: int = 50, dim: int = 12, k: int = 4,
-                     leading_gaps: int = 100, seed: int = 0) -> tuple[tf.DesignData, np.ndarray]:
+                     leading_gaps: int = 100, seed: int = 0, motion_k: int | None = None) -> tuple[tf.DesignData, np.ndarray]:
     """(design inputs, the per-shot motion speed v). Frame j of shot i is static_i + v_i (t_j - t_o_max) MOTION_SCALE
     along the first axis plus noise, so the o_max frame carries nothing of v; the first `leading_gaps` shots lose
-    their first two window frames (a cut)."""
+    their first two window frames (a cut). T's motion block has `motion_k` components (default: min(k, MOTION_K))."""
     window = ti.Window() if window is None else window
     rng = np.random.default_rng(seed)
     n, m = games * shots_per_game, len(window.offsets)
@@ -24,7 +24,8 @@ def synthetic_inputs(window: ti.Window | None = None, games: int = 40, shots_per
     frames[:, :, 0] += MOTION_SCALE * v[:, None] * t[None, :]
     position = np.arange(n * m).reshape(n, m)
     position[:leading_gaps, :2] = -1
-    data = tf.DesignData(window, rng.normal(-2.0, 1.0, n), game % 5, position, frames.reshape(n * m, dim).astype(np.float16), k)
+    data = tf.DesignData(window, rng.normal(-2.0, 1.0, n), game % 5, position, frames.reshape(n * m, dim).astype(np.float16), k,
+                         min(k, tf.MOTION_K) if motion_k is None else motion_k)
     return data, v
 
 

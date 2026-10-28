@@ -1,7 +1,8 @@
 """xg-temporal controls and read-out rules (ticket 03) on synthetic inputs: the label-free truths hit their analytic
 targets, the motion plant is invisible to S, the fits do not depend on the number of worker processes, the gates'
 criteria, the permutation keeps each match's labels, the readability veto, the claims and the leak-curve rules; T's
-model under the C9 Q2 remedy (S's C for the static block, its own inner-CV C for the motion block by rescaling)."""
+model under the C9 Q2 remedy (S's C for the static block, its own inner-CV C for the motion block by rescaling); the
+council C10 plants (gating inside T's 8-column block, the C9 96-column plant reported) and seeds (30501...)."""
 
 import json
 
@@ -25,18 +26,28 @@ def built():
     return data, designs, tco.Truths.build(data, GAMES), ss.bootstrap_weights(GAMES)
 
 
-def test_the_seeds_are_fresh_and_the_settings_serialise():
+def test_the_c10_seeds_are_fresh_and_the_settings_serialise():
     settings = tco.settings()
-    assert settings["seeds_fresh"]["distinct"] and len(set(tco.SEEDS.values())) == len(tco.SEEDS)
-    assert tco.TRACER_SEED not in tco.SEEDS.values() and settings["replicates"] == 200
-    assert not set(tco.REMEDY_SEEDS.values()) & set(tco.SEEDS.values()) and "positive_-0.002" in tco.REMEDY_SEEDS
-    assert settings["remedy"]["seeds"] == tco.REMEDY_SEEDS and settings["positive"]["second_plant"]["gating"] is False
-    assert tco.REMEDY_SEEDS == {n: v + 100 for n, v in tco.SEEDS.items() if n not in ("rich_projection", "motion_plant")}
-    assert settings["seeds"] == tco.RUN_SEEDS and settings["first_attempt_seeds"] == tco.SEEDS
-    assert {n: tco.RUN_SEEDS[n] for n in tco.TRUTH_SEEDS} == {n: tco.SEEDS[n] for n in tco.TRUTH_SEEDS}
-    assert settings["permutation"]["seed"] == tco.REMEDY_SEEDS["permutation"] == 30409
-    assert settings["first_attempt"]["positive"]["mean_recovered_T-S"] > tco.REMEDY_TRIGGER == -0.001
+    assert settings["seeds_fresh"]["distinct"] and settings["replicates"] == 200
+    assert len(set(tco.C10_SEEDS.values())) == len(tco.C10_SEEDS) and tco.TRACER_SEED not in tco.RUN_SEEDS.values()
+    assert sorted(tco.C10_SEEDS.values()) == [30501, *range(30503, 30513)]        # 30502 would be rich_projection
+    assert not set(tco.C10_SEEDS.values()) & {*tco.SEEDS.values(), *tco.REMEDY_SEEDS.values()}
+    assert tco.RUN_SEEDS == tco.C10_SEEDS | {"rich_projection": 30302, "c9_motion_plant": 30310}
+    assert tco.RUN_SEEDS["motion_plant"] == 30510 and tco.SEEDS["motion_plant"] == tco.RUN_SEEDS["c9_motion_plant"]
+    assert set(tco.SIMULATIONS) | {"permutation", *tco.TRUTH_SEEDS} == set(tco.RUN_SEEDS)
+    trial = {n: v for n, v in tco.TRIAL_SEEDS.items() if n not in tco.TRUTH_SEEDS}
+    assert not set(trial.values()) & {*tco.SEEDS.values(), *tco.REMEDY_SEEDS.values(), *tco.RUN_SEEDS.values()}
+    assert {n: tco.TRIAL_SEEDS[n] for n in tco.TRUTH_SEEDS} == {n: tco.RUN_SEEDS[n] for n in tco.TRUTH_SEEDS}
+    assert settings["seeds"] == tco.RUN_SEEDS and settings["attempt_seeds"] == {"first": tco.SEEDS, "remedy": tco.REMEDY_SEEDS}
+    assert settings["permutation"]["seed"] == tco.RUN_SEEDS["permutation"] == 30509
+    assert settings["attempts"]["first"]["positive"]["mean_recovered_T-S"] > tco.REMEDY_TRIGGER == -0.001
+    assert settings["attempts"]["remedy"]["positive"]["mean_recovered_T-S"] == -0.00035
+    assert settings["positive"]["second_plant"]["gating"] is False and settings["positive"]["c9_diffuse_plant"]["gating"] is False
+    assert settings["positive"]["gating_plant"] == "motion" and settings["power_curve"]["plant"] == "motion"
+    assert settings["c10"]["prediction"]["positive_-0.002_mean_recovered_T-S"] == [-0.0016, -0.0013]
+    assert "closes the phase" in settings["c10"]["miss_rule"] and "8 directions" in settings["c10"]["wording"]
     assert settings["rich_nulls"]["scale"] == -0.004 and settings["positive"]["gated_contrast"] == "T-S"
+    assert tco.POSITIVE_WINDOW == (-0.003, -0.001) and tco.NULL_MAX_REJECTION_RATE == 0.09    # nothing loosened
     assert json.loads(json.dumps(settings)) == settings
 
 
@@ -48,30 +59,59 @@ def test_the_rich_null_hits_its_oracle_s_minus_r_scale_without_outcomes(built):
         assert record["a"] < 0 and record["oracle_S-R"] == pytest.approx(scale, abs=1e-9)
         assert p.shape == truths.z.shape and ((p > 0) & (p < 1)).all()
     again = tco.Truths.build(built[0], GAMES)
-    assert np.array_equal(again.u, truths.u) and np.array_equal(again.m, truths.m)
+    assert np.array_equal(again.u, truths.u) and np.array_equal(again.m, truths.m) and np.array_equal(again.m_c9, truths.m_c9)
 
 
-@pytest.mark.parametrize("plant", ["motion", "pc01"])
-def test_both_motion_plants_are_invisible_to_s_and_hit_their_oracle_t_minus_s_target(built, plant):
+@pytest.mark.parametrize("plant", ["motion", "pc01", "c9_diffuse"])
+def test_every_motion_plant_is_invisible_to_s_and_hits_its_oracle_t_minus_s_target(built, plant):
     _, _, truths, _ = built
-    m = truths.m if plant == "motion" else truths.m_pc01
+    m = {"motion": truths.m, "pc01": truths.m_pc01, "c9_diffuse": truths.m_c9}[plant]
     x = np.column_stack([np.ones(len(m)), truths.x_static])
     assert np.abs(x.T @ m).max() / len(m) < 1e-10                         # residualised on S's pooled inputs
     p, record = truths.positive(tco.POSITIVE_TARGET, plant)
     assert record["plant"] == plant and record["oracle_T-S"] == pytest.approx(tco.POSITIVE_TARGET, abs=1e-9)
     assert record["oracle_T-R"] == pytest.approx(tco.POSITIVE_TARGET, abs=2e-4)
-    assert record["beta"] < 0
+    assert record["beta"] < 0 and record["gating"] == (plant == "motion")
 
 
-def test_the_gating_plant_combines_every_motion_column(built):
-    data, _, truths, _ = built
-    columns = tco.motion_columns(data, tco.pooled_scores(data))
-    assert columns.shape[1] == data.k * len(tf.motion_kinds(data.window))
+def span_fit(columns: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(weights, residual) of the least-squares fit of `target` on [1, columns]."""
+    x = np.column_stack([np.ones(len(target)), columns])
+    weights = np.linalg.lstsq(x, target, rcond=None)[0]
+    return weights[1:], target - x @ weights
+
+
+def test_the_gating_plant_lies_in_the_span_of_ts_8_motion_columns_residualised_on_s():
+    data, _ = synthetic_inputs(k=12, dim=16)                       # k = 12 >= 8: T's real 8-column block
+    assert data.motion_k == tf.MOTION_K == 8
+    truths, scores = tco.Truths.build(data, GAMES), tco.pooled_scores(data)
+    columns = tco.motion_columns(data, scores)
+    assert columns.shape[1] == 8
+    for j in range(8):                                             # pcJ_vs_start of the pooled PCA, standardised
+        assert np.allclose(columns[:, j], tco.standardised(scores[:, -1, j] - scores[:, 0, j]), atol=1e-8)
     residual = tco.residualised(columns, truths.x_static)
-    weights = np.linalg.lstsq(residual, truths.m, rcond=None)[0]
-    assert np.allclose(residual @ weights, truths.m, atol=1e-8)           # m lies in the span of the motion columns
-    assert np.count_nonzero(np.abs(weights) > 1e-6) == columns.shape[1]
-    assert abs(np.corrcoef(truths.m, truths.m_pc01)[0, 1]) < 0.9
+    weights, rest = span_fit(residual, truths.m)
+    assert np.abs(rest).max() < 1e-8                               # m lies in the span of the 8 residualised columns
+    assert np.count_nonzero(np.abs(weights) > 1e-6) == 8
+    x = np.column_stack([np.ones(len(truths.m)), truths.x_static])
+    assert np.abs(x.T @ truths.m).max() / len(truths.m) < 1e-10      # and is orthogonal to [1, S's pooled inputs]
+    _, rest = span_fit(np.column_stack([truths.x_static, columns]), truths.m)
+    assert np.abs(rest).max() < 1e-8                               # so it is in T's pooled span
+    expected = tco.combination_plant(columns, truths.x_static, 30510)
+    assert np.array_equal(truths.m, expected) and truths.seeds["motion_plant"] == 30510
+
+
+def test_the_c9_plant_combines_the_96_style_columns_t_never_sees():
+    data, _ = synthetic_inputs(k=12, dim=16)
+    truths, scores = tco.Truths.build(data, GAMES), tco.pooled_scores(data)
+    c9 = tco.c9_motion_columns(data, scores)
+    assert c9.shape[1] == 3 * data.k                                # vs_start, vs_mid, slope of every component
+    weights, rest = span_fit(tco.residualised(c9, truths.x_static), truths.m_c9)
+    assert np.abs(rest).max() < 1e-8 and np.count_nonzero(np.abs(weights) > 1e-6) == c9.shape[1]
+    _, outside = span_fit(np.column_stack([truths.x_static, tco.motion_columns(data, scores)]), truths.m_c9)
+    assert np.mean(outside ** 2) > 0.3                              # mostly outside T's block: the diffuse case
+    assert np.array_equal(truths.m_c9, tco.combination_plant(c9, truths.x_static, 30310))
+    assert abs(np.corrcoef(truths.m, truths.m_c9)[0, 1]) < 0.9 and abs(np.corrcoef(truths.m, truths.m_pc01)[0, 1]) < 0.9
 
 
 def test_dependent_missing_indicators_are_dropped_before_the_unpenalised_projection():
@@ -152,9 +192,11 @@ def test_the_label_free_run_holds_every_gate_and_refuses_to_drop_one(built):
             tco.run_label_free(fitter, weights, truths, provenance, 2, simulations=("plain_nulls", "rich_nulls"))
     assert set(frames) == set(tco.SIMULATIONS) and set(summary["gates"]) == set(tco.LABEL_FREE_GATES)
     assert summary["reports"]["power_curve"]["targets"] == [-0.002, -0.003, -0.004]
-    assert summary["gates"]["positive"]["plant"] == "motion"
-    assert summary["reports"]["positive_pc01_-0.002"]["plant"] == "pc01"
-    assert "passed" not in summary["reports"]["positive_pc01_-0.002"]
+    assert summary["gates"]["positive"]["plant"] == "motion" and summary["gates"]["positive"]["gating"]
+    for name, plant in (("positive_pc01_-0.002", "pc01"), ("positive_c9_diffuse_-0.002", "c9_diffuse")):
+        report = summary["reports"][name]                         # reported, never gating
+        assert report["plant"] == plant and not report["gating"] and "passed" not in report and name not in summary["gates"]
+    assert summary["reports"]["positive_c9_diffuse_-0.002"]["w_seed"] == 30310
     assert set(summary["reports"]["clustered_nulls"]["coverage"]) == set(tco.CONTRASTS)
     assert summary["label_free_passed"] == all(summary["gates"][g]["passed"] for g in tco.LABEL_FREE_GATES)
     json.dumps(summary, default=float)
@@ -315,12 +357,14 @@ def test_t_is_near_r_only_when_both_of_its_cs_are_at_the_floor():
     assert tr.near_reference(chosen, "T") and tr.near_reference(chosen, "S")
 
 
-def test_the_remedy_seeds_reach_every_simulation(built):
+def test_the_c10_seeds_reach_every_simulation(built):
     _, designs, truths, weights = built
     with tco.Fitter(designs) as fitter:
-        _, summary = tco.run_label_free(fitter, weights, truths, {"passed": True, "checks": []}, 1, tco.REMEDY_SEEDS,
-                                        simulations=("plain_nulls", "rich_nulls", "positive_-0.002"))
-    assert summary["seeds"] == tco.REMEDY_SEEDS
-    assert summary["gates"]["positive"]["seed"] == 30405 and summary["gates"]["rich_nulls"]["seed"] == 30403
-    assert summary["gates"]["positive"]["w_seed"] == tco.SEEDS["motion_plant"]           # the truth is unchanged
-    assert summary["gates"]["rich_nulls"]["truth"]["w_seed"] == tco.SEEDS["rich_projection"]
+        _, summary = tco.run_label_free(fitter, weights, truths, {"passed": True, "checks": []}, 1,
+                                        simulations=("plain_nulls", "rich_nulls", "positive_-0.002",
+                                                     "positive_c9_diffuse_-0.002"))
+    assert summary["seeds"] == tco.RUN_SEEDS
+    assert summary["gates"]["plain_nulls"]["seed"] == 30501 and summary["gates"]["rich_nulls"]["seed"] == 30503
+    assert summary["gates"]["positive"]["seed"] == 30505 and summary["gates"]["positive"]["w_seed"] == 30510
+    assert summary["reports"]["positive_c9_diffuse_-0.002"]["seed"] == 30512
+    assert summary["gates"]["rich_nulls"]["truth"]["w_seed"] == 30302                     # the kept truth seed

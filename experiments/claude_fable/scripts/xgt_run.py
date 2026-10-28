@@ -3,9 +3,9 @@ permutation control and the single real run (tickets 03 and 04, after the frozen
 
     ./run.sh --no-sync python scripts/xgt_run.py --synthetic --source dinov2 [--start -1600 --o-max -600] [--k 32]
         [--replicates 1] [--seed 0] [--control] [--out results/xgt_synthetic_<source>_<start>_<o_max>]
-    ./run.sh --no-sync python scripts/xgt_run.py --controls --remedy [--jobs 8]   # -> results/xgt/controls/label_free_remedy
-    ./run.sh --no-sync python scripts/xgt_run.py --controls [--remedy] [--source ...] [--replicates ...]
-        [--simulations ...] --out <trial folder>
+    ./run.sh --no-sync python scripts/xgt_run.py --controls --c10 [--jobs 8]   # -> results/xgt/controls/label_free_c10
+    ./run.sh --no-sync python scripts/xgt_run.py --controls [--source ...] [--replicates ...] [--simulations ...]
+        --out <trial folder>
     ./run.sh --no-sync python scripts/xgt_run.py --permutation       # after the protocol commit -> results/xgt/controls
     ./run.sh --no-sync python scripts/xgt_run.py --real              # ticket 04 -> results/xgt/real
 
@@ -18,14 +18,15 @@ output, so each is made once, and runs inside `no_statsbomb_reads()`.
                S - R with the match bootstrap (`xgpoc.temporal.readout`). Writes population.csv, replicates.csv,
                summary.json, complete.json.
 --controls     the label-free gates and reports of `xgpoc.temporal.controls` (fits in `--jobs` worker processes, one
-               BLAS thread each; T under `readout.T_MODEL`, the C9 Q2 remedy). With `--remedy` the simulations draw
-               from `controls.REMEDY_SEEDS` (the remedy's fresh seeds), without it from the first attempt's `SEEDS`.
-               A run is the protocol's controls (`protocol_controls` in its record) only with `--remedy`, the main
-               source g_xgv, the main window, k = 32, 200 replicates and every simulation (the descriptive
-               rich_nulls_-0.002 may be left out, C8, and the record names it in `omitted_simulations`); it goes to
-               results/xgt/controls/label_free_remedy (`protocol.LABEL_FREE`), next to the failed first attempt
-               (results/xgt/controls/label_free, kept). Anything else is a trial run and is refused there. Writes
-               population.csv, <simulation>.csv, controls.json, complete.json (`label_free_passed`, `remedy`, `seeds`).
+               BLAS thread each; T = S + 8 motion columns, council C10, under `readout.T_MODEL`). With `--c10` the
+               simulations draw from `controls.RUN_SEEDS` (C10's fresh seeds 30501...), without it from
+               `controls.TRIAL_SEEDS`. A run is the protocol's controls (`protocol_controls` in its record) only with
+               `--c10`, the main source g_xgv, the main window, k = 32, 200 replicates and every simulation (the
+               descriptive rich_nulls_-0.002 may be left out, C8, and the record names it in `omitted_simulations`); it
+               goes to results/xgt/controls/label_free_c10 (`protocol.LABEL_FREE`), next to the two failed attempts
+               (results/xgt/controls/label_free and label_free_remedy, kept). Anything else is a trial run and is
+               refused there; neither attempt's folder is ever an --out. Writes population.csv, <simulation>.csv,
+               controls.json, complete.json (`label_free_passed`, `c10`, `t_design`, `seeds`).
 --permutation  refuses unless the protocol has the SHA-256 pinned here (`PROTOCOL_SHA256`) and is committed as it is
                (`git show HEAD:research/xgt_protocol.json`, `check_committed`), its frozen part equals
                `xgpoc.temporal.protocol.frozen()`, its code digest equals the current package's, its population equals
@@ -39,7 +40,8 @@ output, so each is made once, and runs inside `no_statsbomb_reads()`.
                and on_target inside the label seal and writes the read-out (`real_run`): results/xgt/real/summary.json
                (scores, ΔLL, Holm, claims, readability veto, chosen C, the leak curve's rules on the shots common to
                every leak-curve window and, descriptive, on each window's own population, the controls' power
-               curve), categories.csv, leak_curve.csv (both populations) and complete.json; the out-of-fold probabilities (no
+               curve, the C10 scope wording with the C9 diffuse plant's recovery and the smallest detectable effect),
+               categories.csv, leak_curve.csv (both populations) and complete.json; the out-of-fold probabilities (no
                label) go to outputs/xgt_real/probabilities.csv, named in complete.json by path and SHA-256.
 """
 
@@ -89,14 +91,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="--synthetic only")
     parser.add_argument("--jobs", type=int, default=tco.default_jobs(), help="--controls: worker processes")
     parser.add_argument("--simulations", nargs="+", choices=tco.SIMULATIONS, default=list(tco.SIMULATIONS))
-    parser.add_argument("--remedy", action="store_true", help="--controls: the C9 Q2 remedy's run on REMEDY_SEEDS")
+    parser.add_argument("--c10", action="store_true", help="--controls: council C10's run on RUN_SEEDS")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     args.mode = next((name for name in MODES if getattr(args, name)), None)
     if args.mode is None:
         parser.error(f"choose one of {['--' + m for m in MODES]}")
-    if args.remedy and args.mode != "controls":
-        parser.error("--remedy belongs to --controls")
+    if args.c10 and args.mode != "controls":
+        parser.error("--c10 belongs to --controls")
     if args.mode in ("permutation", "real"):
         if args.source not in (None, tpr.MAIN_SOURCE) or (args.start, args.o_max, args.k) != (ti.START, ti.O_MAX, tf.K) \
                 or args.control or args.out is not None:
@@ -119,10 +121,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if args.out is None:
             args.out = ROOT / tpr.LABEL_FREE
         if Path(args.out).resolve() == (ROOT / tpr.LABEL_FREE).resolve() and not args.protocol_controls:
-            parser.error(f"a trial run of the controls (without --remedy, or source, window, k, replicates or "
+            parser.error(f"a trial run of the controls (without --c10, or source, window, k, replicates or "
                          f"simulations other than the protocol's) needs its own --out, not {tpr.LABEL_FREE}")
-        if Path(args.out).resolve() == (ROOT / tpr.FIRST_ATTEMPT).resolve():
-            parser.error(f"{tpr.FIRST_ATTEMPT} holds the first attempt; it is kept as it is")
+        for name, folder in tpr.ATTEMPTS.items():
+            if Path(args.out).resolve() == (ROOT / folder).resolve():
+                parser.error(f"{folder} holds the {name} attempt; it is kept as it is")
     return args
 
 
@@ -136,9 +139,9 @@ def omitted_simulations(simulations) -> list[str] | None:
 
 
 def protocol_controls(args: argparse.Namespace) -> bool:
-    """The run is the protocol's label-free controls (module docstring): the remedy's run, every simulation, or all but
+    """The run is the protocol's label-free controls (module docstring): C10's run, every simulation, or all but
     the descriptive `tco.DROPPABLE` (C8: the first to drop when CPU time binds), recorded as omitted."""
-    return (args.remedy and args.source == tpr.MAIN_SOURCE and (args.start, args.o_max, args.k) == (ti.START, ti.O_MAX, tf.K)
+    return (args.c10 and args.source == tpr.MAIN_SOURCE and (args.start, args.o_max, args.k) == (ti.START, ti.O_MAX, tf.K)
             and not args.control and args.replicates == tco.N_REPLICATES
             and omitted_simulations(args.simulations) is not None)
 
@@ -169,13 +172,14 @@ def prepared(source: str, window: ti.Window, k: int, plan: pd.DataFrame, stages:
     population, files = ti.build_population(ti.SOURCES[source], window, plan, files=files)
     if restrict_to is not None:
         population = ti.restrict(population, restrict_to)
-    columns = tf.arm_columns(window, k)
+    motion_k = min(tf.MOTION_K, k)                 # below k = 8 (a trial or tracer run only) the block is k wide
+    columns = tf.arm_columns(window, k, motion_k)
     provenance = tp.control(population, columns, plan)
     if not provenance["passed"]:
         raise SystemExit(f"provenance failed: {[c for c in provenance['checks'] if not c['passed']]}")
     stages(f"population_{window.label()}")
     embeddings, position = ti.load_embeddings(files, population.refs)
-    data = tf.DesignData(window, population.z, population.folds, position, embeddings, k)
+    data = tf.DesignData(window, population.z, population.folds, position, embeddings, k, motion_k)
     designs, pca = tf.fold_designs(data)
     stages(f"designs_{window.label()}")
     return population, columns, provenance, data, {"designs": designs, "pca": pca, "files": files}
@@ -267,12 +271,12 @@ def window_record(window: ti.Window) -> dict:
 def run_controls(args: argparse.Namespace, plan: pd.DataFrame, stages: Stages, started: datetime) -> None:
     window = ti.Window(args.start, args.o_max, args.control)
     population, columns, provenance, data, built = prepared(args.source, window, args.k, plan, stages)
-    truths = tco.Truths.build(data, population.games)
+    seeds = tco.RUN_SEEDS if args.c10 else tco.TRIAL_SEEDS
+    truths = tco.Truths.build(data, population.games, seeds)
     stages("truths")
     weights = ss.bootstrap_weights(population.games)
     print(f"controls: {population.counts['shots']} shots, {population.counts['matches']} matches, "
           f"{args.replicates} replicates, {args.jobs} worker processes", flush=True)
-    seeds = tco.REMEDY_SEEDS if args.remedy else tco.SEEDS
     with tco.Fitter(built["designs"], args.jobs) as fitter:
         frames, summary = tco.run_label_free(fitter, weights, truths, provenance, args.replicates, seeds,
                                              simulations=tuple(args.simulations), log=lambda m: print(m, flush=True))
@@ -282,14 +286,15 @@ def run_controls(args: argparse.Namespace, plan: pd.DataFrame, stages: Stages, s
     for name, frame in frames.items():
         frame.to_csv(args.out / f"{name}.csv", index=False, float_format="%.9g")
     summary |= {"source": args.source, "window": window_record(window), "k": args.k,
-                "protocol_controls": args.protocol_controls, "remedy": args.remedy, "jobs": args.jobs,
-                "model": {"name": tr.MODEL.name, "t_model": tr.T_MODEL, "c_grid": list(tr.C_GRID)},
+                "protocol_controls": args.protocol_controls, "c10": args.c10, "jobs": args.jobs,
+                "model": {"name": tr.MODEL.name, "t_model": tr.T_MODEL, "t_design": tf.T_DESIGN,
+                          "c_grid": list(tr.C_GRID)},
                 "pca": built["pca"], "run": stages.record()}
     write_json(args.out / "controls.json", summary)
     gates = {g: {"passed": summary["gates"][g]["passed"], "criterion": summary["gates"][g]["criterion"]}
              for g in tco.LABEL_FREE_GATES}
     completion(args.out, {"mode": "controls", "source": args.source, "protocol_controls": args.protocol_controls,
-                          "remedy": args.remedy, "seeds": dict(seeds), "t_model": tr.T_MODEL,
+                          "c10": args.c10, "seeds": dict(seeds), "t_model": tr.T_MODEL, "t_design": tf.T_DESIGN,
                           "simulations": list(args.simulations),
                           "omitted_simulations": omitted_simulations(args.simulations),
                           "settings": tco.settings(), "label_free_passed": summary["label_free_passed"], "gates": gates,
@@ -480,7 +485,12 @@ def real_run(protocol: dict, plan: pd.DataFrame, stages: Stages, out: Path, larg
     summary = {"scores": result["scores"], "deltas": result["deltas"], "readings": result["readings"], "claims": claims,
                "readability_veto": veto, "chosen_c": chosen, "population": population.counts, "provenance": provenance,
                "leak": leak, "leak_by_window": leak_by_window, "e3": e3_hashes,
-               "power_curve": label_free["reports"]["power_curve"], "pca": built["pca"], "run": stages.record()}
+               "power_curve": label_free["reports"]["power_curve"],
+               "scope": {"wording": tco.C10["wording"],
+                         "c9_diffuse_mean_recovered_T-S":
+                             label_free["reports"]["positive_c9_diffuse_-0.002"]["mean_recovered_delta_T-S"],
+                         "smallest_detectable": label_free["reports"]["power_curve"]["smallest_detectable"]},
+               "pca": built["pca"], "run": stages.record()}
     write_json(out / "summary.json", summary)
     return summary
 

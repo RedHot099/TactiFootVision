@@ -10,7 +10,7 @@ from xgt_fixtures import base_table, source_frames
 
 
 def test_the_offset_assertion_fires_on_a_column_at_minus_200_when_o_max_is_minus_600():
-    columns = tf.arm_columns(ti.Window(), 4)["T"]
+    columns = tf.arm_columns(ti.Window(), 4, 4)["T"]
     tp.check_columns(columns, -600)
     for late in ("pc01@-200", "pc03_vs_start@-200", "missing@-400"):
         with pytest.raises(tp.ProvenanceError, match="> o_max -600"):
@@ -69,7 +69,7 @@ def test_control_records_every_check_and_fails_on_a_held_out_match():
     rows = [(s, g, o, "ok", False, i * 20 + j, f) for i, (s, g, f) in enumerate([("a1", "A", 0), ("e1", "E", 1)])
             for j, o in enumerate(ti.GRID)]
     population = ti.population_from(base, source_frames(rows), ti.Window(), ti.SOURCES["g_xgv"])
-    columns = tf.arm_columns(population.window, 4)
+    columns = tf.arm_columns(population.window, 4, 4)
     training = pd.DataFrame({"game": ["A", "E"], "role": ["training", "training"]})
     record = tp.control(population, columns, training)
     assert record["passed"] and [c["check"] for c in record["checks"]] == ["window", "columns:R", "columns:S", "columns:T",

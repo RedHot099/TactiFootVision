@@ -11,9 +11,9 @@ parts:
                population counts and shot-list hashes of the main population, of every grid cell and of the leak
                curve's common population (`leak_common`), the arms'
                columns, the provenance checks, the ticket 02 result with its hash, the label-free controls' record
-               with its hash (the remedy's run, `LABEL_FREE`), the failed first attempt's record with its hashes
-               (`FIRST_ATTEMPT`, its controls.json pinned by `FIRST_ATTEMPT_CONTROLS_SHA256`), and the package code
-               digest (`records.package_hashes`).
+               with its hash (council C10's run, `LABEL_FREE`), the attempt trail of the two failed earlier runs
+               (`ATTEMPTS`: the first attempt and the C9 Q2 remedy, each controls.json pinned by its SHA-256 in
+               `ATTEMPT_CONTROLS_SHA256`), and the package code digest (`records.package_hashes`).
 `load` opens the file only at the pinned SHA-256.
 """
 
@@ -33,9 +33,12 @@ from xgpoc.temporal import readout as tr
 PROTOCOL = Path("research/xgt_protocol.json")              # relative to experiments/claude_fable
 SAFE_MARGIN = Path("results/xgt_safe_margin/result.json")
 CONTROLS = Path("results/xgt/controls")                    # the permutation's record (complete.json) and the gate of --real
-LABEL_FREE = CONTROLS / "label_free_remedy"               # the protocol's label-free controls (after the C9 Q2 remedy)
+LABEL_FREE = CONTROLS / "label_free_c10"                  # the protocol's label-free controls (council C10)
 FIRST_ATTEMPT = CONTROLS / "label_free"                    # the first attempt: failed, kept, cited by the protocol
-FIRST_ATTEMPT_CONTROLS_SHA256 = "ecbe44c203ac3dd7ccb0f9084f154e052c7b95a2d537a617833566edeffd08ff"
+REMEDY_ATTEMPT = CONTROLS / "label_free_remedy"            # the C9 Q2 remedy's run: failed, kept, cited
+ATTEMPTS = {"first": FIRST_ATTEMPT, "remedy": REMEDY_ATTEMPT}          # the attempt trail, in run order
+ATTEMPT_CONTROLS_SHA256 = {"first": "ecbe44c203ac3dd7ccb0f9084f154e052c7b95a2d537a617833566edeffd08ff",
+                           "remedy": "4bb1a75712b5b1f0c600396438e757e3c69171823f5e3339bc0d0ac8d10973ba"}
 MAIN_SOURCE = "g_xgv"
 DESCRIPTIVE_SOURCES = ("g_xgc", "dinov2")
 
@@ -63,7 +66,7 @@ def grid_cells() -> list[dict]:
         window = ti.Window(start, o_max, o_max > tp.LEAK_LIMIT)
         cells.append({"start": start, "o_max": o_max, "role": cell_role(start, o_max), "control_flag": window.control,
                       "offsets": list(window.offsets), "middle": window.middle,
-                      "motion_features": tf.motion_kinds(window),
+                      "motion_features": [f"pc01..pc{tf.MOTION_K:02d}_{tf.MOTION_KIND}"],
                       "ticket": "04" if start == -1600 and o_max in LEAK_CURVE else "07",
                       "candidate": cell_role(start, o_max) == "main"})
     return cells
@@ -111,7 +114,8 @@ def model_record() -> dict:
             "applies_to": ["R", "S", "T", "L", "S_xgc", "T_xgc", "F_S", "F_T", "k sensitivity"],
             "t_variant": {
                 "name": tr.T_MODEL, "source": "council C9 Q2 (b), the pre-registered remedy (controls.remedy), built "
-                                              "after the first attempt's positive miss (controls.first_attempt)",
+                                              "after the first attempt's positive miss (controls.attempts.first); "
+                                              "kept by council C10 Q4 (a) for the 8-column motion block",
                 "rule": "per outer fold T keeps S's chosen C (C_S) for the static block (S's columns, z unpenalised) "
                         "and chooses a separate C_M for the motion block over c_grid by the same inner match-grouped "
                         "CV, the static block at C_S in every inner fit, ties to the smaller C_M; implemented exactly "
@@ -120,7 +124,7 @@ def model_record() -> dict:
                 "chosen_c": "T's chosen C per fold is C_M; 'arm ≈ R' for T needs C_S and C_M both at the grid's "
                             "smallest C in the same fold",
                 "applies_to": ["T", "T_xgc", "F_T", "T of the k and seed sensitivities", "T of every ticket 07 grid "
-                               "cell and leak-curve point"],
+                               "cell and leak-curve point", "T of the permutation control"],
                 "static_partner": {"T": "S", "T_xgc": "S_xgc", "F_T": "F_S"}}}
 
 
@@ -135,11 +139,12 @@ def preprocessing_record() -> dict:
                     "fitted_on": "every usable window frame of the training shots pooled (outer training fold; inner "
                                  "training rows for the inner CV), applied to every frame of the scored shots"},
             "standardisation": "every design column with the training mean and SD (ddof 0), scale 1 if constant",
-            "motion_features": {"vs_start": "score at o_max minus at the window start",
-                                "vs_mid": "score at o_max minus at the middle frame; omitted when the middle frame is "
-                                          "the start",
-                                "slope": "least-squares slope per second over every window frame; omitted for <= 3 "
-                                         "frames"},
+            "motion_features": {"design": tf.T_DESIGN, "kind": tf.MOTION_KIND, "components": tf.MOTION_K,
+                                "vs_start": f"score at o_max minus at the window start, components 1..{tf.MOTION_K} of "
+                                            "the fold's PCA (the same PCA as S's scores; refitted in every inner fold)",
+                                "source": "council C10 Q1 (c); no vs_mid, no slope, no extra PCA step",
+                                "every_window": "every window has a start frame before o_max, so every grid cell and "
+                                                "leak-curve point has the same 8 columns"},
             "missing_indicators": "all in S, so T - S holds only the motion scores",
             "column_names": "<feature>@<offset>, the offset being the latest frame the column uses; z_g_combo bare"}
 
@@ -147,12 +152,17 @@ def preprocessing_record() -> dict:
 def arms_record() -> dict:
     return {"R": {"status": "reference", "inputs": "z_g_combo (results/xgd_a1_ensemble/oof.csv)"},
             "S": {"status": "static control", "inputs": "R + pc01..pc32@o_max + missing@<offset> for every window offset"},
-            "T": {"status": "confirmatory (H1, H2)", "model": tr.T_MODEL,
-                  "inputs": "S + pcJ_vs_start@o_max + pcJ_vs_mid@o_max + "
-                                                                "pcJ_slope@o_max, J = 1..32"},
-            "source": MAIN_SOURCE, "k": tf.K,
+            "T": {"status": "confirmatory (H1, H2)", "model": tr.T_MODEL, "design": tf.T_DESIGN,
+                  "inputs": f"S + pcJ_vs_start@o_max, J = 1..{tf.MOTION_K} (the o_max - start change of the first "
+                            f"{tf.MOTION_K} components of S's fold-wise PCA-32)",
+                  "columns": len(tf.arm_columns(ti.Window())["T"]), "source": "council C10 Q1 (c)",
+                  "replaces": "T = S + 96 motion columns (vs_start, vs_mid, slope of pc01..pc32) of the two failed "
+                              "attempts (controls.attempts)"},
+            "source": MAIN_SOURCE, "k": tf.K, "motion_k": tf.MOTION_K,
             "k_rule": "k = 32 fixed without labels (ticket 01: explained variance 16/32/64 on the training folds); "
-                      "never chosen on a positive control"}
+                      "never chosen on a positive control",
+            "motion_k_rule": f"{tf.MOTION_K} fixed by council C10 Q1 (c) without labels (label-free probes: the top 8 "
+                             "components hold 51% of the change variance); no pre-screen (C10 Q3 (a))"}
 
 
 def readings_record() -> dict:
@@ -181,7 +191,9 @@ def readings_record() -> dict:
         "no_improvement_wording": "'no improvement larger than |bound|' (bound = 5th percentile of the bootstrap ΔLL) "
                                   "only for a contrast whose clustered-null coverage is >= 0.95 - 2 Monte Carlo SE",
         "also_reported": ["AUC", "Brier", "calibration slope and intercept", "the chosen C per arm and outer fold",
-                          "the power curve of T - S from the controls"],
+                          "the power curve of T - S from the controls (in-block plant) with the smallest detectable "
+                          "effect", "the C9 diffuse plant's mean recovered T - S"],
+        "scope_wording": tco.C10["wording"],
         "categories": tc.definitions(),
         "categories_source": "xgpoc.stack.inputs.e3_table, t0 columns, on cache/xgd_full3/E3 (xg-stack's frozen E3 "
                              "table) if the label-free coverage check covers every shot of P_G, else on "
@@ -219,7 +231,8 @@ def leak_record() -> dict:
                                      f"'{tr.AMBIGUOUS}'; the Holm reading itself is unchanged"},
         "control_rows": "o_max -400 (every start; C8 Q2), -200, 0, +400 are leakage-control rows with the control flag, "
                         "never a candidate; 'control' does not mean confirmed contamination",
-        "grid_rules": "every cell: arms S and T with the model and penalty rule of the main read-out; S - R, T - R and "
+        "grid_rules": "every cell: arms S and T (T = S + the 8 motion columns of that window, as arms.T) with the "
+                      "model and penalty rule of the main read-out; S - R, T - R and "
                       "T - S with the match bootstrap; no correction, no choice of a best cell, the grid never selects "
                       "a design",
         "safe_margin_checks": "the -600 (5/120 worst case) and -400 (6/120) checks of ticket 02 are reported side by side",
@@ -237,16 +250,20 @@ def descriptive_record() -> dict:
               "comparison": "results/preshot_frames_2026_10/summary.json (2281fc1): differences of population, folds and "
                             "logit source described, no tuning"},
         "S_xgc/T_xgc": {"ticket": "09", "source": "g_xgc (results/xgc_offset_scores, v1.2 fold models)",
+                        "inputs": "S and T as arms.S and arms.T (T = S + pc01..pc08_vs_start of g_xgc's fold PCA)",
                         "population": "g_xgc window population (6,320 shots, 297 matches at o_max -600)",
                         "contrasts": ["S_xgc-R", "T_xgc-R", "T_xgc-S_xgc"], "rules": same,
                         "provenance": "the v1.2 fold models saw labels of xgv evaluation folds; the count of xgv "
                                       "evaluation matches with v1.2 train/valid shots is computed label-free by ticket 09"},
         "F_S/F_T": {"ticket": "09", "source": "dinov2 (frozen DINOv2-L, results/xgc_offset_scores)",
+                    "inputs": "S and T as arms.S and arms.T (T = S + pc01..pc08_vs_start of dinov2's fold PCA)",
                     "population": "dinov2 window population (7,010 shots, 328 matches)",
                     "contrasts": ["F_S-R", "F_T-R", "F_T-F_S"], "rules": same},
         "k_sensitivity": {"ticket": "09", "k": list(K_SENSITIVITY), "arms": ["S", "T"], "source": MAIN_SOURCE,
+                          "inputs": f"S with pc01..pcK@o_max; T = S + pc01..pc{tf.MOTION_K:02d}_vs_start of that PCA "
+                                    f"(the motion block stays {tf.MOTION_K} components)",
                           "population": "P_G", "rules": same},
-        "seed_sensitivity": {"ticket": "09", "arms": ["S", "T"],
+        "seed_sensitivity": {"ticket": "09", "arms": ["S", "T"], "inputs": "as arms.S and arms.T",
                              "source": "g_xgv seed-1 embeddings (embeddings_g_combo_seed1.npy, same embedding_ref rows)",
                              "population": "P_G", "rules": same},
         "N": {
@@ -284,22 +301,36 @@ def disclosures() -> list[str]:
         "static and motion blocks; the protocol's controls report it at 200 replicates.",
         "The positive control checks the pipeline, not the detectability of real motion: its plants come from the pooled "
         "PCA and T's motion columns from the fold PCAs, which drift from it (C9, S).",
-        "The gating motion plant is a fixed-seed combination of every pooled-PCA motion column residualised on S's pooled "
-        "inputs (C9 Q1); the pc01_vs_start plant is reported beside it. T's motion columns come from the fold PCAs, so "
-        "the plants lie in T's span only approximately.",
+        "The gating motion plant is a fixed-seed combination (seed 30510) of T's 8 motion columns on the pooled PCA "
+        "(pc01..pc08_vs_start) residualised on S's pooled inputs (C10 Q2 (b)): it tests recovery inside T's block. "
+        "The C9 plant (96 columns, seed 30310) is run as the realistic diffuse case and reported, not gating; the "
+        "8-column block spans about 0.31 of it. The pc01_vs_start plant is reported too. T's motion columns come from "
+        "the fold PCAs, so the plants lie in T's span only approximately.",
         "The leak curve's jump rule and method positive control are read on the shots common to every leak-curve "
         "window, not on P_G: the window populations shrink as o_max moves earlier, and a trend fitted across "
         "different populations could hide or fake a jump. The curve on each window's own population is reported "
         "descriptively.",
         "First attempt of the label-free controls failed (results/xgt/controls/label_free, controls.json sha256 "
-        "ecbe44c2..., HEAD cded06d, one C shared by T's static and motion blocks, 200 replicates, 5,580 s): positive "
-        "gate (motion plant, target T-S -0.002) mean recovered T-S -0.00032 outside [-0.003, -0.001], Holm power of "
-        "T-S 0.15 against oracle power 0.895, grid-floor share S 0.54, T 0.12; rich-null gate Holm T-S rejection 0.11 "
-        "(MC SE 0.022) above 0.09, mean T-S +0.00014; provenance and plain nulls passed (0.01). Reported: T-S "
-        "recovered -0.00106 at -0.004, -0.00066 at -0.003, -0.00073 for the pc01 plant. The positive miss was "
-        "shrinkage (above -0.001), so the pre-registered remedy of C9 Q2 was built (model.t_variant), which is also "
-        "C8 Q3's code fix of the rich-null failure; no criterion changed. Every label-free gate is rerun once on the "
-        "remedy's fresh seeds; a second positive miss stops the phase for the council.",
+        "ecbe44c2..., complete.json sha256 03da0c69..., HEAD cded06d, T = S + 96 motion columns, one C shared by T's "
+        "static and motion blocks, 200 replicates, 5,580 s): positive gate (96-column plant, target T-S -0.002) mean "
+        "recovered T-S -0.00032 outside [-0.003, -0.001], Holm power of T-S 0.15 against oracle power 0.895, "
+        "grid-floor share S 0.54, T 0.12; rich-null gate Holm T-S rejection 0.11 (MC SE 0.022) above 0.09, mean T-S "
+        "+0.00014; provenance and plain nulls passed (0.01). Reported: T-S recovered -0.00106 at -0.004, -0.00066 at "
+        "-0.003, -0.00073 for the pc01 plant. The positive miss was shrinkage (above -0.001), so the pre-registered "
+        "remedy of C9 Q2 was built (model.t_variant), also C8 Q3's code fix of the rich-null failure.",
+        "Second attempt (the C9 Q2 remedy) failed (results/xgt/controls/label_free_remedy, controls.json sha256 "
+        "4bb1a757..., complete.json sha256 0ddd53fc..., HEAD 8e5da29, T = S + 96 motion columns with a separate "
+        "motion-block C, seeds 30401..., 200 replicates, 2,764 s): provenance passed, plain nulls 0.00, rich nulls T-S "
+        "0.025 (passed), positive gate mean recovered T-S -0.00035 (power 0.125 against oracle 0.875, grid-floor share "
+        "S 0.53, T 0.08) missed again. Reported: -0.00099 at -0.004, -0.00058 at -0.003, -0.00067 for the pc01 plant. "
+        "The phase stopped (C9 Q2); the owner chose a redesign (2026-10-28) and council C10 set a smaller T (S + 8 "
+        "motion columns), a gating plant inside that block, the separate motion-block C kept, and every label-free "
+        "gate rerun once on fresh seeds 30501... with no pre-screen. No criterion changed and no label was read.",
+        "Prediction written in ticket 03 before the C10 run: in-block plant mean recovered T-S between -0.0016 and "
+        "-0.0013 (seat V); C9 diffuse plant about -0.0006.",
+        "Scope of a null result (C10, S's dissent): passing controls license only 'no motion signal in these 8 "
+        "directions' (the o_max - start change of pc01..pc08), never 'no motion signal'; the report gives the C9 "
+        "diffuse plant's recovery and the smallest detectable effect of the power curve.",
         "Every truth of the label-free controls uses z_g_combo with intercept 0 and slope 1; no real label sets it.",
         "z_g_combo is the averaged pre-Platt logit of the two G-combo models that held each shot out; each member's "
         "epoch and temperature were chosen on its own scored fold (xg-stack C6).",
@@ -335,11 +366,10 @@ def frozen() -> dict:
         "after_freeze": ["the permutation control inside the label seal (results/xgt/controls/complete.json)",
                          "ticket 04: the single real run (results/xgt/real)", "tickets 07-09: the descriptive runs"],
         "on_failure": "a failed control is fixed in the code, never by loosening a criterion; a re-freeze only after "
-                      "a code change, with the reason; a positive-control miss by shrinkage (recovered T - S above "
-                      "-0.001) triggers the pre-registered remedy of controls.remedy (C9 Q2: separate inner-CV C for "
-                      "the motion block, run once, every label-free gate rerun on its fresh seeds); it was triggered "
-                      "(controls.first_attempt) and is built (model.t_variant); a second miss stops the phase for the "
-                      "council (D9)",
+                      "a code change, with the reason. The pre-registered remedy of C9 Q2 was triggered "
+                      "(controls.attempts.first), built (model.t_variant) and missed (controls.attempts.remedy); council "
+                      "C10 redesigned T (arms.T)",
+        "miss_rule": tco.C10["miss_rule"],
     }
 
 

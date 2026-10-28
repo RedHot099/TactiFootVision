@@ -63,7 +63,7 @@ def test_the_run_writes_its_records_end_to_end_on_synthetic_inputs(tmp_path, mon
     xgt_run.main(["--synthetic", "--source", "g_xgv", "--k", "3", "--replicates", "2", "--out", str(out)])
     summary = json.loads((out / "summary.json").read_text())
     assert summary["provenance"]["passed"] and summary["population"]["shots"] == 160
-    assert summary["columns"]["T"]["n"] == 1 + 3 + 6 + 3 * 3 and set(summary["chosen_c"]) == {"0", "1"}
+    assert summary["columns"]["T"]["n"] == 1 + 3 + 6 + 3 and set(summary["chosen_c"]) == {"0", "1"}      # k = 3: a 3-wide motion block
     assert set(summary["first_replicate"]["deltas"]) == {"T-R", "T-S", "S-R"}
     assert len(pd.read_csv(out / "replicates.csv")) == 2
     complete = json.loads((out / "complete.json").read_text())
