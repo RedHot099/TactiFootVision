@@ -1,0 +1,258 @@
+# Sources of every number in results.md (xg-dino 08), the Polish report of the xg-dino phase and the reply to the
+# reviewer (points 1-3). Checked by scripts/check_xgd_audit.py (which runs scripts/check_vendor_report.py); see both
+# docstrings for the tag and claim scheme. Paths are relative to experiments/claude_fable; "alias:file" resolves
+# through [folders].
+# Every xg-dino result is a development result on the 328 training matches or a descriptive reading on the 2,721
+# paired shots of the spent held-out matches (dev = true): the report's title carries "wyniki rozwojowe", so every
+# heading below it does. No folder is confirmatory: no test was run in this phase.
+# Earlier phases' numbers (sweep, xg-stack, xg-vendor, xg-detector) are cited from their own source files, without
+# their confirmatory flag: here they are background, not results of this phase.
+# The report folder (rp) holds counts and ratios read from the tickets' outputs after the runs
+# (scripts/xgdino_report.py).
+
+[report]
+# Design constants and names, not results: frame offsets and timing-band edges in ms, the ten G-combo tails, DINOv2
+# block indices (blocks 0-19 shared, 20-23 fine-tuned, 24 blocks in all), the hash name.
+untagged = ["batch 16", "400 ms", "50 ms", "200 ms", "10 ogon", "1 ogon", "0–19", "20–23", "22–23", "bloku 20", "blok 20", "bloku 11", "bloku 23", "bloku 22", "24 bloków", "SHA-256"]
+
+[folders]
+ab = { path = "results/xgdino_ablation/real", dev = true }
+ct = { path = "results/xgdino_ablation/controls_r2000", dev = true }
+tm = { path = "results/xgdino_timing", dev = true }
+pl = { path = "results/xgdino_probes_layers", dev = true }
+ag = { path = "results/xgdino_agreement", dev = true }
+rp = { path = "results/xgdino_report", dev = true }
+pr = { path = "research" }
+sw = { path = "results/sweep_2026_10" }
+fs = { path = "results/sweep_feet_2026_10" }
+xs = { path = "results/xgs_stack/real" }
+h2 = { path = "results/xgv_confirmatory/ladder" }
+h3 = { path = "results/xgv_confirmatory/probes" }
+vr = { path = "results/xgv_confirmatory" }
+dt = { path = "results/xgd_test" }
+
+[claims]
+
+# --- pinned protocol (ticket 01b) ---
+"p.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.primary.shots"], fmt = "{:,d}" }
+"p.matches" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.primary.matches"], fmt = "{:d}" }
+"p.goals" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected_goals.primary"], fmt = "{:d}" }
+"p.nov3.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.no_v3.shots"], fmt = "{:,d}" }
+"p.nov3.matches" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.no_v3.matches"], fmt = "{:d}" }
+"p.nov3.goals" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected_goals.no_v3"], fmt = "{:d}" }
+"p.unseen.shots" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.population.expected.unseen.shots"], fmt = "{:,d}" }
+"p.draws" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.read_out.bootstrap.draws"], fmt = "{:,d}" }
+"p.delta" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.read_out.tost.delta"], fmt = "{:.3f}" }
+"p.gain.r2" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.encodes_thresholds.encodes_beyond_distance.delta_r2_min"], fmt = "{:.2f}" }
+"p.gain.auc" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.encodes_thresholds.encodes_beyond_distance.delta_auc_min"], fmt = "{:.2f}" }
+"p.held" = { src = "pr:xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [172], fmt = "{:d}" }
+"p.paired.matches" = { src = "pr:xgs_stack_protocol_c6.json", quote = "the 172 held-out matches (135 evaluation, 37 gate)", values = [135], fmt = "{:d}" }
+"pl.read.r2" = { src = "pl:best_layers.json", keys = ["rules.readable_min.continuous"], fmt = "{:.2f}" }
+"pl.read.auc" = { src = "pl:best_layers.json", keys = ["rules.readable_min.binary"], fmt = "{:.2f}" }
+"ag.rows" = { src = "ag:sync_summary.json", keys = ["rows"], fmt = "{:,d}" }
+
+# --- earlier phases (background) ---
+"sw.g.ll" = { src = "sw:scores.csv", cols = ["log_loss"], row = { subset = "all", method = "g_combo" }, fmt = "{:.4f}" }
+"fs.b.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "pos_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"fs.c.d" = { src = "fs:deltas.csv", cols = ["delta_ll", "lo95", "hi95"], row = { subset = "all", method = "stack_ALL_new" }, fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"xs.g.d" = { src = "xs:summary.json", keys = ["deltas.G.delta_ll"], fmt = "{:+.5f}" }
+"h2.d" = { src = "h2:h2.json", keys = ["sets.primary.h2.diff", "sets.primary.h2.lo95", "sets.primary.h2.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"h2.pt" = { src = "h2:h2.json", keys = ["sets.primary.h2.diff"], fmt = "{:+.4f}" }
+"h2.margin" = { src = "h2:h2.json", keys = ["sets.primary.h2.smallest_equivalence_margin"], fmt = "{:.4f}" }
+"h2.delta" = { src = "vr:complete.json", keys = ["identity.prereg.margin"], fmt = "{:.3f}" }
+"h3.dist" = { src = "h3:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "dist" }, cols = ["value"], fmt = "{:.3f}" }
+"h3.angle" = { src = "h3:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "angle" }, cols = ["value"], fmt = "{:.3f}" }
+"h3.cone" = { src = "h3:probes.csv", row = { encoder = "emb_g_fold0", subset = "all", target = "def_cone_ge1" }, cols = ["value"], fmt = "{:.3f}" }
+"dt.a1" = { src = "dt:result.json", keys = ["delta.delta_ll"], fmt = "{:+.4f}" }
+
+# --- point 1: ablation (ticket 02) ---
+
+"ab.A.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.A.log_loss", "blocks.primary.scores.A.brier", "blocks.primary.scores.A.auc", "blocks.primary.scores.A.cal_slope", "blocks.primary.scores.A.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.B_DA.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.B_DA.log_loss", "blocks.primary.scores.B_DA.brier", "blocks.primary.scores.B_DA.auc", "blocks.primary.scores.B_DA.cal_slope", "blocks.primary.scores.B_DA.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.B.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.B.log_loss", "blocks.primary.scores.B.brier", "blocks.primary.scores.B.auc", "blocks.primary.scores.B.cal_slope", "blocks.primary.scores.B.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.C.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.C.log_loss", "blocks.primary.scores.C.brier", "blocks.primary.scores.C.auc", "blocks.primary.scores.C.cal_slope", "blocks.primary.scores.C.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.BQ.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.BQ.log_loss", "blocks.primary.scores.BQ.brier", "blocks.primary.scores.BQ.auc", "blocks.primary.scores.BQ.cal_slope", "blocks.primary.scores.BQ.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.CQ.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.CQ.log_loss", "blocks.primary.scores.CQ.brier", "blocks.primary.scores.CQ.auc", "blocks.primary.scores.CQ.cal_slope", "blocks.primary.scores.CQ.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.B_legacy.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.B_legacy.log_loss", "blocks.primary.scores.B_legacy.brier", "blocks.primary.scores.B_legacy.auc", "blocks.primary.scores.B_legacy.cal_slope", "blocks.primary.scores.B_legacy.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.C_legacy.row" = { src = "ab:summary.json", keys = ["blocks.primary.scores.C_legacy.log_loss", "blocks.primary.scores.C_legacy.brier", "blocks.primary.scores.C_legacy.auc", "blocks.primary.scores.C_legacy.cal_slope", "blocks.primary.scores.C_legacy.cal_intercept"], fmt = "{:.4f} | {:.4f} | {:.3f} | {:.2f} | {:+.3f}" }
+"ab.A.ll" = { src = "ab:summary.json", keys = ["blocks.primary.scores.A.log_loss"], fmt = "{:.4f}" }
+"ab.B.ll" = { src = "ab:summary.json", keys = ["blocks.primary.scores.B.log_loss"], fmt = "{:.4f}" }
+"ab.C.ll" = { src = "ab:summary.json", keys = ["blocks.primary.scores.C.log_loss"], fmt = "{:.4f}" }
+"ab.C-B.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.log_loss.delta", "blocks.primary.contrasts.C-B.log_loss.lo95", "blocks.primary.contrasts.C-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.C-A.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-A.log_loss.delta", "blocks.primary.contrasts.C-A.log_loss.lo95", "blocks.primary.contrasts.C-A.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.B-A.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.B-A.log_loss.delta", "blocks.primary.contrasts.B-A.log_loss.lo95", "blocks.primary.contrasts.B-A.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.BQ-B.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.BQ-B.log_loss.delta", "blocks.primary.contrasts.BQ-B.log_loss.lo95", "blocks.primary.contrasts.BQ-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.CQ-C.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.CQ-C.log_loss.delta", "blocks.primary.contrasts.CQ-C.log_loss.lo95", "blocks.primary.contrasts.CQ-C.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.CL-BL.ll" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C_legacy-B_legacy.log_loss.delta", "blocks.primary.contrasts.C_legacy-B_legacy.log_loss.lo95", "blocks.primary.contrasts.C_legacy-B_legacy.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.C-B.brier" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.brier.delta", "blocks.primary.contrasts.C-B.brier.lo95", "blocks.primary.contrasts.C-B.brier.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.C-B.auc" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.auc.delta", "blocks.primary.contrasts.C-B.auc.lo95", "blocks.primary.contrasts.C-B.auc.hi95"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"ab.C-B.pt" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.log_loss.delta"], fmt = "{:+.4f}" }
+"ab.C-A.brier" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-A.brier.delta", "blocks.primary.contrasts.C-A.brier.lo95", "blocks.primary.contrasts.C-A.brier.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.C-A.auc" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-A.auc.delta", "blocks.primary.contrasts.C-A.auc.lo95", "blocks.primary.contrasts.C-A.auc.hi95"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"ab.C-A.pt" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-A.log_loss.delta"], fmt = "{:+.4f}" }
+"ab.B-A.brier" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.B-A.brier.delta", "blocks.primary.contrasts.B-A.brier.lo95", "blocks.primary.contrasts.B-A.brier.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.B-A.auc" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.B-A.auc.delta", "blocks.primary.contrasts.B-A.auc.lo95", "blocks.primary.contrasts.B-A.auc.hi95"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"ab.C-B.up" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-B.log_loss.upper_one_sided_95"], fmt = "{:+.4f}" }
+"ab.C-A.up" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.C-A.log_loss.upper_one_sided_95"], fmt = "{:+.4f}" }
+"ab.B-A.ci90" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.B-A.log_loss.lo90", "blocks.primary.contrasts.B-A.log_loss.hi90"], fmt = "[{:+.4f}; {:+.4f}]" }
+"ab.B-A.margin" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.B-A.log_loss.tost.smallest_margin"], fmt = "{:.4f}" }
+"ab.CQ-C.margin" = { src = "ab:summary.json", keys = ["blocks.primary.contrasts.CQ-C.log_loss.tost.smallest_margin"], fmt = "{:.4f}" }
+"ab.dec.CB" = { src = "ab:summary.json", keys = ["decision.C-B"], labels = { "DINOv2 adds" = "DINOv2 dodaje" }, fmt = "{}" }
+"ab.dec.CA" = { src = "ab:summary.json", keys = ["decision.C-A"], labels = { "geometry adds over the image" = "geometria dodaje ponad obraz" }, fmt = "{}" }
+"ab.holm" = { src = "ab:summary.json", keys = ["decision.holm_rejected.C-B", "decision.holm_rejected.C-A"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} i {}" }
+"ab.leak" = { src = "ab:summary.json", keys = ["leak.verdict"], labels = { "decidable" = "rozstrzygalny" }, fmt = "{}" }
+"ab.r.nov3.CB" = { src = "ab:summary.json", keys = ["blocks.restricted:no_v3.contrasts.C-B.log_loss.delta", "blocks.restricted:no_v3.contrasts.C-B.log_loss.lo95", "blocks.restricted:no_v3.contrasts.C-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.r.unseen.CB" = { src = "ab:summary.json", keys = ["blocks.restricted:unseen.contrasts.C-B.log_loss.delta", "blocks.restricted:unseen.contrasts.C-B.log_loss.lo95", "blocks.restricted:unseen.contrasts.C-B.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.r.unseen.goals" = { src = "ab:summary.json", keys = ["blocks.restricted:unseen.goals"], fmt = "{:d}" }
+"ab.het.su" = { src = "ab:summary.json", keys = ["heterogeneity.seen-unseen.delta", "heterogeneity.seen-unseen.lo95", "heterogeneity.seen-unseen.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.het.v3" = { src = "ab:summary.json", keys = ["heterogeneity.v3-no_v3.delta", "heterogeneity.v3-no_v3.lo95", "heterogeneity.v3-no_v3.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.sec.B" = { src = "ab:summary.json", keys = ["blocks.secondary.scores.B.log_loss"], fmt = "{:.4f}" }
+"ab.sec.C" = { src = "ab:summary.json", keys = ["blocks.secondary.scores.C.log_loss"], fmt = "{:.4f}" }
+"ab.sec.CA" = { src = "ab:summary.json", keys = ["blocks.secondary.contrasts.C-A.log_loss.delta", "blocks.secondary.contrasts.C-A.log_loss.lo95", "blocks.secondary.contrasts.C-A.log_loss.hi95"], fmt = "{:+.4f} [{:+.4f}; {:+.4f}]" }
+"ab.sec.CA.margin" = { src = "ab:summary.json", keys = ["blocks.secondary.contrasts.C-A.log_loss.tost.smallest_margin"], fmt = "{:.4f}" }
+
+# --- point 1: controls (ticket 01b) ---
+"ct.reps" = { src = "ct:controls.json", keys = ["scenarios.null.replicates"], fmt = "{:,d}" }
+"ct.null.adds" = { src = "ct:controls.json", keys = ["scenarios.null.rate_DINOv2.rate"], fmt = "{:.3f}" }
+"ct.null.hw" = { src = "ct:controls.json", keys = ["scenarios.null.mean_half_width_90_C-B"], fmt = "{:.5f}" }
+"ct.plant.adds" = { src = "ct:controls.json", keys = ["scenarios.plant.rate_DINOv2.rate"], fmt = "{:.3f}" }
+"ct.plant.eq" = { src = "ct:controls.json", keys = ["scenarios.plant.rate_equivalent.rate"], fmt = "{:.3f}" }
+"ct.plant.inc" = { src = "ct:controls.json", keys = ["scenarios.plant.rate_inconclusive.rate"], fmt = "{:.3f}" }
+"ct.plant.oracle" = { src = "ct:controls.json", keys = ["scenarios.plant.oracle_C-B"], fmt = "{:+.3f}" }
+
+# --- point 1: inference time (ticket 03) ---
+"tm.n" = { src = "tm:timing.json", keys = ["sample.count"], fmt = "{:d}" }
+"tm.reps" = { src = "tm:timing.json", keys = ["reps"], fmt = "{:d}" }
+"tm.load" = { src = "tm:timing.json", keys = ["load.loadavg_1min_session_bounds.median"], fmt = "{:.1f}" }
+
+"tm.fp32_b1" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp32_b1.A_1_tail", "headline_ms_per_shot.fp32_b1.A_10_tails", "headline_ms_per_shot.fp32_b1.B", "headline_ms_per_shot.fp32_b1.C_measured", "headline_ms_per_shot.fp32_b1.A_plus_B"], fmt = "{:.1f} | {:.1f} | {:.1f} | {:.1f} | {:.1f}" }
+"tm.fp16_b1" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp16_b1.A_1_tail", "headline_ms_per_shot.fp16_b1.A_10_tails", "headline_ms_per_shot.fp16_b1.B", "headline_ms_per_shot.fp16_b1.C_measured", "headline_ms_per_shot.fp16_b1.A_plus_B"], fmt = "{:.1f} | {:.1f} | {:.1f} | {:.1f} | {:.1f}" }
+"tm.fp32_b16" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp32_b16.A_1_tail", "headline_ms_per_shot.fp32_b16.A_10_tails", "headline_ms_per_shot.fp32_b16.B", "headline_ms_per_shot.fp32_b16.C_measured", "headline_ms_per_shot.fp32_b16.A_plus_B"], fmt = "{:.1f} | {:.1f} | {:.1f} | {:.1f} | {:.1f}" }
+"tm.fp16_b16" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp16_b16.A_1_tail", "headline_ms_per_shot.fp16_b16.A_10_tails", "headline_ms_per_shot.fp16_b16.B", "headline_ms_per_shot.fp16_b16.C_measured", "headline_ms_per_shot.fp16_b16.A_plus_B"], fmt = "{:.1f} | {:.1f} | {:.1f} | {:.1f} | {:.1f}" }
+"tm.b1.A_10_tails" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp32_b1.A_10_tails"], fmt = "{:.1f}" }
+"tm.b1.B" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp32_b1.B"], fmt = "{:.1f}" }
+"tm.b1.C_measured" = { src = "tm:timing.json", keys = ["headline_ms_per_shot.fp32_b1.C_measured"], fmt = "{:.1f}" }
+"tm.st.decode" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.decode.median"], fmt = "{:.1f}" }
+"tm.st.detect" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.detect.median"], fmt = "{:.1f}" }
+"tm.st.keypoints" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.keypoints.median"], fmt = "{:.1f}" }
+"tm.st.homography" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.homography.median"], fmt = "{:.1f}" }
+"tm.st.teams" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.teams.median"], fmt = "{:.1f}" }
+"tm.st.features" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.features.median"], fmt = "{:.1f}" }
+"tm.st.b_logistic" = { src = "tm:timing.json", keys = ["configs.B_fp32.stages_ms_per_shot.b_logistic.median"], fmt = "{:.1f}" }
+"rp.ratio10" = { src = "rp:derived.json", keys = ["timing_fp32_b1.b_over_a_10_tails"], fmt = "{:.1f}" }
+"rp.ratio1" = { src = "rp:derived.json", keys = ["timing_fp32_b1.b_over_a_1_tail"], fmt = "{:.0f}" }
+"rp.homshare" = { src = "rp:derived.json", keys = ["timing_fp32_b1.homography_share_of_b"], scale = 100, fmt = "{:.0f}%" }
+"rp.homteams" = { src = "rp:derived.json", keys = ["timing_fp32_b1.homography_teams_share_of_b"], scale = 100, fmt = "{:.0f}%" }
+
+# --- point 2: per-layer probes (ticket 06) and their encoder differences ---
+"rp.targets" = { src = "rp:derived.json", keys = ["encoder_differences_offset_0.targets"], fmt = "{:d}" }
+"rp.b20.max" = { src = "rp:derived.json", keys = ["encoder_differences_offset_0.block_20.max_abs_point"], fmt = "{:.4f}" }
+"rp.b22.g" = { src = "rp:derived.json", keys = ["encoder_differences_offset_0.block_22.g_better"], fmt = "{:d}" }
+"rp.b23.g" = { src = "rp:derived.json", keys = ["encoder_differences_offset_0.block_23.g_better"], fmt = "{:d}" }
+"rp.b23.dino" = { src = "rp:derived.json", keys = ["encoder_differences_offset_0.block_23.dino_better"], fmt = "{:d}" }
+"rp.gk.proxy" = { src = "rp:derived.json", keys = ["goalkeeper_proxy.proxy"], fmt = "{:d}" }
+"rp.gk.present" = { src = "rp:derived.json", keys = ["goalkeeper_proxy.present"], fmt = "{:,d}" }
+"rp.gk.share" = { src = "rp:derived.json", keys = ["goalkeeper_proxy.proxy_share"], scale = 100, fmt = "{:.0f}%" }
+"pl.paired.cone.g" = { src = "pl:paired_vs_statsbomb.csv", row = { encoder = "g_combo", target = "def_cone_ge1", probe = "ridge_embedding", metric = "AUC" }, cols = ["point"], fmt = "{:.3f}" }
+"pl.paired.cone.det" = { src = "pl:paired_vs_statsbomb.csv", row = { encoder = "g_combo", target = "def_cone_ge1", probe = "detector", metric = "AUC" }, cols = ["point"], fmt = "{:.3f}" }
+
+"pl.distance.dino" = { src = "pl:best_layers.json", keys = ["best.0.best_block", "best.0.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.distance.g" = { src = "pl:best_layers.json", keys = ["best.10.best_block", "best.10.oof_metric.point", "best.10.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.distance.v" = { src = "pl:best_layers.json", keys = ["best.10.readable", "best.10.encodes"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {} (R² ≥ 0.50 względem stałej)" }
+"pl.angle.dino" = { src = "pl:best_layers.json", keys = ["best.1.best_block", "best.1.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.angle.g" = { src = "pl:best_layers.json", keys = ["best.11.best_block", "best.11.oof_metric.point", "best.11.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.angle.gain" = { src = "pl:best_layers.json", keys = ["best.11.nested_gain.point", "best.11.nested_gain.lo", "best.11.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.angle.v" = { src = "pl:best_layers.json", keys = ["best.11.readable", "best.11.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.def_cone.dino" = { src = "pl:best_layers.json", keys = ["best.2.best_block", "best.2.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.def_cone.g" = { src = "pl:best_layers.json", keys = ["best.12.best_block", "best.12.oof_metric.point", "best.12.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.def_cone.gain" = { src = "pl:best_layers.json", keys = ["best.12.nested_gain.point", "best.12.nested_gain.lo", "best.12.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.def_cone.v" = { src = "pl:best_layers.json", keys = ["best.12.readable", "best.12.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.def_cone_ge1.dino" = { src = "pl:best_layers.json", keys = ["best.3.best_block", "best.3.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.def_cone_ge1.g" = { src = "pl:best_layers.json", keys = ["best.13.best_block", "best.13.oof_metric.point", "best.13.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.def_cone_ge1.gain" = { src = "pl:best_layers.json", keys = ["best.13.nested_gain.point", "best.13.nested_gain.lo", "best.13.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.def_cone_ge1.v" = { src = "pl:best_layers.json", keys = ["best.13.readable", "best.13.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.near_opp_m.dino" = { src = "pl:best_layers.json", keys = ["best.4.best_block", "best.4.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.near_opp_m.g" = { src = "pl:best_layers.json", keys = ["best.14.best_block", "best.14.oof_metric.point", "best.14.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.near_opp_m.gain" = { src = "pl:best_layers.json", keys = ["best.14.nested_gain.point", "best.14.nested_gain.lo", "best.14.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.near_opp_m.v" = { src = "pl:best_layers.json", keys = ["best.14.readable", "best.14.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.opp_3m.dino" = { src = "pl:best_layers.json", keys = ["best.5.best_block", "best.5.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.opp_3m.g" = { src = "pl:best_layers.json", keys = ["best.15.best_block", "best.15.oof_metric.point", "best.15.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.opp_3m.gain" = { src = "pl:best_layers.json", keys = ["best.15.nested_gain.point", "best.15.nested_gain.lo", "best.15.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.opp_3m.v" = { src = "pl:best_layers.json", keys = ["best.15.readable", "best.15.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.opp_3m_ge1.dino" = { src = "pl:best_layers.json", keys = ["best.6.best_block", "best.6.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.opp_3m_ge1.g" = { src = "pl:best_layers.json", keys = ["best.16.best_block", "best.16.oof_metric.point", "best.16.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.opp_3m_ge1.gain" = { src = "pl:best_layers.json", keys = ["best.16.nested_gain.point", "best.16.nested_gain.lo", "best.16.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.opp_3m_ge1.v" = { src = "pl:best_layers.json", keys = ["best.16.readable", "best.16.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.gk_depth_m.dino" = { src = "pl:best_layers.json", keys = ["best.7.best_block", "best.7.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.gk_depth_m.g" = { src = "pl:best_layers.json", keys = ["best.17.best_block", "best.17.oof_metric.point", "best.17.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.gk_depth_m.gain" = { src = "pl:best_layers.json", keys = ["best.17.nested_gain.point", "best.17.nested_gain.lo", "best.17.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.gk_depth_m.v" = { src = "pl:best_layers.json", keys = ["best.17.readable", "best.17.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.gk_lateral_m.dino" = { src = "pl:best_layers.json", keys = ["best.8.best_block", "best.8.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.gk_lateral_m.g" = { src = "pl:best_layers.json", keys = ["best.18.best_block", "best.18.oof_metric.point", "best.18.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.gk_lateral_m.gain" = { src = "pl:best_layers.json", keys = ["best.18.nested_gain.point", "best.18.nested_gain.lo", "best.18.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.gk_lateral_m.v" = { src = "pl:best_layers.json", keys = ["best.18.readable", "best.18.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.gk_lateral_signed_m.dino" = { src = "pl:best_layers.json", keys = ["best.9.best_block", "best.9.oof_metric.point"], fmt = "{:d} | {:.3f}" }
+"pl.gk_lateral_signed_m.g" = { src = "pl:best_layers.json", keys = ["best.19.best_block", "best.19.oof_metric.point", "best.19.distance_only.point"], fmt = "{:d} | {:.3f} | {:.3f}" }
+"pl.gk_lateral_signed_m.gain" = { src = "pl:best_layers.json", keys = ["best.19.nested_gain.point", "best.19.nested_gain.lo", "best.19.nested_gain.hi"], fmt = "{:+.3f} [{:+.3f}; {:+.3f}]" }
+"pl.gk_lateral_signed_m.v" = { src = "pl:best_layers.json", keys = ["best.19.readable", "best.19.encodes_beyond_distance"], labels = { "true" = "tak", "false" = "nie" }, fmt = "{} | {}" }
+"pl.first.angle" = { src = "pl:best_layers.json", keys = ["best.11.first_readable_block"], fmt = "{}" }
+"pl.first.cone" = { src = "pl:best_layers.json", keys = ["best.13.first_readable_block"], fmt = "{}" }
+"pl.first.gkd" = { src = "pl:best_layers.json", keys = ["best.17.first_readable_block"], fmt = "{}" }
+"pl.m400.gkd" = { src = "pl:best_layers.json", keys = ["best.37.oof_metric.point"], fmt = "{:.3f}" }
+"pl.n.m400" = { src = "pl:complete.json", keys = ["counts.-400"], fmt = "{:,d}" }
+
+# --- point 3: agreement (ticket 07), G-combo probe unless named ---
+
+"ag.distance.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "distance" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.distance.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "distance" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.distance.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "distance" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.distance.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "distance" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.angle.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "angle" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.angle.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "angle" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.angle.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "angle" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.angle.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "angle" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.near_opp_m.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "near_opp_m" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.near_opp_m.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "near_opp_m" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.near_opp_m.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "near_opp_m" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.near_opp_m.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "near_opp_m" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.opp_3m.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "opp_3m" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.opp_3m.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "opp_3m" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.opp_3m.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "opp_3m" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.opp_3m.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "opp_3m" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.def_cone.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "def_cone" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.def_cone.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "def_cone" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.def_cone.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "def_cone" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.def_cone.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "def_cone" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.gk_depth_m.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "gk_depth_m" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.gk_depth_m.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "gk_depth_m" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.gk_depth_m.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "gk_depth_m" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.gk_depth_m.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "gk_depth_m" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.gk_lateral_m.row" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "gk_lateral_m" }, cols = ["n", "detector_mae", "probe_mae"], fmt = "{:,d} | {:.2f} | {:.2f}" }
+"ag.gk_lateral_m.dino" = { src = "ag:errors.csv", row = { encoder = "dino", feature = "gk_lateral_m" }, cols = ["probe_mae"], fmt = "{:.2f}" }
+"ag.gk_lateral_m.diff" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "gk_lateral_m" }, cols = ["probe_minus_detector_mae", "probe_minus_detector_mae_lo", "probe_minus_detector_mae_hi", "spearman_signed_errors"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}] | {:.2f}" }
+"ag.gk_lateral_m.cell" = { src = "ag:cells.csv", row = { encoder = "g_combo", feature = "gk_lateral_m" }, cols = ["detector_wrong", "observed", "null_mean", "p_one_sided", "diagnostic_probe_right_only_p"], fmt = "{:d} | {:d} | {:.0f} | {:.4f} | {:.2f}" }
+"ag.near_opp_m.shift" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "near_opp_m" }, cols = ["detector_mean_signed", "detector_mean_signed_lo", "detector_mean_signed_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.opp_3m.shift" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "opp_3m" }, cols = ["detector_mean_signed", "detector_mean_signed_lo", "detector_mean_signed_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.def_cone.shift" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "def_cone" }, cols = ["detector_mean_signed", "detector_mean_signed_lo", "detector_mean_signed_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.gk_depth_m.shift" = { src = "ag:errors.csv", row = { encoder = "g_combo", feature = "gk_depth_m" }, cols = ["detector_mean_signed", "detector_mean_signed_lo", "detector_mean_signed_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.near.mean" = { src = "ag:combinations.csv", row = { encoder = "g_combo", feature = "near_opp_m", scope = "detector_present", rule = "mean_probe" }, cols = ["minus_detector", "minus_detector_lo", "minus_detector_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.near.meandist" = { src = "ag:combinations.csv", row = { encoder = "g_combo", feature = "near_opp_m", scope = "detector_present", rule = "mean_distance" }, cols = ["minus_detector", "minus_detector_lo", "minus_detector_hi"], fmt = "{:+.2f} [{:+.2f}; {:+.2f}]" }
+"ag.gkd.fill" = { src = "ag:combinations.csv", row = { encoder = "g_combo", feature = "gk_depth_m", scope = "detector_missing", rule = "fill_probe" }, cols = ["n", "minus_fill_distance"], fmt = "{:d} strzałach o {:+.1f} m" }
+"ag.sync.n" = { src = "ag:sync_summary.json", keys = ["sync_rows"], fmt = "{:,d}" }
+"ag.sync.share" = { src = "ag:sync_summary.json", keys = ["sync_share"], scale = 100, fmt = "{:.0f}%" }
+"ag.sync.det" = { src = "ag:sync.csv", row = { feature = "distance", source = "detector" }, cols = ["mae_t0", "mae_m400"], fmt = "{:.2f} m wobec {:.2f} m" }
+"ag.sync.g" = { src = "ag:sync.csv", row = { feature = "distance", source = "probe_g_combo" }, cols = ["mae_t0", "mae_m400"], fmt = "{:.2f} m wobec {:.2f} m" }
+"ag.sync.rho" = { src = "ag:sync.csv", row = { feature = "distance", source = "spearman_change_detector_vs_probe_g_combo" }, cols = ["spearman"], fmt = "{:.2f}" }
+"ag.band.le50" = { src = "ag:sync_summary.json", keys = ["timing_bands.raw.<=50"], fmt = "{:,d}" }
+"ag.band.mid" = { src = "ag:sync_summary.json", keys = ["timing_bands.raw.50-200"], fmt = "{:d}" }
+"ag.band.hi" = { src = "ag:sync_summary.json", keys = ["timing_bands.raw.>200"], fmt = "{:d}" }
+"ag.band.gt50" = { src = "ag:sync_summary.json", keys = ["timing_bands.merged.>50"], fmt = "{:d}" }
+"ag.band.det.le" = { src = "ag:timing_bands.csv", row = { feature = "distance", source = "detector", band = "<=50" }, cols = ["mae"], fmt = "{:.2f}" }
+"ag.band.det.gt" = { src = "ag:timing_bands.csv", row = { feature = "distance", source = "detector", band = ">50" }, cols = ["mae"], fmt = "{:.2f}" }
+"ag.band.g.le" = { src = "ag:timing_bands.csv", row = { feature = "distance", source = "probe_g_combo", band = "<=50" }, cols = ["mae"], fmt = "{:.2f}" }
+"ag.band.g.gt" = { src = "ag:timing_bands.csv", row = { feature = "distance", source = "probe_g_combo", band = ">50" }, cols = ["mae"], fmt = "{:.2f}" }
+
+"p.ci95" = { src = "pr:xgdino_ablation_protocol.json", quote = "95% match-bootstrap lower bound > 0", values = [95], fmt = "{:d}%" }
+"p.ci90" = { src = "pr:xgdino_ablation_protocol.json", quote = "the 90% interval is kept", values = [90], fmt = "{:d}%" }
+"p.tol" = { src = "pr:xgdino_ablation_protocol.json", keys = ["frozen.agreement.tolerances.distance_m", "frozen.agreement.tolerances.angle_deg", "frozen.agreement.tolerances.near_opp_m", "frozen.agreement.tolerances.gk_depth_m"], fmt = "odległość {:.0f} m, kąt {:.0f}°, najbliższy rywal {:.1f} m, liczby dokładnie, bramkarz {:.0f} m" }
+"p.q75" = { src = "pr:xgdino_ablation_protocol.json", quote = "above the detector's own 75th percentile", values = [75], fmt = "{:d}." }

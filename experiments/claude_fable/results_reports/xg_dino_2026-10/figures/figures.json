@@ -1,0 +1,75 @@
+{
+  "code": {
+    "digest": "4944111d610454cfff17e9ea3b449e236fde5de45af3256de3d310a050081c24",
+    "files": {
+      "scripts/xgdino_report.py": "a2169891c9c19be80e7b0e4da59c27a5a621a01e61434ccf1f574b5f5efcf014",
+      "scripts/xgs_protocol.py": "d2aa20d57d21235c78765eb8beb274bfdceadf7c69b85e979f6d2e0798becb15",
+      "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+      "xgpoc/compare/stats.py": "bc083cc77fe3bed0c72325c964886377803ebf4270abc9c23d02a8587d7c1982",
+      "xgpoc/detector/approach1.py": "f3020856dbca4f5a4b1d7f5f51ab043a5a3c0f3214e85fbf84280a8da10e21c5",
+      "xgpoc/detector/conventions.py": "b2ad2e2c1b0a8c3589b58cbcf6f757936ba3ff3ff771b7d13fe10e7fcd8d90a1",
+      "xgpoc/detector/extract.py": "16f8893dca3376181667eba9c39ed7534a3579bc34ef51ab21f312f81e3e4ef8",
+      "xgpoc/detector/extract3.py": "08b818ac297e2f525a8b3c4b609ff3abe16eb684bf6ec85c5c939c531ce4bc0c",
+      "xgpoc/detector/features.py": "e602514c78c6fa892d667b83ebfdaa4f81afbbf5cbfbd5f73902f0e1e8719575",
+      "xgpoc/detector/guard.py": "de338fb5040c178003e4dfe7f4c67032e4b8b05390925a00ed0159d8678ea3f6",
+      "xgpoc/detector/records.py": "dfe2c1f3e86efc54f2ce29a6b144564349e5bcf2c3a4b79063d8e664566dbf9f",
+      "xgpoc/detector/sanitation.py": "fa6b525d7a6bd6226dfbf42f0b08a2839f30f703c10c960f797227c908a71705",
+      "xgpoc/detector/seal.py": "ef42c7997b0de5bedeaed80bda27b0feb97a657275fe4304cba31cc75474f4a3",
+      "xgpoc/detector/testrule.py": "1a27a59bfa807cd2e1586578188790c9ee8d0206961fd1be5565d1d100986674",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/eval/metrics.py": "835dbfff1ff938ab5a12e08568d5dc3d367d5bf5e4ca63aacae51b11e201896d",
+      "xgpoc/paths.py": "4beca7070d9ecfa1c3f5c1f62e40d048f2c611de56283be9a6033151513fa8f2",
+      "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+      "xgpoc/stack/__init__.py": "350fc6c0d84b87eed432b480116cfdcb946c834330cc9bdc8138aac112ee78e7",
+      "xgpoc/stack/analysis.py": "bb3adc25e183f7f8c83047cec7bfd775e2a082198410b3ebff23f35cdfada838",
+      "xgpoc/stack/controls.py": "84b224aefa0f24b79d5277f1547fc9fd1791697b829f257310ef4f3767433bec",
+      "xgpoc/stack/fit.py": "0da330d2d9fcfb1488ad1902fa0a5dcd3f9b7811952f8ac0378c95a9723df9d6",
+      "xgpoc/stack/inputs.py": "77bb8876dfa8a5eab9108deff8506cd716c56c80e2f46fce175b3430e3f38801",
+      "xgpoc/stack/protocol.py": "1b2c347988b35d6cdeca9d2591cbf748fa9ed3b98668baa602bca862d00c53f3",
+      "xgpoc/stack/provenance.py": "58956d1c0e9dab66e9adc13d8901a543426a9121a8cfaba6183d437f9e3059de",
+      "xgpoc/stack/records.py": "f93cec5c27ad7cc7a9299e627ed90ea5a13fc50a22b0a8017b26dafdb074fbbf",
+      "xgpoc/stack/selection.py": "9071693519e12912f088720bef77ff33db5caee4badbfdd05de47db4bc95e2a9",
+      "xgpoc/stack/stats.py": "34586b8dfcce7c0b1e020cdf916bb593cfb2ad4a847683b930bfde936b20cb74",
+      "xgpoc/vendor/refit.py": "1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02"
+    }
+  },
+  "files": {
+    "ablation_contrasts.png": "ca0f49bad1aba9b5f2d2856272c12a006aee46771ab7c3d44aa52bce34e5d61a",
+    "ablation_reliability.png": "9007758b32209927e4f7fdec2caa5faa4c61c03898a8283b0d4170f158e0622e",
+    "agreement_errors.png": "c247572d1f26503ce4fcb74125206defe6eac4f1ea15079059262fb886d95ee2",
+    "layers_goalkeeper.png": "1b6a65ce0d384beb309e4a7d0bfe0b50bee8014d43aa38eed74952ad425006cf",
+    "layers_location.png": "0f5c36ee4b10151d36e53d955c8122ed644a6534b2e12652a38da033722013b5",
+    "timing.png": "4a8b8a82bdec5be1d7d542eae90cabbad867d8c71f75aee0d132f8839bbdc5e3"
+  },
+  "git": {
+    "dirty": false,
+    "sha": "e11e383a2cfb59966b1de55931aea1c877177084"
+  },
+  "sources": {
+    "ablation_contrasts.png": {
+      "sha256": "ca0f49bad1aba9b5f2d2856272c12a006aee46771ab7c3d44aa52bce34e5d61a",
+      "source": "results/xgdino_ablation/real/figures/contrasts_forest.png"
+    },
+    "ablation_reliability.png": {
+      "sha256": "9007758b32209927e4f7fdec2caa5faa4c61c03898a8283b0d4170f158e0622e",
+      "source": "results/xgdino_ablation/real/figures/reliability.png"
+    },
+    "agreement_errors.png": {
+      "sha256": "c247572d1f26503ce4fcb74125206defe6eac4f1ea15079059262fb886d95ee2",
+      "source": "results/xgdino_agreement/figures/errors.png"
+    },
+    "layers_goalkeeper.png": {
+      "sha256": "1b6a65ce0d384beb309e4a7d0bfe0b50bee8014d43aa38eed74952ad425006cf",
+      "source": "results/xgdino_probes_layers/figures/goalkeeper.png"
+    },
+    "layers_location.png": {
+      "sha256": "0f5c36ee4b10151d36e53d955c8122ed644a6534b2e12652a38da033722013b5",
+      "source": "results/xgdino_probes_layers/figures/location.png"
+    },
+    "timing.png": {
+      "sha256": "4a8b8a82bdec5be1d7d542eae90cabbad867d8c71f75aee0d132f8839bbdc5e3",
+      "source": "results/xgdino_timing/timing.png"
+    }
+  }
+}
