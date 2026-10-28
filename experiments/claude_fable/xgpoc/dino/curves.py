@@ -76,9 +76,28 @@ def references(ztr: np.ndarray, ytr: np.ndarray, z_eval: np.ndarray, binary: np.
     return out
 
 
+def geometry_basis(geo_train: np.ndarray, *others: np.ndarray) -> list[np.ndarray]:
+    """[1, standardised geometry projected on its non-null principal directions] for the training rows and each other
+    set: NaN is the training mean, constant columns drop out, collinear columns collapse, so the unpenalised design of
+    the `geometry_embedding` probe has full rank."""
+    mean = np.nanmean(geo_train, 0)
+    mean = np.where(np.isfinite(mean), mean, 0.0)
+    filled = [np.where(np.isnan(a), mean, a) for a in (geo_train, *others)]
+    sd = filled[0].std(0)
+    std = [(a - mean) / np.where(sd > pr.STD_EPS, sd, 1.0) for a in filled]
+    _, s, vt = np.linalg.svd(std[0], full_matrices=False)
+    basis = vt[s > 1e-6 * s[0]].T
+    return [np.column_stack([np.ones(len(a)), a @ basis]) for a in std]
+
+
 def fold_fit(x_all: np.ndarray, data: pr.ProbeData, rows: np.ndarray, y: np.ndarray, binary: np.ndarray, k: int,
-             x_paired: np.ndarray | None, device: str = "cpu") -> dict:
-    """`probes._fold_fit` with the eigendecomposition ridge for every column of one row group."""
+             x_paired: np.ndarray | None, device: str = "cpu", geometry: np.ndarray | None = None) -> dict:
+    """`probes._fold_fit` with the eigendecomposition ridge for every column of one row group. `geometry` (one row per
+    population row, NaN allowed): a further probe `geometry_embedding` (unpenalised geometry design plus the embedding)
+    and the reference `geometry` (that design alone); continuous columns only, no paired rows."""
+    if geometry is not None and (binary.any() or x_paired is not None):
+        raise ValueError("the geometry probe takes continuous columns and no paired rows")
+    variants = (*pr.VARIANTS, *(("geometry_embedding",) if geometry is not None else ()))
     dist = data.targets.distance.to_numpy()
     in_train = data.folds[rows] != k
     train, test, ytr = rows[in_train], rows[~in_train], y[in_train]
@@ -88,30 +107,37 @@ def fold_fit(x_all: np.ndarray, data: pr.ProbeData, rows: np.ndarray, y: np.ndar
         knots = np.quantile(dist[tr], pr.KNOTS)
         xs = pr.standardise(x_all[tr], *[e[0] for e in evals])
         ztr = pr.spline(dist[tr], knots)
+        zs = {"embedding": ztr[:, :1], "distance_embedding": ztr}
+        zgs = geometry_basis(geometry[tr], *[geometry[e[2]] for e in evals]) if geometry is not None else None
+        if zgs is not None:
+            zs["geometry_embedding"] = zgs[0]
         ev = []
-        for (_, de), xse in zip(evals, xs[1:], strict=True):
+        for i, ((_, de, _), xse) in enumerate(zip(evals, xs[1:], strict=True)):
             ze = np.nan_to_num(pr.spline(de, knots))
-            ev.append((xse, {"embedding": ze[:, :1], "distance_embedding": ze}))
-        return ridge_paths(xs[0], ytrain, {"embedding": ztr[:, :1], "distance_embedding": ztr}, ev, grid, device), ztr, knots
+            ev.append((xse, {"embedding": ze[:, :1], "distance_embedding": ze}
+                       | ({"geometry_embedding": zgs[1 + i]} if zgs is not None else {})))
+        return ridge_paths(xs[0], ytrain, zs, ev, grid, device), ztr, knots, zgs
 
-    loss = {v: 0.0 for v in pr.VARIANTS}
-    inner_pred = {v: np.empty((len(grid), len(train), y.shape[1])) for v in pr.VARIANTS}
+    loss = {v: 0.0 for v in variants}
+    inner_pred = {v: np.empty((len(grid), len(train), y.shape[1])) for v in variants}
     for itr, iva in pr.inner_splits(data.games[train]):
-        out, _, _ = split(train[itr], [(x_all[train[iva]], dist[train[iva]])], ytr[itr])
-        for v in pr.VARIANTS:
+        out, _, _, _ = split(train[itr], [(x_all[train[iva]], dist[train[iva]], train[iva])], ytr[itr])
+        for v in variants:
             loss[v] = loss[v] + pr._loss(out[v][0], ytr[iva], False)
             inner_pred[v][:, iva] = out[v][0]
-    chosen = {v: np.argmin(loss[v], axis=0) for v in pr.VARIANTS}
+    chosen = {v: np.argmin(loss[v], axis=0) for v in variants}
     inner = {v: [pr.point_metric(ytr[:, j], inner_pred[v][chosen[v][j], :, j], bool(binary[j])) for j in range(y.shape[1])]
              for v in pr.VARIANTS}
 
-    evals = [(x_all[test], dist[test])]
+    evals = [(x_all[test], dist[test], test)]
     if x_paired is not None:
-        evals.append((x_paired, data.paired.distance.to_numpy()))
-    out, ztr, knots = split(train, evals, ytr)
-    res = {"test": test, "chosen": {v: [grid[c] for c in chosen[v]] for v in pr.VARIANTS}, "inner": inner, "pred": {}}
+        evals.append((x_paired, data.paired.distance.to_numpy(), None))
+    out, ztr, knots, zgs = split(train, evals, ytr)
+    res = {"test": test, "chosen": {v: [grid[c] for c in chosen[v]] for v in variants}, "inner": inner, "pred": {}}
     for i, name in enumerate(("test", "paired")[:len(evals)]):
-        res["pred"][name] = {v: out[v][i][chosen[v], :, np.arange(y.shape[1])].T for v in pr.VARIANTS}
+        res["pred"][name] = {v: out[v][i][chosen[v], :, np.arange(y.shape[1])].T for v in variants}
+        if zgs is not None:
+            res["pred"][name]["geometry"] = zgs[1 + i] @ np.linalg.lstsq(zgs[0], ytr, rcond=None)[0]
         z_eval = pr.spline(evals[i][1], knots)
         ref = references(ztr, ytr, np.nan_to_num(z_eval), binary)
         ref[~np.isfinite(z_eval).all(1)] = np.nan
@@ -123,8 +149,10 @@ def fold_fit(x_all: np.ndarray, data: pr.ProbeData, rows: np.ndarray, y: np.ndar
 
 
 def run(data: pr.ProbeData, encoder: pr.Encoder, targets: Sequence[str] = tg.TARGETS, folds: Sequence[int] | None = None,
-        paired: bool = False, device: str = "cpu", log: Callable[[str], None] | None = None) -> pr.Run:
-    """Out-of-fold ridge probes of every target for one encoder (module docstring); paired reads only when `paired`."""
+        paired: bool = False, device: str = "cpu", log: Callable[[str], None] | None = None,
+        geometry: np.ndarray | None = None) -> pr.Run:
+    """Out-of-fold ridge probes of every target for one encoder (module docstring); paired reads only when `paired`;
+    `geometry` adds the `geometry_embedding` probe and the `geometry` reference (`fold_fit`)."""
     folds = sorted(np.unique(data.folds)) if folds is None else list(folds)
     results: dict[str, pr.TargetRun] = {}
     plan = []
@@ -147,7 +175,7 @@ def run(data: pr.ProbeData, encoder: pr.Encoder, targets: Sequence[str] = tg.TAR
         x_paired = np.asarray(encoder.paired(k), np.float32) if paired else None
         for g, (rows, cols, y, binary) in enumerate(plan):
             t0, c0 = time.perf_counter(), time.process_time()
-            res = fold_fit(x_all, data, rows, y, binary, k, x_paired, device)
+            res = fold_fit(x_all, data, rows, y, binary, k, x_paired, device, geometry)
             timing.append({"encoder": encoder.name, "fold": k, "targets": "+".join(c for c in cols if not c.endswith(pr.SHUFFLED)),
                            "model": "ridge_eigh", "rows": len(rows), "dim": x_all.shape[1],
                            "wall_s": time.perf_counter() - t0, "cpu_s": time.process_time() - c0})

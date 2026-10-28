@@ -56,12 +56,21 @@ GOALKEEPER = ("gk_depth_m", "gk_lateral_m", "gk_lateral_signed_m")
 STRATA = ("shot_ok", "teams_ok", "gk_ok", "gk_detected", "gk_proxy", "n_opponents", "near_opp_status")
 COLUMNS = (*TARGETS, *STRATA)
 SOURCES = ("automatic", "statsbomb")
+PROBE_ONLY_SOURCES = ("caption", "gpt")           # header labels of xg-dino-info: probe targets, never a model design
+BINARY_EXTRA: set[str] = set()                    # binary targets of xg-dino-info, registered by `register_binary`
 GOALKEEPER_POSITION = "Goalkeeper"
 
 
 def kind(target: str) -> str:
     """"binary" (AUC) or "continuous" (R², MAE; counts included)."""
-    return "binary" if target in BINARY else "continuous"
+    return "binary" if target in BINARY or target in BINARY_EXTRA else "continuous"
+
+
+def register_binary(table: pd.DataFrame, columns: Iterable[str]) -> list[str]:
+    """Register the `columns` of `table` whose finite values are all 0 or 1 as binary targets (AUC); returns them."""
+    found = [c for c in columns if table[c].notna().any() and table[c].dropna().isin([0.0, 1.0]).all()]
+    BINARY_EXTRA.update(found)
+    return found
 
 
 def position_targets(shot, defenders=None, goalkeeper=None, *, gk_detected: bool = False) -> dict:
@@ -110,7 +119,7 @@ def frame_targets(frame, rule: loc.LocationRule = loc.FEET_T0) -> dict:
 
 
 def tagged(table: pd.DataFrame, source: str) -> pd.DataFrame:
-    if source not in SOURCES:
+    if source not in (*SOURCES, *PROBE_ONLY_SOURCES):
         raise ValueError(f"unknown target source {source}")
     table.attrs["source"] = source
     return table

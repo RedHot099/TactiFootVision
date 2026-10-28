@@ -211,8 +211,9 @@ class ProbeData:
 
     def __post_init__(self):
         for t in (self.targets, self.paired):
-            if t is not None and t.attrs.get("source") != "automatic":
-                raise ValueError("probes are fitted and read on automatic targets only; StatsBomb is evaluation only")
+            if t is not None and t.attrs.get("source") not in ("automatic", *tg.PROBE_ONLY_SOURCES):
+                raise ValueError("probes are fitted and read on automatic (or caption / GPT) targets only; StatsBomb is "
+                                 "evaluation only")
         if not (len(self.targets) == len(self.games) == len(self.folds)):
             raise ValueError("one game and fold per target row")
         if pd.DataFrame({"g": self.games, "f": self.folds}).groupby("g").f.nunique().max() > 1:
