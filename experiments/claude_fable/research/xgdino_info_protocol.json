@@ -1,0 +1,3559 @@
+{
+  "purpose": "xg-dino ticket 11: the frozen xg-dino-info protocol, written before any real fit",
+  "frozen": {
+    "population": "xg-dino primary block (ablation.load_inputs; protocol fd142d152a1bc546b023a5f3e3e199888b967e5b2296393c12ca40a4bf75b6b0)",
+    "blocks": {
+      "Xc": {
+        "role": "primary (single test)",
+        "values": [
+          "box_players@0",
+          "near5_players@0",
+          "box_attackers@0",
+          "box_players@-400",
+          "near5_players@-400",
+          "box_attackers@-400",
+          "shooter_h_px@0",
+          "shooter_aspect@0",
+          "shooter_h_rel@0",
+          "shooter_overlap@0",
+          "shooter_h_px@-400",
+          "shooter_aspect@-400",
+          "shooter_h_rel@-400",
+          "shooter_overlap@-400",
+          "ball_own@0",
+          "ball_above@0",
+          "ball_height_rel@0",
+          "ball_dist_rel@0",
+          "ball_own@-400",
+          "ball_above@-400",
+          "ball_height_rel@-400",
+          "ball_dist_rel@-400",
+          "motion_shot_disp_m",
+          "motion_gk_disp_m",
+          "motion_box_change",
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s"
+        ],
+        "design": [
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400",
+          "xa_ball_above_missing@0",
+          "xa_ball_above_missing@-400",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing"
+        ]
+      },
+      "crowding": {
+        "role": "content family (Holm)",
+        "values": [
+          "box_players@0",
+          "near5_players@0",
+          "box_attackers@0",
+          "box_players@-400",
+          "near5_players@-400",
+          "box_attackers@-400"
+        ],
+        "design": [
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400"
+        ]
+      },
+      "shooter": {
+        "role": "content family (Holm)",
+        "values": [
+          "shooter_h_px@0",
+          "shooter_aspect@0",
+          "shooter_h_rel@0",
+          "shooter_overlap@0",
+          "shooter_h_px@-400",
+          "shooter_aspect@-400",
+          "shooter_h_rel@-400",
+          "shooter_overlap@-400"
+        ],
+        "design": [
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400"
+        ]
+      },
+      "ball_t0": {
+        "role": "content family (Holm)",
+        "values": [
+          "ball_own@0",
+          "ball_above@0",
+          "ball_height_rel@0",
+          "ball_dist_rel@0"
+        ],
+        "design": [
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_above_missing@0"
+        ]
+      },
+      "ball_m400": {
+        "role": "content family (Holm)",
+        "values": [
+          "ball_own@-400",
+          "ball_above@-400",
+          "ball_height_rel@-400",
+          "ball_dist_rel@-400"
+        ],
+        "design": [
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_ball_above_missing@-400"
+        ]
+      },
+      "motion": {
+        "role": "content family (Holm)",
+        "values": [
+          "motion_shot_disp_m",
+          "motion_gk_disp_m",
+          "motion_box_change"
+        ],
+        "design": [
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing"
+        ]
+      },
+      "flags": {
+        "role": "content family (Holm)",
+        "values": [
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s"
+        ],
+        "design": [
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s"
+        ]
+      },
+      "flags_le0": {
+        "role": "sensitivity of flags (<= 0 ms direct free-kick window)",
+        "values": [
+          "sn_direct_fk_le0",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s"
+        ],
+        "design": [
+          "xa_sn_direct_fk_le0",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s"
+        ]
+      },
+      "Xq": {
+        "role": "descriptive: quality-like, may carry broadcast/annotation artefacts",
+        "values": [
+          "n_keypoints@0",
+          "kp_instance_conf@0",
+          "n_players@0",
+          "player_h_med_px@0",
+          "px_per_m@0",
+          "box_share@0",
+          "ball_ok@0",
+          "ball_fallback@0",
+          "shot_from_ball@0",
+          "n_keypoints@-400",
+          "kp_instance_conf@-400",
+          "n_players@-400",
+          "player_h_med_px@-400",
+          "px_per_m@-400",
+          "box_share@-400",
+          "ball_ok@-400",
+          "ball_fallback@-400",
+          "shot_from_ball@-400"
+        ],
+        "design": [
+          "xa_n_keypoints@0",
+          "xa_kp_instance_conf@0",
+          "xa_n_players@0",
+          "xa_player_h_med_px@0",
+          "xa_px_per_m@0",
+          "xa_box_share@0",
+          "xa_ball_ok@0",
+          "xa_ball_fallback@0",
+          "xa_shot_from_ball@0",
+          "xa_n_keypoints@-400",
+          "xa_kp_instance_conf@-400",
+          "xa_n_players@-400",
+          "xa_player_h_med_px@-400",
+          "xa_px_per_m@-400",
+          "xa_box_share@-400",
+          "xa_ball_ok@-400",
+          "xa_ball_fallback@-400",
+          "xa_shot_from_ball@-400",
+          "xa_kp_instance_conf_missing@0",
+          "xa_player_h_med_px_missing@0",
+          "xa_px_per_m_missing@0",
+          "xa_box_share_missing@0",
+          "xa_kp_instance_conf_missing@-400",
+          "xa_player_h_med_px_missing@-400",
+          "xa_px_per_m_missing@-400",
+          "xa_box_share_missing@-400"
+        ]
+      },
+      "Q": {
+        "role": "known baseline (xg-dino BQ / CQ), descriptive",
+        "values": [
+          "ball_none@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "frame_missing@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "shot_masked@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "frame_missing@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400"
+        ],
+        "design": [
+          "ball_none@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "frame_missing@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "shot_masked@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "frame_missing@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400"
+        ]
+      }
+    },
+    "xa_allowlist": [
+      "xa_ball_above@-400",
+      "xa_ball_above@0",
+      "xa_ball_above_missing@-400",
+      "xa_ball_above_missing@0",
+      "xa_ball_dist_rel@-400",
+      "xa_ball_dist_rel@0",
+      "xa_ball_dist_rel_missing@-400",
+      "xa_ball_dist_rel_missing@0",
+      "xa_ball_fallback@-400",
+      "xa_ball_fallback@0",
+      "xa_ball_fallback_missing@-400",
+      "xa_ball_fallback_missing@0",
+      "xa_ball_height_rel@-400",
+      "xa_ball_height_rel@0",
+      "xa_ball_height_rel_missing@-400",
+      "xa_ball_height_rel_missing@0",
+      "xa_ball_ok@-400",
+      "xa_ball_ok@0",
+      "xa_ball_ok_missing@-400",
+      "xa_ball_ok_missing@0",
+      "xa_ball_own@-400",
+      "xa_ball_own@0",
+      "xa_ball_own_missing@-400",
+      "xa_ball_own_missing@0",
+      "xa_box_attackers@-400",
+      "xa_box_attackers@0",
+      "xa_box_attackers_missing@-400",
+      "xa_box_attackers_missing@0",
+      "xa_box_players@-400",
+      "xa_box_players@0",
+      "xa_box_players_missing@-400",
+      "xa_box_players_missing@0",
+      "xa_box_share@-400",
+      "xa_box_share@0",
+      "xa_box_share_missing@-400",
+      "xa_box_share_missing@0",
+      "xa_kp_instance_conf@-400",
+      "xa_kp_instance_conf@0",
+      "xa_kp_instance_conf_missing@-400",
+      "xa_kp_instance_conf_missing@0",
+      "xa_motion_box_change",
+      "xa_motion_box_change_missing",
+      "xa_motion_gk_disp_m",
+      "xa_motion_gk_disp_m_missing",
+      "xa_motion_shot_disp_m",
+      "xa_motion_shot_disp_m_missing",
+      "xa_n_keypoints@-400",
+      "xa_n_keypoints@0",
+      "xa_n_keypoints_missing@-400",
+      "xa_n_keypoints_missing@0",
+      "xa_n_players@-400",
+      "xa_n_players@0",
+      "xa_n_players_missing@-400",
+      "xa_n_players_missing@0",
+      "xa_near5_players@-400",
+      "xa_near5_players@0",
+      "xa_near5_players_missing@-400",
+      "xa_near5_players_missing@0",
+      "xa_player_h_med_px@-400",
+      "xa_player_h_med_px@0",
+      "xa_player_h_med_px_missing@-400",
+      "xa_player_h_med_px_missing@0",
+      "xa_px_per_m@-400",
+      "xa_px_per_m@0",
+      "xa_px_per_m_missing@-400",
+      "xa_px_per_m_missing@0",
+      "xa_shooter_aspect@-400",
+      "xa_shooter_aspect@0",
+      "xa_shooter_aspect_missing@-400",
+      "xa_shooter_aspect_missing@0",
+      "xa_shooter_h_px@-400",
+      "xa_shooter_h_px@0",
+      "xa_shooter_h_px_missing@-400",
+      "xa_shooter_h_px_missing@0",
+      "xa_shooter_h_rel@-400",
+      "xa_shooter_h_rel@0",
+      "xa_shooter_h_rel_missing@-400",
+      "xa_shooter_h_rel_missing@0",
+      "xa_shooter_overlap@-400",
+      "xa_shooter_overlap@0",
+      "xa_shooter_overlap_missing@-400",
+      "xa_shooter_overlap_missing@0",
+      "xa_shot_from_ball@-400",
+      "xa_shot_from_ball@0",
+      "xa_shot_from_ball_missing@-400",
+      "xa_shot_from_ball_missing@0",
+      "xa_sn_corner_20s",
+      "xa_sn_corner_20s_missing",
+      "xa_sn_direct_fk",
+      "xa_sn_direct_fk_le0",
+      "xa_sn_direct_fk_le0_missing",
+      "xa_sn_direct_fk_missing",
+      "xa_sn_indirect_fk_3s",
+      "xa_sn_indirect_fk_3s_missing",
+      "xa_sn_team_unknown",
+      "xa_sn_team_unknown_missing"
+    ],
+    "arms": {
+      "B": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "confirmatory"
+      },
+      "C": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "confirmatory"
+      },
+      "BQ": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "ball_none@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [
+          "frame_missing@0",
+          "shot_masked@0",
+          "frame_missing@-400"
+        ],
+        "role": "descriptive"
+      },
+      "CQ": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "ball_none@0",
+          "ball_own@0",
+          "ball_m400@0",
+          "ball_m800@0",
+          "shot_from_ball@0",
+          "shooter_by_net@0",
+          "kp_instance_conf@0",
+          "kp_conf_missing@0",
+          "n_keypoints@0",
+          "n_players@0",
+          "homography_ok@0",
+          "shooter_ok@0",
+          "teams_ok@0",
+          "gk_ok@0",
+          "gk_detected@0",
+          "gk_proxy@0",
+          "gk_masked@0",
+          "n_valid@0",
+          "n_masked@0",
+          "ball_none@-400",
+          "ball_own@-400",
+          "ball_m800@-400",
+          "shot_from_ball@-400",
+          "shooter_by_net@-400",
+          "kp_instance_conf@-400",
+          "kp_conf_missing@-400",
+          "n_keypoints@-400",
+          "n_players@-400",
+          "homography_ok@-400",
+          "shooter_ok@-400",
+          "teams_ok@-400",
+          "gk_ok@-400",
+          "gk_detected@-400",
+          "gk_proxy@-400",
+          "shot_masked@-400",
+          "gk_masked@-400",
+          "n_valid@-400",
+          "n_masked@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [
+          "frame_missing@0",
+          "shot_masked@0",
+          "frame_missing@-400"
+        ],
+        "role": "descriptive"
+      },
+      "B+Xc": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400",
+          "xa_ball_above_missing@0",
+          "xa_ball_above_missing@-400",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "primary (single test)"
+      },
+      "C+Xc": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400",
+          "xa_ball_above_missing@0",
+          "xa_ball_above_missing@-400",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "primary (single test)"
+      },
+      "B+crowding": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+crowding": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_box_players@0",
+          "xa_near5_players@0",
+          "xa_box_attackers@0",
+          "xa_box_players@-400",
+          "xa_near5_players@-400",
+          "xa_box_attackers@-400",
+          "xa_box_players_missing@0",
+          "xa_box_attackers_missing@0",
+          "xa_box_players_missing@-400",
+          "xa_box_attackers_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+shooter": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+shooter": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_shooter_h_px@0",
+          "xa_shooter_aspect@0",
+          "xa_shooter_h_rel@0",
+          "xa_shooter_overlap@0",
+          "xa_shooter_h_px@-400",
+          "xa_shooter_aspect@-400",
+          "xa_shooter_h_rel@-400",
+          "xa_shooter_overlap@-400",
+          "xa_shooter_h_px_missing@0",
+          "xa_shooter_h_px_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+ball_t0": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_above_missing@0",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+ball_t0": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_ball_own@0",
+          "xa_ball_above@0",
+          "xa_ball_height_rel@0",
+          "xa_ball_dist_rel@0",
+          "xa_ball_above_missing@0",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+ball_m400": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_ball_above_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+ball_m400": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_ball_own@-400",
+          "xa_ball_above@-400",
+          "xa_ball_height_rel@-400",
+          "xa_ball_dist_rel@-400",
+          "xa_ball_above_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+motion": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+motion": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_motion_shot_disp_m",
+          "xa_motion_gk_disp_m",
+          "xa_motion_box_change",
+          "xa_motion_shot_disp_m_missing",
+          "xa_motion_gk_disp_m_missing",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+flags": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "C+flags": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_sn_direct_fk",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "content family (Holm)"
+      },
+      "B+flags_le0": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_sn_direct_fk_le0",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "sensitivity of flags (<= 0 ms direct free-kick window)"
+      },
+      "C+flags_le0": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_sn_direct_fk_le0",
+          "xa_sn_indirect_fk_3s",
+          "xa_sn_corner_20s",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "sensitivity of flags (<= 0 ms direct free-kick window)"
+      },
+      "B+Xq": {
+        "columns": [
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_n_keypoints@0",
+          "xa_kp_instance_conf@0",
+          "xa_n_players@0",
+          "xa_player_h_med_px@0",
+          "xa_px_per_m@0",
+          "xa_box_share@0",
+          "xa_ball_ok@0",
+          "xa_ball_fallback@0",
+          "xa_shot_from_ball@0",
+          "xa_n_keypoints@-400",
+          "xa_kp_instance_conf@-400",
+          "xa_n_players@-400",
+          "xa_player_h_med_px@-400",
+          "xa_px_per_m@-400",
+          "xa_box_share@-400",
+          "xa_ball_ok@-400",
+          "xa_ball_fallback@-400",
+          "xa_shot_from_ball@-400",
+          "xa_kp_instance_conf_missing@0",
+          "xa_player_h_med_px_missing@0",
+          "xa_px_per_m_missing@0",
+          "xa_box_share_missing@0",
+          "xa_kp_instance_conf_missing@-400",
+          "xa_player_h_med_px_missing@-400",
+          "xa_px_per_m_missing@-400",
+          "xa_box_share_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [],
+        "dropped_zero_variance": [],
+        "role": "descriptive: quality-like, may carry broadcast/annotation artefacts"
+      },
+      "C+Xq": {
+        "columns": [
+          "z_g_combo",
+          "angle@0",
+          "shot_x@0",
+          "shot_missing@0",
+          "ff_def_cone@0",
+          "ff_def_cone_missing@0",
+          "def_cone_ge1@0",
+          "def_cone_ge1_missing@0",
+          "def_cone_ge2@0",
+          "def_cone_ge2_missing@0",
+          "ff_near_opp@0",
+          "ff_near_opp_missing@0",
+          "ff_opp_3m@0",
+          "ff_opp_3m_missing@0",
+          "gk_depth@0",
+          "gk_depth_missing@0",
+          "gk_off_line_abs@0",
+          "gk_off_line_abs_missing@0",
+          "gk_dist_net@0",
+          "gk_dist_net_missing@0",
+          "dist@-400",
+          "angle@-400",
+          "shot_x@-400",
+          "shot_missing@-400",
+          "ff_def_cone@-400",
+          "ff_def_cone_missing@-400",
+          "def_cone_ge1@-400",
+          "def_cone_ge1_missing@-400",
+          "def_cone_ge2@-400",
+          "def_cone_ge2_missing@-400",
+          "ff_near_opp@-400",
+          "ff_near_opp_missing@-400",
+          "ff_opp_3m@-400",
+          "ff_opp_3m_missing@-400",
+          "gk_depth@-400",
+          "gk_depth_missing@-400",
+          "gk_off_line_abs@-400",
+          "gk_off_line_abs_missing@-400",
+          "gk_dist_net@-400",
+          "gk_dist_net_missing@-400",
+          "xa_n_keypoints@0",
+          "xa_kp_instance_conf@0",
+          "xa_n_players@0",
+          "xa_player_h_med_px@0",
+          "xa_px_per_m@0",
+          "xa_box_share@0",
+          "xa_ball_ok@0",
+          "xa_ball_fallback@0",
+          "xa_shot_from_ball@0",
+          "xa_n_keypoints@-400",
+          "xa_kp_instance_conf@-400",
+          "xa_n_players@-400",
+          "xa_player_h_med_px@-400",
+          "xa_px_per_m@-400",
+          "xa_box_share@-400",
+          "xa_ball_ok@-400",
+          "xa_ball_fallback@-400",
+          "xa_shot_from_ball@-400",
+          "xa_kp_instance_conf_missing@0",
+          "xa_player_h_med_px_missing@0",
+          "xa_px_per_m_missing@0",
+          "xa_box_share_missing@0",
+          "xa_kp_instance_conf_missing@-400",
+          "xa_player_h_med_px_missing@-400",
+          "xa_px_per_m_missing@-400",
+          "xa_box_share_missing@-400",
+          "dist@0_ns1",
+          "dist@0_ns2",
+          "dist@0_ns3"
+        ],
+        "spline": [
+          "dist@0"
+        ],
+        "df": 3,
+        "unpenalised": [
+          "z_g_combo"
+        ],
+        "dropped_zero_variance": [],
+        "role": "descriptive: quality-like, may carry broadcast/annotation artefacts"
+      }
+    },
+    "model": {
+      "as": "xg-dino (ablation.model_for, C_GRID, inner CV over the other host folds, no extra Platt layer)",
+      "c_grid": [
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01,
+        0.03,
+        0.1,
+        0.3,
+        1.0,
+        3.0,
+        10.0,
+        30.0,
+        100.0
+      ],
+      "bootstrap": {
+        "draws": 2000,
+        "seed": 0,
+        "unit": "match"
+      }
+    },
+    "contract": {
+      "statistics": {
+        "G": "LL_B - LL_C",
+        "G_X": "LL_{B+X} - LL_{C+X}",
+        "R": "G - G_X",
+        "gain": "LL_{B+X} - LL_B"
+      },
+      "verdicts": {
+        "explains most": "gain Holm-rejected and its one-sided 95% upper bound < 0 and the 5th percentile of R - 0.5 G > 0",
+        "explains part": "the same with R - 0.25 G",
+        "does not explain": "95th percentile of R - 0.25 G < 0",
+        "inconclusive": "otherwise; not evidence against"
+      },
+      "holm": {
+        "family": [
+          "crowding",
+          "shooter",
+          "ball_t0",
+          "ball_m400",
+          "motion",
+          "flags"
+        ],
+        "alpha": 0.05,
+        "primary": "Xc single test at 0.05",
+        "flags_le0": "the family's Holm with flags_le0 in place of flags",
+        "descriptive": "Xq and Q unadjusted"
+      },
+      "boundary_gate": "'does not explain' only if the false 'does not explain' rate at the planted R = 0.25 G (Xc controls) <= 0.05; else it reads 'inconclusive' (raw verdict beside); evaluated from the validation record below",
+      "ratio": "R / G unclipped, the draws' 2.5 / 97.5 percentiles, reportable only when G's 95% interval excludes 0; draws with G <= 0 counted",
+      "c_minus_bx": "C1 wording: 'DINOv2 adds' if the one-sided 95% upper bound < 0; else equivalent at \u03b4 = 0.002 (90% interval inside \u00b1\u03b4); else inconclusive, smallest margin shown",
+      "wording": "predictive redundancy with DINOv2, never causal identification"
+    },
+    "leak": {
+      "estimands": [
+        "no_v3 (restricted)",
+        "unseen (restricted)",
+        "unseen standardised to the primary goal rate"
+      ],
+      "statistics": [
+        "R",
+        "gain",
+        "C-BX"
+      ],
+      "heterogeneity": {
+        "seen-unseen": [
+          "seen",
+          "unseen"
+        ],
+        "v3-no_v3": [
+          "v3",
+          "no_v3"
+        ]
+      },
+      "verdict": "'not decidable' if a heterogeneity 95% interval excludes 0 or the no_v3 95% interval excludes the primary point; else 'decidable' (ablation.leak_verdict)",
+      "limits": "these controls cannot resolve small attenuations"
+    },
+    "subgroups": {
+      "confirmatory": [
+        "header_gpt",
+        "set_piece"
+      ],
+      "holm_alpha": 0.05,
+      "test": "two-sided, in - out",
+      "terciles": {
+        "distance": {
+          "column": "dist@0",
+          "boundaries": [
+            13.549641142344298,
+            21.354760140351043
+          ],
+          "rule": "bottom x <= q1/3, top x > q2/3, contrast top - bottom"
+        },
+        "crowding": {
+          "column": "box_players@0",
+          "boundaries": [
+            6.0,
+            10.0
+          ],
+          "rule": "bottom x <= q1/3, top x > q2/3, contrast top - bottom"
+        },
+        "framing": {
+          "column": "px_per_m@0",
+          "boundaries": [
+            18.510450197886716,
+            22.44134551790302
+          ],
+          "rule": "bottom x <= q1/3, top x > q2/3, contrast top - bottom"
+        }
+      },
+      "descriptive": [
+        "distance_tercile",
+        "crowding_tercile",
+        "framing_tercile",
+        "header_caption",
+        "ball_detected",
+        "gk_detected",
+        "timing_le50",
+        "cut_between_anchor"
+      ],
+      "min_support": 100,
+      "header_gpt": "head vs foot on the GPT sample, stratum-weighted",
+      "timing_bands_ms": [
+        50.0,
+        200.0
+      ],
+      "d": "per-shot \u2113_C - \u2113_B of the run's B and C, which replay results/xgdino_ablation/real on the real labels (max |\u0394p| reported)"
+    },
+    "masking": {
+      "family": [
+        "shooter",
+        "goalkeeper",
+        "ball",
+        "shooter+ball",
+        "goal"
+      ],
+      "descriptive": [
+        "players",
+        "background"
+      ],
+      "keep_only": {
+        "keep_shooter_ball": [
+          "shooter",
+          "ball"
+        ],
+        "keep_persons": [
+          "players"
+        ],
+        "keep_goal": [
+          "goal"
+        ]
+      },
+      "fills": {
+        "mean": "the frame's mean colour (primary)",
+        "blur": "a blur fill (agreement check)",
+        "disagreement": "the two fills differ in the Holm decision -> inconclusive"
+      },
+      "estimands": {
+        "refit": "C refitted (same folds, inner CV, penalties) with z_g_combo replaced by the masked z, geometry fixed: information left (primary)",
+        "frozen": "the fitted C fold models applied to the masked z: reliance of the deployed model"
+      },
+      "test": "per region: d1 = \u0394LL(masked - unmasked), d2 = \u0394LL(masked - placebo); one-sided p_i = (1 + #{draws <= 0}) / (B + 1) (degradation > 0); p = max(p1, p2); Holm over the family at 0.05; positive = 'sensitivity to the intervention', not proof of what DINOv2 uses",
+      "placebo": "the region's patch mask translated (ticket 09: y-band \u00b11 patch row, on the pitch, off persons, ball and goal), 3 seeded draws; the per-shot log-loss is averaged over the draws",
+      "shooter+ball": "the union of the stored shooter and ball masks, present when both are; its placebos: regions.placebos(union, allowed, regions.rng_for(shot_id, 'shooter+ball')) with ticket 09's allowed patches (replayed in ticket 14)",
+      "population": "shots with the region present (primary; others keep the unmasked frame); all shots descriptive; goal tested on its placebo-feasible subset only (labelled); a shot without a valid placebo is out of the test population of its region",
+      "gain_left": "(LL_B - LL_C_mask) / (LL_B - LL_C), point and the draws' 95% interval",
+      "a_rows": "A_mask - A descriptive",
+      "size_bins": "read-outs binned by region size in patches (terciles of the present shots, frozen at the read-out)",
+      "overlap": "the pairwise region overlap matrix (`region_overlap`): ball vs shooter and goal vs goalkeeper are not separable by remove-masks alone"
+    },
+    "probes": {
+      "targets": {
+        "quality": [
+          "n_keypoints@0",
+          "kp_instance_conf@0",
+          "n_players@0",
+          "player_h_med_px@0",
+          "px_per_m@0",
+          "box_share@0",
+          "ball_ok@0",
+          "ball_fallback@0",
+          "shot_from_ball@0",
+          "n_keypoints@-400",
+          "kp_instance_conf@-400",
+          "n_players@-400",
+          "player_h_med_px@-400",
+          "px_per_m@-400",
+          "box_share@-400",
+          "ball_ok@-400",
+          "ball_fallback@-400",
+          "shot_from_ball@-400"
+        ],
+        "crowding": [
+          "box_players@0",
+          "near5_players@0",
+          "box_attackers@0",
+          "box_players@-400",
+          "near5_players@-400",
+          "box_attackers@-400"
+        ],
+        "shooter": [
+          "shooter_h_px@0",
+          "shooter_aspect@0",
+          "shooter_h_rel@0",
+          "shooter_overlap@0",
+          "shooter_h_px@-400",
+          "shooter_aspect@-400",
+          "shooter_h_rel@-400",
+          "shooter_overlap@-400"
+        ],
+        "ball_t0": [
+          "ball_own@0",
+          "ball_above@0",
+          "ball_height_rel@0",
+          "ball_dist_rel@0"
+        ],
+        "ball_m400": [
+          "ball_own@-400",
+          "ball_above@-400",
+          "ball_height_rel@-400",
+          "ball_dist_rel@-400"
+        ],
+        "motion": [
+          "motion_shot_disp_m",
+          "motion_gk_disp_m",
+          "motion_box_change"
+        ],
+        "flags": [
+          "sn_direct_fk",
+          "sn_indirect_fk_3s",
+          "sn_corner_20s",
+          "sn_direct_fk_le0",
+          "set_piece"
+        ],
+        "header": [
+          "header_gpt",
+          "header_caption"
+        ],
+        "z_diff": [
+          "z_C_minus_z_B"
+        ]
+      },
+      "primary_label": "header_gpt (GPT-6.1 Sol low on the 1,000-shot sample; unclear missing); metrics weighted by the stratum weights (primary), unweighted beside; reported by outcome",
+      "secondary_label": "header_caption: header 1, foot 0, unknown missing; reported by outcome",
+      "set_piece": "any of sn_direct_fk, sn_indirect_fk_3s, sn_corner_20s",
+      "z_diff": "logit p_C - logit p_B of the frozen xg-dino OOF (results/xgdino_ablation/real), alone and beyond geometry (the geometry design of B vs geometry + embedding, incremental held-out R\u00b2)",
+      "kind": "binary when every finite value is 0 or 1 (AUC), else continuous / count (R\u00b2, MAE)",
+      "encoders": "frozen DINOv2 and G-combo blocks 20-23 (five-fold-model routing, C1), offsets 0 and -400 ms",
+      "rules": "C2 thresholds unchanged (xg-dino protocol fd142d15...: encodes beyond distance \u0394R\u00b2 >= 0.05 / \u0394AUC >= 0.03 with 95% lower bound > 0; readable R\u00b2 >= 0.30 / AUC >= 0.70); nested layer selection; BH at q = 0.05 within each family (target x encoder x offset); the header probe's 'encoded beyond distance' is a readability statement only",
+      "labels_barred": "header_gpt and header_caption are probe targets and subgroup keys only (labels.assert_not_design)"
+    },
+    "disclosures": [
+      "Development comparisons on the 328 training matches, out of fold; not an independent test (172 matches spent).",
+      "C6 optimism (C1): G-combo's epoch and temperature were chosen on each scored fold, so C and C+X carry optimism that B and B+X do not. G = LL_B - LL_C and C - (B+X) are tilted toward 'DINOv2 adds'; R_X = G - G_X compares two differences that both carry it, so the tilt partly cancels but is not removed.",
+      "Verdicts state predictive redundancy with DINOv2, never causal identification of what DINOv2 uses.",
+      "The quality-like block Xq and xg-dino's Q may carry broadcast / annotation artefacts (C1 named Q an outcome-correlated channel); their read-outs are descriptive. BQ - B = -0.0065 (67% of C - B) is the known baseline.",
+      "SoccerNet flags are retrospective context; sn_direct_fk reaches +300 ms; the <= 0 ms window is the sensitivity (C3.3). t0 is not certified pre-contact: if only ball_t0 / motion close the gap the wording is 'ball flight / post-contact', not 'body part'.",
+      "Motion is present on 39% of shots (identity rule: mutual nearest within 4 m); missing values are mean-filled with an indicator, so the motion block also carries 'motion measurable'.",
+      "The leak controls (no_v3 1,028 shots, unseen 3,249 shots with 5% goals) cannot resolve small attenuations.",
+      "Header labels (caption, GPT) are noisy measurements; caption precision against GPT differs by outcome (goal 0.82, no goal 0.62), so caption-based reads are outcome-dependent; GPT is primary.",
+      "The control truths are label-free (z's projection on the geometry and Xc designs), with the planted G set to xg-dino's observed C - B (0.0097); the null puts the whole image signal outside span(B, Xc), so every content block is null at once.",
+      "Refitted-subset leak estimates are not computed (C1: descriptive only); the restricted estimands carry the verdict.",
+      "The controls show the recovered R_X biased low out of fold (B+X recovers less of the image signal than its oracle, most for the wide Xc block); 'does not explain' is therefore gated by its boundary control (boundary_gate) and 'explains part / most' are conservative."
+    ],
+    "validation": {
+      "controls": {
+        "path": "results/xgdino_info_protocol/controls_r1000",
+        "complete_sha256": "c147061891e32146815a97a3276e18da3c7e78f51c4b730ba2cbe564f04505ef",
+        "replicates": 1000,
+        "seeds": {
+          "null": 30611,
+          "plant25": 30612,
+          "plant50": 30613
+        },
+        "truth": {
+          "scenarios": {
+            "null": {
+              "fraction": null,
+              "a": 0.0,
+              "b": 0.4554142168138039,
+              "oracle": {
+                "G": 0.009700000000733622,
+                "G_X": 0.010677958803639698,
+                "R": -0.000977958802906076,
+                "gain": -7.433543821638855e-05
+              }
+            },
+            "plant25": {
+              "fraction": 0.25,
+              "a": 0.6622642236609272,
+              "b": 0.37408985509475173,
+              "oracle": {
+                "G": 0.009700005547419843,
+                "G_X": 0.007275005967491033,
+                "R": 0.0024249995799288104,
+                "gain": -0.0028425734135364422
+              }
+            },
+            "plant50": {
+              "fraction": 0.5,
+              "a": 1.2637058495606446,
+              "b": 0.3064272196503299,
+              "oracle": {
+                "G": 0.00970000007138927,
+                "G_X": 0.004849997959811669,
+                "R": 0.0048500021115776,
+                "gain": -0.009349628585614
+              }
+            }
+          },
+          "g_target": 0.0097,
+          "goal_rate": 0.1277258566978193,
+          "cluster_sd": 0.25,
+          "design_ranks": {
+            "B": 32,
+            "C": 33,
+            "BX": 66,
+            "CX": 67
+          }
+        },
+        "scenarios": {
+          "null": {
+            "replicates": 1000,
+            "oracle": {
+              "G": 0.009700000000733622,
+              "G_X": 0.010677958803639698,
+              "R": -0.000977958802906076,
+              "gain": -7.433543821638855e-05
+            },
+            "blocks": {
+              "Xc": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.0021768591124138,
+                "mean_gain": 0.0017101491668887801,
+                "mean_part_lower": -0.00639003560856
+              },
+              "crowding": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.001,
+                  "mc_se": 0.0009994998749374609,
+                  "wilson95": [
+                    0.00017654637062607809,
+                    0.0056425585979579355
+                  ],
+                  "count": 1
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.00076802006923898,
+                "mean_gain": 0.000387059026077389,
+                "mean_part_lower": -0.00462234947464
+              },
+              "shooter": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.0007055136497676999,
+                "mean_gain": 0.0006311620048997151,
+                "mean_part_lower": -0.0046340478178299995
+              },
+              "ball_t0": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.0003765640774225294,
+                "mean_gain": 0.000346545077085184,
+                "mean_part_lower": -0.00418606641446
+              },
+              "ball_m400": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.00045919188403771306,
+                "mean_gain": 0.0003900551430267569,
+                "mean_part_lower": -0.0042835411052199995
+              },
+              "motion": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.000408806302762644,
+                "mean_gain": 0.00038325674314432,
+                "mean_part_lower": -0.004230697871069999
+              },
+              "flags": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "does not explain": {
+                    "rate": 1.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      0.996173241514445,
+                      1.0
+                    ],
+                    "count": 1000
+                  },
+                  "inconclusive": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.0,
+                  "mc_se": 0.0,
+                  "wilson95": [
+                    2.168404344971009e-19,
+                    0.0038267584855551234
+                  ],
+                  "count": 0
+                },
+                "gain_rejected": {
+                  "rate": 0.002,
+                  "mc_se": 0.0014127986409959489,
+                  "wilson95": [
+                    0.000548643588120728,
+                    0.007262807863492177
+                  ],
+                  "count": 2
+                },
+                "mean_G": 0.01136891065248,
+                "mean_R": -0.00034977850433587506,
+                "mean_gain": 0.00025200348815587005,
+                "mean_part_lower": -0.00412677288745
+              }
+            },
+            "family_false_part_or_most": {
+              "rate": 0.0,
+              "mc_se": 0.0,
+              "wilson95": [
+                2.168404344971009e-19,
+                0.0038267584855551234
+              ],
+              "count": 0
+            },
+            "grid_edge_share": {
+              "B": 0.0,
+              "C": 0.177
+            },
+            "fraction": null,
+            "a": 0.0,
+            "b": 0.4554142168138039
+          },
+          "plant25": {
+            "replicates": 1000,
+            "oracle": {
+              "G": 0.009700005547419843,
+              "G_X": 0.007275005967491033,
+              "R": 0.0024249995799288104,
+              "gain": -0.0028425734135364422
+            },
+            "blocks": {
+              "Xc": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "explains part": {
+                    "rate": 0.001,
+                    "mc_se": 0.0009994998749374609,
+                    "wilson95": [
+                      0.00017654637062607809,
+                      0.0056425585979579355
+                    ],
+                    "count": 1
+                  },
+                  "does not explain": {
+                    "rate": 0.598,
+                    "mc_se": 0.015504708962118573,
+                    "wilson95": [
+                      0.5672921888971421,
+                      0.6279577664396891
+                    ],
+                    "count": 598
+                  },
+                  "inconclusive": {
+                    "rate": 0.401,
+                    "mc_se": 0.015498354751392161,
+                    "wilson95": [
+                      0.37105844196706284,
+                      0.43169925621307714
+                    ],
+                    "count": 401
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.001,
+                  "mc_se": 0.0009994998749374609,
+                  "wilson95": [
+                    0.00017654637062607809,
+                    0.0056425585979579355
+                  ],
+                  "count": 1
+                },
+                "gain_rejected": {
+                  "rate": 0.229,
+                  "mc_se": 0.013287550564344055,
+                  "wilson95": [
+                    0.20402312975052514,
+                    0.25605097334864574
+                  ],
+                  "count": 229
+                },
+                "mean_G": 0.01134747257531,
+                "mean_R": 0.00103026439337115,
+                "mean_gain": -0.0009044492046641999,
+                "mean_part_lower": -0.0033571818772566
+              }
+            },
+            "grid_edge_share": {
+              "B": 0.0,
+              "C": 0.15280000000000002
+            },
+            "fraction": 0.25,
+            "a": 0.6622642236609272,
+            "b": 0.37408985509475173
+          },
+          "plant50": {
+            "replicates": 1000,
+            "oracle": {
+              "G": 0.00970000007138927,
+              "G_X": 0.004849997959811669,
+              "R": 0.0048500021115776,
+              "gain": -0.009349628585614
+            },
+            "blocks": {
+              "Xc": {
+                "rates": {
+                  "explains most": {
+                    "rate": 0.007,
+                    "mc_se": 0.0026364749192814255,
+                    "wilson95": [
+                      0.0033948684009907646,
+                      0.014378315465766588
+                    ],
+                    "count": 7
+                  },
+                  "explains part": {
+                    "rate": 0.826,
+                    "mc_se": 0.011988494484296184,
+                    "wilson95": [
+                      0.8012673037329014,
+                      0.8482376497345165
+                    ],
+                    "count": 826
+                  },
+                  "does not explain": {
+                    "rate": 0.0,
+                    "mc_se": 0.0,
+                    "wilson95": [
+                      2.168404344971009e-19,
+                      0.0038267584855551234
+                    ],
+                    "count": 0
+                  },
+                  "inconclusive": {
+                    "rate": 0.167,
+                    "mc_se": 0.01179453263168999,
+                    "wilson95": [
+                      0.14516656150470994,
+                      0.1913820596466698
+                    ],
+                    "count": 167
+                  }
+                },
+                "false_part_or_most": {
+                  "rate": 0.833,
+                  "mc_se": 0.01179453263168999,
+                  "wilson95": [
+                    0.8086179403533302,
+                    0.85483343849529
+                  ],
+                  "count": 833
+                },
+                "gain_rejected": {
+                  "rate": 0.996,
+                  "mc_se": 0.0019959959919799443,
+                  "wilson95": [
+                    0.9897604437227377,
+                    0.9984434118595916
+                  ],
+                  "count": 996
+                },
+                "mean_G": 0.01125101522017,
+                "mean_R": 0.005075513094709999,
+                "mean_gain": -0.0071392939196299994,
+                "mean_part_lower": 0.0008080684633398601
+              }
+            },
+            "grid_edge_share": {
+              "B": 0.0004,
+              "C": 0.1576
+            },
+            "fraction": 0.5,
+            "a": 1.2637058495606446,
+            "b": 0.3064272196503299
+          }
+        },
+        "gates": {
+          "null_false_part_Xc": 0.0,
+          "null_false_part_family": 0.0,
+          "limit": 0.05,
+          "boundary_false_part_Xc": 0.001,
+          "boundary_false_not_explain_Xc": 0.598,
+          "passed": true,
+          "not_explain_available": false
+        }
+      }
+    },
+    "boundary_gate": {
+      "rate": 0.598,
+      "limit": 0.05,
+      "available": false,
+      "rule": "'does not explain' only if the false 'does not explain' rate at the plant R = 0.25 G (Xc) <= 0.05; else every 'does not explain' reads 'inconclusive' (the raw verdict reported beside)"
+    },
+    "region_overlap": [
+      {
+        "a": "shooter",
+        "b": "shooter",
+        "shots": 6967,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "shooter",
+        "b": "goalkeeper",
+        "shots": 6276,
+        "share_of_a_in_b": 0.071133,
+        "jaccard": 0.049451
+      },
+      {
+        "a": "shooter",
+        "b": "ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.522449,
+        "jaccard": 0.502014
+      },
+      {
+        "a": "shooter",
+        "b": "shooter+ball",
+        "shots": 4331,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 0.956826
+      },
+      {
+        "a": "shooter",
+        "b": "goal",
+        "shots": 6339,
+        "share_of_a_in_b": 0.080385,
+        "jaccard": 0.032932
+      },
+      {
+        "a": "shooter",
+        "b": "players",
+        "shots": 6967,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 0.124841
+      },
+      {
+        "a": "shooter",
+        "b": "background",
+        "shots": 6967,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "goalkeeper",
+        "b": "shooter",
+        "shots": 6276,
+        "share_of_a_in_b": 0.073996,
+        "jaccard": 0.049451
+      },
+      {
+        "a": "goalkeeper",
+        "b": "goalkeeper",
+        "shots": 6276,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "goalkeeper",
+        "b": "ball",
+        "shots": 3892,
+        "share_of_a_in_b": 0.036428,
+        "jaccard": 0.029465
+      },
+      {
+        "a": "goalkeeper",
+        "b": "shooter+ball",
+        "shots": 3892,
+        "share_of_a_in_b": 0.068928,
+        "jaccard": 0.042746
+      },
+      {
+        "a": "goalkeeper",
+        "b": "goal",
+        "shots": 6141,
+        "share_of_a_in_b": 0.724616,
+        "jaccard": 0.360041
+      },
+      {
+        "a": "goalkeeper",
+        "b": "players",
+        "shots": 6276,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 0.116114
+      },
+      {
+        "a": "goalkeeper",
+        "b": "background",
+        "shots": 6276,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "ball",
+        "b": "shooter",
+        "shots": 4331,
+        "share_of_a_in_b": 0.921392,
+        "jaccard": 0.502014
+      },
+      {
+        "a": "ball",
+        "b": "goalkeeper",
+        "shots": 3892,
+        "share_of_a_in_b": 0.063956,
+        "jaccard": 0.029465
+      },
+      {
+        "a": "ball",
+        "b": "ball",
+        "shots": 4331,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "ball",
+        "b": "shooter+ball",
+        "shots": 4331,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 0.545188
+      },
+      {
+        "a": "ball",
+        "b": "goal",
+        "shots": 3925,
+        "share_of_a_in_b": 0.063214,
+        "jaccard": 0.016134
+      },
+      {
+        "a": "ball",
+        "b": "players",
+        "shots": 4331,
+        "share_of_a_in_b": 0.971764,
+        "jaccard": 0.068274
+      },
+      {
+        "a": "ball",
+        "b": "background",
+        "shots": 4331,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "shooter+ball",
+        "b": "shooter",
+        "shots": 4331,
+        "share_of_a_in_b": 0.956826,
+        "jaccard": 0.956826
+      },
+      {
+        "a": "shooter+ball",
+        "b": "goalkeeper",
+        "shots": 3892,
+        "share_of_a_in_b": 0.061606,
+        "jaccard": 0.042746
+      },
+      {
+        "a": "shooter+ball",
+        "b": "ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.545188,
+        "jaccard": 0.545188
+      },
+      {
+        "a": "shooter+ball",
+        "b": "shooter+ball",
+        "shots": 4331,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "shooter+ball",
+        "b": "goal",
+        "shots": 3925,
+        "share_of_a_in_b": 0.064677,
+        "jaccard": 0.027665
+      },
+      {
+        "a": "shooter+ball",
+        "b": "players",
+        "shots": 4331,
+        "share_of_a_in_b": 0.985723,
+        "jaccard": 0.13002
+      },
+      {
+        "a": "shooter+ball",
+        "b": "background",
+        "shots": 4331,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "goal",
+        "b": "shooter",
+        "shots": 6339,
+        "share_of_a_in_b": 0.040106,
+        "jaccard": 0.032932
+      },
+      {
+        "a": "goal",
+        "b": "goalkeeper",
+        "shots": 6141,
+        "share_of_a_in_b": 0.39795,
+        "jaccard": 0.360041
+      },
+      {
+        "a": "goal",
+        "b": "ball",
+        "shots": 3925,
+        "share_of_a_in_b": 0.017679,
+        "jaccard": 0.016134
+      },
+      {
+        "a": "goal",
+        "b": "shooter+ball",
+        "shots": 3925,
+        "share_of_a_in_b": 0.035555,
+        "jaccard": 0.027665
+      },
+      {
+        "a": "goal",
+        "b": "goal",
+        "shots": 6339,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "goal",
+        "b": "players",
+        "shots": 6339,
+        "share_of_a_in_b": 0.479933,
+        "jaccard": 0.092388
+      },
+      {
+        "a": "goal",
+        "b": "background",
+        "shots": 6339,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "players",
+        "b": "shooter",
+        "shots": 6967,
+        "share_of_a_in_b": 0.124841,
+        "jaccard": 0.124841
+      },
+      {
+        "a": "players",
+        "b": "goalkeeper",
+        "shots": 6276,
+        "share_of_a_in_b": 0.116114,
+        "jaccard": 0.116114
+      },
+      {
+        "a": "players",
+        "b": "ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.068402,
+        "jaccard": 0.068274
+      },
+      {
+        "a": "players",
+        "b": "shooter+ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.130364,
+        "jaccard": 0.13002
+      },
+      {
+        "a": "players",
+        "b": "goal",
+        "shots": 6339,
+        "share_of_a_in_b": 0.102195,
+        "jaccard": 0.092388
+      },
+      {
+        "a": "players",
+        "b": "players",
+        "shots": 7061,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      },
+      {
+        "a": "players",
+        "b": "background",
+        "shots": 7061,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "shooter",
+        "shots": 6967,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "goalkeeper",
+        "shots": 6276,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "shooter+ball",
+        "shots": 4331,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "goal",
+        "shots": 6339,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "players",
+        "shots": 7061,
+        "share_of_a_in_b": 0.0,
+        "jaccard": 0.0
+      },
+      {
+        "a": "background",
+        "b": "background",
+        "shots": 7062,
+        "share_of_a_in_b": 1.0,
+        "jaccard": 1.0
+      }
+    ],
+    "region_counts": {
+      "present": {
+        "background": 7062,
+        "ball": 4331,
+        "goal": 6339,
+        "goalkeeper": 6276,
+        "players": 7061,
+        "shooter": 6967
+      },
+      "placebo_feasible": {
+        "background": 0,
+        "ball": 4033,
+        "goal": 1495,
+        "goalkeeper": 4285,
+        "players": 14,
+        "shooter": 5173
+      }
+    },
+    "name_collisions": {
+      "share_equal": {
+        "ball_own@-400": 0.9766355140186916,
+        "ball_own@0": 0.43344661568960635,
+        "kp_instance_conf@-400": 1.0,
+        "kp_instance_conf@0": 1.0,
+        "n_keypoints@-400": 1.0,
+        "n_keypoints@0": 1.0,
+        "n_players@-400": 1.0,
+        "n_players@0": 1.0,
+        "shot_from_ball@-400": 0.9994335882186349,
+        "shot_from_ball@0": 0.9629000283205891,
+        "sn_corner_20s": 1.0,
+        "sn_direct_fk": 1.0,
+        "sn_indirect_fk_3s": 1.0,
+        "sn_team_unknown": 1.0
+      },
+      "rule": "Xa design columns are namespaced xa_<name>"
+    },
+    "dry_run": {
+      "labels": "permuted within matches (seed 0)",
+      "role": "diagnostic only (C3.8)",
+      "masking": "label-free stand-in masked z = z + N(0, 0.5\u00b2) on the region's shots"
+    },
+    "counts": {
+      "primary": {
+        "shots": 7062,
+        "matches": 328
+      },
+      "no_v3": {
+        "shots": 1028,
+        "matches": 47
+      },
+      "unseen": {
+        "shots": 3249,
+        "matches": 326
+      },
+      "populations": {
+        "primary": {
+          "shots": 7062,
+          "matches": 328,
+          "folds": 5,
+          "shots_per_fold": {
+            "0": 1434,
+            "1": 1373,
+            "2": 1490,
+            "3": 1367,
+            "4": 1398
+          },
+          "matches_per_fold": {
+            "0": 66,
+            "1": 66,
+            "2": 66,
+            "3": 65,
+            "4": 65
+          },
+          "flags": {
+            "sn_direct_fk": 484,
+            "sn_indirect_fk_3s": 59,
+            "sn_corner_20s": 884,
+            "sn_prev_shot_5s": 233,
+            "sn_team_unknown": 0
+          },
+          "e3_t0": {
+            "shot_missing": 65,
+            "frame_missing": 0,
+            "kp_conf_missing": 1
+          },
+          "angles_wrapped": {
+            "0": 4,
+            "-400": 10
+          }
+        },
+        "secondary": {
+          "shots": 7062,
+          "matches": 328,
+          "folds": 5,
+          "shots_per_fold": {
+            "0": 1434,
+            "1": 1373,
+            "2": 1490,
+            "3": 1367,
+            "4": 1398
+          },
+          "matches_per_fold": {
+            "0": 66,
+            "1": 66,
+            "2": 66,
+            "3": 65,
+            "4": 65
+          },
+          "flags": {
+            "sn_direct_fk": 484,
+            "sn_indirect_fk_3s": 59,
+            "sn_corner_20s": 884,
+            "sn_prev_shot_5s": 233,
+            "sn_team_unknown": 0
+          },
+          "e3_t0": {
+            "shot_missing": 260,
+            "frame_missing": 0,
+            "kp_conf_missing": 1
+          },
+          "angles_wrapped": {
+            "0": 20,
+            "-400": 15
+          }
+        }
+      },
+      "v3_games_in_pool": 400
+    }
+  },
+  "inputs": {
+    "ablation": {
+      "primary": {
+        "index": {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+          "sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee"
+        },
+        "folds": {
+          "path": "cache/folds_xgv_home5.csv",
+          "sha256": "47a83fd3b9fc8fb076731bda34f6741fc26cc0b32cdca96857b09ea120ae5372"
+        },
+        "plan": {
+          "path": "results/xgv_split_plan/plan.csv",
+          "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+        },
+        "oof": {
+          "path": "results/xgd_a1_ensemble/oof.csv",
+          "sha256": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb"
+        },
+        "location_rule": "feet_t0",
+        "e3_frames": {
+          "path": "cache/xgd_full4_feet_t0/E3/frames.parquet",
+          "sha256": "913b1bd9bd3a737a28126308113c44f060d2479a5351ac82bd8cccb666c19e78"
+        },
+        "e3_features": {
+          "path": "cache/xgd_full4_feet_t0/E3/features.parquet",
+          "sha256": "93b4b580dcec76ee2c315440e9b7d069bb5e62f07dc3ebb06db69b328b219a1d"
+        },
+        "labels_v2": {
+          "root": "/home/kuba/projects/football_data/xg_shots_full/soccernet_labels",
+          "files": 328,
+          "digest": "5060482fa608bb9e310b07f4d1a487f20c26c646a203be3156de266aa47bd65c"
+        }
+      },
+      "secondary": {
+        "index": {
+          "path": "/home/kuba/projects/football_data/xg_shots_full/soccernet_720p/index_v1_2.parquet",
+          "sha256": "3968d532ed531eec4244e6e70967bfdffb568b6d3646f1596a494c00ea4a37ee"
+        },
+        "folds": {
+          "path": "cache/folds_xgv_home5.csv",
+          "sha256": "47a83fd3b9fc8fb076731bda34f6741fc26cc0b32cdca96857b09ea120ae5372"
+        },
+        "plan": {
+          "path": "results/xgv_split_plan/plan.csv",
+          "sha256": "a56054ceb1f89d060352be2fdb8b4649363aae9fd3ff017322f65711bdc5d16a"
+        },
+        "oof": {
+          "path": "results/xgd_a1_ensemble/oof.csv",
+          "sha256": "5901dfdbaad81671fb5336fb565ca7a8587a8c4ea221acb00ce7659830d61feb"
+        },
+        "e3_frames": {
+          "path": "cache/xgd_full3/E3/frames.parquet",
+          "sha256": "59c127472036636c1f1a1db014af20a884ff2cf6524fcc8bf1d157c490ef12ff"
+        },
+        "e3_features": {
+          "path": "cache/xgd_full3/E3/features.parquet",
+          "sha256": "6f17d71e467864178a5e612d1ee29f770ebe699832e0b7187fe051f18f709326"
+        },
+        "labels_v2": {
+          "root": "/home/kuba/projects/football_data/xg_shots_full/soccernet_labels",
+          "files": 328,
+          "digest": "5060482fa608bb9e310b07f4d1a487f20c26c646a203be3156de266aa47bd65c"
+        }
+      },
+      "seen": {
+        "path": "results/xgs_stack_dd2c_leak/seen.csv",
+        "sha256": "70c2514103dae3ebba985aa9366573fbe77ca1d9a7c9a423cd5deee0c025c7fe"
+      },
+      "pool_index": {
+        "path": "/mnt/storage/tactifoot_research/detector_data/pool_index.parquet",
+        "sha256": "a719f805929126db63fe062446109feca1bf348821e5e377b7fb9238d5479b2a"
+      }
+    },
+    "attributes": {
+      "path": "results/xgdino_info_attributes/attributes.parquet",
+      "sha256": "fc6f68510a0aa5d19bf1eabd37f63568117844800f92af345b4f0f8a115fa557"
+    },
+    "attributes_complete": "ba6af705b81a3e6e259b341c21c65ef5f9ad05a4a8e1199eadad4d6c0db588f8",
+    "labels_complete": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_labels/complete.json",
+      "sha256": "b5e325d53106fe640f256723a133aa09ccd7a55d54cb355c1a64c9e30c3e3f8f"
+    },
+    "header_gpt": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_labels/header_gpt.csv",
+      "sha256": "2f75d65aa9c789269879df03c2f2ece9c88b88da77b132cf71aae9283e5ad56d"
+    },
+    "gpt_sample": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_labels/gpt_sample.csv",
+      "sha256": "ca3ae3b2552ea3eb954b2ab1d4028c534d3bf5d5d7bd77f6f1b78b1b91f6239b"
+    },
+    "header_caption": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_labels/header_caption.csv",
+      "sha256": "13844d58ff554729c244b7852f496afd023e2d3eebc1e18d8a1666ef28f9540c"
+    },
+    "roles": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_attributes/roles.parquet",
+      "sha256": "8f897971668cbeffb0a014bb0d35ba62f13d3c7d2e36a3883228af941ea1e196"
+    },
+    "region_summary": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_info_attributes/region_summary.parquet",
+      "sha256": "290628a8de16794ad9940df574750de918c29df38936359435593c0ab99bb6e2"
+    },
+    "region_masks": {
+      "path": "/mnt/storage/tactifoot_research/xg_dino/info/region_masks.parquet",
+      "sha256": "200a26fbf753bfd1086a746274eb3d458cad4a2c29d17d60dccbd45460747d10"
+    },
+    "frozen_oof": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/results/xgdino_ablation/real/probabilities_primary.csv",
+      "sha256": "67e9c75a2f970e1ab78e0a03e45249a3f47baa4ddc4fd0c53d77903fac18840d"
+    },
+    "offset_frames": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/cache/xgc/offset_frames_v1/frames.csv",
+      "sha256": "783df0b2b20740277c96400e93f6108ec84ec9bf867aebb93ca2138e86b7661d"
+    },
+    "ablation_protocol": {
+      "path": "/home/kuba/.t3/worktrees/tactifoot_vision/research-xg-dino/experiments/claude_fable/research/xgdino_ablation_protocol.json",
+      "sha256": "fd142d152a1bc546b023a5f3e3e199888b967e5b2296393c12ca40a4bf75b6b0"
+    }
+  },
+  "code": {
+    "digest": "f080ea8dc2a69495aa4cb074583f70809917edab27237374e0a0742bf3b238af",
+    "files": {
+      "scripts/xgdino_info_protocol.py (pin normalised)": "370bc8f55354adc6991b329c33453ee0ac213de98fb209414b7942c7ff7ec0c1",
+      "xgpoc/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/bundle.py": "05cc32bbb5ebf00089395ad659e24aec585d7f7f57da9672e04d8cb13c6a517d",
+      "xgpoc/compare/__init__.py": "901c6e1fdbacc65489e5a16792ee86adc1b61e3ed4beb534b78e330860f98d14",
+      "xgpoc/compare/categories.py": "8d6824de4af819269ff65b33661890bf45d8437b0f51e5b51224715c0b4e4046",
+      "xgpoc/compare/power.py": "f0cbd01efbe994da3f3700e1eef361250cd7d2abe3cccdec4b0297aeff7f69d6",
+      "xgpoc/compare/protocol.py": "47afa10632b3a580593a9871b3fa9e156ad58ab6a9c7f3cb9e91c90f3dd8fa6e",
+      "xgpoc/compare/stats.py": "bc083cc77fe3bed0c72325c964886377803ebf4270abc9c23d02a8587d7c1982",
+      "xgpoc/data/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/data/canonical_frames.py": "4d0c1c03f13e6282f3087877a2369bf9a7077a247ffe6349e8058a84e2bde46b",
+      "xgpoc/data/datasets.py": "ff9bf7bc81491f9e13d4433a8f934e47bead61c85134a2e940b6494e91603c2d",
+      "xgpoc/data/offset_frames.py": "cefb22618a37d910f1a77fa562abe83598dbfaf0af33b669f69975fcb823d195",
+      "xgpoc/detector/__init__.py": "35c71c872bb693848189ea078461a51ba4b8ed91293f8fa7bed4a9a1556cf7a1",
+      "xgpoc/detector/approach1.py": "f3020856dbca4f5a4b1d7f5f51ab043a5a3c0f3214e85fbf84280a8da10e21c5",
+      "xgpoc/detector/conventions.py": "b2ad2e2c1b0a8c3589b58cbcf6f757936ba3ff3ff771b7d13fe10e7fcd8d90a1",
+      "xgpoc/detector/extract.py": "16f8893dca3376181667eba9c39ed7534a3579bc34ef51ab21f312f81e3e4ef8",
+      "xgpoc/detector/extract3.py": "08b818ac297e2f525a8b3c4b609ff3abe16eb684bf6ec85c5c939c531ce4bc0c",
+      "xgpoc/detector/features.py": "e602514c78c6fa892d667b83ebfdaa4f81afbbf5cbfbd5f73902f0e1e8719575",
+      "xgpoc/detector/guard.py": "de338fb5040c178003e4dfe7f4c67032e4b8b05390925a00ed0159d8678ea3f6",
+      "xgpoc/detector/location.py": "cc785ac1300867a2d435e4ab766493084515e4f3254f271d119733f38b549438",
+      "xgpoc/detector/records.py": "dfe2c1f3e86efc54f2ce29a6b144564349e5bcf2c3a4b79063d8e664566dbf9f",
+      "xgpoc/detector/sanitation.py": "fa6b525d7a6bd6226dfbf42f0b08a2839f30f703c10c960f797227c908a71705",
+      "xgpoc/detector/seal.py": "ef42c7997b0de5bedeaed80bda27b0feb97a657275fe4304cba31cc75474f4a3",
+      "xgpoc/detector/testrule.py": "1a27a59bfa807cd2e1586578188790c9ee8d0206961fd1be5565d1d100986674",
+      "xgpoc/dino/__init__.py": "731809db0e735dbe800a4d6c7f5c095e1d0eb7aa3e2e1229f55735e2f9c66ca3",
+      "xgpoc/dino/ablation.py": "1afe0b89827bf72927ad111f3f19e31e2f68022a3d9673f24a40a1be4ab57b50",
+      "xgpoc/dino/attributes.py": "e123a3f70238b09546d3bd4712671e5515ed58beeb35836c73cd973bf208d7c1",
+      "xgpoc/dino/controls.py": "4f543a8241234f0378a08f30e569b36f9e87e0b6253660353d77b919168ba779",
+      "xgpoc/dino/info_controls.py": "14f09bd77acc5f7ac7ba6ffda8cfa858ab334e5ced6a1582cc103c64954fcd1e",
+      "xgpoc/dino/info_protocol.py": "79d699fb6213e1577f3bdd6c71369619e0228ed1883ef72571e847c7c02e0b17",
+      "xgpoc/dino/labels.py": "911a066885156cdf733f748d2ce33636beb10c1f2f6980ef2fbb1114295f5f80",
+      "xgpoc/dino/records.py": "772dcd94f1ae27458f1ff5bcb8f724e7ec7be65fce295ac75782821ae9b1dce4",
+      "xgpoc/dino/regions.py": "a60ff6460cb3bce64aa053874cd0123c08352750b44b5ed544d9ed49536cb70e",
+      "xgpoc/eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/eval/calibration.py": "e2e73f525ef6de22bf3cb121128430e1cbc75418152516d68aba7961dd189df6",
+      "xgpoc/eval/metrics.py": "835dbfff1ff938ab5a12e08568d5dc3d367d5bf5e4ca63aacae51b11e201896d",
+      "xgpoc/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "xgpoc/models/common.py": "b2034c23fe33c37ff470d08a599f55609e256e9ff227d41c6a6563b13ab549dc",
+      "xgpoc/models/d_foundation.py": "9baba0d66c90eb4e4fecd035c5f7c86dee0b5d046505f90e316affb0a2af223b",
+      "xgpoc/models/g_bundle.py": "e306bfe43a1a322d5dbfdf7a39bf7b11b361888cf247527cf1b144113d3efa4d",
+      "xgpoc/paths.py": "4beca7070d9ecfa1c3f5c1f62e40d048f2c611de56283be9a6033151513fa8f2",
+      "xgpoc/probe/__init__.py": "f651a9148861c806c0a4e3851509d456f3d278593f2b99fba861a08d33ecf4d2",
+      "xgpoc/probe/readability.py": "540d23f699b7e884362f07c827a72f9710f6e96c9e161b7ce5c67d443bdc0116",
+      "xgpoc/probe/table.py": "92432bd890c4bfb98b0d7158e88bb53fff6d8eeb9908b2d41efcc0f628f27d21",
+      "xgpoc/stack/__init__.py": "350fc6c0d84b87eed432b480116cfdcb946c834330cc9bdc8138aac112ee78e7",
+      "xgpoc/stack/analysis.py": "bb3adc25e183f7f8c83047cec7bfd775e2a082198410b3ebff23f35cdfada838",
+      "xgpoc/stack/controls.py": "84b224aefa0f24b79d5277f1547fc9fd1791697b829f257310ef4f3767433bec",
+      "xgpoc/stack/fit.py": "0da330d2d9fcfb1488ad1902fa0a5dcd3f9b7811952f8ac0378c95a9723df9d6",
+      "xgpoc/stack/inputs.py": "77bb8876dfa8a5eab9108deff8506cd716c56c80e2f46fce175b3430e3f38801",
+      "xgpoc/stack/provenance.py": "58956d1c0e9dab66e9adc13d8901a543426a9121a8cfaba6183d437f9e3059de",
+      "xgpoc/stack/stats.py": "34586b8dfcce7c0b1e020cdf916bb593cfb2ad4a847683b930bfde936b20cb74",
+      "xgpoc/stack_location/__init__.py": "75571ff5531268cbd6c77f92d8f77ba48a5a768060593bfa3f312bb88fcd8720",
+      "xgpoc/stack_location/inputs.py": "33fad5062423d281fe2650329fc399993676093da55a0f4b4feaba01a5d31b5c",
+      "xgpoc/vendor/__init__.py": "aa7741ce1a94ea50fc915f440569855ed2e33c435c81cb1c47fc0912168ea195",
+      "xgpoc/vendor/draws.py": "fc88a16636cd4e558b5264081a7a6d245d6a4b981f0c1cad7b33ba9649bfe62c",
+      "xgpoc/vendor/evaltable.py": "e6220255f3dc4723a40f4f37ba1044aa33cc016ca30d8746aca3c29d5cbc31f7",
+      "xgpoc/vendor/ladder.py": "a2de6fff3ade4b7741896aaf6f78df1071d3e67e1e5db983ea434d0bbd5428b1",
+      "xgpoc/vendor/refit.py": "1adeb13c9ad1c51e21bca3f9c211d0852c0e4723012eb5f85066bf588a6e6a02"
+    }
+  },
+  "git": {
+    "sha": "3daf44a8a17e205e907cb51a090a6d6fab6037fc",
+    "dirty": false
+  },
+  "written": "2026-10-28T19:47:17+00:00"
+}
