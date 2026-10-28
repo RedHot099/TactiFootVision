@@ -1,6 +1,6 @@
 # Czy ruch przed kontaktem dodaje coś do G-combo: raport zamknięcia fazy xg-temporal
 
-Jakub Eichner, 2026-10-28. Gałąź `research/xg-detector`, faza xg-temporal, tickety 01–03 wykonane, ticket 05 (ten raport). Faza zamknięta decyzją właściciela z 2026-10-28, **bez odczytu jakiejkolwiek etykiety wyniku**.
+Jakub Eichner, 2026-10-28. Gałąź `research/xg-detector`, faza xg-temporal, tickety 01–03 wykonane, ticket 05 (ten raport). Faza zamknięta decyzją właściciela z 2026-10-28, **bez żadnego eksperymentu ani analizy na prawdziwych etykietach wyniku**. Jedyny kontakt z etykietami to incydent z ticketu 01b (dwa wypisane przypadkiem, nieużyte wiersze z kolumną `goal`), opisany w sekcji 7.
 
 W tekście źródłowym po każdej liczbie stoi niewidoczny znacznik `<!--n:…-->`. Plik `claims.toml` obok mówi, z którego pliku wyników pochodzi liczba. Skrypt `scripts/check_xgd_audit.py` odczytuje każdą liczbę ze źródła i kończy się błędem przy niezgodności. Wszystkie źródła są bez etykiet: wyniki syntetyczne kontroli, maski klatek, logity modelu i odpowiedzi AI o czasie kontaktu. Ujemne ΔLL znaczy „lepiej”.
 
@@ -15,7 +15,7 @@ W tekście źródłowym po każdej liczbie stoi niewidoczny znacznik `<!--n:…-
 
 **Co to znaczy.** Przy 7 010<!--n:pop.shots--> strzałach z 328<!--n:pop.matches--> meczów (około 931<!--n:pop.xg--> oczekiwanych goli według samego G-combo, 13.3%<!--n:pop.xgrate--> strzałów) liniowa głowa na tych embeddingach odzyskuje tylko od 16%<!--n:rp.share.min--> do 42%<!--n:rp.share.max--> prawdziwego efektu ruchu wielkości −0.002<!--n:k.t2--> LL. Żaden badany efekt, aż do −0.004<!--n:k.t4-->, nie osiąga mocy 80%<!--n:k.pow-->. Najwyższa moc we wszystkich trzech próbach to 0.735<!--n:rp.maxpow-->.
 
-**Czego to nie znaczy.** To nie jest dowód, że ruch przed kontaktem nie niesie informacji o golu. Etykiet nikt nie czytał, a kontrola mówi o mocy metody, nie o danych.
+**Czego to nie znaczy.** To nie jest dowód, że ruch przed kontaktem nie niesie informacji o golu. Żadna analiza nie użyła etykiet, a kontrola mówi o mocy metody, nie o danych.
 
 **Granica sformułowań (C10, zdanie odrębne S).** Nawet gdyby kontrola C10 przeszła, projekt pozwalałby co najwyżej na zdanie „brak sygnału ruchu w tych 8 kierunkach” (zmiana o_max − start składowych pc01..pc08), nigdy „brak sygnału ruchu”. Kontrola nie przeszła, więc raport nie formułuje nawet tego.
 
@@ -113,11 +113,11 @@ Oba wyniki wyszły słabsze od przewidywania. Przewidywanie dla rośliny C9 opie
 
 ![Odzyskany efekt i moc trzech prób](figures/recovery_power.png)
 
-Po lewej średnie odzyskane T − S wobec zasianej wyroczni, z linią pełnego odzyskania i bramką. Po prawej moc Holma dla T − S i moc wyroczni (próba 3). Krzywe rosną z efektem, ale żadna nie dochodzi do mocy 0.8<!--n:k.pow8-->. Próba 3 odzyskuje około dwa razy więcej niż próby 1–2, i to w łatwiejszym zadaniu (roślina w bloku T).
+Po lewej średnie odzyskane T − S wobec zasianej wyroczni, z linią pełnego odzyskania i bramką. Po prawej moc Holma dla T − S i moc wyroczni (próba 3). Moc wyroczni to test wyroczni względem R bez korekty Holma, więc nie jest wprost porównywalna z krzywymi głowy; oś opisuje tylko te ostatnie. Krzywe rosną z efektem, ale żadna krzywa dopasowanej głowy nie dochodzi do mocy 0.8<!--n:k.pow8-->. Próba 3 odzyskuje około dwa razy więcej niż próby 1–2, i to w łatwiejszym zadaniu (roślina w bloku T).
 
 ![Kontrole zerowe trzech prób](figures/null_rejections.png)
 
-Zera były w porządku od próby 2: metoda nie produkuje fałszywych odrzuceń. Problemem jest wyłącznie moc.
+Od próby 2 kontrole zerowe (proste, bogate i z efektem meczu) mieszczą się w zapisanych z góry progach. Kontrolą, która nie przeszła, jest kontrola mocy.
 
 ## 6. Czego nie uruchomiono i dlaczego
 
@@ -158,7 +158,7 @@ Wcześniejszy test z 2026-10-15 (uśrednianie logitów klatek sprzed strzału, `
 
 ## 9. Co dalej: rekomendacja dla właściciela
 
-**Rekomendacja: nie wracać do głowy czasowej na tych embeddingach przy obecnych danych.** Kolejna przeróbka liniowej głowy na tych samych 7 010<!--n:pop.shots--> strzałach nie zmieni mocy istotnie: trzy projekty dały od 16%<!--n:rp.share.min--> do 42%<!--n:rp.share.max--> odzyskania przy −0.002<!--n:k.t2-->.
+**Rekomendacja: nie wracać do głowy czasowej na tych embeddingach przy obecnych danych.** Trzy projekty liniowej głowy na tych samych 7 010<!--n:pop.shots--> strzałach dały od 16%<!--n:rp.share.min--> do 42%<!--n:rp.share.max--> odzyskania przy −0.002<!--n:k.t2-->. To nie jest granica dla innych projektów, ale żaden z trzech nie zbliżył się do bramki z zapasem, a każda kolejna próba na tych samych danych zwiększa adaptacyjność protokołu.
 
 **Ile danych by było trzeba (ekstrapolacja, nie wynik).** Założenia: udział odzyskanego efektu zostaje jak teraz, SD odzyskanego T − S maleje jak 1/√N, a zależność mocy od stosunku efektu do SD zostaje taka jak w danym punkcie krzywej. Wtedy do mocy 0.8<!--n:k.pow8--> projekt C10 potrzebowałby mniej więcej:
 
