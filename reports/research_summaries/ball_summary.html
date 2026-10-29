@@ -45,9 +45,6 @@ about 1&nbsp;m the measure is limited by noise in the reference annotation.
 </div>
 
 <h2>1&nbsp;&nbsp;Problem, data and measure</h2>
-<p class="lead">
-The question is where the ball is on the pitch, in metres. Figure&nbsp;1 shows the pipeline that answers it best.
-</p>
 <ul>
   <li><b>Measure.</b> The share of frames whose predicted ball lies within 5&nbsp;m of the annotated ball, both projected with
   the frame's homography. A missed ball, a ball on the wrong object and a frame without a homography all count as failures.</li>
@@ -55,7 +52,7 @@ The question is where the ball is on the pitch, in metres. Figure&nbsp;1 shows t
   camera calibration. Validation has 58 clips from 3 games, test 49 clips from 3 other games.</li>
   <li><b>Detectors.</b> The baseline is the old detector the project started from: YOLO11m trained at 640&nbsp;px on 1,259
   Roboflow <code>football_yolo</code> images, run here at 1280&nbsp;px. The retrained detector is YOLO11l at 1280&nbsp;px on larger
-  data, with ball AP@50 0.46.</li>
+  data, with ball AP@50 0.46. Figure&nbsp;1 shows the final pipeline built on it.</li>
   <li><b>Protocol.</b> We choose variants on two validation games and confirm once on the third. Each experiment has one
   primary comparison, fixed before its result is read. CIs are 95% bootstraps over whole clips.</li>
 </ul>
@@ -85,8 +82,8 @@ The question is where the ball is on the pitch, in metres. Figure&nbsp;1 shows t
     <text x="712" y="58">measured or</text><text x="712" y="72">interpolated</text>
   </g>
 </svg>
-<figcaption><b>Figure 1. The final pipeline.</b> The detector keeps low-confidence ball candidates. The size filter drops people
-tagged as “ball”. The tracker keeps candidates that fit the ball's motion on the pitch and bridges short gaps.</figcaption>
+<figcaption><b>Figure 1. The final pipeline.</b> The size filter runs before the tracker. Otherwise the tracker could follow a
+large false ball, such as the referee in the clip of Section&nbsp;6.</figcaption>
 </figure>
 
 <h2>2&nbsp;&nbsp;Where a single-frame detector fails</h2>
@@ -96,52 +93,50 @@ Where does a strong single-frame detector fail? Mostly on small balls, and on re
 </p>
 <figure>
   <img src="{{fig_errors}}" alt="Recall by ball size and the causes of missed balls">
-  <figcaption><b>Figure 2. Error analysis of the retrained detector</b> (two validation games, 5,501 annotated balls). Left: recall
-  falls with ball size, and balls under 8&nbsp;px are almost never found. Right: four in ten misses have no candidate at all, even at
-  confidence 0.001. A third have a candidate below the operating threshold, which temporal context can recover.</figcaption>
+  <figcaption><b>Figure 2. Error analysis of the retrained detector</b> (two validation games, 5,501 annotated balls). A third of
+  misses already have a candidate below the threshold, which temporal context can use. Four in ten have no candidate even at
+  confidence 0.001, which no threshold can fix.</figcaption>
 </figure>
 </div>
 <p>
 Half of all misses are balls smaller than 12&nbsp;px. Motion blur explains only 19%.
 </p>
 <p>
-Referees and assistants in black kits cause 52% of confident false balls and 55% of placements more than 5&nbsp;m off. Their
-boxes are 46–141&nbsp;px long. A true ball is never longer than 43&nbsp;px.
-</p>
-<p>
-A size filter at 45&nbsp;px therefore removes them at no cost. On its own it halves the share of placements more than
-5&nbsp;m off, from 18.5% to 9.6%.
+Referees and assistants in black kits cause 52% of confident false balls and 55% of placements more than 5&nbsp;m off. Size
+separates them from the ball. Their boxes are 46–141&nbsp;px long, and a true ball is never longer than 43&nbsp;px.
 </p>
 
 <h2>3&nbsp;&nbsp;What was tested</h2>
 <p class="lead">
-Which remedy places more balls? Temporal tracking. No other change improved the video pipeline.
+Which remedy places more balls? Temporal tracking. The limit is balls with no candidate at all, which no reranking, resolution
+change or fine-tuning recovered. Only filling gaps over time did.
 </p>
 <p>
-Each approach was paired against one of two references. The <i>retrained detector</i> means its top-1 ball per frame, 51.6%
-within 5&nbsp;m on the two selection games. The <i>final pipeline</i> is tracking plus the size filter, 71.2% [64.6, 77.5] there.
+Each result carries its reference. <i>(vs detector)</i> is the retrained detector's top-1 ball per frame, 51.6% within 5&nbsp;m
+on the two selection games. <i>(vs pipeline)</i> is the final pipeline, tracking plus the size filter, 71.2% [64.6, 77.5] there.
 Gains are in the share of frames within 5&nbsp;m, on the selection games unless the held-out game is named.
 </p>
 <p>
-<b>Higher input resolution.</b> At 1920&nbsp;px the detector finds more balls, but also more confident false ones, for
-−0.21&nbsp;pp [−2.87, +2.10] against the retrained detector. Training and inference at 1600&nbsp;px gave +0.40&nbsp;pp
-[−1.60, +2.35] against the final pipeline.
+<b>Higher input resolution.</b> At 1920&nbsp;px the detector finds more balls, but also more confident false ones,
+−0.21&nbsp;pp [−2.87, +2.10] (vs detector). Training and inference at 1600&nbsp;px gave +0.40&nbsp;pp [−1.60, +2.35]
+(vs pipeline). More pixels bring more large false candidates, and the tracker already recovers most balls a better detector adds.
 </p>
 <p>
-<b>Fine-tuning.</b> Oversampling small and blurred balls ×2 gave +0.26&nbsp;pp [−0.80, +1.35] against the same fine-tuning
-without it. A recipe with referees in black as hard negatives gave −0.61&nbsp;pp [−2.00, +0.69] against the final pipeline,
-whose size filter already removes those referees.
+<b>Fine-tuning.</b> Oversampling small and blurred balls ×2 gave +0.26&nbsp;pp [−0.80, +1.35] (vs the same fine-tuning).
+A recipe with referees in black as hard negatives gave −0.61&nbsp;pp [−2.00, +0.69] (vs pipeline), redundant once the size
+filter is in place.
 </p>
 <p>
-<b>Size filter.</b> Ball boxes longer than 45&nbsp;px are dropped, which removes the referees of Section&nbsp;2. Against the
-retrained detector it adds +0.64&nbsp;pp [+0.12, +1.18] and halves placements more than 5&nbsp;m off, from 18.5% to 9.6%.
+<b>Size filter.</b> Ball boxes longer than 45&nbsp;px are dropped, which removes the referees of Section&nbsp;2. It adds
++0.64&nbsp;pp [+0.12, +1.18] (vs detector) and halves placements more than 5&nbsp;m off, from 18.5% to 9.6%.
 </p>
 <p>
 <b>Tiling.</b> The detector also runs on four overlapping 1024×608 tiles, merged with the full 1280&nbsp;px frame before the size
-filter. On single frames it adds +5.29&nbsp;pp [+3.15, +8.02] on the held-out game, against the retrained detector.
+filter. On single frames it adds +5.29&nbsp;pp [+3.15, +8.02] on the held-out game (vs detector).
 </p>
 <p>
-On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out game, against tracking alone.
+On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out game (vs tracking alone). The single-frame gain is real,
+but the tracker already recovers most of those balls, and tiles add false balls that it then follows.
 </p>
 <div class="web-only">
 <figure>
@@ -175,7 +170,7 @@ On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out gam
     <text x="552" y="140" fill="#2a78d6">shaded: tile overlap</text>
   </g>
 </svg>
-<figcaption><b>Tile layout.</b> Four overlapping tiles cover the frame; the full-frame pass runs alongside.</figcaption>
+<figcaption><b>Tile layout.</b> The tiles overlap so that a ball on a tile border is still seen whole in one tile.</figcaption>
 </figure>
 </div>
 <p>
@@ -185,7 +180,8 @@ checkpoint on it alone drops ball AP50 from 0.161 to 0.004 within one epoch, on 
 <div class="web-only">
 <figure>
   <img src="{{fig_synthetic}}" alt="AP50 per class while fine-tuning on SoccerSynth alone" style="max-width: 560px">
-  <figcaption><b>Fine-tuning on SoccerSynth alone.</b> AP50 per class at 1280&nbsp;px on three Ekstraklasa clips kept out of training, so indicative only.</figcaption>
+  <figcaption><b>Fine-tuning on SoccerSynth alone.</b> Players fall slowest, because people are labelled in the renders. The ball
+  and the masked role classes collapse. Three clips, indicative.</figcaption>
 </figure>
 </div>
 <p>
@@ -193,28 +189,30 @@ The goalkeeper and referee classes collapse too. A small share of SoccerSynth mi
 </p>
 <p>
 <b>Temporal tracking.</b> A tracker in pitch coordinates keeps candidates that fit the ball's motion and interpolates gaps of
-up to 2&nbsp;s. Against the retrained detector it adds +17.32&nbsp;pp [+11.86, +22.82], and +9.15&nbsp;pp [+4.24, +14.58] on the
-held-out game.
+up to 2&nbsp;s. It adds +17.32&nbsp;pp [+11.86, +22.82] (vs detector), and +9.15&nbsp;pp [+4.24, +14.58] on the held-out
+game.
 </p>
 <p>
 <b>Tracker refinements.</b> Four changes were tried together: interpolation in the image, a search corridor along gaps, no
-bridging across restarts, and candidates kept on the penalty and centre spots. Against the final pipeline they gave
-+0.78&nbsp;pp [−1.21, +4.12].
+bridging across restarts, and candidates kept on the penalty and centre spots. Together they gave
++0.78&nbsp;pp [−1.21, +4.12] (vs pipeline). They move few frames, and the best one, keeping spot candidates, gains almost
+entirely in one set-piece clip.
 </p>
 <p>
 <b>Bottom of the box.</b> Projecting the bottom of the ball's box instead of its centre gave −0.68&nbsp;pp [−1.03, −0.37]
-against the final pipeline.
+(vs pipeline). The shift is small next to the spread of errors along the camera ray, so it mostly pushes balls near 5&nbsp;m
+over the threshold.
 </p>
 <p>
 <b>Crop second stage.</b> A ResNet18 rescores each candidate on a crop and refines its centre. On single
-frames it adds +10.80&nbsp;pp [+7.99, +13.97] against the retrained detector, from 51.6% to 62.4%.
+frames it adds +10.80&nbsp;pp [+7.99, +13.97] (vs detector).
 </p>
 <p>
-Before tracking it gives +1.41&nbsp;pp [−0.54, +3.34] against the final pipeline.
+Before tracking it gives +1.41&nbsp;pp [−0.54, +3.34] (vs pipeline).
 </p>
 <p>
-The adopted pipeline is temporal tracking plus the size filter (Figure&nbsp;1). Tiling and the crop second stage remain options
-for single frames, where the tracker has no neighbouring frames.
+Tiling and the crop second stage remain options for single
+frames. With neighbouring frames, the tracker already recovers what they add.
 </p>
 
 <h2>4&nbsp;&nbsp;Result</h2>
@@ -239,32 +237,29 @@ Retraining the detector on larger data at 1280&nbsp;px gives most of the gain, {
     </p>
     <p class="note">
     For the old detector {{base_far_test}} of placed balls are more than 5&nbsp;m off on test. The pipeline cuts this to 9.2%,
-    slightly above the retrained detector's 7.7%, because one interpolated position in four is more than 5&nbsp;m off.
+    slightly above the retrained detector's 7.7%. Tracking pays for the gaps it fills with a few more large errors.
     </p>
   </div>
   <figure style="margin-top:0">
     <img src="{{fig_breakdown}}" alt="Where the gain comes from">
-    <figcaption><b>Figure 3. Where the gain comes from</b> (test split). The tracker measures balls the top-1 pick misses and bridges
-    gaps where the detector sees nothing.</figcaption>
+    <figcaption><b>Figure 3. Where the gain comes from</b> (test split). On measured frames tracking changes little,
+    86 → 89%. The gain comes from the gaps. On interpolated frames the share within 5&nbsp;m rises from 14% to 70%.</figcaption>
   </figure>
 </div>
 
 <h2>5&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
 <p class="lead">
 How precise is a placed ball? Its median error, {{acc_phase1_p50_m}} {{acc_phase1_p50_m_ci}}, is close to the
-{{acc_reference_centre_p50_m}} median disagreement inside the GSR reference itself.
+{{acc_reference_centre_p50_m}} by which GSR's own ball box, projected with our homography, misses GSR's annotated pitch position.
+Sub-metre numbers therefore measure agreement with GSR, not physical accuracy.
 </p>
 <p>
 On the two selection games the pipeline places the ball within 1&nbsp;m in {{acc_phase1_le1_all}} {{acc_phase1_le1_all_ci}} of
-frames, within 2&nbsp;m in {{acc_phase1_le2_all}} and within 5&nbsp;m in {{acc_phase1_le5_all}}.
+frames and within 2&nbsp;m in {{acc_phase1_le2_all}}.
 {{acc_phase1_no_position}} have no position. The 90th percentile error is {{acc_phase1_p90_m}} {{acc_phase1_p90_m_ci}}.
 </p>
 <div class="chart-row acc">
 <div>
-<p>
-Sub-metre numbers measure agreement with GSR, not physical accuracy. GSR's own ball box, projected with our homography, lies a
-median {{acc_reference_centre_p50_m}} from GSR's annotated pitch position.
-</p>
 <p>
 Only 53% of frames with a homography agree within 1&nbsp;m. For a ball in the air the median is 2.2&nbsp;m.
 </p>
@@ -272,7 +267,8 @@ Only 53% of frames with a homography agree within 1&nbsp;m. For a ball in the ai
   <figure style="margin-top:0">
     <img src="{{fig_accuracy}}" alt="Share of frames with the ball within d metres">
     <figcaption><b>Figure 4. Share of frames within d metres</b> (two validation games; a frame without a position never
-    counts). Dashed: the GSR reference through our homography.</figcaption>
+    counts). Dashed: the GSR reference through our homography. The pipeline stays close to it at small distances and runs below it
+    from about 1&nbsp;m on.</figcaption>
   </figure>
 </div>
 <p>
@@ -322,17 +318,17 @@ was used for training, selection or an earlier reading.
 
 <div class="gallery" style="margin-top:4mm">
   <figure class="card"><img src="{{img_g_small}}" alt="">
-    <figcaption><b>An 8 px ball.</b> The detector's confidence stays below its threshold, so the top-1 pick is empty. The tracker
-    accepts the weak candidate because it fits the ball's motion. Error {{g_small_error_track}}.</figcaption></figure>
+    <figcaption><b>An 8 px ball.</b> A candidate below the detection threshold becomes usable because it fits the ball's motion.
+    Error {{g_small_error_track}}.</figcaption></figure>
   <figure class="card"><img src="{{img_g_fog}}" alt="">
-    <figcaption><b>Fog.</b> No usable detection in this frame. The tracker interpolates between confident detections before and
-    after. Error {{g_fog_error_track}}.</figcaption></figure>
+    <figcaption><b>Fog.</b> A long gap with no usable detection is bridged accurately, because confident detections frame it on
+    both sides. Error {{g_fog_error_track}}.</figcaption></figure>
   <figure class="card"><img src="{{img_g_interp}}" alt="">
-    <figcaption><b>Ball near the goalkeeper.</b> The detector misses the ball in this frame. Interpolation between neighbouring
-    detections keeps it. Error {{g_interp_error_track}}.</figcaption></figure>
+    <figcaption><b>Ball near the goalkeeper.</b> A one-frame miss is filled by interpolation with little error.
+    Error {{g_interp_error_track}}.</figcaption></figure>
   <figure class="card"><img src="{{img_g_fail}}" alt="">
-    <figcaption><b>Failure.</b> Before a penalty, the tracker has switched to a confident false detection {{g_fail_error_track}}
-    from the ball, marked by the white ring. Recovering from such a switch is an open problem.</figcaption></figure>
+    <figcaption><b>Failure.</b> Before a penalty, the track has locked onto a confident false detection {{g_fail_error_track}} from
+    the ball (white ring), and the motion gate keeps it there. Recovering from such a switch is an open problem.</figcaption></figure>
 </div>
 
 <footer>
