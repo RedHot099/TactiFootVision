@@ -6,9 +6,10 @@
 <style>
 {{css}}
   .kpis { grid-template-columns: repeat(5, 1fr); }
-  .float-fig { float: right; width: 50%; margin: 0 0 2mm 5mm; }
-  h2 { clear: both; }
-  footer { margin-top: 3mm; }
+  .gallery { grid-template-columns: repeat(2, 1fr); gap: 3mm 4mm; }
+  .gallery figcaption { font-size: 8pt; }
+  .chart-row.ball { grid-template-columns: 1.6fr 1fr; gap: 5mm; }
+  .chart-row.acc { grid-template-columns: 1.25fr 1fr; gap: 5mm; align-items: start; }
   .legend-dot { display: inline-block; width: 2.4mm; height: 2.4mm; border-radius: 50%; vertical-align: -0.2mm; margin-right: 0.8mm; }
 </style>
 </head>
@@ -138,62 +139,24 @@ removes nearly all referee confusions.
       <tr><td>&nbsp;&nbsp;frames with a homography</td><td class="n">79.3%</td><td class="n">88.6%</td><td class="n">+9.3 pp</td></tr>
       <tr><td>GSR validation (58 clips)</td><td class="n">60.2%</td><td class="n"><b>76.3%</b></td><td class="n">+16.1 pp [+11.4, +20.5]</td></tr>
     </table>
-<p class="note">
-The test split had been used once before to choose the detector, so it is not a fresh set. It is easier for the baseline than
-the validation split, which explains the smaller gain. Placements more than 5&nbsp;m off rise slightly on the test split (7.7% → 9.2% of placed balls). The
-cause is interpolation: one interpolated position in four is more than 5&nbsp;m off, so interpolated positions are flagged for
-downstream use. Cost: 19.6&nbsp;ms per frame for detection on the GPU and 0.2&nbsp;ms for tracking on the CPU.
-</p>
-
-<h2>5&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
-  <figure class="float-fig">
-    <img src="{{fig_accuracy}}" alt="Share of frames with the ball within d metres">
-    <figcaption><b>Figure 4. Share of frames within d metres</b> (two validation games, 4,250 frames; a frame without a position
-    never counts). The dashed curve is the GSR reference against itself through our homography. The pipeline follows it up to about 1&nbsp;m.</figcaption>
+<div class="chart-row ball">
+  <div>
+    <p class="note">
+    The test split had been used once before to choose the detector, so it is not a fresh set. It is easier for the baseline than
+    the validation split, which explains the smaller gain. Placements more than 5&nbsp;m off rise slightly on the test split
+    (7.7% → 9.2% of placed balls). The cause is interpolation: one interpolated position in four is more than 5&nbsp;m off, so
+    interpolated positions are flagged for downstream use. Cost: 19.6&nbsp;ms per frame for detection on the GPU and 0.2&nbsp;ms for
+    tracking on the CPU.
+    </p>
+  </div>
+  <figure style="margin-top:0">
+    <img src="{{fig_breakdown}}" alt="Where the gain comes from">
+    <figcaption><b>Figure 4. Where the gain comes from</b> (test split). The tracker measures balls the top-1 pick misses and bridges
+    gaps where the detector sees nothing.</figcaption>
   </figure>
-<p>
-On the two selection games the final pipeline places the ball within 1&nbsp;m in {{acc_phase1_le1_all}} {{acc_phase1_le1_all_ci}}
-of frames, within 2&nbsp;m in {{acc_phase1_le2_all}} and within 5&nbsp;m in {{acc_phase1_le5_all}}; {{acc_phase1_no_position}} have
-no position. Among placed frames the median error is {{acc_phase1_p50_m}} {{acc_phase1_p50_m_ci}} and the 90th percentile
-{{acc_phase1_p90_m}} {{acc_phase1_p90_m_ci}}.
-</p>
-<p>
-The sub-metre numbers measure agreement with GSR, not physical accuracy. Projecting GSR's own ball box with our homography
-and comparing it with GSR's annotated pitch position gives a median disagreement of {{acc_reference_centre_p50_m}}, and only
-53% of frames with a homography agree within 1&nbsp;m. For a ball in the air it is 2.2&nbsp;m.
-</p>
-<p style="clear: both">
-<b>Interpolation is the main source of large errors.</b> 25.7% of interpolated positions are more than 5&nbsp;m off, against 9.8%
-of measured ones. Shorter gaps are a poor trade: cutting the maximum gap from 2&nbsp;s to 0.5&nbsp;s removes 3.8&nbsp;pp of frames
-placed more than 5&nbsp;m off and 7.1&nbsp;pp of well-placed ones. A logistic uncertainty score on track features ranks positions
-better than gap length: with 10% rejected, 10.6% of the rest are more than 5&nbsp;m off, against 12.1% (−1.5&nbsp;pp [−2.2, −0.9],
-fitted on one game, scored on the other). But a threshold chosen on one game cost the other up to 12.4&nbsp;pp of well-placed
-frames, so the score is exposed per position, not used as a filter.
-</p>
-<p>
-<b>The size filter is robust to resolution.</b> Scaled with the frame, it removes no true balls at 1080p, 720p or 540p
-and cuts placements more than 5&nbsp;m off by 6.1–6.3&nbsp;pp at each scale. A filter relative to people's height is no better.
-</p>
+</div>
 
-<h2>6&nbsp;&nbsp;Does a better ball help expected goals?</h2>
-<p>
-The xG model places a shot at the feet of the player closest to the ball; against StatsBomb this cut the median location
-error from 2.62&nbsp;m (projected ball) to 1.16&nbsp;m. Three ball variants were refitted out of fold on 7,062 shots from 328
-development matches and paired against the feet (log-loss 0.3314).
-</p>
-<table>
-  <tr><th>Variant</th><th class="n">Log-loss change vs feet [95% CI, matches resampled]</th></tr>
-  <tr><td>Projected ball as the shot location (the earlier model)</td><td class="n">+0.0061 [+0.0029, +0.0090]</td></tr>
-  <tr><td>Feet plus 11 ball–feet relation features</td><td class="n">+0.0016 [+0.0001, +0.0029]</td></tr>
-  <tr><td>Shooter chosen with the second-stage ball</td><td class="n">+0.0010 [−0.0014, +0.0035]</td></tr>
-  <tr><td>Ball tracked over the 2&nbsp;s before the shot</td><td class="n">−0.0000 [−0.0026, +0.0025]</td></tr>
-</table>
-<p>
-No ball variant improves on the feet, and none is shown equivalent within ±0.002 either. On held-out matches the ball at the shot lies further from
-the StatsBomb location than the feet (median 1.78 vs 1.16&nbsp;m). The feet rule was chosen on the same 328 matches, which favours it.
-</p>
-
-<h2>7&nbsp;&nbsp;Examples</h2>
+<h2>5&nbsp;&nbsp;Examples</h2>
 <div class="feature">
   <div class="media">
     <video src="{{vid_ball_clip}}" poster="{{img_freeze}}" controls muted loop playsinline preload="metadata"></video>
@@ -211,19 +174,84 @@ the StatsBomb location than the feet (median 1.78 vs 1.16&nbsp;m). The feet rule
   </div>
 </div>
 
+<div class="gallery" style="margin-top:4mm">
+  <figure class="card"><img src="{{img_g_small}}" alt="">
+    <figcaption><b>An 8 px ball.</b> The detector's confidence stays below its threshold, so the top-1 pick has nothing. The
+    tracker accepts the weak candidate because it fits the ball's motion: error {{g_small_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_fog}}" alt="">
+    <figcaption><b>Fog.</b> No usable detection in this frame. The position is interpolated between confident detections before
+    and after: error {{g_fog_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_interp}}" alt="">
+    <figcaption><b>Ball near the goalkeeper.</b> The detector misses the ball in this frame. Interpolation between
+    neighbouring detections keeps it: error {{g_interp_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_fail}}" alt="">
+    <figcaption><b>Failure.</b> Before a penalty, the tracker has switched to a confident false detection, {{g_fail_error_track}}
+    from the ball (white ring). Recovering from such a switch is an open problem.</figcaption></figure>
+</div>
+
+<h2>6&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
+<p>
+On the two selection games the final pipeline places the ball within 1&nbsp;m in {{acc_phase1_le1_all}} {{acc_phase1_le1_all_ci}}
+of frames, within 2&nbsp;m in {{acc_phase1_le2_all}} and within 5&nbsp;m in {{acc_phase1_le5_all}}; {{acc_phase1_no_position}} have
+no position. Among placed frames the median error is {{acc_phase1_p50_m}} {{acc_phase1_p50_m_ci}} and the 90th percentile
+{{acc_phase1_p90_m}} {{acc_phase1_p90_m_ci}}.
+</p>
+<div class="chart-row acc">
+<p>
+The sub-metre numbers measure agreement with GSR, not physical accuracy. Projecting GSR's own ball box with our homography
+and comparing it with GSR's annotated pitch position gives a median disagreement of {{acc_reference_centre_p50_m}}, and only
+53% of frames with a homography agree within 1&nbsp;m. For a ball in the air it is 2.2&nbsp;m.
+</p>
+  <figure style="margin-top:0">
+    <img src="{{fig_accuracy}}" alt="Share of frames with the ball within d metres">
+    <figcaption><b>Figure 5. Share of frames within d metres</b> (two validation games; a frame without a position never
+    counts). Dashed: the GSR reference through our homography.</figcaption>
+  </figure>
+</div>
+<p>
+<b>Interpolation is the main source of large errors.</b> 25.7% of interpolated positions are more than 5&nbsp;m off, against 9.8%
+of measured ones. Shorter gaps are a poor trade: cutting the maximum gap from 2&nbsp;s to 0.5&nbsp;s removes 3.8&nbsp;pp of frames
+placed more than 5&nbsp;m off and 7.1&nbsp;pp of well-placed ones. A logistic uncertainty score on track features ranks positions
+better than gap length: with 10% rejected, 10.6% of the rest are more than 5&nbsp;m off, against 12.1% (−1.5&nbsp;pp [−2.2, −0.9],
+fitted on one game, scored on the other). But a threshold chosen on one game cost the other up to 12.4&nbsp;pp of well-placed
+frames, so the score is exposed per position, not as a filter.
+</p>
+<p>
+<b>The size filter is robust to resolution.</b> Scaled with the frame, it removes no true balls at 1080p, 720p or 540p
+and cuts placements more than 5&nbsp;m off by 6.1–6.3&nbsp;pp. A relative-size filter is no better.
+</p>
+
+<h2>7&nbsp;&nbsp;Does a better ball help expected goals?</h2>
+<p>
+The xG model places a shot at the feet of the player closest to the ball; against StatsBomb this cut the median location
+error from 2.62&nbsp;m (projected ball) to 1.16&nbsp;m. Three ball variants were refitted out of fold on 7,062 shots from 328
+development matches and paired against the feet (log-loss 0.3314).
+</p>
+<table>
+  <tr><th>Variant</th><th class="n">Log-loss change vs feet [95% CI, matches resampled]</th></tr>
+  <tr><td>Projected ball as the shot location (the earlier model)</td><td class="n">+0.0061 [+0.0029, +0.0090]</td></tr>
+  <tr><td>Feet plus 11 ball–feet relation features</td><td class="n">+0.0016 [+0.0001, +0.0029]</td></tr>
+  <tr><td>Shooter chosen with the second-stage ball</td><td class="n">+0.0010 [−0.0014, +0.0035]</td></tr>
+  <tr><td>Ball tracked over the 2&nbsp;s before the shot</td><td class="n">−0.0000 [−0.0026, +0.0025]</td></tr>
+</table>
+<p>
+No ball variant improves on the feet, and none is shown equivalent within ±0.002 either. The feet rule was chosen on the
+same 328 matches, which favours it; on held-out matches the ball also lies further from the StatsBomb location (median 1.78 vs
+1.16&nbsp;m).
+</p>
+
 <h2>8&nbsp;&nbsp;Open questions</h2>
 <ul>
   <li><b>No untouched ball-labelled data</b> is the main limit. Every ball-labelled broadcast set available to us was used
     for training, selection or an earlier reading. SoccerNet Tracking (SNMOT) shares its clips with GSR, and SoccerTrack v2 has no
     ball boxes in the image. Other competitions and cameras are untested.</li>
   <li><b>Where the ball matters.</b> For shot location the shooter's feet are enough. The ball is more promising for action
-    analysis (passes, tackles, possession), where its path carries the information. This is untested.</li>
-  <li><b>Small balls.</b> Balls under 8&nbsp;px: only 35% within 5&nbsp;m. The 1600&nbsp;px gain there (+8.2&nbsp;pp [−1.1, +16.1])
-    rests on 146 frames, too few to decide.</li>
+    analysis (passes, tackles, possession); this is untested.</li>
+  <li><b>Small balls.</b> Under 8&nbsp;px, 35% are within 5&nbsp;m; the 1600&nbsp;px gain (+8.2&nbsp;pp [−1.1, +16.1]) rests on 146 frames.</li>
 </ul>
 
 <footer>
-Data: SoccerNet GSR (Somers et al., CVPR-W 2024) and SoccerNet Tracking (Cioppa et al., CVPR-W 2022), research use only.
+Data: SoccerNet GSR (Somers et al., CVPR-W 2024) and Tracking (Cioppa et al., CVPR-W 2022), research use only.
 CIs: 95% bootstrap over whole clips unless stated otherwise.
 </footer>
 </main>
