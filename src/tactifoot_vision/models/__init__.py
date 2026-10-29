@@ -4,6 +4,7 @@ Backends register themselves in ``MODELS`` on import; their heavy libraries
 (ultralytics, rfdetr, torch) load only when a model is created.
 """
 
+from tactifoot_vision.models.ball_scorer import BallCropScorer
 from tactifoot_vision.models.base import (
     MODELS,
     Model,
@@ -18,6 +19,7 @@ from tactifoot_vision.models.ultralytics import YOLODetector, YOLOPoseModel
 
 __all__ = [
     "MODELS",
+    "BallCropScorer",
     "Model",
     "RFDETRDetector",
     "TrainConfig",

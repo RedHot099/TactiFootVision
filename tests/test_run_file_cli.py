@@ -169,6 +169,23 @@ def test_null_sections_turn_components_off(tmp_path):
     assert pipeline.tracker is None and pipeline.keypoint_model is None
 
 
+def test_the_ball_scorer_section_builds_the_second_stage(tmp_path, stub_ball_scorer):
+    sections = {
+        "detector": DETECTOR,
+        "ball_scorer": {"weights": str(stub_ball_scorer.weights), "device": "cpu"},
+    }
+    pipeline = _load(
+        tmp_path, sections, ["ball_scorer.min_confidence=0.3"]
+    ).build_pipeline()
+    assert isinstance(pipeline.ball_scorer, tv.models.BallCropScorer)
+    assert pipeline.ball_scorer.min_confidence == 0.3
+    assert (
+        _load(tmp_path, sections | {"ball_scorer": None}).build_pipeline().ball_scorer
+        is None
+    )
+    assert _load(tmp_path, {"detector": DETECTOR}).build_pipeline().ball_scorer is None
+
+
 def test_sections_are_a_copy(tmp_path):
     loaded = _load(tmp_path, {"detector": DETECTOR})
     loaded.sections["detector"]["type"] = "changed"
@@ -254,6 +271,7 @@ def _section(path: str, value: dict) -> dict:
         ("homography", {"bogus": 1}, "bogus", "max_age"),
         ("homography", {"pitch": {}}, "pitch", "max_age"),
         ("pipeline", {"bogus": 1}, "bogus", "ball_class"),
+        ("ball_scorer", {"bogus": 1}, "bogus", "min_confidence"),
         ("pipeline", {"tracker": None}, "tracker", "keep_masks"),
         ("render", {"bogus": 1}, "bogus", "overlay_alpha"),
         ("render", {"progress": False}, "progress", "fps"),

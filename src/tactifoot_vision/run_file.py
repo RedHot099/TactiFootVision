@@ -17,6 +17,7 @@ that callable's keyword arguments::
 ``teams``       ``TeamClassifier(**section)``; absent or ``null``: no teams
 ``pitch``       ``SoccerPitch(**section)``
 ``homography``  ``HomographyEstimator(pitch, **section)``
+``ball_scorer`` ``BallCropScorer(**section)``; absent or ``null``: none
 ``pipeline``    the remaining ``Pipeline`` keyword arguments
 ``render``      ``annotator`` (``FrameAnnotator``), ``radar`` (``PitchRadar``;
                 ``null``: none) and ``render_video`` keyword arguments
@@ -57,6 +58,7 @@ _PIPELINE_PARTS = (
     "team_classifier",
     "pitch",
     "homography",
+    "ball_scorer",
 )
 # render_video arguments the run file does not set (a run computes no ball carriers).
 _RENDER_ARGUMENTS = (
@@ -72,6 +74,7 @@ _NULLABLE = {
     RunFileSection.KEYPOINTS,
     RunFileSection.TRACKER,
     RunFileSection.TEAMS,
+    RunFileSection.BALL_SCORER,
     RunFileSection.POSTPROCESS,
 }
 
@@ -135,7 +138,7 @@ class RunFile:
 
     def build_pipeline(self) -> "Pipeline":
         """Create the models, tracker, team classifier and :class:`Pipeline`."""
-        from tactifoot_vision.models import load_model
+        from tactifoot_vision.models import BallCropScorer, load_model
         from tactifoot_vision.pipeline import Pipeline
         from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
         from tactifoot_vision.teams import TeamClassifier
@@ -161,6 +164,10 @@ class RunFile:
             pitch = [kwargs["pitch"]] if "pitch" in kwargs else []
             kwargs["homography"] = HomographyEstimator(
                 *pitch, **sections[RunFileSection.HOMOGRAPHY]
+            )
+        if sections.get(RunFileSection.BALL_SCORER) is not None:
+            kwargs["ball_scorer"] = BallCropScorer(
+                **sections[RunFileSection.BALL_SCORER]
             )
         return Pipeline(**kwargs)
 
@@ -289,7 +296,7 @@ def _create(factory: Callable[..., Any], section: dict[str, Any]) -> Any:
 
 # ------------------------------------------------------------------ checking
 def _check(data: dict[str, Any]) -> None:
-    from tactifoot_vision.models import MODELS
+    from tactifoot_vision.models import MODELS, BallCropScorer
     from tactifoot_vision.pipeline import POSTPROCESSES, Pipeline
     from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
     from tactifoot_vision.tracking import TRACKERS
@@ -320,6 +327,8 @@ def _check(data: dict[str, Any]) -> None:
             _check_keys(name, section, SoccerPitch)
         elif kind is RunFileSection.HOMOGRAPHY:
             _check_keys(name, section, HomographyEstimator, exclude=("pitch",))
+        elif kind is RunFileSection.BALL_SCORER:
+            _check_keys(name, section, BallCropScorer)
         elif kind is RunFileSection.PIPELINE:
             _check_keys(name, section, Pipeline, exclude=_PIPELINE_PARTS)
         else:

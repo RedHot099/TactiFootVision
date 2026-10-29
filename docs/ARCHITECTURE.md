@@ -39,7 +39,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
-| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
+| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `BallCropScorer`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
 | Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`, `velocities`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
@@ -78,7 +78,8 @@ src/tactifoot_vision/
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
-                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector)
+                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector),
+                      ball_scorer.py (BallCropScorer)
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
@@ -502,6 +503,20 @@ configs/              example run files
   the chosen one: the best candidate, until `track_ball` chooses another.
   The tables and freeze frames export `ball` only, so they keep one ball
   row per frame, with `interpolated` and `uncertainty` columns.
+  `Pipeline(ball_scorer=BallCropScorer(weights))` adds a second stage
+  before the ball is chosen (off by default): a ResNet18 scores a crop
+  around each candidate (`max(32 px at 1080p, 3 x its longer side)`,
+  96 px), its probability is fused with the detector's confidence
+  (`sigmoid(a logit(p_crop) + b logit(confidence) + c)`, fitted for the
+  YOLO11l dd2c detector), boxes move onto the regressed ball centre and
+  candidates below `min_confidence` (0.15) are dropped. On SoccerNet GSR
+  valid games 2+3 (ball-detection 13) the most confident candidate was the
+  ball (within 5 m) in 62.4% of frames instead of 51.6% (+10.8 pp), with
+  the detector keeping ball candidates from 0.01; after `track_ball` the
+  gain is +1.4 pp [-0.5, +3.3], so it serves single frames (a shot's
+  moment), not the tracked path, whose defaults and uncertainty assume the
+  detector's own confidences. It costs about 1.3 ms per frame on a GPU.
+  The weights are `models/ball_crops_resnet18_bd13.pt`.
   `PipelineResult.load` refuses a result saved before frames kept their
   ball candidates.
   `PipelineResult.window(video_index, seconds)` returns the results of the
@@ -862,6 +877,7 @@ Each section maps onto exactly one package call:
 | `teams` | `TeamClassifier(**section)` | absent or `null`: no teams; `{}`: defaults; keys checked against `TeamClassifier` plus the chosen embedder's constructor |
 | `pitch` | `SoccerPitch(**section)` | |
 | `homography` | `HomographyEstimator(pitch, **section)` | gets the pitch built from `pitch` |
+| `ball_scorer` | `tv.models.BallCropScorer(**section)` | absent or `null`: none |
 | `pipeline` | `Pipeline(**section)` | the scalar arguments (`include_classes`, `keep_masks`, ...) |
 | `render.annotator` | `FrameAnnotator(pitch=result.pitch, **section)` | |
 | `render.radar` | `PitchRadar(pitch=result.pitch, **section)` | `null`: no radar |

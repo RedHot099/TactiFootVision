@@ -201,6 +201,7 @@ class RunFileSection(Vocabulary):
     TEAMS = "teams"
     PITCH = "pitch"
     HOMOGRAPHY = "homography"
+    BALL_SCORER = "ball_scorer"
     PIPELINE = "pipeline"
     RENDER = "render"
     POSTPROCESS = "postprocess"

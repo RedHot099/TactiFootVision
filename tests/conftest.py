@@ -1,6 +1,7 @@
 """Fixtures shared by several test modules."""
 
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -50,3 +51,38 @@ def rfdetr_football_weights() -> Path:
     if not path.is_file():
         pytest.skip(f"no fine-tuned football RF-DETR checkpoint at {path}")
     return path
+
+
+# ----------------------------------------------------- a stub ball crop scorer
+class StubBallScorer(NamedTuple):
+    """A ``BallCropScorer`` checkpoint whose heads ignore the crop."""
+
+    weights: Path
+    logit: float  # the ball logit of every crop
+    offset: tuple[float, float]  # the regressed centre offset, in crop sides
+
+
+@pytest.fixture(scope="session")
+def stub_ball_scorer(tmp_path_factory) -> StubBallScorer:
+    import torch
+    import torchvision
+
+    stub = StubBallScorer(
+        tmp_path_factory.mktemp("ball_scorer") / "stub.pt", 1.0, (0.1, -0.05)
+    )
+    backbone = torchvision.models.resnet18(weights=None).state_dict()
+    state = {f"backbone.{k}": v for k, v in backbone.items() if not k.startswith("fc.")}
+    state |= {
+        "cls.weight": torch.zeros(1, 512),
+        "cls.bias": torch.tensor([stub.logit]),
+        "offset.weight": torch.zeros(2, 512),
+        "offset.bias": torch.tensor(stub.offset),
+    }
+    torch.save({"model": state}, stub.weights)
+    return stub
+
+
+@pytest.fixture(scope="session")
+def ball_scorer_weights() -> Path:
+    """The ball crop scorer of ball-detection 13: ResNet18 on 96 px crops."""
+    return MODELS_DIR / "ball_crops_resnet18_bd13.pt"

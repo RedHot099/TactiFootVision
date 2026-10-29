@@ -766,3 +766,21 @@ def test_ball_candidates_larger_than_ball_max_side_at_1080p_are_dropped(video):
         assert frame.ball.confidence.tolist() == [pytest.approx(0.99)]
     with pytest.raises(ValueError, match="ball_max_side"):
         Pipeline(_BigBall(device="cpu"), ball_max_side=0)
+
+
+def test_the_ball_scorer_rescores_the_candidates_before_the_ball_is_chosen(
+    video, stub_ball_scorer
+):
+    # sigmoid(logit(p_crop) + logit(conf)): the stub's p_crop lifts every candidate
+    scorer = tv.models.BallCropScorer(
+        stub_ball_scorer.weights, fusion=(1.0, 1.0, 0.0), device="cpu"
+    )
+    result = Pipeline(_ThreeBalls(device="cpu"), tracker=None, ball_scorer=scorer).run(
+        video, end=2, progress=False
+    )
+    lift = np.exp(stub_ball_scorer.logit)
+    for t, frame in enumerate(result):
+        expected = [lift * p / (1 - p + lift * p) for p in (0.95, 0.7, 0.5)]
+        assert frame.ball_candidates.confidence.tolist() == pytest.approx(expected)
+        # the 6 px ball's 18 px crop moves it by 0.1 x 18 px
+        assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t + 1.8, abs=1)

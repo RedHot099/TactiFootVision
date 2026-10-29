@@ -37,6 +37,8 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
   embedder: siglip          # siglip | resnet
 
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
+# ball_scorer:                         # tv.models.BallCropScorer(...): single-frame ball second stage
+#   weights: ../models/ball_crops_resnet18_bd13.pt
 # homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]

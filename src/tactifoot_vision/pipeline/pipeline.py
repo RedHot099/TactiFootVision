@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.video import VideoReader, check_frame_range
 from tactifoot_vision.enums import DetectionKey, ObjectKind, Role, TrackerType
+from tactifoot_vision.models.ball_scorer import BallCropScorer
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline.result import (
     BALL_ANCHOR,
@@ -39,9 +40,9 @@ class Pipeline:
     """Turns a match video into per-frame tracks, pitch positions and teams.
 
     Per frame: detect, split off the ball candidates (the ``ball_class``
-    detections no larger than ``ball_max_side``) and take the most
-    confident as the ball, track the people,
-    detect pitch keypoints, update the homography (given the frame and the
+    detections no larger than ``ball_max_side``), rescore them with the
+    ``ball_scorer`` if given, take the most confident as the ball, track the
+    people, detect pitch keypoints, update the homography (given the frame and the
     people's boxes, for ``refine_with_lines``) and project everyone onto
     the pitch (people at the bottom centre of their box, the ball candidates
     at their centre). The pass ends with the steps that need data only it
@@ -63,6 +64,11 @@ class Pipeline:
             :meth:`TeamClassifier.fit`) and only fits an unfitted one.
         pitch: pitch model; defaults to ``homography.pitch`` or ``SoccerPitch()``.
         homography: homography estimator; one is created when omitted.
+        ball_scorer: a second stage that rescores the ball candidates on
+            crops and centres their boxes
+            (:class:`~tactifoot_vision.models.BallCropScorer`).
+            It makes the most confident candidate much more often the ball,
+            for single frames; ``track_ball`` gains little from it.
         ball_class: detector class name of the ball.
         ball_max_side: ball candidates whose longer box side exceeds this
             many pixels, scaled to a frame 1080 pixels high, are dropped
@@ -101,6 +107,7 @@ class Pipeline:
         refit_teams: bool = True,
         pitch: SoccerPitch | None = None,
         homography: HomographyEstimator | None = None,
+        ball_scorer: BallCropScorer | None = None,
         ball_class: str = ObjectKind.BALL,
         ball_max_side: float | None = 45.0,
         include_classes: Sequence[str] | None = None,
@@ -134,6 +141,7 @@ class Pipeline:
         self.refit_teams = refit_teams
         self.pitch = pitch or (homography.pitch if homography else SoccerPitch())
         self.homography = homography or HomographyEstimator(self.pitch)
+        self.ball_scorer = ball_scorer
         self.ball_class = str(ball_class)
         self.ball_max_side = ball_max_side
         self.include_classes = (
@@ -241,6 +249,8 @@ class Pipeline:
             sides = candidates.xyxy[:, 2:] - candidates.xyxy[:, :2]
             scale = _REFERENCE_HEIGHT / frame.shape[0]
             candidates = candidates[sides.max(axis=1) * scale <= self.ball_max_side]
+        if self.ball_scorer is not None:
+            candidates = self.ball_scorer(frame, candidates)
         candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
         people = detections[~is_ball]
         if self.include_classes is not None:
