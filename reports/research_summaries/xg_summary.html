@@ -64,8 +64,8 @@ detection, pitch registration) and compares both against StatsBomb's commercial 
   <text x="698" y="93" text-anchor="middle" fill="#fff" font-weight="600">Stacked xG</text>
   <text x="698" y="110" text-anchor="middle" fill="#c3c2b7">video + geometry</text>
 </svg>
-<figcaption><b>Figure 1. Two complementary routes from pixels to xG.</b> The video model sees one frame at the moment of the shot.
-The perception stack turns the same frame into pitch coordinates in metres. A small stacked model combines the two.</figcaption>
+<figcaption><b>Figure 1. Two complementary routes from pixels to xG.</b> The video model learns directly from pixels but cannot be
+inspected. The perception stack measures explicit quantities that can be checked against hand-annotated data, one by one.</figcaption>
 </figure>
 
 <h2>2&nbsp;&nbsp;Results</h2>
@@ -74,11 +74,11 @@ The perception stack turns the same frame into pitch coordinates in metres. A sm
 <p>
 A DINOv2-L backbone, with its last 4 of 24 transformer blocks fine-tuned, reads a single frame at the moment of the shot
 and outputs a calibrated goal probability. Ten models (5 folds grouped by home team × 2 seeds) are averaged, then Platt-scaled.
-On the official SoccerNet test split (100 matches, 2,229 shots) it reaches the following:
+On the official SoccerNet test split (100 matches) it reaches the following:
 </p>
 <table>
   <tr><th>Metric (test, 2,229 shots)</th><th class="n">Video-only model</th><th class="n">Constant baseline</th><th>Note</th></tr>
-  <tr><td>ROC AUC</td><td class="n">0.792 [0.768, 0.817]</td><td class="n">0.500</td><td>95% match-bootstrap CI</td></tr>
+  <tr><td>ROC AUC</td><td class="n">0.792 [0.768, 0.817]</td><td class="n">0.500</td><td></td></tr>
   <tr><td>Log-loss</td><td class="n">0.324</td><td class="n">0.392</td><td>−17% relative</td></tr>
   <tr><td>Brier score</td><td class="n">0.097</td><td class="n">—</td><td></td></tr>
 </table>
@@ -102,8 +102,8 @@ manually annotated event data. The registered tests explain why:
     (R² = 0.71) and the number of defenders in the shooting cone (AUC 0.76). Both are above the pre-registered thresholds and
     above frozen DINOv2 features.</li>
 </ul>
-<p>Against hand-annotated positions, the useful content of the frame is mostly geometry. That points at the perception stack: measure the
-geometry explicitly and accurately. Section 2.5 asks the converse question for automatically measured geometry.
+<p>This points at the perception stack: measure the geometry explicitly and accurately. Section 2.5 asks the converse question for
+automatically measured geometry.
 A paper on this study is in preparation for the CVsports workshop at CVPR 2027.</p>
 
 <h3>2.3 Perception: from pixels to metres</h3>
@@ -115,8 +115,8 @@ A paper on this study is in preparation for the CVsports workshop at CVPR 2027.<
   <tr><td>Shot geometry vs StatsBomb</td><td>median shot-location error (2,721 shots)</td><td class="n">5.18&nbsp;m</td><td class="n"><b>1.16&nbsp;m</b></td></tr>
   <tr><td></td><td>median goalkeeper position error · GK found</td><td class="n">6.50&nbsp;m · 18%</td><td class="n"><b>0.77&nbsp;m · 91%</b></td></tr>
 </table>
-<p class="note">The shot location went from 5.18 m to 2.62 m with the retrained detector, then to 1.16 m by placing the shot at the shooter's feet instead of
-projecting the ball, which is often in the air. On headers the error dropped from 13.0 m to 2.4 m.</p>
+<p class="note">The retrained detector alone brought the shot location to 2.62 m. The rest came from placing the shot at the shooter's feet
+instead of projecting the ball, which is often in the air: on headers the error fell from 13.0 m to 2.4 m.</p>
 
 <figure class="measure">
   <div class="measure-row">
@@ -132,9 +132,8 @@ projecting the ball, which is often in the air. On headers the error dropped fro
     <tr><td>Nearest opponent · opponents within 3 m</td><td class="n">{{feature_g_near_opp}} m · {{feature_g_opp_3m}}</td><td>pressure proxies; need the team assignment</td></tr>
     <tr><td>Goalkeeper off the line · off centre</td><td class="n">{{feature_g_gk_depth}} m · {{feature_g_gk_off_centre}} m</td><td>goalkeeper class from the detector</td></tr>
   </table>
-  <figcaption><b>Figure 2. What the geometry model takes into account.</b> Left: the frame at contact, with detections
-  projected through the pitch homography. Right: the same in metres, from above. With the video score, the stacked model
-  outputs xG {{feature_geometry}} (StatsBomb: {{feature_vendor}}).</figcaption>
+  <figcaption><b>Figure 2. What the geometry model takes into account.</b> Every input is measured from a single broadcast frame,
+  with no manual annotation; the shot is the one in the Section 3 clip.</figcaption>
   </div>
 </figure>
 
@@ -142,27 +141,27 @@ projecting the ball, which is often in the air. On headers the error dropped fro
 <div class="chart-row">
   <figure>
     <img src="{{fig_gap}}" alt="Log-loss reduction relative to the video-only model">
-    <figcaption><b>How much of the gap to commercial xG explicit geometry closes.</b> Log-loss reduction relative to the video-only
-    model on the 2,721 shots paired with StatsBomb. On a larger set of 172 held-out matches (3,819 shots), adding geometry reduces log-loss by
-    0.0091 [0.0042, 0.0142].</figcaption>
+    <figcaption><b>How much of the gap to commercial xG explicit geometry closes.</b> Two thirds of the gap remain;
+    Section 2.5 asks what the image carries beyond geometry. On 172 held-out matches (3,819 shots) the gain is 0.0091 [0.0042, 0.0142].</figcaption>
   </figure>
   <figure>
     <img src="{{fig_reliability}}" alt="Reliability diagram">
-    <figcaption><b>Calibration.</b> Observed goal rate per decile of predicted xG; all three models Platt-recalibrated alike.</figcaption>
+    <figcaption><b>Calibration.</b> All three models are Platt-recalibrated alike and then follow the diagonal, so their differences in
+    log-loss come mainly from ranking shots, not from calibration.</figcaption>
   </figure>
 </div>
 <figure>
   <img src="{{fig_categories}}" alt="Over- or under-prediction of goals by situation, video only versus video with geometry, StatsBomb as reference">
-  <figcaption><b>Where video still errs.</b> Over- or under-prediction of goals by situation, all models recalibrated alike. Grey: the
-  approximate 95% range a calibrated model would show by chance with that many goals (Poisson, ignoring match clustering).
-  Only sharp-angle shots lie clearly outside it: geometry cuts the over-prediction from +117% to +60% (StatsBomb −15%).
-  The video model's shortfall with the goalkeeper off the line (−20%) moves inside the range; the other gaps are within chance.</figcaption>
+  <figcaption><b>Where video still errs.</b> Grey: the approximate 95% range a calibrated model would show by chance with that many
+  goals (Poisson, ignoring match clustering). Only sharp-angle shots lie clearly outside it, and geometry halves the over-prediction there,
+  which suggests the frame misjudges the goal-mouth angle from the side. With the goalkeeper off the line, geometry brings the
+  video model back inside the range. The other situations show no gap beyond chance.</figcaption>
 </figure>
 
 <h3>2.5 What does the image add beyond automatic geometry?</h3>
 <p>
-A three-arm ablation, out of fold on the 328 training matches (7,062 shots, 902 goals), with identical folds and calibration and
-paired match-bootstrap CIs. These are development results on a different population from 2.1.
+A three-arm ablation, out of fold on the 328 training matches (7,062 shots, 902 goals), with identical folds and calibration;
+CIs come from a paired bootstrap over matches. These are development results on a different population from 2.1.
 </p>
 <table>
   <tr><th>Arm</th><th>Inputs</th><th class="n">Log-loss</th><th class="n">Brier</th><th class="n">AUC</th></tr>
@@ -174,19 +173,20 @@ paired match-bootstrap CIs. These are development results on a different populat
   <div>
     <ul>
       <li><b>Each adds to the other.</b> Image beyond geometry (C−B): −0.0097 [−0.0131, −0.0064]. Geometry beyond image (C−A):
-        −0.0106 [−0.0143, −0.0065]. B−A is undecided. Leakage controls agree. The model keeps both (arm C).</li>
-      <li><b>Not a geometry correction.</b> Probes read distance, angle, defenders in the cone and goalkeeper depth (mostly in
-        blocks 22–23 of 24), but the detector is closer to StatsBomb's reference positions than any probe.</li>
+        −0.0106 [−0.0143, −0.0065]. B−A is undecided. Leakage controls agree.</li>
+      <li><b>Not a geometry correction.</b> Beyond the probes in 2.2, the angle and goalkeeper depth are also readable, mostly in
+        blocks 22–23 of 24. Still, the detector is closer to StatsBomb's reference positions than any probe, so the image does not fix geometric errors.</li>
       <li><b>Not simple scene attributes.</b> Crowding, set piece, framing and shooter size, added to geometry, leave the gain at
         −0.0097 [−0.0136, −0.0057] (inconclusive: the test can confirm redundancy, not exclude it). No detectable difference for headers or set pieces.</li>
     </ul>
   </div>
   <figure>
     <img src="{{fig_masking}}" alt="Share of the image's gain over geometry left after masking regions of the frame">
-    <figcaption><b>Figure 3. Masking the frame</b> (re-embedded, refitted). One object masked leaves 0.58–0.94 of the gain, all players
-    0.14, shooter and ball alone 0.09. The deployed model is most sensitive to the goalkeeper and goal area. Predictive redundancy, not causal use.</figcaption>
+    <figcaption><b>Figure 3. Masking the frame</b> (re-embedded, refitted). No single object carries the gain: it lies in the arrangement
+    of players on the scene. The deployed model is most sensitive to the goalkeeper and goal area. Predictive redundancy, not causal use.</figcaption>
   </figure>
 </div>
+<p class="note">The image and the measured geometry carry complementary information, so the model keeps both (arm C).</p>
 
 <h2>3&nbsp;&nbsp;Examples</h2>
 <div class="feature">
@@ -204,8 +204,8 @@ paired match-bootstrap CIs. These are development results on a different populat
       <span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{feature_vendor}}</span>
       <span class="chip out">{{feature_outcome}}</span>
     </div>
-    <p class="note" style="margin-top:2mm">A pressured shot from 14 m through a crowded box: all three estimates agree
-    that it is a below-average chance.</p>
+    <p class="note" style="margin-top:2mm">All three estimates sit near an average shot (13.7% of the paired shots are goals),
+    and this one was scored: xG rates the chance, not the finish.</p>
   </div>
 </div>
 

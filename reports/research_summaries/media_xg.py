@@ -29,19 +29,19 @@ ANCHOR = CLIP_ANCHOR_MS * FPS // 1000
 GALLERY = {
     "agree": (
         "soccernet__italy_serie-a_2015-2016_2015-09-27---21-45-Inter-1---4-Fiorentina__1__1057417",
-        "Close-range open play: all three models agree on a high-quality chance.",
+        "Close range in open play: the easy case, where even the frame alone rates the chance highly.",
     ),
     "angle": (
         "soccernet__spain_laliga_2015-2016_2016-03-02---23-00-Levante-1---3-Real-Madrid__1__1148208",
-        "Sharp angle (< 15°): the frame model over-rates it; explicit geometry corrects it.",
+        "Sharp angle (< 15°): the over-prediction seen in 2.4, corrected by the measured goal-mouth angle.",
     ),
     "close": (
         "soccernet__germany_bundesliga_2015-2016_2015-08-29---19-30-Bayern-Munich-3---0-Bayer-Leverkusen__2__1999537",
-        "Crowded six-yard box: geometry pulls the estimate towards the vendor value.",
+        "Crowded six-yard box: the measured positions temper a high estimate from the frame.",
     ),
     "pressure": (
         "soccernet__england_epl_2015-2016_2015-10-17---17-00-Chelsea-2---0-Aston-Villa__2__1536623",
-        "Open problem: a pressured header; neither video model sees the defensive pressure.",
+        "Pressured header: both video models rate it above StatsBomb, which annotates the pressure. Across all pressured shots the gap is within chance (2.4).",
     ),
 }
 FEATURE = "soccernet__england_epl_2015-2016_2015-08-16---18-00-Manchester-City-3---0-Chelsea__1__1859901"
