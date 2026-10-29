@@ -13,10 +13,17 @@ from tactifoot_vision.pipeline import (
     reproject,
     track_ball,
 )
+from tactifoot_vision.pipeline.ball import (
+    _UNCERTAINTY_INTERCEPT,
+    _UNCERTAINTY_WEIGHTS,
+)
 from tactifoot_vision.pitch import SoccerPitch
 
 FPS = 25.0
 GAP = range(40, 44)  # frames in which the moving ball is not detected
+SPARE_BALLS = {"static_window": 3.2}  # the static test, for footage with spare balls
+# a gate that widens slowly and stops at 0.5 s, so short scenes show restarts and drops
+NARROW_GATE = {"gate": 1.5, "gate_speed": 32.5, "max_gap": 0.5}
 
 
 def _homography(pitch: SoccerPitch) -> np.ndarray:
@@ -79,7 +86,9 @@ def _scene(pitch: SoccerPitch, frames: int = 75) -> PipelineResult:
 
     The spare ball, the right penalty spot (seen on every other frame, too
     rarely to count as static) and a ball box drawn around a player all
-    score higher than the live ball, which is missing during ``GAP``.
+    score higher than the live ball, which is missing during ``GAP``. Only
+    the static test (off by default) keeps the spare ball from starting the
+    track.
     """
     spare = _box(_pixels(pitch, (106.5, 30)))
     spot = _box(_pixels(pitch, (94, 34)))
@@ -109,7 +118,7 @@ def _interpolated(frame: FrameResult) -> list[bool]:
 def test_track_ball_follows_the_moving_ball_past_a_spare_ball_and_a_spot(pitch):
     result = _scene(pitch)
 
-    tracked = track_ball(result)
+    tracked = track_ball(result, **SPARE_BALLS)
 
     for t, frame in enumerate(tracked):
         assert len(frame.ball) == 1, t
@@ -119,13 +128,17 @@ def test_track_ball_follows_the_moving_ball_past_a_spare_ball_and_a_spot(pitch):
         assert _interpolated(frame) == [t in GAP]
     # before tracking the most confident candidate, the player box, is the ball
     assert result[0].ball.xyxy.tolist() == result[0].detections.xyxy.tolist()
+    # without the static test the spare ball, more confident, starts the track
+    np.testing.assert_allclose(
+        track_ball(result)[0].ball_xy[0], _units(pitch, (106.5, 30)), atol=1e-3
+    )
 
 
 def test_track_ball_fills_a_short_gap_and_flags_it():
     pitch = SoccerPitch()
     result = _scene(pitch)
 
-    tracked = track_ball(result)
+    tracked = track_ball(result, **SPARE_BALLS)
 
     for t in GAP:
         ball = tracked.frame(t).ball
@@ -153,7 +166,9 @@ def test_track_ball_fills_a_short_gap_and_flags_it():
 def test_track_ball_leaves_a_gap_longer_than_max_gap_empty():
     pitch = SoccerPitch()
 
-    tracked = track_ball(_scene(pitch), max_gap=len(GAP) / FPS)  # 4 frames: 0.16 s
+    tracked = track_ball(
+        _scene(pitch), max_gap=len(GAP) / FPS, **SPARE_BALLS
+    )  # 4 frames: 0.16 s
 
     for t in GAP:
         assert len(tracked.frame(t).ball) == 0
@@ -192,12 +207,12 @@ def test_track_ball_restarts_only_on_a_confident_candidate():
         if t < 10:
             balls = [(_box(_pixels(pitch, _ball_metres(t))), 0.6)]
         elif t < 25:  # weak far candidates only: no restart
-            balls = [(far, 0.3)]
+            balls = [(far, 0.1)]
         else:  # a confident one restarts the track
-            balls = [(far, 0.3), (_box(_pixels(pitch, (70, 10))), 0.5)]
+            balls = [(far, 0.1), (_box(_pixels(pitch, (70, 10))), 0.5)]
         frames.append(_frame(t, balls))
 
-    tracked = track_ball(_result(pitch, frames))
+    tracked = track_ball(_result(pitch, frames), **NARROW_GATE)
 
     assert all(len(tracked[t].ball) == 1 for t in range(10))
     assert all(len(tracked[t].ball) == 0 for t in range(10, 25))
@@ -205,7 +220,8 @@ def test_track_ball_restarts_only_on_a_confident_candidate():
         np.testing.assert_allclose(tracked[t].ball_xy[0], (70, 10), atol=1e-3)
         assert _interpolated(tracked[t]) == [False]
     # a lower restart confidence lets the weak candidates restart it
-    assert len(track_ball(_result(pitch, frames), restart_confidence=0.2)[12].ball) == 1
+    lower = track_ball(_result(pitch, frames), restart_confidence=0.1, **NARROW_GATE)
+    assert len(lower[12].ball) == 1
 
 
 def test_track_ball_removes_isolated_outliers():
@@ -218,10 +234,10 @@ def test_track_ball_removes_isolated_outliers():
         if t == 20:  # a confident false detection after the ball was lost
             balls.append((_box(_pixels(pitch, (90, 60))), 0.9))
         if t == 50:  # a weak lone detection inside the gate, 0.24 s after the ball
-            balls.append((_box(_pixels(pitch, (40.5, 30))), 0.3))
+            balls.append((_box(_pixels(pitch, (40.5, 30))), 0.1))
         frames.append(_frame(t, balls))
 
-    tracked = track_ball(_result(pitch, frames), static_window=10.0)
+    tracked = track_ball(_result(pitch, frames), **NARROW_GATE)
 
     # the false detection restarts the track, but differs from the ball
     # before and after it; the weak one has no neighbour within `isolation`
@@ -229,7 +245,7 @@ def test_track_ball_removes_isolated_outliers():
     assert len(tracked[50].ball) == 0
     assert len(tracked[9].ball) == len(tracked[30].ball) == 1
     # the ball 0.24 s before it is within a 0.3 s isolation
-    wider = track_ball(_result(pitch, frames), static_window=10.0, isolation=0.3)
+    wider = track_ball(_result(pitch, frames), isolation=0.3, **NARROW_GATE)
     assert len(wider[50].ball) == 1
 
 
@@ -238,7 +254,7 @@ def test_track_ball_keeps_weak_balls_when_frames_are_far_apart():
     # a ball seen on every one of them is not alone.
     pitch = SoccerPitch()
     frames = [
-        _frame(t, [(_box(_pixels(pitch, _ball_metres(t))), 0.6 if t == 0 else 0.4)])
+        _frame(t, [(_box(_pixels(pitch, _ball_metres(t))), 0.6 if t == 0 else 0.1)])
         for t in range(0, 150, 5)
     ]
 
@@ -247,38 +263,38 @@ def test_track_ball_keeps_weak_balls_when_frames_are_far_apart():
     assert all(len(frame.ball) == 1 for frame in tracked)
     # a weak ball with an empty processed frame on each side is still dropped
     frames[20], frames[22] = _frame(100, []), _frame(110, [])
-    assert len(track_ball(_result(pitch, frames)).frame(105).ball) == 0
+    assert len(track_ball(_result(pitch, frames), **NARROW_GATE).frame(105).ball) == 0
 
 
 def test_track_ball_takes_the_best_candidate_inside_the_gate():
-    # A confident candidate just outside the gate scores better than a weak
-    # one inside it; the weak one is taken.
+    # A confident candidate just outside the gate (3 m + 65 m/s x 0.04 s
+    # = 5.6 m) scores better than a weak one inside it; the weak one is taken.
     pitch = SoccerPitch()
     frames = [_frame(t, [(_box(_pixels(pitch, (40, 30))), 0.6)]) for t in range(10)]
-    inside, outside = _box(_pixels(pitch, (42.5, 30))), _box(_pixels(pitch, (43, 30)))
+    inside, outside = _box(_pixels(pitch, (45, 30))), _box(_pixels(pitch, (45.8, 30)))
     frames.append(_frame(10, [(outside, 1.0), (inside, 0.2)]))
 
     tracked = track_ball(_result(pitch, frames))
 
-    np.testing.assert_allclose(tracked[10].ball_xy[0], (42.5, 30), atol=1e-3)
+    np.testing.assert_allclose(tracked[10].ball_xy[0], (45, 30), atol=1e-3)
 
 
 def test_track_ball_stops_extrapolating_the_lost_ball_after_max_gap():
     # Lost at 10 m/s, the ball comes back weak (no restart) where it was
     # lost, 2 s later: a prediction carried on for 2 s would sit 20 m away,
-    # beyond the gate, which stops widening after max_gap.
+    # beyond the gate, which stops widening after a 0.5 s max_gap.
     pitch = SoccerPitch()
     frames = []
     for t in range(80):
         if t < 10:
             balls = [(_box(_pixels(pitch, (30 + 0.4 * t, 20))), 0.6)]
         elif t >= 60:
-            balls = [(_box(_pixels(pitch, (35, 20))), 0.4)]
+            balls = [(_box(_pixels(pitch, (35, 20))), 0.1)]
         else:
             balls = []
         frames.append(_frame(t, balls))
 
-    tracked = track_ball(_result(pitch, frames))
+    tracked = track_ball(_result(pitch, frames), **NARROW_GATE)
 
     assert all(len(tracked[t].ball) == 1 for t in range(60, 80))
     assert all(len(tracked[t].ball) == 0 for t in range(10, 60))
@@ -296,11 +312,78 @@ def test_track_ball_rejects_static_candidates_only_over_a_long_enough_window():
     spare = _box(_pixels(pitch, (106.5, 30)))
     frames = [_frame(t, [(spare, 0.9)]) for t in range(75)]  # 3 s
 
-    assert all(len(f.ball) == 0 for f in track_ball(_result(pitch, frames)))
+    assert all(
+        len(f.ball) == 0 for f in track_ball(_result(pitch, frames), **SPARE_BALLS)
+    )
     # a window longer than twice the clip cannot tell a still ball from a static one
     assert all(
         len(f.ball) == 1 for f in track_ball(_result(pitch, frames), static_window=7.0)
     )
+
+
+def test_track_ball_keeps_a_ball_at_rest_before_a_set_piece_by_default():
+    # The ball lies still for 4 s (a free kick), then is kicked away.
+    pitch = SoccerPitch()
+    frames = []
+    for t in range(150):
+        metres = (40, 30) if t < 100 else (40 + 0.8 * (t - 100), 30)
+        frames.append(_frame(t, [(_box(_pixels(pitch, metres)), 0.6)]))
+    result = _result(pitch, frames)
+
+    assert all(len(f.ball) == 1 for f in track_ball(result))
+    # the static test drops the ball while it lies still
+    rested = track_ball(result, **SPARE_BALLS)
+    assert len(rested[50].ball) == 0
+    assert len(rested[140].ball) == 1
+
+
+def test_track_ball_uncertainty_is_a_probability_that_grows_with_the_gap():
+    pitch = SoccerPitch()
+    # 0.2, 0.52 and 1.24 s between the measured balls around each gap
+    gaps = [range(20, 24), range(40, 52), range(70, 100)]
+    missing = set().union(*gaps)
+    frames = [
+        _frame(
+            t, [] if t in missing else [(_box(_pixels(pitch, _ball_metres(t))), 0.6)]
+        )
+        for t in range(120)
+    ]
+
+    tracked = track_ball(_result(pitch, frames))
+
+    uncertainty = np.array([f.ball.data["uncertainty"][0] for f in tracked])
+    assert ((uncertainty > 0) & (uncertainty < 1)).all()
+    middles = [uncertainty[(gap.start + gap.stop) // 2] for gap in gaps]
+    assert middles[0] < middles[1] < middles[2]
+    # measured balls are the surest; a filled one is surest next to them
+    assert uncertainty[10] < middles[0]
+    assert uncertainty[gaps[2].start] < middles[2]
+    table = tracked.to_dataframe()
+    np.testing.assert_allclose(
+        table.loc[table["object"] == "ball", "uncertainty"], uncertainty
+    )
+    freeze = tracked.to_freeze_frames()
+    np.testing.assert_allclose(
+        freeze.loc[freeze["type"] == "ball", "uncertainty"], uncertainty
+    )
+    # before tracking there is none
+    assert _scene(pitch, frames=2).to_dataframe()["uncertainty"].isna().all()
+
+
+@pytest.mark.parametrize(
+    ("features", "probability"),
+    [  # positions of GSR valid games 2+3 and the probabilities of ball-detection 18's fit
+        ((0.0, 0.0, 0.0, 1.20242, 0.18228, 0.22940, 2.76650), 0.09282),
+        ((0.0, 0.0, 0.0, 3.27323, 0.28440, 0.27142, 2.70563), 0.36620),
+        ((0.0, 0.0, 0.0, 2.36148, 0.57682, 0.24207, 2.69439), 0.18684),
+    ],
+)
+def test_track_ball_uncertainty_keeps_the_research_fit(features, probability):
+    logit = _UNCERTAINTY_INTERCEPT + sum(
+        weight * value
+        for weight, value in zip(_UNCERTAINTY_WEIGHTS.values(), features, strict=True)
+    )
+    assert 1 / (1 + np.exp(-logit)) == pytest.approx(probability, abs=1e-3)
 
 
 def test_track_ball_is_a_registered_post_process_that_leaves_its_input_alone():
@@ -326,6 +409,7 @@ def test_track_ball_is_a_registered_post_process_that_leaves_its_input_alone():
     "options",
     [
         {"gate": 0},
+        {"static_window": 0},
         {"max_gap": -1},
         {"static_share": 1.5},
         {"max_person_iou": 0},

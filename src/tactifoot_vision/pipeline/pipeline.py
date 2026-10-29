@@ -32,12 +32,15 @@ from tactifoot_vision.tracking.base import Tracker, create_tracker
 
 logger = logging.getLogger(__name__)
 
+_REFERENCE_HEIGHT = 1080  # px: frame height ball_max_side is given at
+
 
 class Pipeline:
     """Turns a match video into per-frame tracks, pitch positions and teams.
 
     Per frame: detect, split off the ball candidates (the ``ball_class``
-    detections) and take the most confident as the ball, track the people,
+    detections no larger than ``ball_max_side``) and take the most
+    confident as the ball, track the people,
     detect pitch keypoints, update the homography (given the frame and the
     people's boxes, for ``refine_with_lines``) and project everyone onto
     the pitch (people at the bottom centre of their box, the ball candidates
@@ -61,6 +64,11 @@ class Pipeline:
         pitch: pitch model; defaults to ``homography.pitch`` or ``SoccerPitch()``.
         homography: homography estimator; one is created when omitted.
         ball_class: detector class name of the ball.
+        ball_max_side: ball candidates whose longer box side exceeds this
+            many pixels, scaled to a frame 1080 pixels high, are dropped
+            (``None`` keeps all). The largest ball labelled in SoccerNet GSR
+            measures 43 px at 1080p; larger "balls" are mostly referees in
+            black. ``track_ball``'s defaults and uncertainty assume it.
         include_classes: people classes to keep (the ball is always kept); ``None`` keeps all.
         team_classes: classes that belong to a team. ``"goalkeeper"`` joins the
             team whose players are nearest on the pitch; the others are
@@ -94,6 +102,7 @@ class Pipeline:
         pitch: SoccerPitch | None = None,
         homography: HomographyEstimator | None = None,
         ball_class: str = ObjectKind.BALL,
+        ball_max_side: float | None = 45.0,
         include_classes: Sequence[str] | None = None,
         team_classes: Sequence[str] = (Role.PLAYER, Role.GOALKEEPER),
         team_sample_stride: int = 10,
@@ -112,6 +121,8 @@ class Pipeline:
             )
         if team_sample_stride < 1:
             raise ValueError("team_sample_stride must be >= 1")
+        if ball_max_side is not None and ball_max_side <= 0:
+            raise ValueError("ball_max_side must be positive or None")
         if pitch is not None and homography is not None and homography.pitch != pitch:
             raise ValueError(
                 f"pitch {pitch} differs from the homography estimator's {homography.pitch}"
@@ -124,6 +135,7 @@ class Pipeline:
         self.pitch = pitch or (homography.pitch if homography else SoccerPitch())
         self.homography = homography or HomographyEstimator(self.pitch)
         self.ball_class = str(ball_class)
+        self.ball_max_side = ball_max_side
         self.include_classes = (
             None if include_classes is None else tuple(include_classes)
         )
@@ -225,6 +237,10 @@ class Pipeline:
             detections.data[DetectionKey.CLASS_NAME] = np.zeros(0, dtype=str)
         is_ball = detections.data[DetectionKey.CLASS_NAME] == self.ball_class
         candidates = detections[is_ball]
+        if self.ball_max_side is not None:
+            sides = candidates.xyxy[:, 2:] - candidates.xyxy[:, :2]
+            scale = _REFERENCE_HEIGHT / frame.shape[0]
+            candidates = candidates[sides.max(axis=1) * scale <= self.ball_max_side]
         candidates = candidates[np.argsort(-candidates.confidence, kind="stable")]
         people = detections[~is_ball]
         if self.include_classes is not None:

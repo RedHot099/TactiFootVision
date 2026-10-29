@@ -22,6 +22,7 @@ detector:                   # tv.load_model(type, weights, **rest)
   weights: ../models/football_yolo11m.pt
   conf: 0.3
   iou: 0.5
+  # class_conf: {ball: 0.05}  # weak ball candidates, as track_ball's defaults expect
 
 keypoints:                  # null: no homography, no pitch positions
   type: yolo_pose
@@ -39,10 +40,11 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
 # homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
+#   ball_max_side: 45                  # px at 1080p; larger ball candidates are dropped
 # postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
 #   - {type: smooth_homographies}      # first: lag-free homographies (homography smoothing_window: 1)
 #   - {type: join_tracks, max_gap: 1.6}  # join tracks into player tracks
-#   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
+#   - {type: track_ball}               # choose the ball; static_window: 20 with spare balls
 #   - {type: assign_roles}             # goalkeepers, referees, people off the pitch
 # render:                              # tv.viz.render_video(...) arguments
 #   annotator: {style: video_game}     # tv.viz.FrameAnnotator(...)

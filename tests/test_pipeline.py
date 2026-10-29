@@ -736,3 +736,33 @@ def test_saved_files_hold_plain_strings_whatever_the_enum_members(video, tmp_pat
     assert set(freeze_frames["type"]) == {"player", "goalkeeper", "referee", "ball"}
     parquet = result.to_parquet(tmp_path / "tracks.parquet")
     pd.testing.assert_frame_equal(pd.read_parquet(parquet), tracks)
+
+
+class _BigBall(ColorDetector):
+    """Adds a 12 px "ball", 54 px at 1080p, more confident than the real 6 px one (27 px)."""
+
+    def predict(self, image):
+        detections = super().predict(image)
+        big = sv.Detections(
+            xyxy=np.float32([[20, 200, 32, 212]]),
+            confidence=np.float32([0.99]),
+            class_id=np.array([0]),
+            data={"class_name": np.array(["ball"])},
+        )
+        return sv.Detections.merge([detections, big])
+
+
+def test_ball_candidates_larger_than_ball_max_side_at_1080p_are_dropped(video):
+    result = Pipeline(_BigBall(device="cpu"), tracker=None).run(
+        video, end=2, progress=False
+    )
+    for t, frame in enumerate(result):
+        assert len(frame.ball_candidates) == 1
+        assert frame.ball.xyxy[0, 0] == pytest.approx(150 + 2 * t, abs=2)
+    # at 240 px high a 12 px box is 54 px at 1080p: a 60 px limit keeps it
+    for limit in (60.0, None):
+        kept = Pipeline(_BigBall(device="cpu"), tracker=None, ball_max_side=limit)
+        frame = kept.run(video, end=1, progress=False)[0]
+        assert frame.ball.confidence.tolist() == [pytest.approx(0.99)]
+    with pytest.raises(ValueError, match="ball_max_side"):
+        Pipeline(_BigBall(device="cpu"), ball_max_side=0)

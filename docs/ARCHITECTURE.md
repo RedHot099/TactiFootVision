@@ -494,11 +494,14 @@ configs/              example run files
   `track_embedding_samples` their number, so a post-process
   (`assign_roles`) can compare kits without the video. `PipelineResult.load`
   refuses a result saved before results kept them.
-  `FrameResult.ball_candidates` keeps every ball detection of the frame,
-  best confidence first, with its `pitch_xy`; `ball` is the chosen one: the
-  best candidate, until `track_ball` chooses another. The tables and
-  freeze frames export `ball` only, so they keep one ball row per frame,
-  with an `interpolated` flag.
+  `FrameResult.ball_candidates` keeps every ball detection of the frame
+  whose longer side is at most `ball_max_side` (45) pixels at 1080p
+  (scaled by `1080 / frame height`; the largest ball labelled in SoccerNet
+  GSR measures 43 px, and larger "balls" are mostly referees in black;
+  `None` keeps all), best confidence first, with its `pitch_xy`; `ball` is
+  the chosen one: the best candidate, until `track_ball` chooses another.
+  The tables and freeze frames export `ball` only, so they keep one ball
+  row per frame, with `interpolated` and `uncertainty` columns.
   `PipelineResult.load` refuses a result saved before frames kept their
   ball candidates.
   `PipelineResult.window(video_index, seconds)` returns the results of the
@@ -527,8 +530,11 @@ configs/              example run files
   units to metres of a 105 x 68 m pitch.
 * `track_ball(result, ...)` (`pipeline/ball.py`, registered as
   `track_ball`) chooses one ball per frame among the candidates: it drops
-  candidates that are weak, static, on a painted spot of `result.pitch` or
-  matching a person's box (RF-DETR scores every box in every class), follows
+  candidates that are weak, on a painted spot of `result.pitch`, matching a
+  person's box (RF-DETR scores every box in every class) or, with a
+  `static_window`, static (off by default: on SoccerNet GSR it dropped the
+  live ball at rest before set pieces; 20 s suits footage with spare balls
+  lying around, which otherwise may start the track), follows
   the ball with a constant-velocity gate on the pitch, restarts only on a
   confident candidate after `restart_after`, removes outliers (far from the
   balls on both sides, or weak and alone) and fills gaps of up to `max_gap`,
@@ -536,7 +542,23 @@ configs/              example run files
   `confidence` NaN). Every threshold is an option, in metres and seconds:
   pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
   Frames with no ball chosen get an empty `ball`. Positions are on the pitch
-  plane; an airborne ball's is displaced (no ball height).
+  plane; an airborne ball's is displaced (no ball height). The defaults
+  (`min_confidence` 0.05, `restart_confidence` 0.15, `gate` 3 m +
+  65 m/s, `max_gap` 2 s) were tuned on SoccerNet GSR valid (ball-detection
+  04 and 09 on `research/ball-detection`) with the YOLO11l dd2c detector
+  keeping ball candidates from 0.05 (`class_conf={"ball": 0.05}`) and the
+  `ball_max_side` filter: 76.3% of frames with the ball within 5 m against
+  60.2% for the most confident candidate. Each ball also gets
+  `data["uncertainty"]`, the probability that it is more than 5 m off from
+  a logistic regression on the gap it fills, the time to the nearest
+  measured ball, the speed the neighbouring balls imply, the confidence
+  (of the weaker gap end), the camera's motion (from consecutive
+  homographies) and the box size, fitted on GSR valid games 2+3
+  (ball-detection 18). It is informative only: nothing is dropped on it,
+  since no threshold held from one game to the next. It ranks positions
+  better than the gap length does (rejecting 10% of positions leaves
+  10.6% more than 5 m off against 12.1%), but overestimates the risk of the
+  riskiest ones on unseen games.
 * `smooth_homographies(result, window=0.36, order=2)`
   (`pipeline/homographies.py`, registered as `smooth_homographies`) smooths
   the homographies over time with a centred Savitzky-Golay filter (a

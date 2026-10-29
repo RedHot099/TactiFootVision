@@ -4,7 +4,9 @@ The pipeline's ball is the most confident candidate of each frame, which is
 often a spare ball behind the goal, a painted spot or a player box. Across
 the whole video, :func:`track_ball` drops candidates that cannot be the live
 ball, follows the ball with a constant-velocity gate on the pitch, removes
-the isolated outliers that are left and fills short gaps.
+the isolated outliers that are left and fills short gaps. Each ball it
+keeps gets an uncertainty: the estimated probability that it lies more than
+5 m from the real ball.
 
 Distances are in metres and times in seconds whatever the pitch units: a
 pitch of ``length x width`` units is taken as a standard 105 x 68 m pitch, as
@@ -23,7 +25,7 @@ import supervision as sv
 from tactifoot_vision.enums import DetectionKey, PostProcessName
 from tactifoot_vision.pipeline.postprocess import POSTPROCESSES, metres_per_unit
 from tactifoot_vision.pipeline.result import FrameResult, PipelineResult
-from tactifoot_vision.pitch.homography import pitch_to_frame
+from tactifoot_vision.pitch.homography import frame_to_pitch, pitch_to_frame
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,25 @@ logger = logging.getLogger(__name__)
 _CONFIDENCE_WEIGHT = 2.0
 _NEIGHBOURS = 4  # kept positions per side an outlier is judged against
 _EPS = 1e-6  # seconds: timestamps are index / fps, so equal spans may differ in the last bit
+
+# The uncertainty is a logistic regression of P(error > 5 m) fitted on the
+# tracks of GSR valid games 2+3 (ball-detection 18 on research/ball-detection):
+# YOLO11l dd2c candidates, Pipeline's ball_max_side filter, this module's
+# defaults, 25 fps. Features as in _ball_features; pixels at 1080p.
+_UNCERTAINTY_INTERCEPT = 0.0286
+_UNCERTAINTY_WEIGHTS = {
+    "interpolated": 0.1540,
+    "gap": 0.5804,  # s between the measured balls around the position (0 when measured)
+    "to_measured": 1.9629,  # s to the nearest measured ball
+    "log_speed": 0.8500,  # log(1 + m/s) implied by the neighbouring balls
+    "confidence": -0.6228,  # the weaker gap end's when interpolated
+    "log_camera_shift": -0.7709,  # log(1 + px the frame centre moves per 1/25 s)
+    "log_size": -1.0989,  # log of the box's mean side in px
+}
+# fitting means: an unknown speed or camera shift adds nothing to the logit
+_UNCERTAINTY_MEANS = {"log_speed": 2.2080, "log_camera_shift": 1.4513}
+_REFERENCE_HEIGHT = 1080  # px: frame height the features are scaled to
+_REFERENCE_FRAME_TIME = 1 / 25  # s: frame spacing the camera shift is scaled to
 
 
 @dataclasses.dataclass(frozen=True)
@@ -43,7 +64,7 @@ class _Options:
     gate_speed: float
     max_gap: float
     static_radius: float
-    static_window: float
+    static_window: float | None
     static_share: float
     spot_radius: float
     max_person_iou: float
@@ -59,9 +80,11 @@ class _Options:
         for name in ("restart_after", "spot_radius", "isolation"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be >= 0")
-        for name in ("gate", "gate_speed", "max_gap", "static_radius", "static_window"):
+        for name in ("gate", "gate_speed", "max_gap", "static_radius"):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
+        if self.static_window is not None and self.static_window <= 0:
+            raise ValueError("static_window must be positive or None")
 
     def elapsed(self, dt: float) -> float:
         """Seconds the ball counts as moving: past ``max_gap`` it is taken as stopped."""
@@ -75,14 +98,14 @@ class _Options:
 @POSTPROCESSES.register(PostProcessName.TRACK_BALL)
 def track_ball(
     result: PipelineResult,
-    min_confidence: float = 0.12,
-    restart_confidence: float = 0.45,
+    min_confidence: float = 0.05,
+    restart_confidence: float = 0.15,
     restart_after: float = 0.25,
-    gate: float = 1.5,
-    gate_speed: float = 32.5,
-    max_gap: float = 0.5,
+    gate: float = 3.0,
+    gate_speed: float = 65.0,
+    max_gap: float = 2.0,
     static_radius: float = 0.7,
-    static_window: float = 3.2,
+    static_window: float | None = None,
     static_share: float = 0.75,
     spot_radius: float = 0.6,
     max_person_iou: float = 0.5,
@@ -94,12 +117,14 @@ def track_ball(
        ``spot_radius`` m of a painted spot of ``result.pitch``, or whose box
        matches a person's (IoU above ``max_person_iou``: a detector that
        scores every box in every class reports players as balls too) are
-       dropped. So is a static candidate: one with a candidate within
-       ``static_radius`` m in at least ``static_share`` of the frames within
-       ``static_window / 2`` s of it. Only windows spanning at least half of
-       ``static_window`` count, so a clip shorter than that keeps them. A
-       ball at rest that long (before a set piece) is dropped too, and so
-       is the real ball on a spot.
+       dropped. With a ``static_window``, so is a static candidate: one with
+       a candidate within ``static_radius`` m in at least ``static_share``
+       of the frames within ``static_window / 2`` s of it. Only windows
+       spanning at least half of ``static_window`` count, so a clip shorter
+       than that keeps them. A ball at rest that long (before a set piece)
+       is dropped too, and so is the real ball on a spot. That is why the
+       static test is off by default; switch it on (20 s) for footage with
+       spare balls lying around, which may otherwise start the track.
     2. The ball is followed frame by frame: the next position is predicted
        at constant velocity, and of the candidates within
        ``gate + gate_speed * dt`` m of it (``dt`` being the time since the
@@ -117,9 +142,26 @@ def track_ball(
        pitch, in frames that have a homography: the box is centred on the
        projected position with its size interpolated, ``confidence`` is NaN
        and ``data["interpolated"]`` is ``True`` (``False`` on measured balls).
+    6. Every ball with a pitch position gets ``data["uncertainty"]``, the
+       estimated probability that it lies more than 5 m from the real ball
+       (NaN without a pitch position). It grows with the gap a position
+       fills and with the speed the neighbouring balls imply, and falls with
+       the confidence, the camera's motion and the box size. Nothing is
+       dropped on it: no threshold held from one game to the next, so it is
+       for the user to threshold (of the 5% riskiest positions half were
+       more than 5 m off, of the 5% with the longest gaps 29%). It was
+       fitted on two games of SoccerNet GSR, with a YOLO11l detector's
+       confidences, the default options and
+       :class:`~tactifoot_vision.pipeline.Pipeline`'s ``ball_max_side``
+       filter at 25 fps, and on unseen games it overestimates the risk of
+       its riskiest positions (read P above 0.6 as about one in two);
+       other detectors, options or a crop rescorer shift it.
 
     Frames with no ball chosen get an empty ``ball``; the candidates are
-    left as they are. The tables export the flag as ``interpolated``. Run
+    left as they are. The tables export ``interpolated`` and
+    ``uncertainty``. The defaults were tuned on SoccerNet GSR with
+    candidates down to confidence 0.05, so the detector should keep ball
+    detections that weak (``class_conf={"ball": 0.05}``). Run
     this after any post-process that changes the homographies (such as one
     calling :func:`~tactifoot_vision.pipeline.reproject`): those re-project
     the chosen ball, they do not choose it again.
@@ -133,7 +175,8 @@ def track_ball(
         gate_speed: metres per second the gate widens while the ball is missing.
         max_gap: longest gap in seconds that is filled; the gate stops widening there.
         static_radius: metres within which a candidate counts as not moving.
-        static_window: seconds around a frame the static test looks at.
+        static_window: seconds around a frame the static test looks at;
+            ``None`` switches the test off.
         static_share: share of that window a static candidate is seen in.
         spot_radius: metres around a painted spot within which candidates are dropped.
         max_person_iou: candidates overlapping a person box more than this are dropped.
@@ -171,6 +214,7 @@ def track_ball(
         for frame, choice, keep in zip(frames, chosen, kept, strict=True)
     ]
     filled = _fill_gaps(frames, balls, kept, times, options.max_gap)
+    _add_uncertainty(balls, frames, times, scale, result.frame_size)
     logger.info(
         "Ball tracking chose a ball in %d of %d frames and filled %d more",
         int(kept.sum()),
@@ -227,6 +271,8 @@ def _static(
     positions: list[np.ndarray], times: np.ndarray, options: _Options
 ) -> list[np.ndarray]:
     """Per frame, which candidates stay in place over the window around their frame."""
+    if options.static_window is None:
+        return [np.zeros(len(xy), dtype=bool) for xy in positions]
     counts = np.array([len(xy) for xy in positions])
     # every candidate in one array: frame i's are rows starts[i]:starts[i + 1]
     starts = np.concatenate([[0], np.cumsum(counts)])
@@ -439,3 +485,115 @@ def _between(
     )
     ball.data[DetectionKey.INTERPOLATED] = np.ones(1, dtype=bool)
     return ball
+
+
+def _add_uncertainty(
+    balls: list[sv.Detections],
+    frames: list[FrameResult],
+    times: np.ndarray,
+    scale: np.ndarray,
+    frame_size: tuple[int, int],
+) -> None:
+    """Write ``data["uncertainty"]`` on every ball in place (step 6)."""
+    measured = np.array(
+        [
+            len(ball) > 0 and not ball.data[DetectionKey.INTERPOLATED][0]
+            for ball in balls
+        ]
+    )
+    for i, ball in enumerate(balls):
+        uncertainty = np.full(len(ball), np.nan)
+        features = _ball_features(i, balls, measured, frames, times, scale, frame_size)
+        if features is not None:
+            logit = _UNCERTAINTY_INTERCEPT + sum(
+                _UNCERTAINTY_WEIGHTS[name] * value for name, value in features.items()
+            )
+            uncertainty[:] = 1 / (1 + np.exp(-logit))
+        ball.data[DetectionKey.UNCERTAINTY] = uncertainty
+
+
+def _ball_features(
+    i: int,
+    balls: list[sv.Detections],
+    measured: np.ndarray,
+    frames: list[FrameResult],
+    times: np.ndarray,
+    scale: np.ndarray,
+    frame_size: tuple[int, int],
+) -> dict[str, float] | None:
+    """The uncertainty's features of frame ``i``'s ball, ``None`` without one on the pitch.
+
+    An interpolated ball lies between the measured balls of the frames
+    ``before`` and ``after`` it (``_fill_gaps`` fills only there).
+    """
+    xy = _ball_metres(balls[i], scale)
+    if xy is None:
+        return None
+    pixel = _REFERENCE_HEIGHT / frame_size[1]
+    if measured[i]:
+        gap = to_measured = 0.0
+        confidence = _ball_confidence(balls[i])
+        speeds = [
+            float(np.linalg.norm(other - xy)) / abs(times[j] - times[i])
+            for j in (i - 1, i + 1)
+            if 0 <= j < len(balls)
+            and (other := _ball_metres(balls[j], scale)) is not None
+        ]
+    else:
+        before = np.flatnonzero(measured[:i])[-1]
+        after = i + 1 + np.flatnonzero(measured[i + 1 :])[0]
+        gap = times[after] - times[before]
+        to_measured = min(times[i] - times[before], times[after] - times[i])
+        confidence = min(_ball_confidence(balls[j]) for j in (before, after))
+        start, end = (_ball_metres(balls[j], scale) for j in (before, after))
+        speeds = [float(np.linalg.norm(end - start)) / gap]
+    shift = _camera_shift(frames, times, i, frame_size)
+    width, height = balls[i].xyxy[0, 2:] - balls[i].xyxy[0, :2]
+    return {
+        "interpolated": float(not measured[i]),
+        "gap": gap,
+        "to_measured": to_measured,
+        "log_speed": float(np.log1p(max(speeds)))
+        if speeds
+        else _UNCERTAINTY_MEANS["log_speed"],
+        "confidence": confidence,
+        "log_camera_shift": float(np.log1p(shift * pixel))
+        if shift is not None
+        else _UNCERTAINTY_MEANS["log_camera_shift"],
+        "log_size": float(np.log(max((width + height) / 2 * pixel, 1.0))),
+    }
+
+
+def _ball_metres(ball: sv.Detections, scale: np.ndarray) -> np.ndarray | None:
+    """The ball's pitch position in metres, ``None`` without one."""
+    if not len(ball):
+        return None
+    xy = np.asarray(ball.data[DetectionKey.PITCH_XY][0], dtype=float) * scale
+    return xy if np.isfinite(xy).all() else None
+
+
+def _ball_confidence(ball: sv.Detections) -> float:
+    return 1.0 if ball.confidence is None else float(ball.confidence[0])
+
+
+def _camera_shift(
+    frames: list[FrameResult],
+    times: np.ndarray,
+    i: int,
+    frame_size: tuple[int, int],
+) -> float | None:
+    """Pixels the frame centre moves to the next frame (the last frame: from the
+    previous one) per ``_REFERENCE_FRAME_TIME``; ``None`` without both homographies."""
+    a, b = (i, i + 1) if i + 1 < len(frames) else (i - 1, i)
+    if a < 0 or frames[a].homography is None or frames[b].homography is None:
+        return None
+    centre = np.array(frame_size, dtype=float)[None] / 2
+    moved = pitch_to_frame(
+        frame_to_pitch(centre, frames[a].homography), frames[b].homography
+    )
+    shift = float(np.linalg.norm(moved - centre))
+    return (
+        shift * _REFERENCE_FRAME_TIME / (times[b] - times[a])
+        if np.isfinite(shift)
+        else None
+    )

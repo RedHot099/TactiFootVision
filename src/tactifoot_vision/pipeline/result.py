@@ -29,12 +29,13 @@ _FREEZE_FRAME_COLUMNS = [
     "frame_id", "period", "timestamp", "timestamp_seconds", "minute", "second",
     "homography_matrix", "visible_area", "player_id", "type", "class_name",
     "location", "frame_bbox", "confidence", "keeper", "team_id", "team_name",
-    "interpolated",
+    "interpolated", "uncertainty",
 ]  # fmt: skip
 _EPS = 1e-6  # seconds: timestamps are index / fps, so equal spans may differ in the last bit
 _TRACK_COLUMNS = [
     "frame", "time", "object", "track_id", "class_name", "team_id", "team_name",
     "confidence", "x1", "y1", "x2", "y2", "pitch_x", "pitch_y", "interpolated",
+    "uncertainty",
 ]  # fmt: skip
 
 
@@ -113,6 +114,9 @@ class FrameResult:
     * ``interpolated`` – ``(N,)`` bool, set on ``ball`` by
       :func:`~tactifoot_vision.pipeline.track_ball`: ``True`` for a position
       filled between measured ones (missing means ``False``)
+    * ``uncertainty`` – ``(N,)`` float, set on ``ball`` by
+      :func:`~tactifoot_vision.pipeline.track_ball`: the estimated
+      probability that the position is more than 5 m off (missing means NaN)
     """
 
     index: int  # frame index in the source video
@@ -247,10 +251,12 @@ class PipelineResult:
 
         Columns: ``frame, time, object ("person" | "ball"), track_id, class_name,
         team_id, team_name, confidence, x1, y1, x2, y2, pitch_x, pitch_y,
-        interpolated``. ``track_id`` is ``UNTRACKED`` (-1) without a tracker
-        and for the ball; ``team_name`` is ``team_names[team_id]`` (``None``
-        without names or a team); ``interpolated`` marks a ball position
-        filled by ``track_ball``.
+        interpolated, uncertainty``. ``track_id`` is ``UNTRACKED`` (-1)
+        without a tracker and for the ball; ``team_name`` is
+        ``team_names[team_id]`` (``None`` without names or a team);
+        ``interpolated`` marks a ball position filled by ``track_ball`` and
+        ``uncertainty`` is its estimated probability of being more than 5 m
+        off (NaN for people and before ``track_ball``).
         """
         return self._tracks_table(self._check_team_names(team_names))
 
@@ -270,6 +276,7 @@ class PipelineResult:
                         "pitch_x": float(obj["pitch_xy"][0]),
                         "pitch_y": float(obj["pitch_xy"][1]),
                         "interpolated": obj["interpolated"],
+                        "uncertainty": obj["uncertainty"],
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_TRACK_COLUMNS)
 
@@ -350,8 +357,8 @@ class PipelineResult:
         event ``timestamp``, which restarts every period. ``type`` is
         ``player``, ``goalkeeper``, ``referee``, ``other`` or ``ball``;
         ``player_id`` is the track id (``UNTRACKED`` without a tracker,
-        ``BALL_PLAYER_ID`` for the ball), and ``interpolated`` marks a ball
-        position filled by ``track_ball``. ``team_name`` is
+        ``BALL_PLAYER_ID`` for the ball), and ``interpolated`` and
+        ``uncertainty`` are the ball's, as in :meth:`to_dataframe`. ``team_name`` is
         ``team_names[team_id]``, as in :meth:`to_dataframe`: the object's own
         team, unlike the ``team_name`` of
         :func:`~tactifoot_vision.data.load_statsbomb`, which is the team of
@@ -400,6 +407,7 @@ class PipelineResult:
                         "keeper": name == Role.GOALKEEPER, "team_id": obj["team_id"],
                         "team_name": obj["team_name"],
                         "interpolated": obj["interpolated"],
+                        "uncertainty": obj["uncertainty"],
                     })  # fmt: skip
         return pd.DataFrame(rows, columns=_FREEZE_FRAME_COLUMNS)
 
@@ -555,6 +563,7 @@ def _object_rows(
     """The fields every table row of an object shares, one dict per detection."""
     names = detections.data.get(DetectionKey.CLASS_NAME, [])
     interpolated = detections.data.get(DetectionKey.INTERPOLATED, [])
+    uncertainty = detections.data.get(DetectionKey.UNCERTAINTY, [])
     for i in range(len(detections)):
         team = int(team_ids[i]) if team_ids is not None else NO_TEAM
         yield {
@@ -568,6 +577,7 @@ def _object_rows(
             "xyxy": detections.xyxy[i],
             "pitch_xy": pitch_xy[i],
             "interpolated": bool(interpolated[i]) if len(interpolated) else False,
+            "uncertainty": float(uncertainty[i]) if len(uncertainty) else np.nan,
         }
 
 

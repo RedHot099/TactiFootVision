@@ -84,6 +84,7 @@ class DetectionKey(Vocabulary):
     PITCH_XY = "pitch_xy"
     TEAM_ID = "team_id"
     INTERPOLATED = "interpolated"
+    UNCERTAINTY = "uncertainty"
     ORIGINAL_TRACKER_ID = "original_tracker_id"
     JERSEY = "jersey"
 
