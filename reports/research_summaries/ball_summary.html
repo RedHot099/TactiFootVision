@@ -6,7 +6,7 @@
 <style>
 {{css}}
   .kpis { grid-template-columns: repeat(5, 1fr); }
-  .gallery { grid-template-columns: repeat(2, 1fr); gap: 3mm 4mm; }
+  .gallery { grid-template-columns: repeat(2, 1fr); gap: 3mm 4mm; break-inside: avoid; }
   .gallery figcaption { font-size: 8pt; }
   .chart-row.ball { grid-template-columns: 1.6fr 1fr; gap: 5mm; }
   .chart-row.acc { grid-template-columns: 1.25fr 1fr; gap: 5mm; align-items: start; }
@@ -107,7 +107,35 @@ so a size filter at 45&nbsp;px removes them at no cost. On its own it halves the
 <p>
 More pixels alone do not help: at 1920&nbsp;px the detector finds more balls but also more confident false ones. Fine-tuning on
 oversampled hard examples changed nothing (+0.3&nbsp;pp), and an epoch without mosaic augmentation on a restarted schedule cost
-8.5&nbsp;pp. Tiles with the size filter gain +5.3&nbsp;pp on single frames, but add nothing once tracking is used.
+8.5&nbsp;pp.
+</p>
+<h3>Two instructive negatives: tiling and synthetic data</h3>
+<p>
+<b>Tiling.</b> Four overlapping 1024×608 tiles, run at 1024&nbsp;px, are merged with the full 1280&nbsp;px frame; people come
+from the full frame and the 45&nbsp;px filter is applied after the merge. On single frames this helps: on the held-out game it adds
++5.29&nbsp;pp [+3.15, +8.02] (77.1% → 82.4%), on the whole validation split +6.03&nbsp;pp [+4.71, +7.39], and ball AP50 rises from
+0.356 to 0.397. Without the filter, tiles lose 0.73&nbsp;pp on the two selection games: the extra resolution mostly adds large false
+balls, and the filter is what makes tiling work. On top of tracking the gain does not hold. On the held-out game tiles change the
+tracked result by −1.25&nbsp;pp [−2.79, +0.24] and add placements more than 5&nbsp;m off (+2.48&nbsp;pp [+1.15, +4.08]); on the
+selection games they add +4.78&nbsp;pp [+1.55, +8.39]. The tracker already recovers most of the weak or missed balls that tiles find,
+and it then follows the extra false balls they bring. Tiles also cost 3.8× the detection time (75–87&nbsp;ms per frame against
+19.6&nbsp;ms), and balls under 8&nbsp;px stay missed (recall about 0.06). Tiling is therefore a single-frame mode, not part of the
+video pipeline. The crop second stage below later filled the same role for 1.3&nbsp;ms per frame.
+</p>
+<p>
+<b>Synthetic data.</b> SoccerSynth has 50,877 rendered images with only the ball and people labelled, so the goalkeeper and referee
+classes were masked out of the classification loss. Fine-tuning a real-data checkpoint on SoccerSynth alone breaks the detector on
+real broadcast frames within one epoch (AP50 at 1280&nbsp;px on three Ekstraklasa clips kept out of training, so indicative only):
+</p>
+<table>
+  <tr><th>AP50</th><th class="n">Ball</th><th class="n">Goalkeeper</th><th class="n">Referee</th><th class="n">Player</th><th class="n">mAP50</th></tr>
+  <tr><td>Real-data start</td><td class="n">0.161</td><td class="n">0.864</td><td class="n">0.778</td><td class="n">0.878</td><td class="n">0.670</td></tr>
+  <tr><td>After 1 epoch on SoccerSynth</td><td class="n">0.004</td><td class="n">0.317</td><td class="n">0.207</td><td class="n">0.765</td><td class="n">0.323</td></tr>
+  <tr><td>After 5 epochs</td><td class="n">0.0003</td><td class="n">0.005</td><td class="n">0.001</td><td class="n">0.554</td><td class="n">0.140</td></tr>
+</table>
+<p>
+The likely cause is the gap between the rendered and the broadcast domain; the masked role classes drift without a gradient.
+SoccerSynth as a small share mixed into real data was not tested.
 </p>
 <p>
 A second round paired five changes against the final pipeline of Section&nbsp;4 on the two selection games (4,250 frames,
@@ -156,40 +184,7 @@ removes nearly all referee confusions.
   </figure>
 </div>
 
-<h2>5&nbsp;&nbsp;Examples</h2>
-<div class="feature">
-  <div class="media">
-    <video src="{{vid_ball_clip}}" poster="{{img_freeze}}" controls muted loop playsinline preload="metadata"></video>
-    <img class="poster" src="{{img_freeze}}" alt="Frame where the detector's top choice is a referee">
-  </div>
-  <div>
-    <h3 style="margin-top:0">One test clip, 8 seconds</h3>
-    <p class="note">A direct free kick from a test game. Markers:
-    <span class="legend-dot" style="border:1.5px solid #52514e"></span>ground truth,
-    <span class="legend-dot" style="background:#eb6834;border-radius:1px"></span>detector top-1,
-    <span class="legend-dot" style="background:#1baf7a"></span>tracked ball. The inset shows all three on the pitch with their
-    errors in metres. In these 8 seconds the top-1 pick places the ball within 5&nbsp;m on 30% of evaluated frames, and the tracked ball on 92%.</p>
-    <p class="note">The clip pauses where the detector's top choice is a referee 18&nbsp;m away, while the tracker stays on the ball
-    (0.1&nbsp;m). The PDF shows that frame.</p>
-  </div>
-</div>
-
-<div class="gallery" style="margin-top:4mm">
-  <figure class="card"><img src="{{img_g_small}}" alt="">
-    <figcaption><b>An 8 px ball.</b> The detector's confidence stays below its threshold, so the top-1 pick has nothing. The
-    tracker accepts the weak candidate because it fits the ball's motion: error {{g_small_error_track}}.</figcaption></figure>
-  <figure class="card"><img src="{{img_g_fog}}" alt="">
-    <figcaption><b>Fog.</b> No usable detection in this frame. The position is interpolated between confident detections before
-    and after: error {{g_fog_error_track}}.</figcaption></figure>
-  <figure class="card"><img src="{{img_g_interp}}" alt="">
-    <figcaption><b>Ball near the goalkeeper.</b> The detector misses the ball in this frame. Interpolation between
-    neighbouring detections keeps it: error {{g_interp_error_track}}.</figcaption></figure>
-  <figure class="card"><img src="{{img_g_fail}}" alt="">
-    <figcaption><b>Failure.</b> Before a penalty, the tracker has switched to a confident false detection, {{g_fail_error_track}}
-    from the ball (white ring). Recovering from such a switch is an open problem.</figcaption></figure>
-</div>
-
-<h2>6&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
+<h2>5&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
 <p>
 On the two selection games the final pipeline places the ball within 1&nbsp;m in {{acc_phase1_le1_all}} {{acc_phase1_le1_all_ci}}
 of frames, within 2&nbsp;m in {{acc_phase1_le2_all}} and within 5&nbsp;m in {{acc_phase1_le5_all}}; {{acc_phase1_no_position}} have
@@ -221,7 +216,7 @@ frames, so the score is exposed per position, not as a filter.
 and cuts placements more than 5&nbsp;m off by 6.1–6.3&nbsp;pp. A relative-size filter is no better.
 </p>
 
-<h2>7&nbsp;&nbsp;Does a better ball help expected goals?</h2>
+<h2>6&nbsp;&nbsp;Does a better ball help expected goals?</h2>
 <p>
 The xG model places a shot at the feet of the player closest to the ball; against StatsBomb this cut the median location
 error from 2.62&nbsp;m (projected ball) to 1.16&nbsp;m. Three ball variants were refitted out of fold on 7,062 shots from 328
@@ -240,15 +235,49 @@ same 328 matches, which favours it; on held-out matches the ball also lies furth
 1.16&nbsp;m).
 </p>
 
-<h2>8&nbsp;&nbsp;Open questions</h2>
+<h2>7&nbsp;&nbsp;Open questions</h2>
 <ul>
   <li><b>No untouched ball-labelled data</b> is the main limit. Every ball-labelled broadcast set available to us was used
     for training, selection or an earlier reading. SoccerNet Tracking (SNMOT) shares its clips with GSR, and SoccerTrack v2 has no
     ball boxes in the image. Other competitions and cameras are untested.</li>
   <li><b>Where the ball matters.</b> For shot location the shooter's feet are enough. The ball is more promising for action
     analysis (passes, tackles, possession); this is untested.</li>
+  <li><b>Synthetic data as a small share.</b> SoccerSynth mixed into real data, rather than used alone, was planned but not run.</li>
   <li><b>Small balls.</b> Under 8&nbsp;px, 35% are within 5&nbsp;m; the 1600&nbsp;px gain (+8.2&nbsp;pp [−1.1, +16.1]) rests on 146 frames.</li>
 </ul>
+
+<h2>8&nbsp;&nbsp;Examples</h2>
+<div class="feature">
+  <div class="media">
+    <video src="{{vid_ball_clip}}" poster="{{img_freeze}}" controls muted loop playsinline preload="metadata"></video>
+    <img class="poster" src="{{img_freeze}}" alt="Frame where the detector's top choice is a referee">
+  </div>
+  <div>
+    <h3 style="margin-top:0">One test clip, 8 seconds</h3>
+    <p class="note">A direct free kick from a test game. Markers:
+    <span class="legend-dot" style="border:1.5px solid #52514e"></span>ground truth,
+    <span class="legend-dot" style="background:#eb6834;border-radius:1px"></span>detector top-1,
+    <span class="legend-dot" style="background:#1baf7a"></span>tracked ball. The inset shows all three on the pitch with their
+    errors in metres. In these 8 seconds the top-1 pick places the ball within 5&nbsp;m on 30% of evaluated frames, and the tracked ball on 92%.</p>
+    <p class="note">The clip pauses where the detector's top choice is a referee 18&nbsp;m away, while the tracker stays on the ball
+    (0.1&nbsp;m). The PDF shows that frame.</p>
+  </div>
+</div>
+
+<div class="gallery" style="margin-top:4mm">
+  <figure class="card"><img src="{{img_g_small}}" alt="">
+    <figcaption><b>An 8 px ball.</b> The detector's confidence stays below its threshold, so the top-1 pick has nothing. The
+    tracker accepts the weak candidate because it fits the ball's motion: error {{g_small_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_fog}}" alt="">
+    <figcaption><b>Fog.</b> No usable detection in this frame. The position is interpolated between confident detections before
+    and after: error {{g_fog_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_interp}}" alt="">
+    <figcaption><b>Ball near the goalkeeper.</b> The detector misses the ball in this frame. Interpolation between
+    neighbouring detections keeps it: error {{g_interp_error_track}}.</figcaption></figure>
+  <figure class="card"><img src="{{img_g_fail}}" alt="">
+    <figcaption><b>Failure.</b> Before a penalty, the tracker has switched to a confident false detection, {{g_fail_error_track}}
+    from the ball (white ring). Recovering from such a switch is an open problem.</figcaption></figure>
+</div>
 
 <footer>
 Data: SoccerNet GSR (Somers et al., CVPR-W 2024) and Tracking (Cioppa et al., CVPR-W 2022), research use only.
