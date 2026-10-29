@@ -32,23 +32,6 @@ MISSES = [
     ("found, loose box", 24.3),
 ]
 
-# results_reports/ball_detection/REPORT.md, the registered primary comparison of each ticket:
-# paired gain in the share of frames with the ball placed within 5 m, 95% clip bootstrap
-REGISTERED = [
-    ("Native 1920 px input", "games 2+3", -0.21, -2.87, 2.10, DETECTOR),
-    (
-        "Fine-tuning, hard balls oversampled ×2",
-        "games 2+3",
-        0.26,
-        -0.80,
-        1.35,
-        DETECTOR,
-    ),
-    ("2×2 tiles + 45 px size filter", "game 5", 5.29, 3.15, 8.02, DETECTOR),
-    ("Temporal tracking", "games 2+3", 17.32, 11.86, 22.82, TRACKING),
-    ("Temporal tracking", "game 5", 9.15, 4.24, 14.58, TRACKING),
-]
-
 
 # research/detector-data: results_reports/detector_data_2026-10/REPORT.md, section 4, stage 2b: fine-tuning on
 # SoccerSynth alone from the 2a checkpoint; AP50 at 1280 on the three Ekstraklasa dev clips
@@ -106,44 +89,6 @@ def errors_chart() -> None:
     b.set_axisbelow(True)
     fig.tight_layout()
     fig.savefig(FIG / "errors.svg")
-    plt.close(fig)
-
-
-def registered_chart(test: tuple[float, float, float]) -> None:
-    rows = [
-        *REGISTERED,
-        ("Tracking + size filter (final)", "GSR test", *test, TRACKING),
-    ]
-    fig, ax = plt.subplots(figsize=(6.6, 2.0))
-    for i, (_name, _split, m, lo, hi, color) in enumerate(rows):
-        ax.plot([lo, hi], [i, i], color=color, lw=2)
-        ax.scatter(m, i, color=color, s=40, zorder=3, edgecolor="white", lw=0.8)
-        ax.text(
-            hi + 0.6,
-            i,
-            f"{m:+.1f} [{lo:+.1f}, {hi:+.1f}]",
-            va="center",
-            fontsize=7.8,
-            color=INK,
-        )
-    ax.axvline(0, color=INK, lw=0.8)
-    ax.set_yticks(range(len(rows)), [f"{r[0]}  ·  {r[1]}" for r in rows], fontsize=8)
-    ax.invert_yaxis()
-    ax.set_xlim(-5, 36)
-    ax.set_xlabel(
-        "Paired gain over the baseline detector, percentage points", fontsize=8.5
-    )
-    ax.grid(axis="x", color=GRID, lw=0.6)
-    ax.set_axisbelow(True)
-    handles = [
-        plt.Line2D(
-            [], [], color=DETECTOR, marker="o", lw=2, label="single-frame detector"
-        ),
-        plt.Line2D([], [], color=TRACKING, marker="o", lw=2, label="temporal tracking"),
-    ]
-    ax.legend(handles=handles, frameon=False, fontsize=7.8, loc="upper right")
-    fig.tight_layout()
-    fig.savefig(FIG / "registered.svg")
     plt.close(fig)
 
 
@@ -313,7 +258,6 @@ def main() -> None:
     numbers["test_gain_pp"] = gain
     numbers["status"] = test["status"]
     errors_chart()
-    registered_chart(gain)
     breakdown_chart(test["status"])
     synthetic_chart()
     numbers["accuracy_games_2_3"] = accuracy_numbers()

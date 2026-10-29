@@ -113,24 +113,34 @@ A size filter at 45&nbsp;px therefore removes them at no cost. On its own it hal
 
 <h2>3&nbsp;&nbsp;What was tested</h2>
 <p class="lead">
-Which remedy places more balls? Only temporal tracking cleared the planned target, and it held on the held-out game and on the
-test split.
+Which remedy places more balls? Temporal tracking. No other change improved the video pipeline.
 </p>
-<figure>
-  <img src="{{fig_registered}}" alt="Paired gains of each registered comparison">
-  <figcaption><b>Figure 3. Every registered comparison</b>, as the paired gain over the baseline detector with its 95% CI.
-  Resolution and fine-tuning show no measurable effect. Tiling helps single frames. Tracking is the only change that clears the
-  planned target.</figcaption>
-</figure>
 <p>
-At 1920&nbsp;px the detector finds more balls, but also more confident false ones. Fine-tuning on oversampled hard balls
-changed nothing (+0.3&nbsp;pp). An epoch without mosaic augmentation on a restarted schedule cost 8.5&nbsp;pp.
+Each approach was paired against one of two references. The <i>baseline detector</i> is its top-1 ball per frame, 51.6% within
+5&nbsp;m on the two selection games. The <i>final pipeline</i> is tracking plus the size filter, 71.2% [64.6, 77.5] there.
+Gains are in the share of frames within 5&nbsp;m, on the selection games unless the held-out game is named.
 </p>
-
-<h3>Two instructive negatives: tiling and synthetic data</h3>
 <p>
-<b>Tiling.</b> The detector runs on four overlapping 1024×608 tiles at 1024&nbsp;px and on the full frame at 1280&nbsp;px.
-Their balls are merged, people come from the full frame, and the 45&nbsp;px filter runs after the merge.
+<b>Higher input resolution.</b> At 1920&nbsp;px the detector finds more balls, but also more confident false ones, for
+−0.21&nbsp;pp [−2.87, +2.10] against the baseline detector. Training and inference at 1600&nbsp;px gave +0.40&nbsp;pp
+[−1.60, +2.35] against the final pipeline.
+</p>
+<p>
+<b>Fine-tuning.</b> Oversampling small and blurred balls ×2 gave +0.26&nbsp;pp [−0.80, +1.35] against the same fine-tuning
+without it. A recipe with referees in black as hard negatives gave −0.61&nbsp;pp [−2.00, +0.69] against the final pipeline,
+whose size filter already removes those referees.
+</p>
+<p>
+<b>Size filter.</b> Ball boxes longer than 45&nbsp;px are dropped, which removes the referees of Section&nbsp;2. Against the
+baseline detector it adds +0.64&nbsp;pp [+0.12, +1.18] and halves placements more than 5&nbsp;m off, from 18.5% to 9.6%.
+</p>
+<p>
+<b>Tiling.</b> The detector also runs on four overlapping 1024×608 tiles, merged with the full 1280&nbsp;px frame before the size
+filter. On single frames it adds +5.29&nbsp;pp [+3.15, +8.02] on the held-out game, against the baseline detector.
+</p>
+<p>
+On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out game, against tracking alone. It also costs 3.8× the
+detection time.
 </p>
 <div class="web-only">
 <figure>
@@ -168,76 +178,42 @@ Their balls are merged, people come from the full frame, and the 45&nbsp;px filt
 </figure>
 </div>
 <p>
-On single frames tiling helps. On the held-out game it adds +5.29&nbsp;pp [+3.15, +8.02], from 77.1% to 82.4%. On the whole
-validation split it adds +6.03&nbsp;pp [+4.71, +7.39], and ball AP50 rises from 0.356 to 0.397.
+<b>Synthetic data.</b> SoccerSynth has 50,877 rendered images with only the ball and people labelled. Fine-tuning a real-data
+checkpoint on it alone drops ball AP50 from 0.161 to 0.004 within one epoch, on three Ekstraklasa clips (indicative).
 </p>
-<p>
-The filter is what makes tiling work. Without it, tiles lose 0.73&nbsp;pp on the two selection games, because the extra
-resolution mostly adds large false balls.
-</p>
-<p>
-On top of tracking the gain does not hold. On the held-out game tiles change the tracked result by −1.25&nbsp;pp [−2.79, +0.24]
-and add placements more than 5&nbsp;m off, +2.48&nbsp;pp [+1.15, +4.08].
-</p>
-<p>
-On the selection games they add +4.78&nbsp;pp [+1.55, +8.39]. The tracker already recovers most weak or missed balls that tiles
-find, and then follows the false balls they bring.
-</p>
-<p>
-Tiles cost 3.8× the detection time, 75–87&nbsp;ms per frame against 19.6&nbsp;ms. Balls under 8&nbsp;px stay missed, with recall
-about 0.06. Tiling is a single-frame mode, not part of the video pipeline.
-</p>
-<p>
-<b>Synthetic data.</b> SoccerSynth has 50,877 rendered images. Only the ball and people are labelled, so we masked the
-goalkeeper and referee classes out of the classification loss.
-</p>
-<p>
-We fine-tuned a real-data checkpoint on SoccerSynth alone. Within one epoch the detector breaks on real broadcast frames. The
-table gives AP50 at 1280&nbsp;px on three Ekstraklasa clips kept out of training, so it is indicative only.
-</p>
-<table>
-  <tr><th>AP50</th><th class="n">Ball</th><th class="n">Goalkeeper</th><th class="n">Referee</th><th class="n">Player</th><th class="n">mAP50</th></tr>
-  <tr><td>Real-data start</td><td class="n">0.161</td><td class="n">0.864</td><td class="n">0.778</td><td class="n">0.878</td><td class="n">0.670</td></tr>
-  <tr><td>After 1 epoch on SoccerSynth</td><td class="n">0.004</td><td class="n">0.317</td><td class="n">0.207</td><td class="n">0.765</td><td class="n">0.323</td></tr>
-  <tr><td>After 5 epochs</td><td class="n">0.0003</td><td class="n">0.005</td><td class="n">0.001</td><td class="n">0.554</td><td class="n">0.140</td></tr>
-</table>
 <div class="web-only">
 <figure>
   <img src="{{fig_synthetic}}" alt="AP50 per class while fine-tuning on SoccerSynth alone" style="max-width: 560px">
-  <figcaption><b>Fine-tuning on SoccerSynth alone.</b> The table above as a chart. Three Ekstraklasa clips, so indicative only.</figcaption>
+  <figcaption><b>Fine-tuning on SoccerSynth alone.</b> AP50 per class at 1280&nbsp;px on three Ekstraklasa clips kept out of training, so indicative only.</figcaption>
 </figure>
 </div>
 <p>
-The likely cause is the gap between rendered and broadcast frames. The masked role classes drift without a gradient. A small
-share of SoccerSynth mixed into real data was not tested.
-</p>
-
-<h3>Second round: changes to the final pipeline</h3>
-<p>
-A second round paired five changes against the final pipeline of Section&nbsp;4, on the two selection games (4,250 frames,
-71.2% [64.6, 77.5] within 5&nbsp;m). A change needed a gain whose lower CI bound was above zero.
-</p>
-<table>
-  <tr><th>Change to the final pipeline</th><th class="n">Gain, pp [95% CI]</th></tr>
-  <tr><td>Project the bottom of the ball's box instead of its centre</td><td class="n">−0.68 [−1.03, −0.37]</td></tr>
-  <tr><td>Four tracker refinements together<sup>a</sup></td><td class="n">+0.78 [−1.21, +4.12]</td></tr>
-  <tr><td>&nbsp;&nbsp;best one alone: keep candidates on the penalty and centre spots<sup>b</sup></td><td class="n">+1.62 [−0.07, +4.88]</td></tr>
-  <tr><td>Second stage on crops before tracking (ResNet18 rescorer and centre regressor)</td><td class="n">+1.41 [−0.54, +3.34]</td></tr>
-  <tr><td>Corrected fine-tuning recipe with referees in black as hard negatives</td><td class="n">−0.61 [−2.00, +0.69]</td></tr>
-  <tr><td>Training and inference at 1600&nbsp;px, same recipe</td><td class="n">+0.40 [−1.60, +2.35]</td></tr>
-</table>
-<p class="note"><sup>a</sup> Interpolation in the image, a search corridor along gaps, no bridging across restarts, spot candidates kept.
-<sup>b</sup> Nearly all from one set-piece clip.</p>
-<p>
-None qualified, so the pipeline did not change and the games kept for confirmation stayed unread.
+The goalkeeper and referee classes collapse too. A small share of SoccerSynth mixed into real data was not tested.
 </p>
 <p>
-The tracker already recovers most of what a better detector adds. The crop second stage lifts single frames from 51.6% to 62.4%
-within 5&nbsp;m (+10.8&nbsp;pp [+8.0, +14.0]), but only +1.4&nbsp;pp survives tracking.
+<b>Temporal tracking.</b> A tracker in pitch coordinates keeps candidates that fit the ball's motion and interpolates gaps of
+up to 2&nbsp;s. Against the baseline detector it adds +17.32&nbsp;pp [+11.86, +22.82], and +9.15&nbsp;pp [+4.24, +14.58] on the
+held-out game.
 </p>
 <p>
-At 1.3&nbsp;ms per frame it replaces tiling as the single-frame option. The hard negatives help, +2.26&nbsp;pp [+0.92, +3.72]
-against the same recipe without them, but the size filter already removes nearly all referee confusions.
+<b>Tracker refinements.</b> Four changes were tried together: interpolation in the image, a search corridor along gaps, no
+bridging across restarts, and candidates kept on the penalty and centre spots. Against the final pipeline they gave
++0.78&nbsp;pp [−1.21, +4.12].
+</p>
+<p>
+<b>Bottom of the box.</b> Projecting the bottom of the ball's box instead of its centre gave −0.68&nbsp;pp [−1.03, −0.37]
+against the final pipeline.
+</p>
+<p>
+<b>Crop second stage.</b> A ResNet18 rescores each candidate on a crop and refines its centre, for 1.3&nbsp;ms per frame. On single
+frames it adds +10.80&nbsp;pp [+7.99, +13.97] against the baseline detector, from 51.6% to 62.4%.
+</p>
+<p>
+Before tracking it gives +1.41&nbsp;pp [−0.54, +3.34] against the final pipeline.
+</p>
+<p>
+The adopted pipeline is temporal tracking plus the size filter (Figure&nbsp;1). Tiling and the crop second stage remain options
+for single frames, where the tracker has no neighbouring frames.
 </p>
 
 <h2>4&nbsp;&nbsp;Result</h2>
@@ -267,7 +243,7 @@ Does the final pipeline hold on unseen games? On the GSR test split it places {{
   </div>
   <figure style="margin-top:0">
     <img src="{{fig_breakdown}}" alt="Where the gain comes from">
-    <figcaption><b>Figure 4. Where the gain comes from</b> (test split). The tracker measures balls the top-1 pick misses and bridges
+    <figcaption><b>Figure 3. Where the gain comes from</b> (test split). The tracker measures balls the top-1 pick misses and bridges
     gaps where the detector sees nothing.</figcaption>
   </figure>
 </div>
@@ -294,7 +270,7 @@ Only 53% of frames with a homography agree within 1&nbsp;m. For a ball in the ai
 </div>
   <figure style="margin-top:0">
     <img src="{{fig_accuracy}}" alt="Share of frames with the ball within d metres">
-    <figcaption><b>Figure 5. Share of frames within d metres</b> (two validation games; a frame without a position never
+    <figcaption><b>Figure 4. Share of frames within d metres</b> (two validation games; a frame without a position never
     counts). Dashed: the GSR reference through our homography.</figcaption>
   </figure>
 </div>
