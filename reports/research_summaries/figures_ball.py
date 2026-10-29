@@ -50,6 +50,17 @@ REGISTERED = [
 ]
 
 
+# research/detector-data: results_reports/detector_data_2026-10/REPORT.md, section 4, stage 2b: fine-tuning on
+# SoccerSynth alone from the 2a checkpoint; AP50 at 1280 on the three Ekstraklasa dev clips
+SYNTH_STAGES = ["start", "after epoch 1", "after epoch 5"]
+SYNTH_AP50 = {
+    "player": [0.878, 0.765, 0.554],
+    "goalkeeper": [0.864, 0.317, 0.005],
+    "referee": [0.778, 0.207, 0.001],
+    "ball": [0.161, 0.004, 0.0003],
+}
+
+
 plt.rcParams.update(
     {
         "font.family": ["Noto Sans", "DejaVu Sans"],
@@ -255,6 +266,35 @@ def accuracy_chart(acc: dict) -> None:
         print(label, {x: round(100 * (e <= x).sum() / len(e), 1) for x in (1, 2, 5)})
 
 
+def synthetic_chart() -> None:
+    """AP50 per class while fine-tuning on SoccerSynth alone (web-only figure)."""
+    colors = {
+        "player": TRACKING,
+        "goalkeeper": "#184f95",
+        "referee": "#eb6834",
+        "ball": DETECTOR,
+    }
+    fig, ax = plt.subplots(figsize=(5.0, 2.4))
+    x = np.arange(len(SYNTH_STAGES))
+    for name, values in SYNTH_AP50.items():
+        ax.plot(x, values, color=colors[name], lw=1.8, marker="o", ms=4, label=name)
+    ax.legend(frameon=False, fontsize=7.8, loc="upper right")
+    ax.set_xticks(x, SYNTH_STAGES, fontsize=8)
+    ax.set_xlim(-0.2, 2.2)
+    ax.set_ylim(-0.02, 1.0)
+    ax.set_ylabel("AP50 at 1280 px")
+    ax.set_title(
+        "Fine-tuning on SoccerSynth alone · 3 Ekstraklasa clips (indicative)",
+        fontsize=8.5,
+        loc="left",
+    )
+    ax.grid(axis="y", color=GRID, lw=0.6)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(FIG / "synthetic.svg")
+    plt.close(fig)
+
+
 def main() -> None:
     FIG.mkdir(parents=True, exist_ok=True)
     reads = ball_data.phase_numbers()
@@ -275,6 +315,7 @@ def main() -> None:
     errors_chart()
     registered_chart(gain)
     breakdown_chart(test["status"])
+    synthetic_chart()
     numbers["accuracy_games_2_3"] = accuracy_numbers()
     accuracy_chart(numbers["accuracy_games_2_3"])
     (OUT / "ball/numbers.json").write_text(json.dumps(numbers, indent=1))
