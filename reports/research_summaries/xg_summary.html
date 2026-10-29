@@ -82,7 +82,6 @@ On the official SoccerNet test split (100 matches, 2,229 shots) it reaches the f
   <tr><td>ROC AUC</td><td class="n">0.792 [0.768, 0.817]</td><td class="n">0.500</td><td>95% match-bootstrap CI</td></tr>
   <tr><td>Log-loss</td><td class="n">0.324</td><td class="n">0.392</td><td>−17% relative</td></tr>
   <tr><td>Brier score</td><td class="n">0.097</td><td class="n">—</td><td></td></tr>
-  <tr><td>Inference</td><td class="n">≈ 36 ms / shot</td><td class="n"></td><td>shared frozen trunk, RTX 4070 Ti SUPER</td></tr>
 </table>
 <p>
 A larger ensemble with other architectures was no better (ΔAUC +0.001 [−0.003, +0.005]), so the simpler model is kept.
@@ -175,7 +174,7 @@ paired match-bootstrap CIs. These are development results on a different populat
   <div>
     <ul>
       <li><b>Each adds to the other.</b> Image beyond geometry (C−B): −0.0097 [−0.0131, −0.0064]. Geometry beyond image (C−A):
-        −0.0106 [−0.0143, −0.0065]. B−A is undecided. Leakage controls agree. The model keeps both (arm C); geometry costs 5.3× the compute.</li>
+        −0.0106 [−0.0143, −0.0065]. B−A is undecided. Leakage controls agree. The model keeps both (arm C).</li>
       <li><b>Not a geometry correction.</b> Probes read distance, angle, defenders in the cone and goalkeeper depth (mostly in
         blocks 22–23 of 24), but the detector is closer to StatsBomb's reference positions than any probe.</li>
       <li><b>Not simple scene attributes.</b> Crowding, set piece, framing and shooter size, added to geometry, leave the gain at
@@ -224,13 +223,6 @@ paired match-bootstrap CIs. These are development results on a different populat
     <figcaption><b>{{pressure_caption}}</b> {{pressure_match}}.</figcaption>
     <div class="chips"><span class="chip"><i style="background:var(--video)"></i>Video {{pressure_video}}</span><span class="chip"><i style="background:var(--geometry)"></i>+ geometry {{pressure_geometry}}</span><span class="chip"><i style="background:var(--vendor)"></i>StatsBomb {{pressure_vendor}}</span><span class="chip out">{{pressure_outcome}}</span></div></figure>
 </div>
-
-<h2>4&nbsp;&nbsp;Open questions</h2>
-<ul>
-  <li><b>Team context.</b> Pressure is detectable team-free (AUC 0.72), not with the current team assignment (0.51).</li>
-  <li><b>Fresh data.</b> The gains in 2.4 and 2.5 are development results; an untouched season would confirm them.</li>
-  <li><b>Beyond geometry.</b> No explicit attribute yet captures the player arrangement the image encodes.</li>
-</ul>
 
 <footer>
 Video data: SoccerNet (Giancola et al., CVPR-W 2018; Deliège et al., CVPR-W 2021) and SoccerNet Game State Reconstruction (GSR) for the perception benchmarks.
