@@ -30,6 +30,15 @@ def inline(path: Path) -> str:
     return f"data:{MIME[path.suffix]};base64,{data}"
 
 
+def inline_svg(path: Path) -> str:
+    """The <svg> element alone, for inline use (hover titles work only inline, not in an <img>).
+
+    Matplotlib's global `*{...}` style block is dropped so it does not leak into the page.
+    """
+    svg = "<svg" + path.read_text().split("<svg", 1)[1]
+    return re.sub(r"<style[^>]*>.*?</style>", "", svg, flags=re.S)
+
+
 def fill(template: str, values: dict[str, str]) -> str:
     missing = set(re.findall(r"\{\{(\w+)\}\}", template)) - values.keys()
     if missing:
@@ -38,10 +47,11 @@ def fill(template: str, values: dict[str, str]) -> str:
 
 
 def assets(root: Path) -> dict[str, str]:
-    """figures/x.svg -> fig_x, media/y.jpg -> img_y, media/y.mp4 -> vid_y."""
+    """figures/x.svg -> fig_x (data URI) and svg_x (inline), media/y.jpg -> img_y, media/y.mp4 -> vid_y."""
     values = {}
     for path in sorted((root / "figures").glob("*.svg")):
         values[f"fig_{path.stem}"] = inline(path)
+        values[f"svg_{path.stem}"] = inline_svg(path)
     for path in sorted((root / "media").glob("*")):
         prefix = {".jpg": "img", ".png": "img", ".mp4": "vid"}.get(path.suffix)
         if prefix:

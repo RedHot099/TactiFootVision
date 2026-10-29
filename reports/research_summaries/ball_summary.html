@@ -8,7 +8,7 @@
   .kpis { grid-template-columns: repeat(5, 1fr); }
   .gallery { grid-template-columns: repeat(2, 1fr); gap: 3mm 4mm; break-inside: avoid; }
   .gallery figcaption { font-size: 8pt; }
-  .chart-row.ball { grid-template-columns: 1.6fr 1fr; gap: 5mm; }
+  .bridge svg { width: 100%; height: auto; }
   .chart-row.acc { grid-template-columns: 1.25fr 1fr; gap: 5mm; align-items: start; }
   .lead { color: var(--ink); }
   .web-only { margin: 3mm 0 4mm; }
@@ -229,23 +229,17 @@ Does the final pipeline hold on unseen games? On the GSR test split it places {{
 Retraining the detector on larger data at 1280&nbsp;px gives most of the gain, {{base_to_dd2c_test}} on test and
 {{base_to_dd2c_valid}} on validation. Tracking and the size filter add the rest.
 </p>
-<div class="chart-row ball">
-  <div>
-    <p class="note">
-    The test split was used once before, to choose the retrained detector, so it is not a fresh set. It is also easier than the
-    validation split, which explains the smaller gains there.
-    </p>
-    <p class="note">
-    For the old detector {{base_far_test}} of placed balls are more than 5&nbsp;m off on test. The pipeline cuts this to 9.2%,
-    slightly above the retrained detector's 7.7%. Tracking pays for the gaps it fills with a few more large errors.
-    </p>
-  </div>
-  <figure style="margin-top:0">
-    <img src="{{fig_breakdown}}" alt="Where the gain comes from">
-    <figcaption><b>Figure 3. Where the gain comes from</b> (test split). On measured frames tracking changes little,
-    86 → 89%. The gain comes from the gaps. On interpolated frames the share within 5&nbsp;m rises from 14% to 70%.</figcaption>
-  </figure>
-</div>
+<p class="note">
+The test split was used once before, to choose the retrained detector, so it is not a fresh set. It is also easier than the
+validation split, which explains the smaller gains there.
+</p>
+<figure class="bridge">
+{{svg_bridge}}
+<figcaption><b>Figure 3. Where the gain comes from</b>, old detector to final pipeline, in the share of frames within 5&nbsp;m.
+Most of it is the retrained detector. Of the rest, which the size filter and tracking add together, most comes from filling gaps,
+and re-selecting the ball on other frames adds little. Gap filling costs a few large errors: on test 9.2% of placed balls are
+more than 5&nbsp;m off, against 7.7% for the retrained detector and {{base_far_test}} for the old one.</figcaption>
+</figure>
 
 <h2>5&nbsp;&nbsp;How accurate below 5&nbsp;m</h2>
 <p class="lead">

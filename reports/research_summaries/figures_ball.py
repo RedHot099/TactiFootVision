@@ -92,42 +92,164 @@ def errors_chart() -> None:
     plt.close(fig)
 
 
-def breakdown_chart(status: list[dict]) -> None:
-    """Well-placed share by kind of tracked frame (GSR test, ticket 09 record)."""
-    rows = {r["status"]: r for r in status}
-    BREAKDOWN = [
-        (
-            f"{kind}\n({100 * rows[kind]['share']:.1f}% of frames)",
-            100 * rows[kind]["top1_well"],
-            100 * rows[kind]["track_well"],
-        )
-        for kind in ("measured", "interpolated")
-    ]
-    fig, ax = plt.subplots(figsize=(3.2, 2.4))
-    x = np.arange(len(BREAKDOWN))
-    for k, (label, color) in enumerate(
-        (("detector top-1", NEUTRAL), ("tracked", TRACKING))
-    ):
-        vals = [row[1 + k] for row in BREAKDOWN]
-        ax.bar(x + (k - 0.5) * 0.36, vals, width=0.34, color=color, label=label)
-        for i, v in enumerate(vals):
-            ax.text(
-                x[i] + (k - 0.5) * 0.36,
-                v + 2,
-                f"{v:.0f}%",
-                ha="center",
-                fontsize=7.8,
-                color=INK,
+def _pct(df: pd.DataFrame, col: str, mask: pd.Series) -> float:
+    """Well-placed frames of `col` within `mask`, as a share of all scored frames, in %."""
+    return 100 * df.loc[mask, col].sum() / len(df)
+
+
+def bridge_numbers() -> dict:
+    """Additive decomposition of the gain from the old detector to the final pipeline, per split.
+
+    Per frame of the scored denominator (every 5th frame with one ball on the pitch): well placed = homography and error
+    <= 5 m. Old detector from ball-detection 25, retrained-detector top-1 and pipeline from ticket 09, pipeline status
+    from ticket 09's tracks. No per-frame "top-1 + size filter" row exists for test, so the filter is not a separate
+    step: the pipeline - top-1 difference is split by the pipeline's status (interpolated vs measured or no position).
+    The steps sum exactly to the end bar; start, end and the retraining step reproduce ball-detection 25.
+    """
+    key = ["clip", "frame"]
+    names = {"test": "test", "valid": "full"}  # ticket 09 file names
+    read25 = json.loads((ball_data.BALL / "25/read.json").read_text())
+    out = {}
+    for split, name in names.items():
+
+        def well(path: str) -> pd.DataFrame:
+            d = pd.read_parquet(ball_data.BALL / path)
+            return d[key].assign(well=(d.homography & (d.error_m <= 5)).to_numpy())
+
+        df = (
+            well(f"25/placement_{split}_base.parquet")
+            .rename(columns={"well": "base"})
+            .merge(
+                well(f"09/read_{split}/placement_{name}_top1.parquet").rename(
+                    columns={"well": "top1"}
+                ),
+                on=key,
             )
-    ax.set_xticks(x, [row[0] for row in BREAKDOWN], fontsize=7.8)
-    ax.set_ylim(0, 105)
-    ax.set_ylabel("Ball within 5 m (%)")
-    ax.legend(frameon=False, fontsize=7.5, loc="upper right")
-    ax.grid(axis="y", color=GRID, lw=0.6)
-    ax.set_axisbelow(True)
-    fig.tight_layout()
-    fig.savefig(FIG / "breakdown.svg")
+            .merge(
+                well(f"09/read_{split}/placement_{name}_track.parquet").rename(
+                    columns={"well": "pipeline"}
+                ),
+                on=key,
+            )
+            .merge(
+                pd.read_parquet(
+                    ball_data.BALL / f"09/track_{split}/tracks.parquet",
+                    columns=[*key, "status"],
+                ),
+                on=key,
+                how="left",
+            )
+        )
+        n = len(df)
+        interp = df.status.eq("interpolated")
+        everything = pd.Series(True, index=df.index)
+        row = {
+            "frames": n,
+            "start": _pct(df, "base", everything),
+            "retraining": _pct(df, "top1", everything) - _pct(df, "base", everything),
+            "reselection": _pct(df, "pipeline", ~interp) - _pct(df, "top1", ~interp),
+            "gap_filling": _pct(df, "pipeline", interp) - _pct(df, "top1", interp),
+            "end": _pct(df, "pipeline", everything),
+        }
+        steps = (
+            row["start"] + row["retraining"] + row["reselection"] + row["gap_filling"]
+        )
+        rows = read25[split]["rows"]
+        assert abs(steps - row["end"]) < 1e-9
+        assert abs(row["start"] - 100 * rows["base"]["well_placed"]["value"]) < 1e-9
+        assert abs(row["end"] - 100 * rows["pipeline"]["well_placed"]["value"]) < 1e-9
+        assert (
+            abs(
+                row["retraining"]
+                - 100 * read25[split]["base_to_dd2c"]["well_placed"]["difference"]
+            )
+            < 1e-9
+        )
+        out[split] = row
+    return out
+
+
+def bridge_tips(numbers: dict) -> dict:
+    """Hover text per bar. Totals carry their existing CIs; the two tracking parts have none."""
+
+    def ci(d: dict, value: str = "difference") -> str:
+        lo, hi = (100 * c for c in d["ci"])
+        return f"{100 * d[value]:+.1f} pp [{lo:+.1f}, {hi:+.1f}]"
+
+    tips = {}
+    for split, b in numbers["bridge"].items():
+        base = numbers["baseline"][split]
+        lo, hi = (100 * c for c in base["base"]["well_placed"]["ci"])
+        plo, phi = (100 * c for c in base["pipeline"]["well_placed"]["ci"])
+        tips |= {
+            f"bridge-{split}-0": f"Old detector: {b['start']:.1f}% [{lo:.1f}, {hi:.1f}]",
+            f"bridge-{split}-1": f"Retraining the detector: {ci(base['base_to_dd2c'])}",
+            f"bridge-{split}-2": f"Filter + tracking on measured frames and frames without a position: {b['reselection']:+.1f} pp",
+            f"bridge-{split}-3": f"Filter + tracking on interpolated frames: {b['gap_filling']:+.1f} pp",
+            f"bridge-{split}-4": f"Final pipeline: {b['end']:.1f}% [{plo:.1f}, {phi:.1f}]; "
+            f"{ci(base['base_to_pipeline'])} over the old detector",
+        }
+    return tips
+
+
+def bridge_chart(bridge: dict, tips: dict) -> None:
+    """Waterfall from the old detector to the final pipeline: GSR test (left) and the whole of GSR valid (right)."""
+    labels = [
+        "old\ndetector",
+        "retraining",
+        "re-selection",
+        "gap\nfilling",
+        "final\npipeline",
+    ]
+    fig, axes = plt.subplots(
+        1,
+        2,
+        figsize=(6.6, 2.25),
+        sharey=True,
+        gridspec_kw={"width_ratios": [1, 1], "wspace": 0.08},
+    )
+    for ax, (split, title) in zip(
+        axes, (("test", "GSR test"), ("valid", "GSR validation")), strict=True
+    ):
+        b = bridge[split]
+        steps = [b["retraining"], b["reselection"], b["gap_filling"]]
+        bottoms = [
+            0,
+            b["start"],
+            b["start"] + steps[0],
+            b["start"] + steps[0] + steps[1],
+            0,
+        ]
+        heights = [b["start"], *steps, b["end"]]
+        colors = [NEUTRAL, DETECTOR, DETECTOR, DETECTOR, INK]
+        x = np.arange(5)
+        for k in range(5):
+            bar = ax.bar(
+                x[k], heights[k], bottom=bottoms[k], width=0.62, color=colors[k]
+            )[0]
+            bar.set_gid(f"bridge-{split}-{k}")
+            top = bottoms[k] + heights[k]
+            text = f"{heights[k]:.1f}%" if k in (0, 4) else f"+{heights[k]:.1f}"
+            ax.text(
+                x[k], top + 2, text, ha="center", va="bottom", fontsize=7.8, color=INK
+            )
+            if k < 4:
+                ax.plot([x[k] + 0.31, x[k + 1] - 0.31], [top, top], color=MUTED, lw=0.6)
+        ax.set_xticks(x, labels, fontsize=7.4)
+        ax.set_title(title, fontsize=8.5, loc="left", color=INK)
+        ax.set_ylim(0, 100)
+        ax.grid(axis="y", color=GRID, lw=0.6)
+        ax.set_axisbelow(True)
+        ax.tick_params(axis="x", length=0)
+    axes[0].set_ylabel("Ball within 5 m (%)", fontsize=8)
+    fig.subplots_adjust(left=0.075, right=0.995, bottom=0.2, top=0.9, wspace=0.08)
+    path = FIG / "bridge.svg"
+    fig.savefig(path)
     plt.close(fig)
+    svg = path.read_text()
+    for gid, tip in tips.items():  # hover text for the inline HTML copy
+        svg = svg.replace(f'<g id="{gid}">', f'<g id="{gid}"><title>{tip}</title>', 1)
+    path.write_text(svg)
 
 
 def baseline_numbers() -> dict:
@@ -272,12 +394,12 @@ def main() -> None:
         100 * diff["ci"][1],
     )  # shares -> points
     numbers["test_gain_pp"] = gain
-    numbers["status"] = test["status"]
     errors_chart()
-    breakdown_chart(test["status"])
     synthetic_chart()
     numbers["accuracy_games_2_3"] = accuracy_numbers()
     numbers["baseline"] = baseline_numbers()
+    numbers["bridge"] = bridge_numbers()
+    bridge_chart(numbers["bridge"], bridge_tips(numbers))
     accuracy_chart(numbers["accuracy_games_2_3"])
     (OUT / "ball/numbers.json").write_text(json.dumps(numbers, indent=1))
     print(json.dumps(numbers, indent=1))
