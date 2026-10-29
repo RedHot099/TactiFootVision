@@ -12,7 +12,6 @@
   .chart-row.acc { grid-template-columns: 1.25fr 1fr; gap: 5mm; align-items: start; }
   .web-only { margin: 3mm 0 4mm; padding: 1mm 0 1mm 4mm; border-left: 2px solid var(--rule); }
   .web-only h4 { font-size: 10pt; margin: 3mm 0 1mm; }
-  .web-only td:first-child { white-space: nowrap; }
   @media print { .web-only { display: none; } }
   .legend-dot { display: inline-block; width: 2.4mm; height: 2.4mm; border-radius: 50%; vertical-align: -0.2mm; margin-right: 0.8mm; }
 </style>
@@ -142,9 +141,7 @@ The likely cause is the gap between the rendered and the broadcast domain; the m
 SoccerSynth as a small share mixed into real data was not tested.
 </p>
 <div class="web-only">
-<p class="note">The web version adds the details below; the printed summary leaves them out.</p>
-
-<h4>Tiling in detail</h4>
+<h4>Tiling: method and result</h4>
 <figure>
 <svg viewBox="0 0 860 310" width="100%" role="img" aria-label="Four overlapping 1024 by 608 tiles on a 1920 by 1080 frame" style="font: 11px 'Noto Sans', sans-serif; max-width: 760px">
   <rect x="60" y="24" width="480" height="270" fill="#f5f4f1" stroke="#85837d"/>
@@ -163,70 +160,24 @@ SoccerSynth as a small share mixed into real data was not tested.
   <text x="570" y="142" fill="#52514e">balls merged; people from the full frame</text>
   <text x="570" y="166" fill="#52514e">then the 45 px size filter</text>
 </svg>
-<figcaption><b>Tile layout.</b> Balls within 2&nbsp;px of an inner tile edge are dropped, and tile balls that overlap a
-full-frame ball are merged with it.</figcaption>
+<figcaption><b>Tile layout.</b> Four overlapping tiles plus the full frame; ball detections are merged, then size-filtered.</figcaption>
 </figure>
 <p>
-<b>Single frames, against the detector without the filter</b> (share of frames with the ball within 5&nbsp;m; held-out game: 19 clips,
-2,154 frames; whole validation: 6,404 frames; the selection games were used to choose this variant):
-</p>
-<table>
-  <tr><th>Split</th><th class="n">Detector</th><th class="n">Tiles + filter</th><th class="n">Gain, pp [95% CI]</th><th class="n">&gt; 5&nbsp;m among placed (Δ pp)</th><th class="n">Ball AP50 (Δ)</th></tr>
-  <tr><td>Held-out game</td><td class="n">77.11%</td><td class="n">82.40%</td><td class="n">+5.29 [+3.15, +8.02]</td><td class="n">8.69% (+1.43 [+0.48, +2.58])</td><td class="n">0.503 (+0.013 [−0.006, +0.033])</td></tr>
-  <tr><td>Selection games</td><td class="n">51.60%</td><td class="n">58.00%</td><td class="n">+6.40 [+4.91, +8.06]</td><td class="n">12.68% (−5.76)</td><td class="n">0.346 (+0.050)</td></tr>
-  <tr><td>Whole validation</td><td class="n">60.18%</td><td class="n">66.21%</td><td class="n">+6.03 [+4.71, +7.39]</td><td class="n">11.06% (−2.92)</td><td class="n">0.397 (+0.041 [+0.017, +0.067])</td></tr>
-  <tr><td>Selection games, no filter</td><td class="n">51.60%</td><td class="n">50.87%</td><td class="n">−0.73 [−2.89, +1.39]</td><td class="n">37.39% (+18.94)</td><td class="n">0.214 (−0.082)</td></tr>
-</table>
-<p>
-Without the filter, tiles make 0.60 false balls per frame on the selection games, against 0.21 for the detector, and 37% of
-placed balls end up more than 5&nbsp;m off. On the held-out game the detector has no candidate longer than 45&nbsp;px, so there
-the filter changes nothing and the whole gain is from the tiles. Of the +6.03&nbsp;pp on the whole validation split, 0.4&nbsp;pp
-comes from the filter and 5.6&nbsp;pp from the tiles.
-</p>
-<p><b>On top of tracking</b> (tracking on tiles + filter against tracking on the detector alone, same tracker settings):</p>
-<table>
-  <tr><th>Split</th><th class="n">Tracking</th><th class="n">Tracking on tiles</th><th class="n">Gain, pp [95% CI]</th><th class="n">&gt; 5&nbsp;m (Δ pp [95% CI])</th></tr>
-  <tr><td>Held-out game</td><td class="n">86.26%</td><td class="n">85.00%</td><td class="n">−1.25 [−2.79, +0.24]</td><td class="n">10.73% (+2.48 [+1.15, +4.08])</td></tr>
-  <tr><td>Selection games</td><td class="n">68.92%</td><td class="n">73.69%</td><td class="n">+4.78 [+1.55, +8.39]</td><td class="n">17.16% (−1.47 [−4.95, +1.70])</td></tr>
-  <tr><td>Whole validation</td><td class="n">74.75%</td><td class="n">77.50%</td><td class="n">+2.75 [+0.42, +5.51]</td><td class="n">14.90% (0.00)</td></tr>
-</table>
-<p><b>Cost</b> (RTX 4070 Ti SUPER, batch 1):</p>
-<table>
-  <tr><th>Step</th><th class="n">ms per frame</th><th class="n">vs detector</th></tr>
-  <tr><td>Detector at 1280&nbsp;px (the size filter costs nothing)</td><td class="n">19.6</td><td class="n">1×</td></tr>
-  <tr><td>Tiles 2×2 + full frame at 1280&nbsp;px + merge</td><td class="n">75.0 (every 5th frame); 87.2 at 25&nbsp;fps</td><td class="n">3.8×</td></tr>
-  <tr><td>Tracking (<code>track_ball</code>)</td><td class="n">+0.2 on the CPU</td><td class="n"></td></tr>
-  <tr><td>Camera motion for the metric motion gate</td><td class="n">about +10 on one CPU core</td><td class="n"></td></tr>
-</table>
-<p>
-Why tiling stays out of the video pipeline: the size filter is a precondition, because the extra resolution mainly adds large false
-balls; the tracker already recovers much of what tiles add (weak candidates, gaps), and on the held-out game it follows the extra
-false balls instead; and balls under 8&nbsp;px stay missed with or without tiles (recall about 0.06).
+The frame is split into four overlapping tiles, each run through the detector and merged with the full-frame pass, and the
+45&nbsp;px size filter is applied after the merge. On single frames this finds more balls (about +5&nbsp;pp within 5&nbsp;m), but
+once tracking is used the gain is gone, and it costs 3.8× the detection time. Tiling is therefore only a single-frame mode.
 </p>
 
-<h4>Synthetic data in detail</h4>
-<p>
-<b>What SoccerSynth is.</b> SoccerSynth-Detection has 50,877 rendered images (after thinning) with 17,126 ball boxes. Before
-thinning, 18,441 of 54,248 images had motion blur. Only the ball and people are labelled, so the goalkeeper and referee classes were
-masked: they received no classification loss on these images, positive or negative. The licence of the data is not stated.
-</p>
-<p><b>Where it sat in the training ladder.</b> Model choices were made on development data only.</p>
-<table>
-  <tr><th>Stage</th><th>Start</th><th>Data</th><th class="n">Epochs</th><th>What it showed</th></tr>
-  <tr><td>Run 1</td><td>COCO</td><td>99,478 real images from 8 sources</td><td class="n">20 (best 13)</td><td>Large data at 1280&nbsp;px gives the roles and the ball; no Ekstraklasa in the data.</td></tr>
-  <tr><td>2a</td><td>Run 1</td><td><code>football_yolo</code> only, 736 images (Lech Poznań, UEFA and two other broadcasts)</td><td class="n">35</td><td>Ekstraklasa catches up within a few epochs, but GSR is forgotten: GSR referee AP50 0.815 → 0.285 after two epochs.</td></tr>
-  <tr><td>2b</td><td>2a, epoch 2</td><td>SoccerSynth only, 50,877 renders</td><td class="n">5</td><td>Collapse of the ball and the roles (below).</td></tr>
-  <tr><td>2c</td><td>Run 1</td><td>Run 1 data + <code>football_yolo</code> ×20, 114,198 images per epoch</td><td class="n">3</td><td>The mix keeps GSR and Ekstraklasa; its second epoch is the final detector.</td></tr>
-</table>
+<h4>Synthetic data: method and result</h4>
 <figure>
   <img src="{{fig_synthetic}}" alt="AP50 per class while fine-tuning on SoccerSynth alone" style="max-width: 560px">
-  <figcaption><b>Stage 2b.</b> AP50 per class at 1280&nbsp;px on three Ekstraklasa development clips, from the 2a checkpoint
-  to five epochs on SoccerSynth alone. Three clips, so indicative only.</figcaption>
+  <figcaption><b>Fine-tuning on SoccerSynth alone.</b> AP50 per class at 1280&nbsp;px on three Ekstraklasa development clips,
+  from the real-data checkpoint to five epochs on renders. Three clips, so indicative only.</figcaption>
 </figure>
 <p>
-Players degrade slowest; people are labelled in the renders. The ball is labelled too and still collapses, which points to the
-domain gap between renders and broadcast frames rather than to the masking. The masked goalkeeper and referee classes get no
-gradient and drift. What was not tested is SoccerSynth as a small share mixed into real data; it was planned but not run.
+SoccerSynth consists of rendered matches in which only the ball and people are labelled. A detector trained on real data was
+fine-tuned on these renders alone. The ball and the goalkeeper and referee roles collapse on real broadcast frames within one epoch,
+so synthetic data alone is unusable; a small share mixed into real data was not tested.
 </p>
 </div>
 <p>
