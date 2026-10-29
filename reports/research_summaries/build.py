@@ -80,6 +80,18 @@ def ball_values(root: Path) -> dict[str, str]:
     values["test_track"] = f"{100 * numbers['test_track']['value']:.1f}%"
     values["test_top1"] = f"{100 * numbers['test_top1']['value']:.1f}%"
     values["test_median"] = f"{numbers['test_track_median_m']['value']:.2f} m"
+    # base_<split>..., old detector (ball-detection 25): shares and paired gains, one decimal
+    pct = lambda x: f"{100 * x:.1f}"  # noqa: E731
+    for split, rows in numbers["baseline"].items():
+        base = rows["base"]["well_placed"]
+        values[f"base_{split}"] = f"{pct(base['value'])}%"
+        values[f"base_{split}_ci"] = f"[{pct(base['ci'][0])}, {pct(base['ci'][1])}]"
+        values[f"base_far_{split}"] = f"{pct(rows['base']['far_of_placed']['value'])}%"
+        for key in ("base_to_dd2c", "base_to_pipeline"):
+            d = rows[key]
+            values[f"{key}_{split}"] = (
+                f"+{pct(d['difference'])} pp [+{pct(d['ci'][0])}, +{pct(d['ci'][1])}]"
+            )
     # acc_<row>_<key> and acc_<row>_<key>_ci: games 2+3 thresholds (shares -> %) and percentiles (m)
     for row, keys in numbers["accuracy_games_2_3"].items():
         for key, stat in keys.items():

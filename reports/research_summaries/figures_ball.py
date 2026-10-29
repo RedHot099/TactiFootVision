@@ -130,6 +130,22 @@ def breakdown_chart(status: list[dict]) -> None:
     plt.close(fig)
 
 
+def baseline_numbers() -> dict:
+    """Old detector vs retrained detector vs final pipeline on GSR test and the whole of GSR valid
+    (ball-detection 25, read.json): shares within 5 m, > 5 m among placed, paired gains with 95% CIs."""
+    read = json.loads((ball_data.BALL / "25/read.json").read_text())
+    return {
+        split: {
+            "base": read[split]["rows"]["base"],
+            "dd2c": read[split]["rows"]["dd2c_top1"],
+            "pipeline": read[split]["rows"]["pipeline"],
+            "base_to_dd2c": read[split]["base_to_dd2c"]["well_placed"],
+            "base_to_pipeline": read[split]["base_to_pipeline"]["well_placed"],
+        }
+        for split in ("test", "valid")
+    }
+
+
 def accuracy_numbers() -> dict:
     """Games 2+3 thresholds and percentiles of ticket 17 (read.json), value and 95% clip-bootstrap CI."""
     groups = json.loads((ball_data.BALL / "17/read.json").read_text())["splits"]
@@ -261,6 +277,7 @@ def main() -> None:
     breakdown_chart(test["status"])
     synthetic_chart()
     numbers["accuracy_games_2_3"] = accuracy_numbers()
+    numbers["baseline"] = baseline_numbers()
     accuracy_chart(numbers["accuracy_games_2_3"])
     (OUT / "ball/numbers.json").write_text(json.dumps(numbers, indent=1))
     print(json.dumps(numbers, indent=1))
