@@ -11,6 +11,12 @@ SHOTS = Path("/home/kuba/projects/football_data/xg_shots_full/soccernet_720p")
 DETECTOR = ROOT / "models/detector_yolo11l_1280_dd2c.pt"
 KEYPOINTS = ROOT / "models/pitch_yolo11m_pose_sn960.pt"
 OUT = Path(__file__).resolve().parents[2] / "outputs/research_summaries"
+# xg-dino-info masking read (ticket 15); the hash is the one recorded in info.md (research/xg-dino, cbc0a21).
+XG_DINO_MASK = (
+    ROOT
+    / ".claude/worktrees/claude-fable-xg-poc/experiments/claude_fable/results/xgdino_info_mask/gain_left.csv"
+)
+XG_DINO_MASK_SHA256 = "14357dc7b907b9a0bab7ead834545948a7b504185fa0a061e58bb90eb0d4188e"
 # The shot (SoccerNet anchor) sits 4000 ms into every 8 s clip.
 CLIP_ANCHOR_MS = 4000
 

@@ -4,6 +4,7 @@ Run: uv run python reports/research_summaries/figures_xg.py
 Writes SVGs to outputs/research_summaries/xg/figures/ and the numbers to numbers.json.
 """
 
+import hashlib
 import json
 
 import matplotlib
@@ -12,7 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sources import OUT, paired_shots
+from sources import OUT, XG_DINO_MASK, XG_DINO_MASK_SHA256, paired_shots
 
 FIG = OUT / "xg/figures"
 # Model identity colours, fixed across every chart (reference palette slots 1 and 3;
@@ -169,7 +170,7 @@ CATEGORIES = [
 
 def category_chart(df: pd.DataFrame, numbers: dict) -> None:
     """Expected ÷ actual goals per situation; 1.0 = calibrated."""
-    fig, ax = plt.subplots(figsize=(6.4, 2.5))
+    fig, ax = plt.subplots(figsize=(6.4, 2.0))
     offsets = dict(zip(MODELS, (-0.22, 0.0, 0.22), strict=True))
     numbers["categories"] = {}
     for i, (name, select) in enumerate(CATEGORIES):
@@ -209,6 +210,52 @@ def category_chart(df: pd.DataFrame, numbers: dict) -> None:
     plt.close(fig)
 
 
+# xg-dino-info, refit estimand, mean fill, all shots: share of the C−B gain left after masking
+MASKS = [
+    ("Shooter", "shooter"),
+    ("Ball", "ball"),
+    ("Goalkeeper", "goalkeeper"),
+    ("Goal", "goal"),
+    ("Background", "background"),
+    ("All players", "players"),
+    ("Shooter + ball only", "keep_shooter_ball"),
+]
+
+
+def masking_chart(numbers: dict) -> None:
+    """How much of the image's gain over geometry survives masking one region of the frame."""
+    raw = XG_DINO_MASK.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == XG_DINO_MASK_SHA256, (
+        "gain_left.csv changed"
+    )
+    gl = pd.read_csv(XG_DINO_MASK)
+    gl = gl[(gl.estimand == "refit") & (gl["fill"] == "mean")].set_index("region")
+    fig, ax = plt.subplots(figsize=(3.3, 1.9))
+    numbers["masking"] = {}
+    for i, (_label, region) in enumerate(MASKS):
+        r = gl.loc[region]
+        numbers["masking"][region] = [r.all_point, r.all_lo95, r.all_hi95]
+        color = MODELS["p_video"][1] if i < 5 else INK
+        ax.plot([r.all_lo95, r.all_hi95], [i, i], color=color, lw=2)
+        ax.scatter(
+            r.all_point, i, color=color, s=30, zorder=3, edgecolor="white", lw=0.8
+        )
+        ax.text(1.12, i, f"{r.all_point:.2f}", va="center", fontsize=7.5, color=INK)
+    ax.axhline(4.5, color=GRID, lw=0.8)
+    ax.axvline(0, color=MUTED, lw=0.8)
+    ax.axvline(1, color=MUTED, lw=0.8, ls=(0, (3, 3)))
+    ax.set_yticks(range(len(MASKS)), [m[0] for m in MASKS], fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlim(-0.1, 1.22)
+    ax.set_xticks([0, 0.5, 1])
+    ax.set_xlabel("Share of the image's gain that remains", fontsize=8)
+    ax.grid(axis="x", color=GRID, lw=0.6)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(FIG / "masking.svg")
+    plt.close(fig)
+
+
 def main() -> None:
     FIG.mkdir(parents=True, exist_ok=True)
     df = paired_shots()
@@ -226,6 +273,7 @@ def main() -> None:
     calibrated = recalibrated(df)
     reliability_chart(calibrated)
     category_chart(calibrated, numbers)
+    masking_chart(numbers)
     (OUT / "xg/numbers.json").write_text(json.dumps(numbers, indent=1))
     print(json.dumps(numbers, indent=1))
 

@@ -5,6 +5,10 @@
 <title>Expected goals from broadcast video: research summary</title>
 <style>
 {{css}}
+  .chart-row.ablation { grid-template-columns: 1.55fr 1fr; gap: 5mm; }
+  .chart-row.ablation ul { font-size: 8.8pt; }
+  .feature { grid-template-columns: 1.2fr 1fr; }
+  footer { margin-top: 3mm; }
 </style>
 </head>
 <body>
@@ -94,13 +98,14 @@ reaches a log-loss of 0.355 (AUC 0.736), and StatsBomb xG 0.326 (AUC 0.792). The
 manually annotated event data. The registered tests explain why:
 </p>
 <ul>
-  <li><b>The frame adds nothing beyond player positions.</b> Adding the video model to a positions-only model
-    changes log-loss by −0.0004 [−0.0026, +0.0018]. That is equivalent within the pre-set margin δ = 0.005 (TOST p = 0.0006).</li>
+  <li><b>The frame adds nothing beyond hand-annotated player positions.</b> Adding the video model to a model on StatsBomb's
+    annotated positions changes log-loss by −0.0004 [−0.0026, +0.0018]. That is equivalent within the pre-set margin δ = 0.005 (TOST p = 0.0006).</li>
   <li><b>The video model has learned shot geometry implicitly.</b> Its embedding linearly encodes the distance to goal
     (R² = 0.71) and the number of defenders in the shooting cone (AUC 0.76). Both are above the pre-registered thresholds and
     above frozen DINOv2 features.</li>
 </ul>
-<p>So the useful content of the frame is mostly geometry. That points at the perception stack: measure the geometry explicitly and accurately.
+<p>Against hand-annotated positions, the useful content of the frame is mostly geometry. That points at the perception stack: measure the
+geometry explicitly and accurately. Section 2.5 asks the converse question for automatically measured geometry.
 A paper on this study is in preparation for the CVsports workshop at CVPR 2027.</p>
 
 <h3>2.3 Perception: from pixels to metres</h3>
@@ -155,6 +160,35 @@ projecting the ball, which is often in the air. On headers the error dropped fro
   annotators see context that a single frame and the current team assignment miss.</figcaption>
 </figure>
 
+<h3>2.5 What does the image add beyond automatic geometry?</h3>
+<p>
+A three-arm ablation, out of fold on the 328 training matches (7,062 shots, 902 goals), with identical folds and calibration and
+paired match-bootstrap CIs. These are development results on a different population from 2.1.
+</p>
+<table>
+  <tr><th>Arm</th><th>Inputs</th><th class="n">Log-loss</th><th class="n">Brier</th><th class="n">AUC</th></tr>
+  <tr><td>A</td><td>image only (video model)</td><td class="n">0.3431</td><td class="n">0.1021</td><td class="n">0.734</td></tr>
+  <tr><td>B</td><td>automatic geometry only</td><td class="n">0.3422</td><td class="n">0.1016</td><td class="n">0.738</td></tr>
+  <tr><td>C</td><td>image + geometry</td><td class="n"><b>0.3325</b></td><td class="n"><b>0.0987</b></td><td class="n"><b>0.758</b></td></tr>
+</table>
+<div class="chart-row ablation">
+  <div>
+    <ul>
+      <li><b>Each adds to the other.</b> Image beyond geometry (C−B): −0.0097 [−0.0131, −0.0064]. Geometry beyond image (C−A):
+        −0.0106 [−0.0143, −0.0065]. B−A is undecided. Leakage controls agree. The model keeps both (arm C); geometry costs 5.3× the compute.</li>
+      <li><b>Not a geometry correction.</b> Probes read distance, angle, defenders in the cone and goalkeeper depth (mostly in
+        blocks 22–23 of 24), but the detector is closer to StatsBomb's reference positions than any probe.</li>
+      <li><b>Not simple scene attributes.</b> Crowding, set piece, framing and shooter size, added to geometry, leave the gain at
+        −0.0097 [−0.0136, −0.0057] (inconclusive: the test can confirm redundancy, not exclude it). No detectable difference for headers or set pieces.</li>
+    </ul>
+  </div>
+  <figure>
+    <img src="{{fig_masking}}" alt="Share of the image's gain over geometry left after masking regions of the frame">
+    <figcaption><b>Figure 3. Masking the frame</b> (re-embedded, refitted). One object masked leaves 0.58–0.94 of the gain, all players
+    0.14, shooter and ball alone 0.09. The deployed model is most sensitive to the goalkeeper and goal area. Predictive redundancy, not causal use.</figcaption>
+  </figure>
+</div>
+
 <h2>3&nbsp;&nbsp;Examples</h2>
 <div class="feature">
   <div class="media">
@@ -163,9 +197,8 @@ projecting the ball, which is often in the air. On headers the error dropped fro
   </div>
   <div>
     <h3 style="margin-top:0">One shot, end to end</h3>
-    <p class="note">{{feature_match}}. The clip plays the attack with the package's detections and a live radar, freezes at
-    the moment of contact while the measured inputs of Figure&nbsp;2 appear one by one, then shows the outcome.
-    The three estimates for this shot:</p>
+    <p class="note">{{feature_match}}. The clip shows the package's detections and a live radar, freezes at contact while
+    the inputs of Figure&nbsp;2 appear, then shows the outcome.</p>
     <div class="chips">
       <span class="chip"><i style="background:var(--video)"></i>Video only {{feature_video}}</span>
       <span class="chip"><i style="background:var(--geometry)"></i>Video + geometry {{feature_geometry}}</span>
@@ -173,7 +206,7 @@ projecting the ball, which is often in the air. On headers the error dropped fro
       <span class="chip out">{{feature_outcome}}</span>
     </div>
     <p class="note" style="margin-top:2mm">A pressured shot from 14 m through a crowded box: all three estimates agree
-    that it is a below-average chance. In the PDF this panel shows the frame at contact.</p>
+    that it is a below-average chance.</p>
   </div>
 </div>
 
@@ -194,13 +227,9 @@ projecting the ball, which is often in the air. On headers the error dropped fro
 
 <h2>4&nbsp;&nbsp;Open questions</h2>
 <ul>
-  <li><b>Defensive pressure and team context.</b> A team-free pressure feature already separates pressured shots (AUC 0.72). With the current
-    team assignment it does not (0.51). Robust team identification is now the main bottleneck.</li>
-  <li><b>Confirmation on fresh data.</b> The geometry gains were measured on matches that were also used during development. A new, untouched
-    test set (another season or league) would turn them into a confirmatory result.</li>
-  <li><b>Ball detection.</b> The ball is the weakest detector class (AP@50 0.46) and limits the pre-shot context. It is the subject of the current research phase.</li>
-  <li><b>Time.</b> All models here read a single frame. Whether short temporal context (the run-up, the pass) adds information beyond
-    geometry is still open, as is transfer to lower-tier broadcasts.</li>
+  <li><b>Team context.</b> Pressure is detectable team-free (AUC 0.72), not with the current team assignment (0.51).</li>
+  <li><b>Fresh data.</b> The gains in 2.4 and 2.5 are development results; an untouched season would confirm them.</li>
+  <li><b>Beyond geometry.</b> No explicit attribute yet captures the player arrangement the image encodes.</li>
 </ul>
 
 <footer>
