@@ -141,8 +141,7 @@ retrained detector it adds +0.64&nbsp;pp [+0.12, +1.18] and halves placements mo
 filter. On single frames it adds +5.29&nbsp;pp [+3.15, +8.02] on the held-out game, against the retrained detector.
 </p>
 <p>
-On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out game, against tracking alone. It also costs 3.8× the
-detection time.
+On top of tracking it gives −1.25&nbsp;pp [−2.79, +0.24] on the held-out game, against tracking alone.
 </p>
 <div class="web-only">
 <figure>
@@ -207,7 +206,7 @@ bridging across restarts, and candidates kept on the penalty and centre spots. A
 against the final pipeline.
 </p>
 <p>
-<b>Crop second stage.</b> A ResNet18 rescores each candidate on a crop and refines its centre, for 1.3&nbsp;ms per frame. On single
+<b>Crop second stage.</b> A ResNet18 rescores each candidate on a crop and refines its centre. On single
 frames it adds +10.80&nbsp;pp [+7.99, +13.97] against the retrained detector, from 51.6% to 62.4%.
 </p>
 <p>
@@ -241,9 +240,6 @@ Retraining the detector on larger data at 1280&nbsp;px gives most of the gain, {
     <p class="note">
     For the old detector {{base_far_test}} of placed balls are more than 5&nbsp;m off on test. The pipeline cuts this to 9.2%,
     slightly above the retrained detector's 7.7%, because one interpolated position in four is more than 5&nbsp;m off.
-    </p>
-    <p class="note">
-    Cost is 19.6&nbsp;ms per frame for detection on the GPU and 0.2&nbsp;ms for tracking on the CPU.
     </p>
   </div>
   <figure style="margin-top:0">
