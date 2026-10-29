@@ -78,7 +78,7 @@ plt.rcParams.update(
 
 def errors_chart() -> None:
     fig, (a, b) = plt.subplots(
-        1, 2, figsize=(6.6, 2.1), gridspec_kw={"width_ratios": [1.2, 1]}
+        1, 2, figsize=(6.6, 1.9), gridspec_kw={"width_ratios": [1.2, 1]}
     )
     x = np.arange(len(SIZE_BINS))
     a.bar(x, SIZE_RECALL, color=DETECTOR, width=0.6)
@@ -114,7 +114,7 @@ def registered_chart(test: tuple[float, float, float]) -> None:
         *REGISTERED,
         ("Tracking + size filter (final)", "GSR test", *test, TRACKING),
     ]
-    fig, ax = plt.subplots(figsize=(6.6, 2.2))
+    fig, ax = plt.subplots(figsize=(6.6, 2.0))
     for i, (_name, _split, m, lo, hi, color) in enumerate(rows):
         ax.plot([lo, hi], [i, i], color=color, lw=2)
         ax.scatter(m, i, color=color, s=40, zorder=3, edgecolor="white", lw=0.8)
