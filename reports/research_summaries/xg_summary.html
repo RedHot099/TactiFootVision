@@ -152,10 +152,11 @@ projecting the ball, which is often in the air. On headers the error dropped fro
   </figure>
 </div>
 <figure>
-  <img src="{{fig_categories}}" alt="Expected over actual goals by situation">
-  <figcaption><b>Where video still errs.</b> Expected ÷ actual goals by situation (1 = calibrated). Geometry fixes much of the
-  sharp-angle and long-range over-estimation. It does not help with an advanced goalkeeper or defensive pressure, where event
-  annotators see context that a single frame and the current team assignment miss.</figcaption>
+  <img src="{{fig_categories}}" alt="Over- or under-prediction of goals by situation, video only versus video with geometry, StatsBomb as reference">
+  <figcaption><b>Where video still errs.</b> Over- or under-prediction of goals by situation, all models recalibrated alike. Grey: the
+  approximate 95% range a calibrated model would show by chance with that many goals (Poisson, ignoring match clustering).
+  Only sharp-angle shots lie clearly outside it: geometry cuts the over-prediction from +117% to +60% (StatsBomb −15%).
+  The video model's shortfall with the goalkeeper off the line (−20%) moves inside the range; the other gaps are within chance.</figcaption>
 </figure>
 
 <h3>2.5 What does the image add beyond automatic geometry?</h3>

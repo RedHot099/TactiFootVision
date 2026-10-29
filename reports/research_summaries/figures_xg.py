@@ -169,41 +169,122 @@ CATEGORIES = [
 
 
 def category_chart(df: pd.DataFrame, numbers: dict) -> None:
-    """Expected ÷ actual goals per situation; 1.0 = calibrated."""
-    fig, ax = plt.subplots(figsize=(6.4, 2.0))
-    offsets = dict(zip(MODELS, (-0.22, 0.0, 0.22), strict=True))
+    """Expected ÷ actual goals per situation on a log axis: an arrow from video only to video + geometry,
+    StatsBomb as a reference tick, and the range that chance alone would give for that many goals."""
+    fig, ax = plt.subplots(figsize=(6.4, 2.35))
     numbers["categories"] = {}
+    video, geometry = MODELS["p_video"][1], MODELS["p_geometry"][1]
     for i, (name, select) in enumerate(CATEGORIES):
         sub = df[select(df)]
         goals = sub.goal.sum()
-        numbers["categories"][name] = {"shots": len(sub), "goals": int(goals)}
-        for c, (label, color) in MODELS.items():
-            ratio = sub[c].sum() / goals
-            numbers["categories"][name][c] = float(ratio)
-            ax.scatter(
-                ratio,
-                i + offsets[c],
-                color=color,
-                s=34,
-                zorder=3,
-                label=label if i == 0 else None,
-                edgecolor="white",
-                lw=0.8,
+        ratio = {c: float(sub[c].sum() / goals) for c in MODELS}
+        # A calibrated model's E/A has a log-sd of about 1/sqrt(goals) (Poisson goals, clustering ignored).
+        half = 1.96 / np.sqrt(goals)
+        numbers["categories"][name] = {
+            "shots": len(sub),
+            "goals": int(goals),
+            **ratio,
+            "chance_range": [float(np.exp(-half)), float(np.exp(half))],
+        }
+        ax.add_patch(
+            plt.Rectangle(
+                (np.exp(-half), i - 0.32),
+                np.exp(half) - np.exp(-half),
+                0.64,
+                color="#ecebe7",
+                lw=0,
+                zorder=0,
             )
-        ax.text(2.42, i, f"n={len(sub):,}", va="center", fontsize=7.5, color=MUTED)
-    ax.axvline(1, color=INK, lw=0.8, ls=(0, (3, 3)))
+        )
+        ax.annotate(
+            "",
+            xy=(ratio["p_geometry"], i),
+            xytext=(ratio["p_video"], i),
+            arrowprops={
+                "arrowstyle": "-|>,head_width=0.25,head_length=0.5",
+                "color": geometry,
+                "lw": 1.6,
+                "shrinkA": 4,
+                "shrinkB": 0,
+            },
+            zorder=2,
+        )
+        ax.scatter(
+            ratio["p_video"], i, color=video, s=36, zorder=3, edgecolor="white", lw=0.8
+        )
+        ax.plot(
+            [ratio["p_vendor"]] * 2,
+            [i - 0.24, i + 0.24],
+            color=INK,
+            lw=2,
+            zorder=3,
+            solid_capstyle="butt",
+        )
+        ax.text(
+            3.05,
+            i,
+            f"{len(sub):,} shots · {int(goals)} goals",
+            va="center",
+            fontsize=7.5,
+            color=MUTED,
+        )
+        if i == 0:
+            for c, dy in (("p_video", -0.42), ("p_geometry", -0.42)):
+                ax.text(
+                    ratio[c],
+                    i + dy,
+                    f"{100 * (ratio[c] - 1):+.0f}%",
+                    ha="center",
+                    fontsize=7.5,
+                    color=INK,
+                )
+    ax.axvline(1, color=MUTED, lw=0.8, zorder=1)
+    ax.set_xscale("log")
+    ticks = [2 / 3, 0.8, 1, 1.25, 1.5, 2, 2.5]
+    ax.set_xticks(ticks, ["−33%", "−20%", "0", "+25%", "+50%", "+100%", "+150%"])
+    ax.minorticks_off()
+    ax.set_xlim(0.6, 2.9)
+    ax.set_ylim(len(CATEGORIES) - 0.5, -0.75)
     ax.set_yticks(range(len(CATEGORIES)), [c[0] for c in CATEGORIES], fontsize=8.5)
-    ax.invert_yaxis()
-    ax.set_xlim(0.5, 2.6)
-    ax.set_xlabel("Expected ÷ actual goals  (1 = calibrated; > 1 over-predicts)")
+    ax.set_xlabel("Expected vs actual goals (log scale; right of 0 = over-predicts)")
     ax.grid(axis="x", color=GRID, lw=0.6)
     ax.set_axisbelow(True)
+    ax.spines["left"].set_visible(False)
+    ax.tick_params(axis="y", length=0)
+    handles = [
+        plt.Line2D(
+            [], [], color=video, marker="o", lw=0, markersize=6, label="Video only"
+        ),
+        plt.Line2D(
+            [],
+            [],
+            color=geometry,
+            marker=">",
+            lw=1.6,
+            markersize=5,
+            label="Video + geometry",
+        ),
+        plt.Line2D(
+            [],
+            [],
+            color=INK,
+            marker="|",
+            lw=0,
+            markersize=9,
+            markeredgewidth=2,
+            label="StatsBomb xG",
+        ),
+        plt.Rectangle((0, 0), 1, 1, color="#ecebe7", label="range expected by chance"),
+    ]
     ax.legend(
+        handles=handles,
         frameon=False,
-        fontsize=8,
-        ncol=3,
+        fontsize=7.8,
+        ncol=4,
         loc="lower center",
-        bbox_to_anchor=(0.45, 1.0),
+        bbox_to_anchor=(0.5, 1.0),
+        handlelength=1.6,
+        columnspacing=1.4,
     )
     fig.tight_layout()
     fig.savefig(FIG / "categories.svg")
