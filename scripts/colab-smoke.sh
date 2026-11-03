@@ -22,7 +22,7 @@ uv venv -q -p 3.13 --seed "$VENV"   # --seed: a venv with pip
 # The dev tools let the whole fast suite run (notebook build, sdist test).
 "$VENV/bin/python" -m pip install -q --disable-pip-version-check \
     --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple \
-    -c tests/colab-constraints.txt "$WHEEL" pytest nbclient nbformat ipykernel hatchling
+    -c tests/colab-constraints.txt "$WHEEL" pytest nbclient nbformat ipykernel hatchling hatch-vcs
 "$VENV/bin/python" - <<'PY'
 import importlib.metadata as metadata
 import pathlib
