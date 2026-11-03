@@ -228,7 +228,9 @@ def test_a_true_track_id_twice_in_one_frame_is_an_error():
 
 def test_hota_without_trackeval_is_an_error_that_says_how_to_install_it(monkeypatch):
     monkeypatch.setitem(sys.modules, "trackeval", None)
-    with pytest.raises(ImportError, match=r"uv sync --extra eval.*hota=False"):
+    with pytest.raises(
+        ImportError, match=r"pip install tabulate 'trackeval @ git\+.*hota=False"
+    ):
         evaluate_tracking(_result(PREDICTED), _clip(TRUTH))
     metrics = evaluate_tracking(_result(PREDICTED), _clip(TRUTH), hota=False)
     assert np.isnan([metrics.hota, metrics.deta, metrics.assa]).all()
@@ -244,7 +246,7 @@ def test_a_broken_trackeval_is_not_reported_as_missing(monkeypatch):
 
 needs_trackeval = pytest.mark.skipif(
     importlib.util.find_spec("trackeval") is None,
-    reason="needs TrackEval: uv sync --extra eval",
+    reason="needs TrackEval: pip install tabulate trackeval@git+...",
 )
 
 
