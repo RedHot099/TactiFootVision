@@ -19,8 +19,8 @@ frame = video.read(250)
 
 # Every detector answers the same call with sv.Detections + class names.
 detectors = {
-    "yolo": tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3),
-    "rfdetr": tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.5),
+    "yolo": tv.load_model("yolo", "models/detector_yolo11l.pt", conf=0.3),
+    "rfdetr": tv.load_model("rfdetr", "models/rfdetr_smoketest_sample.pth", conf=0.5),
 }
 for name, model in detectors.items():
     detections = model(frame)
@@ -30,7 +30,7 @@ for name, model in detectors.items():
     )
 
 # Pitch keypoints -> homography -> pitch coordinates of the players' feet.
-pitch_model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt")
+pitch_model = tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt")
 keypoints = pitch_model(frame)
 homography = tv.pitch.HomographyEstimator().update(keypoints)
 feet = detectors["yolo"](frame).get_anchors_coordinates(sv.Position.BOTTOM_CENTER)

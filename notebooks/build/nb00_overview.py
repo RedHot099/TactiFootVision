@@ -79,9 +79,9 @@ demo_run = tv.train("yolo", augmented, weights="yolo11n.pt", epochs=15, batch_si
     nb.code("""
 import pandas as pd
 
-detector = tv.load_model("yolo", MODELS / "football_yolo11m.pt", conf=0.3)
+detector = tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3)
 scores = {"YOLO11n, 15-epoch demo": demo_run.load().evaluate(dataset),
-          "YOLO11m, models/": detector.evaluate(dataset)}
+          "YOLO11l, models/": detector.evaluate(dataset)}
 pd.DataFrame({name: m.as_dict() for name, m in scores.items()}).T.round(3)
 """)
 
@@ -94,7 +94,7 @@ pitch through the pitch-landmark model, and splits players into teams by kit.
     nb.code("""
 pipeline = tv.Pipeline(
     detector=detector,
-    keypoint_model=tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt"),
+    keypoint_model=tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt"),
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
@@ -140,7 +140,8 @@ fig
 * `tv.viz.render_video(result, VIDEO, "annotated.mp4")` writes the annotated
   clip ([05_visualisation](05_visualisation.ipynb)).
 * The command line runs the same steps on whole matches:
-  `tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match`,
-  which is `tv.run_file.load("configs/pipeline.yaml").run("match.mp4", "outputs/match")`.
+  `tactifoot init pipeline.yaml` writes a commented run file, then
+  `tactifoot run pipeline.yaml --video match.mp4 --output-dir outputs/match`,
+  which is `tv.run_file.load("pipeline.yaml").run("match.mp4", "outputs/match")`.
 """)
     return nb

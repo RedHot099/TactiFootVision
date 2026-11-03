@@ -167,8 +167,8 @@ RF-DETR are scored identically. `TrainResult.load()` rebuilds a trained model.
 detectors = {
     "YOLO11n (demo run)": yolo_run.load(),
     "RF-DETR base (demo run)": rfdetr,
-    "YOLO11m (models/)": tv.load_model("yolo", MODELS / "football_yolo11m.pt"),
-    "RF-DETR base (models/)": tv.load_model("rfdetr", MODELS / "football_rfdetr_base.pth"),
+    "YOLO11l (models/)": tv.load_model("yolo", MODELS / "detector_yolo11l.pt"),
+    "RF-DETR sample (models/)": tv.load_model("rfdetr", MODELS / "rfdetr_smoketest_sample.pth"),
 }
 detection_metrics = {name: tv.evaluate(model, detection) for name, model in detectors.items()}
 pd.DataFrame({name: m.as_dict() for name, m in detection_metrics.items()}).T.round(3)
@@ -195,7 +195,7 @@ default). Evaluation options pass through, here a stricter `pck_threshold`.
     nb.code("""
 pitch_models = {
     "YOLOv8n-pose (demo run)": pose_run.load(),
-    "YOLOv8n-pose (models/)": tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt"),
+    "YOLO11m-pose (models/)": tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt"),
 }
 pitch_metrics = {name: model.evaluate(pitch_data, pck_threshold=0.02) for name, model in pitch_models.items()}
 pd.DataFrame({name: m.as_dict() for name, m in pitch_metrics.items()}).T.round(3)

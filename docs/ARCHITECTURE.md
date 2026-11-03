@@ -99,7 +99,6 @@ tests/                pytest; model/GPU tests are marked `model` and skipped by 
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
 examples/             one script per functional area
-configs/              example run files
 ```
 
 ## Conventions
@@ -850,12 +849,18 @@ Each section maps onto exactly one package call:
 Backend options sit flat next to `type`:
 
 ```yaml
-detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
+detector: {type: rfdetr, weights: ../models/rfdetr_football.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
 postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 
+* `tv.run_file.presets()` names the run files shipped with the package
+  (`default`, `rfdetr_sam2`) and `tv.run_file.preset(name)` is one's text,
+  comments included; `tactifoot init [PATH] [--preset NAME]` writes it out
+  (stdout without `PATH`; an existing file is never overwritten). No weights
+  ship with the package, so a preset names its checkpoints as bare files in
+  the working directory.
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
   signature and fails with the section, the bad key and the valid keys (an
   unknown section, `type` or embedder fails too; malformed YAML is a one-line
