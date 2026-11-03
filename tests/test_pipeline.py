@@ -11,7 +11,7 @@ import tactifoot_vision as tv
 from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.enums import TrackerType
-from tactifoot_vision.evaluation import evaluate_tracking
+from tactifoot_vision.evaluation import evaluate_homography, evaluate_tracking
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult, track_ball
 from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
@@ -280,6 +280,63 @@ def test_include_classes_and_no_keypoints(video):
         assert set(f.team_ids) == {0, 1}
 
 
+def test_a_fixed_homography_replaces_the_keypoint_model(video):
+    pipeline = _pipeline(keypoint_model=None, fixed_homography=FRAME_TO_PITCH)
+    result = pipeline.run(video, end=3, progress=False)
+
+    for f in result:
+        assert f.keypoints is None
+        np.testing.assert_allclose(f.homography, FRAME_TO_PITCH)
+        anchors = f.detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+        np.testing.assert_allclose(
+            f.pitch_xy, frame_to_pitch(anchors, FRAME_TO_PITCH), atol=1e-3
+        )
+    empty = sv.Detections.empty()
+    calibrated = LabelledClip(
+        name="fixture",
+        video_path=video,
+        fps=FPS,
+        width=WIDTH,
+        height=HEIGHT,
+        frames=tuple(
+            LabelledFrame(i, empty, empty, homography=FRAME_TO_PITCH) for i in range(3)
+        ),
+        truth=frozenset({Truth.CALIBRATION}),
+    )
+    metrics = evaluate_homography(result, calibrated)
+    assert metrics.mean_error_m == pytest.approx(0, abs=1e-6)
+    assert metrics.availability == 1 and metrics.num_frames == 3
+
+
+def test_a_fixed_homography_loads_from_a_file(tmp_path):
+    np.save(tmp_path / "H.npy", FRAME_TO_PITCH)
+    pipeline = _pipeline(keypoint_model=None, fixed_homography=tmp_path / "H.npy")
+    np.testing.assert_allclose(pipeline.fixed_homography, FRAME_TO_PITCH)
+
+    np.savez(tmp_path / "cal.npz", frame_to_pitch=FRAME_TO_PITCH, K=np.eye(3))
+    pipeline = _pipeline(keypoint_model=None, fixed_homography=tmp_path / "cal.npz")
+    np.testing.assert_allclose(pipeline.fixed_homography, FRAME_TO_PITCH)
+
+
+def test_undistortion_moves_the_anchors_before_the_fixed_homography(video, tmp_path):
+    camera = np.array([[200.0, 0.0, 160.0], [0.0, 200.0, 120.0], [0.0, 0.0, 1.0]])
+    np.savez(tmp_path / "cal.npz", K=camera, D=np.zeros(4), Knew=camera)
+    undistortion = tv.pitch.FisheyeUndistortion.load(tmp_path / "cal.npz")
+    pipeline = _pipeline(
+        keypoint_model=None,
+        fixed_homography=FRAME_TO_PITCH,
+        undistortion=tmp_path / "cal.npz",
+    )
+    result = pipeline.run(video, end=2, progress=False)
+
+    for f in result:
+        anchors = f.detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+        expected = frame_to_pitch(undistortion.points(anchors), FRAME_TO_PITCH)
+        np.testing.assert_allclose(f.pitch_xy, expected, atol=1e-3)
+        plain = frame_to_pitch(anchors, FRAME_TO_PITCH)
+        assert not np.allclose(f.pitch_xy, plain, atol=1e-3)
+
+
 def test_without_tracker_each_detection_gets_a_team(video):
     result = _pipeline(tracker=None).run(video, end=3, progress=False)
     for t, f in enumerate(result):
@@ -337,6 +394,17 @@ def test_validation():
         Pipeline(detector, keypoint_model=detector)
     with pytest.raises(ValueError, match="Unknown tracker"):
         Pipeline(detector, tracker="nope")
+    with pytest.raises(ValueError, match="two sources"):
+        Pipeline(detector, keypoint_model=keypoints, fixed_homography=np.eye(3))
+    with pytest.raises(ValueError, match="3x3"):
+        Pipeline(detector, fixed_homography=np.eye(2))
+    with pytest.raises(ValueError, match="goes with fixed_homography"):
+        Pipeline(
+            detector,
+            undistortion=tv.pitch.FisheyeUndistortion(
+                np.eye(3), np.zeros(4), np.eye(3)
+            ),
+        )
     with pytest.raises(ValueError, match="differs"):
         Pipeline(
             detector,

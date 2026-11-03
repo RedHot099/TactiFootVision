@@ -119,6 +119,33 @@ DETECTOR = {"type": "test_box_detector"}
 
 
 # --------------------------------------------------------------- run files
+def test_a_fixed_homography_is_a_pipeline_key_with_a_path_relative_to_the_file(
+    tmp_path,
+):
+    (tmp_path / "calibration").mkdir()
+    np.savez(
+        tmp_path / "calibration" / "camera.npz",
+        K=np.eye(3),
+        D=np.zeros(4),
+        Knew=np.eye(3),
+        frame_to_pitch=np.diag([0.5, 0.25, 1.0]),
+    )
+    pipeline = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "pipeline": {
+                "fixed_homography": "./calibration/camera.npz",
+                "undistortion": "./calibration/camera.npz",
+            },
+        },
+    ).build_pipeline()
+
+    assert pipeline.keypoint_model is None
+    np.testing.assert_allclose(pipeline.fixed_homography, np.diag([0.5, 0.25, 1.0]))
+    assert isinstance(pipeline.undistortion, tv.pitch.FisheyeUndistortion)
+
+
 def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip):
     pipeline = _load(
         tmp_path,
