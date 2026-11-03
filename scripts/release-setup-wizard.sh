@@ -254,11 +254,7 @@ fi
 stage "Branch protection on master (after ci.yml is on master)"
 say "master takes pull requests only, the four CI jobs are required, no force"
 say "pushes or deletions, zero required reviews, administrators exempt."
-if gh api "repos/$OWNER/$REPO/contents/.github/workflows/ci.yml?ref=master" >/dev/null 2>&1; then
-  say "ci.yml is on master."
-  if confirm "Apply the protection to master now?"; then
-    gh api -X PUT "repos/$OWNER/$REPO/branches/master/protection" --input - >/dev/null <<'JSON'
-{
+PROTECTION='{
   "required_status_checks": {
     "strict": false,
     "contexts": ["ruff", "fast suite (uv.lock)", "build and twine check", "colab smoke (pip, Colab versions)"]
@@ -268,16 +264,25 @@ if gh api "repos/$OWNER/$REPO/contents/.github/workflows/ci.yml?ref=master" >/de
   "restrictions": null,
   "allow_force_pushes": false,
   "allow_deletions": false
-}
-JSON
-    printf '  %s✓%s master protected\n' "$GREEN" "$RESET"
-  else
-    SKIPPED+=("branch protection on master (re-run this wizard)")
-  fi
-else
-  warn "ci.yml is not on master yet: merge the CI pull request first, then re-run"
-  warn "this wizard; it skips the stages that are done."
+}'
+if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+  warn "gh is not logged in; set the protection by hand:"
+  open_url "https://github.com/$OWNER/$REPO/settings/branches"
+  step "Add a branch ruleset or classic protection rule for 'master':"
+  step "  require a pull request before merging, 0 approvals;"
+  step "  require status checks: ruff, fast suite (uv.lock), build and twine check,"
+  step "    colab smoke (pip, Colab versions) (they exist once ci.yml ran on a PR);"
+  step "  block force pushes and deletions; do not include administrators."
+  pause "Done? Press Enter."
+elif ! gh api "repos/$OWNER/$REPO/contents/.github/workflows/ci.yml?ref=master" >/dev/null 2>&1; then
+  warn "ci.yml is not on master yet (or the API call failed): merge the CI pull"
+  warn "request first, then re-run this wizard and press Enter through stages 1-3."
   SKIPPED+=("branch protection on master (ci.yml not on master yet)")
+elif confirm "ci.yml is on master. Apply the protection to master now?"; then
+  printf '%s' "$PROTECTION" | gh api -X PUT "repos/$OWNER/$REPO/branches/master/protection" --input - >/dev/null
+  printf '  %s✓%s master protected\n' "$GREEN" "$RESET"
+else
+  SKIPPED+=("branch protection on master (re-run this wizard)")
 fi
 
 finish

@@ -23,10 +23,13 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv build
       - run: uvx twine check dist/*
-      - name: the built version must be the release tag
+      - name: the built files must carry exactly the release tag's version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          ls dist/ | grep -F "tactifoot_vision-${tag}" || { echo "dist/ does not match tag ${tag}:"; ls dist/; exit 1; }
+          test -f "dist/tactifoot_vision-${tag}-py3-none-any.whl" \
+            && test -f "dist/tactifoot_vision-${tag}.tar.gz" \
+            && [ "$(ls dist | wc -l)" -eq 2 ] \
+            || { echo "dist/ does not hold exactly the wheel and sdist of ${tag}:"; ls dist/; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: dist
