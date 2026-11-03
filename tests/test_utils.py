@@ -20,6 +20,12 @@ def test_require_extra_names_the_extra_to_install(monkeypatch):
         require_extra("rfdetr", "rfdetr")
 
 
+def test_require_extra_defaults_the_extra_to_the_module_name(monkeypatch):
+    monkeypatch.setitem(sys.modules, "rfdetr", None)
+    with pytest.raises(ImportError, match=r"tactifoot-vision\[rfdetr\]"):
+        require_extra("rfdetr")
+
+
 def test_require_extra_takes_a_command_and_a_hint_instead(monkeypatch):
     monkeypatch.setitem(sys.modules, "trackeval", None)
     with pytest.raises(ImportError, match=r"run `pip install x`, or pass hota=False"):

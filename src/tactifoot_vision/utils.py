@@ -31,15 +31,16 @@ def require_extra(
     """Import ``module``, or raise ``ImportError`` that says how to install it.
 
     ``extra`` names the package extra that provides it (``pip install
-    "tactifoot-vision[extra]"``); ``install`` is the command when there is no
-    extra. ``hint`` is appended to the message. A module that is installed
-    but broken raises its own error.
+    "tactifoot-vision[extra]"``; default: the module's top-level name);
+    ``install`` is the command when there is no extra. ``hint`` is appended
+    to the message. A module that is installed but broken raises its own error.
     """
     try:
         return importlib.import_module(module)
     except ModuleNotFoundError as error:
         if error.name != module.partition(".")[0]:
             raise  # installed, but something inside it is missing: its own error
+        extra = extra or module.partition(".")[0]
         command = install or f'pip install "tactifoot-vision[{extra}]"'
         raise ImportError(
             f"{module} is not installed: run `{command}`{hint}"
