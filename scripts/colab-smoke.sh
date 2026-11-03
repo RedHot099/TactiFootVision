@@ -34,9 +34,10 @@ installed = {d.metadata["Name"].lower().replace("_", "-"): d.version for d in me
 differ = {n: (v, installed[n]) for n, v in pins.items() if n in installed and installed[n].split("+")[0] != v}
 assert not differ, f"installed versions differ from the Colab constraints: {differ}"
 import tactifoot_vision as tv
+from transformers import SiglipImageProcessor, SiglipVisionModel  # the team embedder's classes
+
 print("tactifoot-vision", tv.__version__, "imports; Pipeline:", tv.Pipeline.__name__)
 PY
 "$VENV/bin/tactifoot" info
-"$VENV/bin/tactifoot" init | head -1
 "$VENV/bin/python" -m pytest -q -p no:cacheprovider tests \
     --ignore=tests/test_notebook_build.py --ignore=tests/test_packaging.py
