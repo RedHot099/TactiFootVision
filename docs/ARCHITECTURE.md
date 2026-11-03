@@ -372,7 +372,7 @@ configs/              example run files
   that says how to install it or to pass `hota=False` (HOTA is then NaN).
   The overall HOTA adds up the detections of every class, like TrackEval's
   detection-averaged combination. A test checks the native IDF1 and MOTA
-  against TrackEval; it is skipped without the extra.
+  against TrackEval; it is skipped when TrackEval is not installed.
 * `evaluate_tracking_clips(pairs, iou_threshold=0.5, hota=True)` combines
   several `(result, clip)` pairs as TrackEval combines sequences: the counts
   (for HOTA, the detections) of every clip are added up, which gives the

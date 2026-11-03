@@ -1,4 +1,4 @@
-"""HOTA by TrackEval, the reference implementation, from the optional ``eval`` extra."""
+"""HOTA by TrackEval, the reference implementation, installed by hand (``TRACKEVAL_INSTALL``)."""
 
 import builtins
 from collections.abc import Iterator, Sequence

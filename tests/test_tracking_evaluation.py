@@ -21,6 +21,7 @@ from tactifoot_vision.evaluation import (
     evaluate_tracking,
     evaluate_tracking_clips,
 )
+from tactifoot_vision.evaluation.hota import TRACKEVAL_INSTALL
 from tactifoot_vision.pipeline import FrameResult, PipelineResult, remap_track_ids
 
 # Boxes far enough apart that only the intended pairs overlap.
@@ -246,7 +247,7 @@ def test_a_broken_trackeval_is_not_reported_as_missing(monkeypatch):
 
 needs_trackeval = pytest.mark.skipif(
     importlib.util.find_spec("trackeval") is None,
-    reason="needs TrackEval: pip install tabulate trackeval@git+...",
+    reason=f"needs TrackEval: pip install {TRACKEVAL_INSTALL}",
 )
 
 
