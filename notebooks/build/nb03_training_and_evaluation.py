@@ -178,7 +178,7 @@ pd.DataFrame({name: m.as_dict() for name, m in detection_metrics.items()}).T.rou
 blurred, is the hardest class.
 """)
     nb.code("""
-detection_metrics["RF-DETR base (models/)"].per_class.round(3)
+detection_metrics["RF-DETR sample (models/)"].per_class.round(3)
 """)
     nb.md("""
 `plot_metrics` draws one model's per-class AP, or compares several side by side
@@ -201,6 +201,6 @@ pitch_metrics = {name: model.evaluate(pitch_data, pck_threshold=0.02) for name, 
 pd.DataFrame({name: m.as_dict() for name, m in pitch_metrics.items()}).T.round(3)
 """)
     nb.code("""
-tv.viz.plot_metrics(pitch_metrics["YOLOv8n-pose (models/)"])
+tv.viz.plot_metrics(pitch_metrics["YOLO11m-pose (models/)"])
 """)
     return nb

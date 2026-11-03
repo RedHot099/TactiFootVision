@@ -69,8 +69,9 @@ src/tactifoot_vision/
   registry.py         Registry[T]
   enums.py            StrEnum vocabularies (Role, DetectionKey, Split, modes, registry names)
   utils.py            setup_logging, resolve_device, ensure_dir, cache_dir, next_run_dir
-  run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
-  cli.py              `tactifoot` command (run / train / evaluate / info)
+  run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video; presets / preset
+  run_files/          the shipped presets (default.yaml, rfdetr_sam2.yaml)
+  cli.py              `tactifoot` command (init / run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
                       load_labelled_clip), soccernet.py, synthetic.py
@@ -859,8 +860,8 @@ postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
   (`default`, `rfdetr_sam2`) and `tv.run_file.preset(name)` is one's text,
   comments included; `tactifoot init [PATH] [--preset NAME]` writes it out
   (stdout without `PATH`; an existing file is never overwritten). No weights
-  ship with the package, so a preset names its checkpoints as bare files in
-  the working directory.
+  ship with the package, so a preset names its checkpoints as bare file names
+  (or paths) relative to the working directory.
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
   signature and fails with the section, the bad key and the valid keys (an
   unknown section, `type` or embedder fails too; malformed YAML is a one-line
