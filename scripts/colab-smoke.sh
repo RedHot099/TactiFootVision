@@ -2,25 +2,27 @@
 # Install the built wheel the way pip would on the default Google Colab
 # runtime (Python 3.13, the versions in tests/colab-constraints.txt), import
 # the package, run the CLI and the fast suite on CPU. No uv.lock involved:
-# this checks the ranges in pyproject.toml, not the lock.
+# this checks the ranges in pyproject.toml, not the lock. pip does the
+# install, as in Colab; uv only creates the venv.
 #
-#   bash scripts/colab-smoke.sh            # builds dist/ first
-#   bash scripts/colab-smoke.sh dist/*.whl # a wheel built elsewhere
+#   bash scripts/colab-smoke.sh                 # builds the wheel first
+#   bash scripts/colab-smoke.sh path/to/x.whl   # a wheel built elsewhere
 set -euo pipefail
 cd "$(dirname "$0")/.."
-WHEEL="${1:-}"
-if [ -z "$WHEEL" ]; then
+if [ $# -eq 0 ]; then
     rm -rf dist && uv build --wheel -q -o dist
-    WHEEL=$(ls dist/*.whl)
+    set -- dist/*.whl
 fi
+[ $# -eq 1 ] || { echo "expected one wheel, got: $*" >&2; exit 2; }
+WHEEL="$1"
 VENV="${COLAB_SMOKE_VENV:-.venv-colab-smoke}"
 rm -rf "$VENV"
-uv venv -q -p 3.13 "$VENV"
+uv venv -q -p 3.13 --seed "$VENV"   # --seed: a venv with pip
 # The CPU wheels of torch keep the install small; the versions are the same.
-uv pip install -q -p "$VENV/bin/python" \
+# The dev tools let the whole fast suite run (notebook build, sdist test).
+"$VENV/bin/python" -m pip install -q --disable-pip-version-check \
     --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple \
-    --index-strategy unsafe-best-match \
-    -c tests/colab-constraints.txt "$WHEEL" pytest
+    -c tests/colab-constraints.txt "$WHEEL" pytest nbclient nbformat ipykernel hatchling
 "$VENV/bin/python" - <<'PY'
 import importlib.metadata as metadata
 import pathlib
@@ -39,5 +41,4 @@ from transformers import SiglipImageProcessor, SiglipVisionModel  # the team emb
 print("tactifoot-vision", tv.__version__, "imports; Pipeline:", tv.Pipeline.__name__)
 PY
 "$VENV/bin/tactifoot" info
-"$VENV/bin/python" -m pytest -q -p no:cacheprovider tests \
-    --ignore=tests/test_notebook_build.py --ignore=tests/test_packaging.py
+"$VENV/bin/python" -m pytest -q -p no:cacheprovider tests

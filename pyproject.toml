@@ -21,27 +21,28 @@ classifiers = [
 # The core runs the default preset: YOLO detection and pitch keypoints,
 # ByteTrack, SigLIP teams (transformers, umap-learn), the roles post-process
 # (scikit-learn).
-# Lower bounds are the locked versions; upper bounds only at the next major of
-# the libraries with a history of breaking changes. The ranges must resolve on
-# the default Google Colab runtime without downgrading anything it ships
-# (tests/colab-constraints.txt, checked by scripts/colab-smoke.sh).
+# Lower bounds are the lowest versions a run has verified (the lock, or the
+# default Google Colab runtime in tests/colab-constraints.txt); upper bounds
+# only at the next major of the libraries with a history of breaking changes.
+# The ranges must resolve on Colab without downgrading anything it ships
+# (checked by scripts/colab-smoke.sh).
 dependencies = [
-    "numpy>=2.1,<3",
-    "ultralytics>=8.3.98,<9",
-    "pydantic>=2.11,<3",
-    "pyyaml>=6.0.2",
+    "numpy>=2.4.6,<3",
+    "ultralytics>=8.4.201,<9",
+    "pydantic>=2.14.1,<3",
+    "pyyaml>=6.0.3",
     "supervision>=0.25.1,<0.26",  # 0.26 removed sv.ByteTrack (moved to the trackers library)
-    "opencv-python>=4.11",  # what ultralytics and supervision pull too
-    "torch>=2.6,<3",
-    "torchvision>=0.21",
-    "tqdm>=4.67",
-    "pyarrow>=19",  # pandas parquet engine (PipelineResult.to_parquet)
-    "scipy>=1.15",
-    "transformers>=4.48,<6",
-    "umap-learn>=0.5.7",
-    "scikit-learn>=1.5.2",
-    "pandas>=2.2",
-    "pillow>=10",
+    "opencv-python>=5.0.0.93",  # what ultralytics and supervision pull too
+    "torch>=2.11,<3",
+    "torchvision>=0.26",
+    "tqdm>=4.67.3",
+    "pyarrow>=23.0.1",  # pandas parquet engine (PipelineResult.to_parquet)
+    "scipy>=1.16.3",
+    "transformers>=4.57.6,<6",
+    "umap-learn>=0.5.12",
+    "scikit-learn>=1.6.1",
+    "pandas>=2.2.3",
+    "pillow>=11.3",
     "matplotlib>=3.10",
 ]
 
@@ -49,7 +50,9 @@ dependencies = [
 [project.optional-dependencies]
 # RF-DETR detector. 1.4+ pins supervision>=0.29 and transformers>=5 and changes
 # the internals this backend uses; upgrading is its own ticket.
-rfdetr = ["rfdetr>=1.3.0,<1.4", "transformers<5"]  # 1.3 imports transformers 4 internals
+# 1.3 imports transformers 4 internals and, in its COCO metrics, converts a
+# 1-element array to a scalar, which numpy 2.5 made an error.
+rfdetr = ["rfdetr>=1.3.0,<1.4", "transformers<5", "numpy<2.5"]
 # The SAM2 tracker also needs https://github.com/Gy920/segment-anything-2-real-time
 # cloned to external/ (it is not pip-installable).
 sam2 = ["hydra-core>=1.3.2", "iopath>=0.1.10"]
