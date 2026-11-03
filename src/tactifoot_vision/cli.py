@@ -51,9 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("path", type=Path, nargs="?", help="run file to write (YAML)")
     init.add_argument(
         "--preset",
-        default="default",
         choices=tv.run_file.presets(),
-        help="which run file (default: default)",
+        help="which run file (default: the package's default preset)",
     )
     init.set_defaults(handler=_init)
 
@@ -127,16 +126,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _init(args: argparse.Namespace) -> int:
-    text = tv.run_file.preset(args.preset)
+    text = tv.run_file.preset(*_given(args, ["preset"]).values())
     if "path" not in args:
         sys.stdout.write(text)
         return 0
-    if args.path.exists():
-        raise FileExistsError(f"{args.path} exists; choose another name or delete it")
-    args.path.write_text(text)
-    print(
-        f"Wrote {args.path} ({args.preset}); edit it, then: tactifoot run {args.path} --video ..."
-    )
+    try:
+        with open(args.path, "x", encoding="utf-8") as file:  # never overwrite
+            file.write(text)
+    except FileExistsError:
+        raise FileExistsError(
+            f"{args.path} exists; choose another name or delete it"
+        ) from None
+    print(f"Wrote {args.path}; edit it, then: tactifoot run {args.path} --video ...")
     return 0
 
 

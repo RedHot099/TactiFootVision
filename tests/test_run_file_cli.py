@@ -1240,7 +1240,7 @@ def test_cli_init_writes_a_preset_and_refuses_to_overwrite(tmp_path, capsys):
     path = tmp_path / "pipeline.yaml"
     assert main(["init", str(path), "--preset", "rfdetr_sam2"]) == 0
     assert path.read_text() == tv.run_file.preset("rfdetr_sam2")
-    assert "rfdetr_sam2" in capsys.readouterr().out
+    assert str(path) in capsys.readouterr().out
     path.write_text("mine")
     assert main(["init", str(path)]) == 1
     assert path.read_text() == "mine"
