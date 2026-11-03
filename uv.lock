@@ -3045,6 +3045,7 @@ dev = [
     { name = "nbformat" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "tactifoot-vision", extra = ["rfdetr", "sam2"] },
 ]
 
 [package.metadata]
@@ -3063,7 +3064,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.5.2" },
     { name = "scipy", specifier = ">=1.15" },
     { name = "supervision", specifier = ">=0.25.1,<0.26" },
-    { name = "tactifoot-vision", extras = ["rfdetr"], marker = "extra == 'all'" },
+    { name = "tactifoot-vision", extras = ["rfdetr"], marker = "extra == 'all'", editable = "." },
     { name = "torch", specifier = ">=2.6,<3" },
     { name = "torchvision", specifier = ">=0.21" },
     { name = "tqdm", specifier = ">=4.67" },
@@ -3082,6 +3083,7 @@ dev = [
     { name = "nbformat", specifier = ">=5.10.0" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "ruff", specifier = ">=0.11.2,<0.12.0" },
+    { name = "tactifoot-vision", extras = ["rfdetr", "sam2"], editable = "." },
 ]
 
 [[package]]
