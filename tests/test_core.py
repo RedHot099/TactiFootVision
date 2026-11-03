@@ -226,7 +226,7 @@ def test_result_tables(tmp_path):
     assert (first["period"], first["minute"], first["second"]) == (2, 2, 5)
     assert first["timestamp"] == "00:02:05.200"
     assert json.loads(first["location"]) == [50, 30]
-    assert frames["location"].iloc[1] is None  # NaN position is not exported
+    assert pd.isna(frames["location"].iloc[1])  # NaN position is not exported
     # StatsBomb's flat [x1, y1, x2, y2, ...] polygon
     assert json.loads(first["visible_area"]) == [0, 0, 100, 0, 100, 50, 0, 50]
     assert frames["type"].tolist() == ["player", "goalkeeper", "ball"]
