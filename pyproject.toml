@@ -9,6 +9,7 @@ authors = [
     { name = "Jakub Eichner", email = "redhotdevil996@gmail.com" }
 ]
 dependencies = [
+    "huggingface-hub>=0.35.3,<2.0.0",
     "numpy>=1.23.0,<=2.1.1",
     "ultralytics>=8.3.98,<9.0.0",
     "pydantic>=2.11.0,<3.0.0",

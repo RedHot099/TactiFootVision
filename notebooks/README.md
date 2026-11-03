@@ -37,6 +37,30 @@ uv run python notebooks/build/build.py --execute 01 04  # only some (by number o
 `--execute` runs each notebook with its working directory at `notebooks/`,
 saves it with outputs, and prints its run time, size and status.
 
+## Demo data
+
+`tv.data.download_demo()` fetches one match of SoccerTrack v2 from its
+Hugging Face repository (about 300 MB; nothing is re-hosted here) and lays it
+out under `data/demo/<match>/`: a 30-second clip in SoccerNet Tracking layout
+for the pipeline and the tracking evaluators, a YOLO detection set of frames
+from the rest of the clip (class `player` only; the data has no ball, referee
+or goalkeeper boxes), the static camera's calibration (fisheye intrinsics
+and one frame-to-pitch homography, which the pipeline's `undistortion` and
+`fixed_homography` take), the match's raw calibration files and its
+ball-action events. The dataset is gated: accept its conditions once at
+https://huggingface.co/datasets/atomscott/soccertrack-v2 and give the call a
+token (an `HF_TOKEN` Colab secret, the environment variable, or a saved
+login).
+
+The data is licensed CC BY 4.0 and the notebooks that show it carry this
+credit:
+
+> Video and annotations: SoccerTrack v2, A. Scott, I. Uchida, K. Kuroda,
+> Y. Kim, K. Fujii, https://huggingface.co/datasets/atomscott/soccertrack-v2,
+> licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Changes:
+> cut to a short excerpt, frames extracted, annotations converted, and model
+> outputs drawn by tactifoot_vision.
+
 ## Local data and weights
 
 Datasets, weights and videos are not tracked by git. The notebooks, configs and

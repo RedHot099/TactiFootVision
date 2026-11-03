@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb`, `download_demo` → `DemoData` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -74,7 +74,8 @@ src/tactifoot_vision/
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
                       load_labelled_clip), soccernet.py, synthetic.py
-                      (synthetic_pitch_clip), video.py, statsbomb.py
+                      (synthetic_pitch_clip), video.py, statsbomb.py, demo.py
+                      (download_demo: one SoccerTrack v2 match, laid out for the readers)
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
