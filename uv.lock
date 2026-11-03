@@ -2390,12 +2390,12 @@ dependencies = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "ultralytics" },
+    { name = "umap-learn" },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "rfdetr" },
-    { name = "umap-learn" },
 ]
 rfdetr = [
     { name = "rfdetr" },
@@ -2403,9 +2403,6 @@ rfdetr = [
 sam2 = [
     { name = "hydra-core" },
     { name = "iopath" },
-]
-teams = [
-    { name = "umap-learn" },
 ]
 
 [package.dev-dependencies]
@@ -2434,15 +2431,15 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.5.2,<1.6.0" },
     { name = "scipy", specifier = ">=1.15.0,<2.0.0" },
     { name = "supervision", specifier = ">=0.25.1,<0.26.0" },
-    { name = "tactifoot-vision", extras = ["rfdetr", "teams"], marker = "extra == 'all'" },
+    { name = "tactifoot-vision", extras = ["rfdetr"], marker = "extra == 'all'" },
     { name = "torch", specifier = ">=2.6.0,<3.0.0" },
     { name = "torchvision", specifier = ">=0.21.0,<0.22.0" },
     { name = "tqdm", specifier = ">=4.67.1,<5.0.0" },
     { name = "transformers", specifier = ">=4.48.0,<5.0.0" },
     { name = "ultralytics", specifier = ">=8.3.98,<9.0.0" },
-    { name = "umap-learn", marker = "extra == 'teams'", specifier = ">=0.5.7,<0.6.0" },
+    { name = "umap-learn", specifier = ">=0.5.7,<0.6.0" },
 ]
-provides-extras = ["rfdetr", "teams", "sam2", "all"]
+provides-extras = ["rfdetr", "sam2", "all"]
 
 [package.metadata.requires-dev]
 dev = [

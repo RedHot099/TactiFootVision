@@ -357,8 +357,8 @@ def _rfdetr_device(device: str) -> str:
 
 
 def _check_train_options(options: dict[str, Any]) -> None:
-    require_extra("rfdetr", "rfdetr")
     """RF-DETR silently ignores unknown training arguments; catch typos like ``epoch=5``."""
+    require_extra("rfdetr", "rfdetr")
     import inspect
 
     from rfdetr.config import TrainConfig as RFTrainConfig

@@ -8,7 +8,6 @@ import numpy as np
 
 from tactifoot_vision.enums import EmbedderType, Reducer
 from tactifoot_vision.teams.embedders import EMBEDDERS, Embedder
-from tactifoot_vision.utils import require_extra
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +154,7 @@ class TeamClassifier:
         return self._team_of_cluster[self._kmeans.predict(features)]
 
     def _fit_umap(self, features: np.ndarray) -> np.ndarray:
-        umap = require_extra("umap", "teams")
+        import umap
 
         self._umap = umap.UMAP(
             n_components=self.umap_components,

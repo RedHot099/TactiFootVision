@@ -86,7 +86,6 @@ def test_classifier_splits_two_kits_with_deterministic_numbering():
 
 
 def test_classifier_with_umap():
-    pytest.importorskip("umap")
     crops = _crops(RED, 25, 0) + _crops(BLUE, 25, 1)
     classifier = TeamClassifier(MeanColorEmbedder(), umap_neighbors=10)
     labels = classifier.fit_predict(crops)
@@ -260,12 +259,3 @@ def test_a_fit_cap_of_exactly_n_teams_fits():
     classifier.fit_embeddings(embeddings)
     assert classifier._kmeans.labels_.shape == (2,)
     assert classifier.predict_embeddings(embeddings).shape == (4,)
-
-
-def test_umap_without_the_extra_says_which_extra_to_install(monkeypatch):
-    import sys
-
-    monkeypatch.setitem(sys.modules, "umap", None)
-    classifier = TeamClassifier(MeanColorEmbedder(), reducer="umap")
-    with pytest.raises(ImportError, match=r"tactifoot-vision\[teams\]"):
-        classifier._fit_umap(np.zeros((20, 4), dtype=np.float32))
