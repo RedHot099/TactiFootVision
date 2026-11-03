@@ -27,7 +27,7 @@ from tactifoot_vision.models.base import (
     TrainResult,
     check_class_conf,
 )
-from tactifoot_vision.utils import cache_dir
+from tactifoot_vision.utils import cache_dir, require_extra
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +109,7 @@ class RFDETRDetector(Model):
 
     # ---------------------------------------------------------------- loading
     def _load(self, weights: str | Path | None) -> None:
+        require_extra("rfdetr", "rfdetr")
         import rfdetr
         import rfdetr.config
         from rfdetr.util.coco_classes import COCO_CLASSES
@@ -356,6 +357,7 @@ def _rfdetr_device(device: str) -> str:
 
 
 def _check_train_options(options: dict[str, Any]) -> None:
+    require_extra("rfdetr", "rfdetr")
     """RF-DETR silently ignores unknown training arguments; catch typos like ``epoch=5``."""
     import inspect
 
