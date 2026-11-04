@@ -366,12 +366,13 @@ configs/              example run files
   TrackEval: frame-by-frame Hungarian matching on IoU that keeps last frame's
   matches (CLEAR MOT), and a one-to-one pairing of identities over the run
   (IDF1). HOTA is computed by TrackEval itself (`evaluation/hota.py`), from
-  the optional `eval` extra (`uv sync --extra eval`), imported only when
+  TrackEval's reference repository (no PyPI release, so not an extra: the
+  install command is `TRACKEVAL_INSTALL` in that module), imported only when
   HOTA is asked for; without it `evaluate_tracking` raises an `ImportError`
   that says how to install it or to pass `hota=False` (HOTA is then NaN).
   The overall HOTA adds up the detections of every class, like TrackEval's
   detection-averaged combination. A test checks the native IDF1 and MOTA
-  against TrackEval; it is skipped without the extra.
+  against TrackEval; it is skipped when TrackEval is not installed.
 * `evaluate_tracking_clips(pairs, iou_threshold=0.5, hota=True)` combines
   several `(result, clip)` pairs as TrackEval combines sequences: the counts
   (for HOTA, the detections) of every clip are added up, which gives the

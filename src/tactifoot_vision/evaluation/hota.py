@@ -1,4 +1,4 @@
-"""HOTA by TrackEval, the reference implementation, from the optional ``eval`` extra."""
+"""HOTA by TrackEval, the reference implementation, installed by hand (``TRACKEVAL_INSTALL``)."""
 
 import builtins
 from collections.abc import Iterator, Sequence
@@ -51,6 +51,15 @@ def hota_by_class(
     return {name: _summary(r) for name, r in results.items()}, _summary(overall)
 
 
+# TrackEval's reference repository at a fixed commit (the PyPI "trackeval" is an
+# unrelated fork); without tabulate its import prints an error.
+TRACKEVAL_INSTALL = (
+    "tabulate "
+    "'trackeval @ git+https://github.com/JonathonLuiten/TrackEval"
+    "@12c8791b303e0a0b50f753af204249e622d0281a'"
+)
+
+
 def _trackeval_hota() -> Any:
     try:
         from trackeval.metrics import HOTA
@@ -58,8 +67,8 @@ def _trackeval_hota() -> Any:
         if (error.name or "").partition(".")[0] != "trackeval":
             raise  # TrackEval is installed but broken: say what is missing
         raise ImportError(
-            "HOTA needs TrackEval, from the eval extra: run `uv sync --extra eval` "
-            "(or `pip install -e '.[eval]'` in a checkout), or pass hota=False"
+            "HOTA needs TrackEval, which has no PyPI release: run "
+            f"`pip install {TRACKEVAL_INSTALL}`, or pass hota=False"
         ) from error
     return HOTA()
 
