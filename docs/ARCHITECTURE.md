@@ -83,6 +83,7 @@ src/tactifoot_vision/
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
+                      undistortion.py (FisheyeUndistortion),
                       lines.py (line refinement, LineFit, LineRefinerConfig), projection.py (project_points)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
@@ -137,7 +138,7 @@ examples/             one script per functional area
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`, `LineRefinerConfig`,
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `FisheyeUndistortion`, `LineFit`, `LineRefinerConfig`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -447,7 +448,8 @@ examples/             one script per functional area
   SigLIP alone barely tells a referee's or goalkeeper's kit from a team's,
   and histograms of the full box measure the grass. Both are what
   `assign_roles` needs to tell the kits apart.
-* `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
+* `Pipeline(detector, keypoint_model=None, fixed_homography=None, undistortion=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`.
+  A static calibrated camera gives `fixed_homography` (a 3x3 array, a `.npy`, or an `.npz` with `frame_to_pitch`) instead of a keypoint model; a fisheye camera adds `undistortion` (`FisheyeUndistortion` or its `.npz` with `K`, `D`, `Knew`), which moves the anchors into the undistorted image before the projection while the frames stay as recorded.
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
   `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None,
