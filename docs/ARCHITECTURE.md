@@ -69,8 +69,9 @@ src/tactifoot_vision/
   registry.py         Registry[T]
   enums.py            StrEnum vocabularies (Role, DetectionKey, Split, modes, registry names)
   utils.py            setup_logging, resolve_device, require_extra, ensure_dir, cache_dir, next_run_dir
-  run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video
-  cli.py              `tactifoot` command (run / train / evaluate / info)
+  run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video; presets / preset
+  run_files/          the shipped presets (default.yaml, rfdetr_sam2.yaml)
+  cli.py              `tactifoot` command (init / run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
                       load_labelled_clip), soccernet.py, synthetic.py
@@ -82,6 +83,7 @@ src/tactifoot_vision/
   evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
                       homography.py, statsbomb.py, __init__ (evaluate dispatcher)
   pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
+                      undistortion.py (FisheyeUndistortion),
                       lines.py (line refinement, LineFit, LineRefinerConfig), projection.py (project_points)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
@@ -99,7 +101,6 @@ tests/                pytest; model/GPU tests are marked `model` and skipped by 
 notebooks/            executed notebooks: overview + one per functional area
   build/              their generator (one module per notebook, build.py entry point)
 examples/             one script per functional area
-configs/              example run files
 ```
 
 ## Conventions
@@ -137,7 +138,7 @@ configs/              example run files
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `LineFit`, `LineRefinerConfig`,
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `FisheyeUndistortion`, `LineFit`, `LineRefinerConfig`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -447,7 +448,8 @@ configs/              example run files
   SigLIP alone barely tells a referee's or goalkeeper's kit from a team's,
   and histograms of the full box measure the grass. Both are what
   `assign_roles` needs to tell the kits apart.
-* `Pipeline(detector, keypoint_model=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`
+* `Pipeline(detector, keypoint_model=None, fixed_homography=None, undistortion=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`.
+  A static calibrated camera gives `fixed_homography` (a 3x3 array, a `.npy`, or an `.npz` with `frame_to_pitch`) instead of a keypoint model; a fisheye camera adds `undistortion` (`FisheyeUndistortion` or its `.npz` with `K`, `D`, `Knew`), which moves the anchors into the undistorted image before the projection while the frames stay as recorded.
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
   `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None,
@@ -850,12 +852,18 @@ Each section maps onto exactly one package call:
 Backend options sit flat next to `type`:
 
 ```yaml
-detector: {type: rfdetr, weights: ../models/football_rfdetr_base.pth, conf: 0.5, size: base}
+detector: {type: rfdetr, weights: ../models/rfdetr_football.pth, conf: 0.5, size: base}
 tracker: {type: bytetrack, lost_track_buffer: 30}
 render: {annotator: {style: video_game}, radar: null}
 postprocess: [{type: join_tracks, max_gap: 2.0}, {type: track_ball}]
 ```
 
+* `tv.run_file.presets()` names the run files shipped with the package
+  (`default`, `rfdetr_sam2`) and `tv.run_file.preset(name)` is one's text,
+  comments included; `tactifoot init [PATH] [--preset NAME]` writes it out
+  (stdout without `PATH`; an existing file is never overwritten). No weights
+  ship with the package, so a preset names its checkpoints as bare file names
+  (or paths) relative to the working directory.
 * `tv.run_file.load(path, overrides=())` checks every key against the target's
   signature and fails with the section, the bad key and the valid keys (an
   unknown section, `type` or embedder fails too; malformed YAML is a one-line

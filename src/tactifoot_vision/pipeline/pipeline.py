@@ -26,11 +26,23 @@ from tactifoot_vision.pipeline.result import (
 )
 from tactifoot_vision.pitch.homography import HomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
 from tactifoot_vision.teams.classifier import TeamClassifier
 from tactifoot_vision.teams.crops import extract_crops
 from tactifoot_vision.tracking.base import Tracker, create_tracker
 
 logger = logging.getLogger(__name__)
+
+
+def _load_matrix(path: str | Path) -> np.ndarray:
+    """A 3x3 matrix from a ``.npy``, or from the ``frame_to_pitch`` array of an ``.npz``."""
+    loaded = np.load(path)
+    if isinstance(loaded, np.ndarray):
+        return loaded
+    with loaded:
+        if "frame_to_pitch" not in loaded:
+            raise ValueError(f"{path} has no array frame_to_pitch")
+        return loaded["frame_to_pitch"]
 
 
 class Pipeline:
@@ -49,7 +61,23 @@ class Pipeline:
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
         keypoint_model: a pose :class:`Model` predicting the pitch landmarks;
-            without it there is no homography and ``pitch_xy`` is NaN.
+            without it, and without ``fixed_homography``, there is no
+            homography and ``pitch_xy`` is NaN.
+        fixed_homography: one 3x3 frame -> pitch homography for the whole
+            video, for a camera that does not move (a calibrated static
+            camera): an array, the path of a ``.npy`` holding one, or the
+            path of an ``.npz`` with it under ``frame_to_pitch``. Every frame
+            then carries this matrix and no keypoint model is run, so
+            ``keypoint_model`` must be left out.
+        undistortion: a :class:`~tactifoot_vision.pitch.FisheyeUndistortion`
+            (or the path of an ``.npz`` it loads) of that static camera, when
+            its frames are fisheye images and ``fixed_homography`` holds in
+            the undistorted image: the anchors are moved there before the
+            projection, and the frames stay as recorded. Needs
+            ``fixed_homography``. Each ``FrameResult.homography`` is then a
+            matrix of the undistorted image, so what maps the pitch back to
+            frame pixels (``visible_area`` in the export, ``track_ball``'s
+            ball boxes, drawn pitch lines) is off by the distortion.
         tracker: a :class:`Tracker`, a registered tracker name, or ``None``
             (no tracking; each detection is then classified on its own).
         team_classifier: a :class:`TeamClassifier`, fitted on each run's player
@@ -88,6 +116,8 @@ class Pipeline:
         self,
         detector: Model,
         keypoint_model: Model | None = None,
+        fixed_homography: np.ndarray | str | Path | None = None,
+        undistortion: FisheyeUndistortion | str | Path | None = None,
         tracker: Tracker | TrackerType | str | None = TrackerType.BYTETRACK,
         team_classifier: TeamClassifier | None = None,
         refit_teams: bool = True,
@@ -110,6 +140,27 @@ class Pipeline:
             raise ValueError(
                 f"keypoint_model must be a pose model, got a {keypoint_model.task} model"
             )
+        if fixed_homography is not None:
+            if keypoint_model is not None:
+                raise ValueError(
+                    "fixed_homography and keypoint_model are two sources of the "
+                    "homography; give one"
+                )
+            if isinstance(fixed_homography, str | Path):
+                fixed_homography = _load_matrix(fixed_homography)
+            fixed_homography = np.asarray(fixed_homography, dtype=float)
+            if fixed_homography.shape != (3, 3):
+                raise ValueError(
+                    f"fixed_homography must be a 3x3 matrix, got shape {fixed_homography.shape}"
+                )
+        if undistortion is not None:
+            if fixed_homography is None:
+                raise ValueError(
+                    "undistortion goes with fixed_homography: it moves points into "
+                    "the undistorted image that homography is of"
+                )
+            if isinstance(undistortion, str | Path):
+                undistortion = FisheyeUndistortion.load(undistortion)
         if team_sample_stride < 1:
             raise ValueError("team_sample_stride must be >= 1")
         if pitch is not None and homography is not None and homography.pitch != pitch:
@@ -118,6 +169,8 @@ class Pipeline:
             )
         self.detector = detector
         self.keypoint_model = keypoint_model
+        self.fixed_homography = fixed_homography
+        self.undistortion = undistortion
         self.tracker = create_tracker(tracker) if isinstance(tracker, str) else tracker
         self.team_classifier = team_classifier
         self.refit_teams = refit_teams
@@ -240,15 +293,15 @@ class Pipeline:
         people.mask = None
 
         keypoints = None
-        matrix = None
+        matrix = self.fixed_homography
         if self.keypoint_model is not None:
             keypoints = self.keypoint_model.predict(frame)
             matrix = self.homography.update(keypoints, frame, people.xyxy)
         people.data[DetectionKey.PITCH_XY] = project_detections(
-            people, PERSON_ANCHOR, matrix
+            people, PERSON_ANCHOR, matrix, self.undistortion
         )
         candidates.data[DetectionKey.PITCH_XY] = project_detections(
-            candidates, BALL_ANCHOR, matrix
+            candidates, BALL_ANCHOR, matrix, self.undistortion
         )
         people.data[DetectionKey.TEAM_ID] = np.full(len(people), NO_TEAM, dtype=int)
         return FrameResult(
@@ -346,6 +399,7 @@ class Pipeline:
     def __repr__(self) -> str:
         return (
             f"Pipeline(detector={self.detector!r}, keypoint_model={self.keypoint_model!r}, "
+            f"fixed_homography={'given' if self.fixed_homography is not None else None}, "
             f"tracker={type(self.tracker).__name__ if self.tracker else None}, "
             f"team_classifier={self.team_classifier!r})"
         )

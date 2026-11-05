@@ -21,13 +21,13 @@ def postprocess_registry(monkeypatch):
 @pytest.fixture(scope="session")
 def detector_weights() -> Path:
     """The football detector: YOLO11l at 1280, ball/goalkeeper/player/referee."""
-    return MODELS_DIR / "detector_yolo11l_1280_dd2c.pt"
+    return MODELS_DIR / "detector_yolo11l.pt"
 
 
 @pytest.fixture(scope="session")
 def pitch_weights() -> Path:
     """The pitch keypoint model: YOLO11m pose at 960, 32 keypoints."""
-    return MODELS_DIR / "pitch_yolo11m_pose_sn960.pt"
+    return MODELS_DIR / "pitch_yolo11m_pose.pt"
 
 
 @pytest.fixture(scope="session")
@@ -46,7 +46,7 @@ def rfdetr_sample_weights() -> Path:
 @pytest.fixture(scope="session")
 def rfdetr_football_weights() -> Path:
     """RF-DETR base fine-tuned on football_yolo, accurate enough to score."""
-    path = MODELS_DIR / "football_rfdetr_base.pth"
+    path = MODELS_DIR / "rfdetr_football.pth"
     if not path.is_file():
         pytest.skip(f"no fine-tuned football RF-DETR checkpoint at {path}")
     return path

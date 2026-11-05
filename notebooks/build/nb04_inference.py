@@ -59,10 +59,10 @@ and RF-DETR are interchangeable. Supervision's annotators draw them directly.
 logging.getLogger("rfdetr.detr").addFilter(lambda record: "not optimized for inference" not in record.getMessage())
 warnings.filterwarnings("ignore", message="torch.meshgrid")
 detectors = {
-    "yolo": tv.load_model("yolo", MODELS / "football_yolo11m.pt", conf=0.3),
-    "rfdetr": tv.load_model("rfdetr", MODELS / "football_rfdetr_base.pth", conf=0.5),
+    "yolo": tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3),
+    "rfdetr": tv.load_model("rfdetr", MODELS / "rfdetr_smoketest_sample.pth", conf=0.5),
 }
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolov8n_pose.pt")
+pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt")
 
 views = []
 for name, model in detectors.items():

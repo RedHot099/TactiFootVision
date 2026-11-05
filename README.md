@@ -19,8 +19,8 @@ pip install tactifoot-vision
 import tactifoot_vision as tv
 
 pipeline = tv.Pipeline(
-    detector=tv.load_model("yolo", "models/football_yolo11m.pt"),
-    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt"),
+    detector=tv.load_model("yolo", "models/detector_yolo11l.pt"),
+    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt"),
     team_classifier=tv.teams.TeamClassifier("siglip"),
 )
 result = pipeline.run("match.mp4")
@@ -30,7 +30,8 @@ tv.viz.render_video(result, "match.mp4", "annotated.mp4")
 The same pipeline runs from the command line:
 
 ```bash
-tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match
+tactifoot init pipeline.yaml   # a commented run file to edit
+tactifoot run pipeline.yaml --video match.mp4 --output-dir outputs/match
 ```
 
 ## Contributing

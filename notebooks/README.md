@@ -39,7 +39,7 @@ saves it with outputs, and prints its run time, size and status.
 
 ## Local data and weights
 
-Datasets, weights and videos are not tracked by git. The notebooks, configs and
+Datasets, weights and videos are not tracked by git. The notebooks and
 examples expect them under the repository root (symlinks work):
 
 ```
@@ -47,9 +47,9 @@ data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, play
 data/keypoints/                   YOLO-pose pitch dataset (32 landmarks, flip_idx)
 data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
 data/videos/broadcast_60s.mp4     one minute of match footage
-models/football_yolo11m.pt        trained detector
-models/football_rfdetr_base.pth   trained RF-DETR detector
-models/pitch_yolov8n_pose.pt      trained pitch keypoint model
+models/detector_yolo11l.pt        trained detector (YOLO11l, 1280)
+models/rfdetr_smoketest_sample.pth  RF-DETR base fine-tuned for one epoch on a sample (football classes, no accuracy)
+models/pitch_yolo11m_pose.pt      trained pitch keypoint model (YOLO11m pose, 960)
 external/segment-anything-2-real-time/   optional, for the SAM2 tracker
 ```
 
