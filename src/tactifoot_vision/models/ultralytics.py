@@ -158,7 +158,7 @@ class YOLODetector(_UltralyticsModel):
 
     Example::
 
-        model = tv.load_model("yolo", "models/football_yolo11m.pt", conf=0.3)
+        model = tv.load_model("yolo", "models/detector_yolo11l.pt", conf=0.3)
         detections = model(frame)
     """
 
@@ -210,7 +210,7 @@ class YOLOPoseModel(_UltralyticsModel):
 
     Example::
 
-        model = tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt")
+        model = tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt")
         keypoints = model(frame)
         best = keypoints.xy[0]  # (32, 2) pixel coordinates of the best pitch
     """

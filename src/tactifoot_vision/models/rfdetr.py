@@ -63,7 +63,7 @@ class RFDETRDetector(Model):
 
     Example::
 
-        model = tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.4)
+        model = tv.load_model("rfdetr", "models/rfdetr_football.pth", conf=0.4)
         detections = model(frame)  # data["class_name"]: "player", "ball", ...
     """
 

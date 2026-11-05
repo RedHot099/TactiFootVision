@@ -3,8 +3,8 @@
 Each section maps onto one package constructor or function, and its keys are
 that callable's keyword arguments::
 
-    detector: {type: yolo, weights: ../models/football_yolo11m.pt, conf: 0.3}
-    keypoints: {type: yolo_pose, weights: ../models/pitch_yolov8n_pose.pt}
+    detector: {type: yolo, weights: detector_yolo11l.pt, conf: 0.3}
+    keypoints: {type: yolo_pose, weights: pitch_yolo11m_pose.pt}
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
@@ -37,6 +37,7 @@ import copy
 import inspect
 import os
 from collections.abc import Callable, Collection, Iterable, Mapping
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -74,6 +75,25 @@ _NULLABLE = {
     RunFileSection.TEAMS,
     RunFileSection.POSTPROCESS,
 }
+
+
+_PRESETS = resources.files(__package__) / "run_files"
+
+
+def presets() -> list[str]:
+    """Names of the run files shipped with the package (``tactifoot init --preset``)."""
+    return sorted(
+        p.name.removesuffix(".yaml")
+        for p in _PRESETS.iterdir()
+        if p.name.endswith(".yaml")
+    )
+
+
+def preset(name: str = "default") -> str:
+    """The text of a shipped run file, comments included; ``ValueError`` names the presets."""
+    if name not in presets():
+        raise ValueError(f"Unknown preset {name!r}; presets: {', '.join(presets())}")
+    return (_PRESETS / f"{name}.yaml").read_text()
 
 
 def load(path: str | Path, overrides: Iterable[str] = ()) -> "RunFile":
