@@ -17,6 +17,7 @@ from tactifoot_vision.enums import DetectionKey, ObjectKind, Role
 from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
 from tactifoot_vision.pitch.lines import LineFit
 from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
 
 NO_TEAM = -1
 UNTRACKED = -1  # track id / player id of a detection without a tracker
@@ -145,12 +146,22 @@ class FrameResult:
 
 
 def project_detections(
-    detections: sv.Detections, anchor: sv.Position, homography: np.ndarray | None
+    detections: sv.Detections,
+    anchor: sv.Position,
+    homography: np.ndarray | None,
+    undistortion: FisheyeUndistortion | None = None,
 ) -> np.ndarray:
-    """``(N, 2)`` pitch positions of the detections' ``anchor`` (NaN without a homography)."""
+    """``(N, 2)`` pitch positions of the detections' ``anchor`` (NaN without a homography).
+
+    With ``undistortion``, the anchors are moved into the undistorted image
+    first, where ``homography`` holds.
+    """
     if homography is None or len(detections) == 0:
         return np.full((len(detections), 2), np.nan, dtype=np.float32)
-    return frame_to_pitch(detections.get_anchors_coordinates(anchor), homography)
+    points = detections.get_anchors_coordinates(anchor)
+    if undistortion is not None:
+        points = undistortion.points(points)
+    return frame_to_pitch(points, homography)
 
 
 def _data(

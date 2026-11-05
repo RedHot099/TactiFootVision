@@ -43,9 +43,9 @@ valid = detection.subset({"valid": 100}, seed=1)
 models = {
     "YOLO11n (demo run)": yolo_run.load(),
     "RF-DETR (demo run)": rfdetr_run.load(),
-    "YOLO11m (football)": tv.load_model("yolo", "models/football_yolo11m.pt"),
+    "YOLO11l (football)": tv.load_model("yolo", "models/detector_yolo11l.pt"),
     "RF-DETR base (football)": tv.load_model(
-        "rfdetr", "models/football_rfdetr_base.pth"
+        "rfdetr", "models/rfdetr_smoketest_sample.pth"
     ),
 }
 metrics = {name: model.evaluate(valid) for name, model in models.items()}
@@ -55,7 +55,7 @@ tv.viz.plot_metrics(metrics).savefig(OUT / "detector_comparison.png")
 
 pitch_metrics = {
     "YOLOv8n-pose (demo run)": pose_run.load().evaluate(pitch),
-    "YOLOv8n-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt").evaluate(pitch),
+    "YOLO11m-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt").evaluate(pitch),
 }  # fmt: skip
 for name, m in pitch_metrics.items():
     print(
