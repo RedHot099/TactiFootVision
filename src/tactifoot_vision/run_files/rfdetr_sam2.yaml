@@ -1,14 +1,16 @@
 # Run file: RF-DETR detections with SAM2 mask tracking.
-# SAM2 needs https://github.com/Gy920/segment-anything-2-real-time cloned to
-# external/ and `uv sync --extra sam2`.
+# Written by `tactifoot init --preset rfdetr_sam2`.
+# RF-DETR needs `pip install "tactifoot-vision[rfdetr]"`. SAM2 needs
+# https://github.com/Gy920/segment-anything-2-real-time cloned to external/
+# and `pip install "tactifoot-vision[sam2]"`.
 #
-#   CLI:      tactifoot run configs/pipeline_rfdetr_sam2.yaml --video match.mp4 \
+#   CLI:      tactifoot run pipeline_rfdetr_sam2.yaml --video match.mp4 \
 #                 --output-dir outputs/match_sam2 --end 300
 #   Notebook: no run file, the same objects in plain Python:
 #               sam2 = "external/segment-anything-2-real-time"
 #               pipeline = tv.Pipeline(
-#                   detector=tv.load_model("rfdetr", "models/football_rfdetr_base.pth", conf=0.5, size="base"),
-#                   keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolov8n_pose.pt", conf=0.5),
+#                   detector=tv.load_model("rfdetr", "rf-detr-base.pth", conf=0.5, size="base"),
+#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt", conf=0.5),
 #                   tracker=tv.tracking.create_tracker(
 #                       "sam2",
 #                       checkpoint=f"{sam2}/checkpoints/sam2.1_hiera_tiny.pt",
@@ -19,23 +21,26 @@
 #               result = pipeline.run("match.mp4", end=300)
 #               tv.viz.render_video(result, "match.mp4", "outputs/match_sam2/annotated.mp4")
 #
-# Paths starting with ./ or ../ are relative to this file.
+# Weights: a path, or a bare name in the current directory. rf-detr-base.pth is
+# Roboflow's hosted checkpoint, downloaded once: COCO classes (person, sports
+# ball), not the football ones, so replace it with a fine-tuned checkpoint
+# (tactifoot train rfdetr) for goalkeepers and referees.
 
 detector:
   type: rfdetr
-  weights: ../models/football_rfdetr_base.pth
+  weights: rf-detr-base.pth
   conf: 0.5
   size: base
 
 keypoints:
   type: yolo_pose
-  weights: ../models/pitch_yolov8n_pose.pt
+  weights: pitch_yolo11m_pose.pt
   conf: 0.5
 
 tracker:
   type: sam2
-  checkpoint: ../external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
-  config: ../external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+  checkpoint: external/segment-anything-2-real-time/checkpoints/sam2.1_hiera_tiny.pt
+  config: external/segment-anything-2-real-time/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
 
 teams:
   embedder: siglip

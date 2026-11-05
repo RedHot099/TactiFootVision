@@ -9,6 +9,8 @@ VIDEO=data/videos/broadcast_60s.mp4
 uv run tactifoot info
 
 # Inference: a run file says how to process video; run inputs are flags.
+# `tactifoot init` writes a commented run file to start from (its weights are
+# bare names in the working directory; here they live in models/).
 # --set overrides one run file value for this run (the value is YAML).
 # In Python: tv.run_file.load(path, overrides).run(video, output_dir, start=..., end=...).
 # render.annotator.trail_seconds draws the ball's last second in the video,
@@ -16,7 +18,11 @@ uv run tactifoot info
 # with teams=null every tail is in the default colour. render.radar.draw_visible_area
 # outlines the part of the pitch the camera shows, and render.radar.velocity_seconds
 # draws each person's velocity as an arrow (the run computes the velocities).
-uv run tactifoot run configs/pipeline.yaml --video "$VIDEO" --output-dir "$OUT/run" \
+mkdir -p "$OUT" && rm -f "$OUT/pipeline.yaml"
+uv run tactifoot init "$OUT/pipeline.yaml"
+uv run tactifoot run "$OUT/pipeline.yaml" --video "$VIDEO" --output-dir "$OUT/run" \
+    --set detector.weights=models/detector_yolo11l.pt \
+    --set keypoints.weights=models/pitch_yolo11m_pose.pt \
     --start 250 --end 300 \
     --set teams=null --set render.annotator.style=video_game \
     --set render.annotator.trail_seconds=1.0 --set render.radar.trail_seconds=2.0 \
@@ -34,6 +40,6 @@ uv run tactifoot train yolo --data "$OUT/football_sample/data.yaml" \
 
 # Evaluation with backend-independent metrics; --set goes to model.evaluate,
 # --set model.KEY=VALUE to load_model (model.device=cuda:1, model.imgsz=1280, ...).
-uv run tactifoot evaluate yolo --weights models/football_yolo11m.pt \
+uv run tactifoot evaluate yolo --weights models/detector_yolo11l.pt \
     --data data/datasets/football_yolo --split valid --set max_images=20 \
     --set model.imgsz=640
