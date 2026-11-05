@@ -8,9 +8,11 @@ from tactifoot_vision.pitch.homography import (
 )
 from tactifoot_vision.pitch.lines import LineFit, LineRefinerConfig
 from tactifoot_vision.pitch.pitch import EDGES, SoccerPitch, pitch_markings
+from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
 
 __all__ = [
     "EDGES",
+    "FisheyeUndistortion",
     "HomographyEstimator",
     "LineFit",
     "LineRefinerConfig",

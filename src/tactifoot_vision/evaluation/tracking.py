@@ -100,7 +100,7 @@ def evaluate_tracking(
         result: a tracked run on the clip's video, with its frame indices.
         clip: the truth; it must carry identities and boxes.
         iou_threshold: the least IoU at which a box matches a true box.
-        hota: compute HOTA, which needs the ``eval`` extra (TrackEval); with
+        hota: compute HOTA, which needs TrackEval installed by hand; with
             ``False`` the HOTA numbers are NaN and TrackEval is not needed.
     """
     pairs = [(result, clip)]

@@ -1,14 +1,16 @@
 """``tactifoot`` command line: the package API for shell scripts and batch jobs.
 
-tactifoot run configs/pipeline.yaml --video match.mp4 --output-dir outputs/match
+tactifoot init pipeline.yaml
+tactifoot run pipeline.yaml --video match.mp4 --output-dir outputs/match
 tactifoot train yolo --data data/datasets/football_yolo --weights yolo11n.pt --epochs 50
-tactifoot evaluate rfdetr --weights models/football_rfdetr_base.pth --data data/datasets/football_yolo
+tactifoot evaluate yolo --weights detector_yolo11l.pt --data data/datasets/football_yolo
 tactifoot info
 
 The command only translates its arguments into package calls and declares no
 defaults: an option left out keeps the package default. Training flags come
 from ``TrainConfig`` and run flags from ``Pipeline.run`` and
 ``PipelineResult.export``, so new settings appear here without editing this file.
+``init`` writes a shipped run file (``tv.run_file.preset``) to edit;
 ``run`` is ``RunFile.run``; ``evaluate`` sends ``--set model.KEY=VALUE`` to
 ``load_model`` and the other ``--set`` keys to ``Model.evaluate``.
 """
@@ -38,6 +40,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--log-level", dest="level", help="DEBUG, INFO, WARNING, ...")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    init = commands.add_parser(
+        "init",
+        help="write a run file to start from",
+        description="Write one of the shipped run files (tv.run_file.preset) to "
+        "PATH, or to stdout without PATH; an existing file is left alone.",
+        argument_default=_SUPPRESS,
+    )
+    init.add_argument("path", type=Path, nargs="?", help="run file to write (YAML)")
+    init.add_argument(
+        "--preset",
+        choices=tv.run_file.presets(),
+        help="which run file (default: the package's default preset)",
+    )
+    init.set_defaults(handler=_init)
 
     run = commands.add_parser(
         "run",
@@ -108,6 +125,22 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def _init(args: argparse.Namespace) -> int:
+    text = tv.run_file.preset(*_given(args, ["preset"]).values())
+    if "path" not in args:
+        sys.stdout.write(text)
+        return 0
+    try:
+        with open(args.path, "x", encoding="utf-8") as file:  # never overwrite
+            file.write(text)
+    except FileExistsError:
+        raise FileExistsError(
+            f"{args.path} exists; choose another name or delete it"
+        ) from None
+    print(f"Wrote {args.path}; edit it, then: tactifoot run {args.path} --video ...")
+    return 0
+
+
 def _run(run_inputs: list[str], args: argparse.Namespace) -> int:
     result = tv.run_file.load(args.run_file, _overrides(args)).run(
         args.video,
@@ -166,6 +199,7 @@ def _info(args: argparse.Namespace) -> int:
     print("models:  ", ", ".join(tv.models.available_models()))
     print("trackers:", ", ".join(tv.tracking.available_trackers()))
     print("teams:   ", ", ".join(tv.teams.available_embedders()))
+    print("presets: ", ", ".join(tv.run_file.presets()))
     return 0
 
 
