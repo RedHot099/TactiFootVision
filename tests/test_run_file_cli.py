@@ -119,6 +119,33 @@ DETECTOR = {"type": "test_box_detector"}
 
 
 # --------------------------------------------------------------- run files
+def test_a_fixed_homography_is_a_pipeline_key_with_a_path_relative_to_the_file(
+    tmp_path,
+):
+    (tmp_path / "calibration").mkdir()
+    np.savez(
+        tmp_path / "calibration" / "camera.npz",
+        K=np.eye(3),
+        D=np.zeros(4),
+        Knew=np.eye(3),
+        frame_to_pitch=np.diag([0.5, 0.25, 1.0]),
+    )
+    pipeline = _load(
+        tmp_path,
+        {
+            "detector": DETECTOR,
+            "pipeline": {
+                "fixed_homography": "./calibration/camera.npz",
+                "undistortion": "./calibration/camera.npz",
+            },
+        },
+    ).build_pipeline()
+
+    assert pipeline.keypoint_model is None
+    np.testing.assert_allclose(pipeline.fixed_homography, np.diag([0.5, 0.25, 1.0]))
+    assert isinstance(pipeline.undistortion, tv.pitch.FisheyeUndistortion)
+
+
 def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip):
     pipeline = _load(
         tmp_path,
@@ -1212,3 +1239,47 @@ def test_ball_carriers_are_not_reachable_from_the_render_section(tmp_path):
     data = {"detector": DETECTOR, "render": {"ball_carriers": [1, None]}}
     with pytest.raises(ValueError, match="Unknown key 'ball_carriers'"):
         _load(tmp_path, data)
+
+
+# ------------------------------------------------------------ shipped presets
+def test_every_preset_loads_and_passes_the_key_check(tmp_path):
+    assert tv.run_file.presets() == ["default", "rfdetr_sam2"]
+    for name in tv.run_file.presets():
+        path = tmp_path / f"{name}.yaml"
+        path.write_text(tv.run_file.preset(name))
+        sections = tv.run_file.load(path).sections
+        assert sections["detector"]["type"] in tv.models.available_models()
+        # bare names: nothing in a preset points outside the working directory
+        assert "/" not in sections["detector"]["weights"]
+
+
+def test_unknown_preset_names_the_known_ones():
+    with pytest.raises(ValueError, match="presets: default, rfdetr_sam2"):
+        tv.run_file.preset("nope")
+
+
+def test_cli_init_prints_the_default_preset(capsys):
+    assert main(["init"]) == 0
+    assert capsys.readouterr().out == tv.run_file.preset("default")
+
+
+def test_cli_init_writes_a_preset_and_refuses_to_overwrite(tmp_path, capsys):
+    path = tmp_path / "pipeline.yaml"
+    assert main(["init", str(path), "--preset", "rfdetr_sam2"]) == 0
+    assert path.read_text() == tv.run_file.preset("rfdetr_sam2")
+    assert str(path) in capsys.readouterr().out
+    path.write_text("mine")
+    assert main(["init", str(path)]) == 1
+    assert path.read_text() == "mine"
+    assert "exists" in capsys.readouterr().err
+
+
+def test_cli_init_rejects_unknown_presets(capsys):
+    with pytest.raises(SystemExit):
+        main(["init", "--preset", "nope"])
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_info_lists_the_presets(capsys):
+    assert main(["info"]) == 0
+    assert "presets:  default, rfdetr_sam2" in capsys.readouterr().out
