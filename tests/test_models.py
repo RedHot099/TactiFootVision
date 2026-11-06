@@ -111,6 +111,7 @@ def test_next_run_dir_never_reuses_a_run_unless_asked(tmp_path):
 
 
 def test_rfdetr_rejects_unknown_training_options():
+    pytest.importorskip("rfdetr")
     _check_train_options({"grad_accum_steps": 4, "warmup_epochs": 1})
     with pytest.raises(ValueError, match="epoch"):
         _check_train_options({"epoch": 5})
@@ -272,6 +273,7 @@ def fake_yolo(monkeypatch) -> YOLODetector:
 
 @pytest.fixture
 def fake_rfdetr(monkeypatch) -> RFDETRDetector:
+    pytest.importorskip("rfdetr")
     monkeypatch.setattr(RFDETRDetector, "_load", lambda self, weights: None)
     model = RFDETRDetector(size="base", device="cpu")
     model._rf = _FakeRFDETR()
@@ -686,3 +688,9 @@ def test_train_config_is_immutable_and_training_names_the_run_by_copy(
     result = fake_yolo.train(_tiny_dataset(tmp_path), config)
     assert result.run_dir == tmp_path / "runs" / "yolo"
     assert config.name is None
+
+
+def test_rfdetr_without_the_extra_says_which_extra_to_install(monkeypatch):
+    monkeypatch.setitem(sys.modules, "rfdetr", None)
+    with pytest.raises(ImportError, match=r"tactifoot-vision\[rfdetr\]"):
+        RFDETRDetector(size="base", device="cpu")

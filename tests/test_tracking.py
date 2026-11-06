@@ -236,3 +236,22 @@ def test_sam2_real_checkpoint_tracks_boxes():
         tracked = tracker.update(_detections(boxes, ["player", "player"]), frame)
     assert len(tracked) >= 1
     assert tracked.mask is not None and tracked.mask.any(axis=(1, 2)).all()
+
+
+def test_sam2_without_its_checkout_says_which_extra_to_install(tmp_path, monkeypatch):
+    import sys
+
+    from tactifoot_vision.tracking import sam2 as sam2_module
+
+    monkeypatch.setitem(sys.modules, "hydra", None)
+    repo = tmp_path / "segment-anything-2-real-time"
+    (repo / "sam2" / "configs").mkdir(parents=True)
+    (repo / "sam2" / "build_sam.py").touch()
+    (repo / "sam2" / "configs" / "tiny.yaml").write_text("")
+    (tmp_path / "ckpt.pt").write_bytes(b"")
+    with pytest.raises(
+        ImportError, match=r"hydra is not installed.*tactifoot-vision\[sam2\]"
+    ):
+        sam2_module._build_predictor(
+            tmp_path / "ckpt.pt", "configs/tiny.yaml", repo, "cpu"
+        )

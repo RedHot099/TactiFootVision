@@ -68,7 +68,7 @@ src/tactifoot_vision/
   __init__.py         lazy submodules + flat shortcuts (tv.load_dataset, tv.train, tv.Pipeline, ...)
   registry.py         Registry[T]
   enums.py            StrEnum vocabularies (Role, DetectionKey, Split, modes, registry names)
-  utils.py            setup_logging, resolve_device, ensure_dir, cache_dir, next_run_dir
+  utils.py            setup_logging, resolve_device, require_extra, ensure_dir, cache_dir, next_run_dir
   run_file.py         run files: load (+ overrides, key checks), RunFile.run / build_pipeline / render_video; presets / preset
   run_files/          the shipped presets (default.yaml, rfdetr_sam2.yaml)
   cli.py              `tactifoot` command (init / run / train / evaluate / info)
