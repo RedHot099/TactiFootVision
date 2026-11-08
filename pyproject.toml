@@ -1,10 +1,10 @@
 [project]
 name = "tactifoot-vision"
-version = "0.2.0"
+dynamic = ["version"]  # from the git tag vX.Y.Z (hatch-vcs); untagged: a dev version
 description = "Football video analysis: detection, tracking, team classification and pitch homography, from dataset preparation to tactical maps."
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.12,<4.0"
+requires-python = ">=3.13"
 authors = [
     { name = "Jakub Eichner", email = "redhotdevil996@gmail.com" }
 ]
@@ -14,37 +14,51 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Multimedia :: Video",
 ]
+# The core runs the default preset: YOLO detection and pitch keypoints,
+# ByteTrack, SigLIP teams (transformers, umap-learn), the roles post-process
+# (scikit-learn).
+# Lower bounds are the lowest versions a run has verified (the lock, or the
+# default Google Colab runtime in tests/colab-constraints.txt); upper bounds
+# only at the next major of the libraries with a history of breaking changes.
+# The ranges must resolve on Colab without downgrading anything it ships
+# (checked by scripts/colab-smoke.sh).
 dependencies = [
-    "huggingface-hub>=0.35.3,<2.0.0",
-    "numpy>=1.23.0,<=2.1.1",
-    "ultralytics>=8.3.98,<9.0.0",
-    "pydantic>=2.11.0,<3.0.0",
-    "pyyaml>=6.0.2,<7.0.0",
-    "supervision>=0.25.1,<0.26.0",
-    "opencv-python-headless>=4.11.0.86,<5.0.0",
-    "torch>=2.6.0,<3.0.0",
-    "torchvision>=0.21.0,<0.22.0",
-    "rfdetr>=1.0.8,<2.0.0",
-    "tqdm>=4.67.1,<5.0.0",
-    "pyarrow>=19.0.1,<20.0.0",  # pandas parquet engine (PipelineResult.to_parquet)
-    "scipy>=1.15.0,<2.0.0",
-    "transformers>=4.48.0,<5.0.0",
-    "umap-learn>=0.5.7,<0.6.0",
-    "scikit-learn>=1.5.2,<1.6.0",
-    "pandas>=2.2.0,<3.0.0",
-    "pillow>=10.0.1,<11.0.0",
-    "matplotlib>=3.10.1,<4.0.0",
+    "huggingface-hub>=0.36.2,<2",  # download_demo; Colab ships 1.x
+    "numpy>=2.1,<3",  # 2.1 verified by the previous lock; the rfdetr extra caps it below 2.4
+    "ultralytics>=8.4.201,<9",
+    "pydantic>=2.14.1,<3",
+    "pyyaml>=6.0.3",
+    "supervision>=0.25.1,<0.26",  # 0.26 removed sv.ByteTrack (moved to the trackers library)
+    "opencv-python>=5.0.0.93",  # what ultralytics and supervision pull too
+    "torch>=2.11,<3",
+    "torchvision>=0.26",
+    "tqdm>=4.67.3",
+    "pyarrow>=23.0.1",  # pandas parquet engine (PipelineResult.to_parquet)
+    "scipy>=1.16.3",
+    "transformers>=4.57.6,<6",
+    "umap-learn>=0.5.12",
+    "scikit-learn>=1.6.1",
+    "pandas>=2.2.3",
+    "pillow>=11.3",
+    "matplotlib>=3.10",
 ]
 
+# Optional backends; a missing one says which extra to install (utils.require_extra).
 [project.optional-dependencies]
+# RF-DETR detector. 1.4+ pins supervision>=0.29 and transformers>=5 and changes
+# the internals this backend uses; upgrading is its own ticket.
+# 1.3 imports transformers 4 internals and, in its COCO metrics, converts a
+# 1-element array to a scalar, an error since numpy 2.4 (Colab ships 2.4, so
+# this extra downgrades numpy there; the rfdetr upgrade is backlog ticket 06).
+rfdetr = ["rfdetr>=1.3.0,<1.4", "transformers<5", "numpy<2.4"]
 # The SAM2 tracker also needs https://github.com/Gy920/segment-anything-2-real-time
 # cloned to external/ (it is not pip-installable).
 sam2 = ["hydra-core>=1.3.2", "iopath>=0.1.10"]
+all = ["tactifoot-vision[rfdetr]"]
 
 [project.urls]
 Homepage = "https://github.com/RedHot099/TactiFootVision"
@@ -56,8 +70,12 @@ Changelog = "https://github.com/RedHot099/TactiFootVision/releases"
 tactifoot = "tactifoot_vision.cli:main"
 
 [dependency-groups]
+# The dev environment has every optional backend, so `uv run pytest -m model`
+# covers them; the Colab smoke checks the core on its own.
 dev = [
+    "tactifoot-vision[rfdetr,sam2]",
     "hatchling>=1.24.0",
+    "hatch-vcs>=0.4.0",
     "ipykernel>=6.29.5,<7.0.0",
     "nbclient>=0.10.0",
     "nbformat>=5.10.0",
@@ -65,9 +83,15 @@ dev = [
     "ruff>=0.11.2,<0.12.0",
 ]
 
+[tool.uv.sources]
+tactifoot-vision = { workspace = true }
+
 [build-system]
-requires = ["hatchling>=1.24.0"]
+requires = ["hatchling>=1.24.0", "hatch-vcs>=0.4.0"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src/tactifoot_vision", "README.md", "LICENSE", "pyproject.toml"]

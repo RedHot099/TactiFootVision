@@ -23,7 +23,7 @@ import supervision as sv
 
 from tactifoot_vision.enums import DetectionKey, TrackerType
 from tactifoot_vision.tracking.base import TRACKERS, Tracker
-from tactifoot_vision.utils import resolve_device
+from tactifoot_vision.utils import require_extra, resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -280,12 +280,14 @@ def _build_predictor(
     repo, config_name = _resolve_config(Path(config), repo_dir)
     if str(repo) not in sys.path:
         sys.path.insert(0, str(repo))
+    for dependency in ("hydra", "iopath"):  # what the sam2 extra installs
+        require_extra(dependency, "sam2")
     try:
         from sam2.build_sam import build_sam2_camera_predictor
     except ImportError as exc:
         raise ImportError(
-            f"Cannot import SAM2 from {repo} ({exc}). The SAM2 tracker needs the "
-            "segment-anything-2-real-time checkout plus `pip install hydra-core iopath`."
+            f"Cannot import SAM2 from {repo} ({exc}): the SAM2 tracker needs the "
+            "segment-anything-2-real-time checkout there."
         ) from exc
     logger.info("Loading SAM2 %s from %s on %s", config_name, checkpoint, device)
     return build_sam2_camera_predictor(

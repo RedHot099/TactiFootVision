@@ -8,6 +8,8 @@ from typing import Any, NamedTuple
 import numpy as np
 import supervision as sv
 
+from tactifoot_vision.utils import require_extra
+
 type Frame = tuple[np.ndarray, np.ndarray]
 """Track ids and xyxy boxes of one class in one frame."""
 
@@ -61,15 +63,13 @@ TRACKEVAL_INSTALL = (
 
 
 def _trackeval_hota() -> Any:
-    try:
-        from trackeval.metrics import HOTA
-    except ModuleNotFoundError as error:
-        if (error.name or "").partition(".")[0] != "trackeval":
-            raise  # TrackEval is installed but broken: say what is missing
-        raise ImportError(
-            "HOTA needs TrackEval, which has no PyPI release: run "
-            f"`pip install {TRACKEVAL_INSTALL}`, or pass hota=False"
-        ) from error
+    require_extra(
+        "trackeval",
+        install=f"pip install {TRACKEVAL_INSTALL}",
+        hint=", or pass hota=False",
+    )
+    from trackeval.metrics import HOTA  # installed but broken: its own error
+
     return HOTA()
 
 
