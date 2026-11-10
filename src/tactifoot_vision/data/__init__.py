@@ -8,6 +8,7 @@ from tactifoot_vision.data.annotations import (
     Task,
 )
 from tactifoot_vision.data.dataset import Dataset, Sample, load_dataset
+from tactifoot_vision.data.demo import DemoData, download_demo
 from tactifoot_vision.data.labelled_clip import (
     UNKNOWN_TEAM,
     LabelledClip,
@@ -26,12 +27,14 @@ __all__ = [
     "VISIBLE",
     "Annotations",
     "Dataset",
+    "DemoData",
     "LabelledClip",
     "LabelledFrame",
     "Sample",
     "Task",
     "Truth",
     "VideoReader",
+    "download_demo",
     "extract_frames",
     "load_dataset",
     "load_labelled_clip",
