@@ -66,7 +66,7 @@ def _theme() -> AbstractContextManager:
     return mpl.rc_context({
         "figure.facecolor": _SURFACE, "axes.facecolor": _SURFACE, "savefig.facecolor": _SURFACE,
         "axes.edgecolor": _AXIS, "axes.linewidth": 0.8, "axes.labelcolor": _INK_2,
-        "axes.labelsize": 9, "axes.titlesize": 11.5, "axes.titleweight": "semibold",
+        "axes.labelsize": 9, "axes.titlesize": 11.5, "axes.titleweight": "bold",
         "axes.titlecolor": _INK, "axes.titlelocation": "left", "axes.titlepad": 8,
         "axes.spines.top": False, "axes.spines.right": False,
         "axes.grid": False, "grid.color": _GRID, "grid.linewidth": 0.8, "grid.linestyle": "-",
@@ -75,7 +75,7 @@ def _theme() -> AbstractContextManager:
         "legend.frameon": False, "legend.fontsize": 9, "legend.labelcolor": _INK_2,
         "text.color": _INK_2, "font.family": "sans-serif",
         "lines.linewidth": 2.0, "lines.solid_capstyle": "round", "lines.solid_joinstyle": "round",
-        "figure.titlesize": 12.5, "figure.titleweight": "semibold",
+        "figure.titlesize": 12.5, "figure.titleweight": "bold",
     })  # fmt: skip
 
 
@@ -123,7 +123,7 @@ def _titles(ax: "Axes", title: str, subtitle: str | None = None) -> None:
     ax.set_title(subtitle, fontsize=9, fontweight="normal", color=_INK_2)
     ax.annotate(
         title, xy=(0, 1), xycoords="axes fraction", xytext=(0, 23),
-        textcoords="offset points", fontsize=11.5, fontweight="semibold", color=_INK,
+        textcoords="offset points", fontsize=11.5, fontweight="bold", color=_INK,
         va="bottom", ha="left", annotation_clip=False,
     )  # fmt: skip
 

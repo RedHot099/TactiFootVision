@@ -1659,6 +1659,20 @@ def test_heatmap_without_smoothing(result: PipelineResult) -> None:
         viz.plot_heatmap(result, smoothing=-1)
 
 
+def test_a_plot_title_asks_for_a_weight_the_default_font_has(
+    result: PipelineResult, caplog
+) -> None:
+    # Matplotlib 3.11 warns "findfont: Failed to find font weight semibold" under
+    # every figure with a title: its bundled DejaVu Sans is regular or bold only.
+    import io
+
+    with caplog.at_level("WARNING", logger="matplotlib.font_manager"):
+        viz.plot_heatmap(result).savefig(io.BytesIO(), format="png")
+    assert [
+        r.getMessage() for r in caplog.records if "findfont" in r.getMessage()
+    ] == []
+
+
 def test_colours_given_as_lists(result: PipelineResult) -> None:
     # YAML gives BGR colours as lists.
     radar = viz.PitchRadar(

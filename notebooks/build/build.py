@@ -68,6 +68,7 @@ def main() -> int:
             continue
         node = nbformat.read(notebook.path, as_version=4)
         ok, seconds, error = _execute(node)
+        _drop_captured_streams(node)
         nbformat.write(node, notebook.path)
         failed += not ok
         size = notebook.path.stat().st_size / 1e6
@@ -83,6 +84,19 @@ def _selected(name: str, wanted: list[str]) -> bool:
         return True
     short = name.split("_", 1)[1]
     return any(name.startswith(w) or short.startswith(w) for w in wanted)
+
+
+def _drop_captured_streams(node: nbformat.NotebookNode) -> None:
+    """Remove stream output from ``%%capture`` cells.
+
+    The magic captures what Python writes; a program a library starts (a C
+    compiler on a fresh environment's first training run) writes to the
+    process's own stderr and ends up in the saved notebook, with this
+    machine's paths. Errors and results of such a cell are kept.
+    """
+    for cell in node.cells:
+        if cell.cell_type == "code" and cell.source.startswith("%%capture"):
+            cell.outputs = [o for o in cell.outputs if o.output_type != "stream"]
 
 
 def _execute(node: nbformat.NotebookNode) -> tuple[bool, float, str]:
