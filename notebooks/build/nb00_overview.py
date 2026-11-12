@@ -164,17 +164,18 @@ sorted(p.name for p in run_folder.iterdir())
     nb.md("""
 ## 5. Tactical map
 
-One frame with tracks and teams, plus the top-down radar; then where each
-team spent the clip.
+One frame with tracks and teams, and the same moment on the top-down radar;
+then where each team spent the clip.
 """)
     nb.code("""
 frame_result = result[200]
 frame = tv.VideoReader(clip.video_path).read(frame_result.index)
 # The pitch lines are left out: they are straight in the model and curved in a fisheye frame.
 annotator = tv.viz.FrameAnnotator(style="video_game", draw_pitch_lines=False)
-annotated = annotator.annotate(frame, frame_result)
-radar = tv.viz.PitchRadar().draw(frame_result)
-tv.show(tv.viz.overlay(annotated, radar, position="bottom-right", width_fraction=0.3), width=16)
+tv.show(annotator.annotate(frame, frame_result), width=16)
+""")
+    nb.code("""
+tv.show(tv.viz.PitchRadar().draw(frame_result), width=8)
 """)
     nb.code("""
 from matplotlib.figure import Figure

@@ -54,6 +54,19 @@ def test_a_failed_timed_out_or_dead_notebook_is_reported_not_raised(
     assert node.cells[0].outputs[0].text == "partial"  # kept for saving
 
 
+def test_what_leaks_past_a_capture_magic_is_not_saved(build):
+    stream = nbformat.v4.new_output("stream", name="stderr", text="cc: warning\n")
+    result = nbformat.v4.new_output("execute_result", data={"text/plain": "1"})
+    node = nbformat.v4.new_notebook()
+    node.cells = [
+        nbformat.v4.new_code_cell("%%capture log\ntrain()", outputs=[stream, result]),
+        nbformat.v4.new_code_cell("print(1)", outputs=[stream]),
+    ]
+    build._drop_captured_streams(node)
+    assert [o.output_type for o in node.cells[0].outputs] == ["execute_result"]
+    assert node.cells[1].outputs == [stream]  # an ordinary cell keeps its output
+
+
 def _without_magics(source: str) -> str:
     """A code cell as plain Python: IPython magics become ``pass``."""
     return "\n".join(
