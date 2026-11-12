@@ -4,8 +4,11 @@ from common import Notebook
 
 from tactifoot_vision.data.demo import ATTRIBUTION
 
-# The demo training run. Provisional until the spike of ticket 09 picks them.
-WEIGHTS, IMGSZ, EPOCHS = "yolo11n.pt", 1280, 10
+# The demo training run. Of three tried on the demo set for 10 epochs (YOLO11n
+# at 640 and at 1280, YOLO11s at 1920), only this one finds all 22 players of
+# the 4096-pixel panorama: MOTA 0.63 on the demo clip against 0.49 and 0.28,
+# for under a minute of training on an RTX 4070 Ti SUPER.
+WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
 
 
 COLAB_URL = (
@@ -101,8 +104,8 @@ augmented.summary()
 `tv.train` works the same for every backend (`yolo`, `rfdetr`, `yolo_pose`).
 This run starts from the COCO weights Ultralytics publishes and trains for
 {EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
-because the players are small. It takes a few minutes on a Colab T4. The
-score comes from `evaluate`, the same code for every backend.
+because the players are small: about a minute on a desktop GPU, several on
+a Colab T4. The score comes from `evaluate`, the same code for every backend.
 """)
     nb.code(f"""
 %%capture train_log
