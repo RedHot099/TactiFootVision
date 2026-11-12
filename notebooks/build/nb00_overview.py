@@ -11,11 +11,11 @@ from tactifoot_vision.data.demo import ATTRIBUTION
 WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
 
 
+_ON_MASTER = "RedHot099/TactiFootVision/blob/master"
+REPO_URL = f"https://github.com/{_ON_MASTER}"
 COLAB_URL = (
-    "https://colab.research.google.com/github/RedHot099/TactiFootVision/"
-    "blob/master/notebooks/00_overview.ipynb"
+    f"https://colab.research.google.com/github/{_ON_MASTER}/notebooks/00_overview.ipynb"
 )
-REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
 
 
 def notebook() -> Notebook:
@@ -109,13 +109,13 @@ a Colab T4. The score comes from `evaluate`, the same code for every backend.
 """)
     nb.code(f"""
 %%capture train_log
-run = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=8,
-               imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
+training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=8,
+                    imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
 """)
     nb.code("""
 import pandas as pd
 
-detector = run.load(conf=0.3)
+detector = training.load(conf=0.3)
 pd.Series(detector.evaluate(dataset).as_dict()).round(3).to_frame("validation")
 """)
 

@@ -102,7 +102,7 @@ tv.setup_logging("WARNING")
 """
 
 
-def setup_code(name: str, standalone: bool = False) -> str:
+def setup_code(name: str, standalone: bool) -> str:
     paths = _STANDALONE_PATHS if standalone else _CHECKOUT_PATHS
     return _clean(paths.format(name=name)) + "\n\n" + _clean(_DISPLAY)
 

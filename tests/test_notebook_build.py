@@ -2,6 +2,7 @@
 
 import ast
 import importlib.util
+import textwrap
 from pathlib import Path
 
 import nbclient.exceptions
@@ -111,22 +112,27 @@ def _overview_code() -> list[str]:
 def test_the_overview_notebook_installs_the_package_only_when_it_is_missing(
     build, monkeypatch, installed
 ):
+    import common
     from IPython.core.inputtransformer2 import TransformerManager
 
-    setup = _overview_code()[0]
-    install = setup[: setup.index("import os")]  # what runs before the imports
+    install = textwrap.dedent(common.INSTALL).strip()
+    assert _overview_code()[0].startswith(install)  # before the package is imported
     calls = []
 
     class Shell:
         def run_line_magic(self, name, line):
             calls.append((name, line))
 
-    found = importlib.util.find_spec
+    real_find_spec = importlib.util.find_spec
     monkeypatch.setattr(
         importlib.util,
         "find_spec",
-        lambda name: None if name == "tactifoot_vision" and not installed else found(name),
-    )  # fmt: skip
+        lambda name: (
+            None
+            if name == "tactifoot_vision" and not installed
+            else real_find_spec(name)
+        ),
+    )
     exec(TransformerManager().transform_cell(install), {"get_ipython": Shell})
 
     if installed:
@@ -146,11 +152,12 @@ def test_the_overview_notebook_needs_no_local_data_or_weights(build):
     assert not {"MODELS", "VIDEO"} & names
 
 
-def test_the_readme_badge_opens_the_overview_notebook_on_master():
+def test_the_colab_links_open_the_overview_notebook_on_master():
     from nb00_overview import COLAB_URL  # the notebook's own badge
 
     root = BUILD_DIR.parents[1]
     prefix = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/"
     assert COLAB_URL.startswith(prefix)
     assert (root / COLAB_URL.removeprefix(prefix)).is_file()
-    assert f"]({COLAB_URL})" in (root / "README.md").read_text()
+    for readme in ("README.md", "notebooks/README.md"):
+        assert f"]({COLAB_URL})" in (root / readme).read_text(), readme
