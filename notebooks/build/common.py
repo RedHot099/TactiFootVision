@@ -15,6 +15,17 @@ import tactifoot_vision as tv
 """
 
 
+# First lines of a notebook that also runs outside a checkout: on a fresh Colab
+# runtime the package is missing and comes from PyPI (the core, no extras: the
+# rfdetr extra would downgrade Colab's numpy and transformers); in a checkout
+# it is installed already and nothing happens.
+INSTALL = """
+import importlib.util
+
+if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab runtime
+    %pip install -q tactifoot-vision
+"""
+
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
 
@@ -35,13 +46,23 @@ class Notebook:
     def code(self, text: str) -> None:
         self.cells.append(nbformat.v4.new_code_cell(_clean(text)))
 
-    def setup(self, imports: str = BASE_IMPORTS, body: str = "") -> None:
+    def setup(
+        self, imports: str = BASE_IMPORTS, body: str = "", standalone: bool = False
+    ) -> None:
         """The first code cell: imports, repository paths, logging and figure format.
 
         ``imports`` replaces the default import block (keep ``os``, ``Path`` and
-        ``tv`` in it); ``body`` adds notebook-specific lines at the end.
+        ``tv`` in it); ``body`` adds notebook-specific lines at the end. A
+        ``standalone`` notebook also runs outside a checkout, on Colab: the
+        cell installs the package when it is missing, and no path points at
+        local data or weights.
         """
-        parts = [imports, setup_code(self.name), body]
+        parts = [
+            INSTALL if standalone else "",
+            imports,
+            setup_code(self.name, standalone),
+            body,
+        ]
         self.code("\n\n".join(_clean(part) for part in parts if part))
 
     def to_node(self) -> nbformat.NotebookNode:
@@ -53,21 +74,37 @@ class Notebook:
         return node
 
 
-def setup_code(name: str) -> str:
-    return _clean(f"""
-        # The repository root, found by walking up from the working directory and kept
-        # relative, so printed paths do not depend on where the repository lives.
-        _root = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "pyproject.toml").is_file())
-        ROOT = Path(os.path.relpath(_root))
-        DATA, MODELS = ROOT / "data", ROOT / "models"
-        OUT = ROOT / "outputs" / "notebooks" / "{name}"
-        VIDEO = DATA / "videos" / "broadcast_60s.mp4"
+_CHECKOUT_PATHS = """
+# The repository root, found by walking up from the working directory and kept
+# relative, so printed paths do not depend on where the repository lives.
+_root = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "pyproject.toml").is_file())
+ROOT = Path(os.path.relpath(_root))
+DATA, MODELS = ROOT / "data", ROOT / "models"
+OUT = ROOT / "outputs" / "notebooks" / "{name}"
+VIDEO = DATA / "videos" / "broadcast_60s.mp4"
+"""
 
-        tv.setup_logging("WARNING")
-        # Most figures are video frames: JPEG keeps the saved notebook small.
-        %config InlineBackend.figure_formats = ["jpeg"]
-        %config InlineBackend.print_figure_kwargs = {{"bbox_inches": "tight", "pil_kwargs": {{"quality": 85}}}}
-    """)
+_STANDALONE_PATHS = """
+# The repository root when run from a checkout, else the working directory
+# (/content on Colab); kept relative, so printed paths are the same everywhere.
+_here = [Path.cwd(), *Path.cwd().parents]
+_root = next((p for p in _here if (p / "pyproject.toml").is_file()), Path.cwd())
+ROOT = Path(os.path.relpath(_root))
+DATA = ROOT / "data"
+OUT = ROOT / "outputs" / "notebooks" / "{name}"
+"""
+
+_DISPLAY = """
+tv.setup_logging("WARNING")
+# Most figures are video frames: JPEG keeps the saved notebook small.
+%config InlineBackend.figure_formats = ["jpeg"]
+%config InlineBackend.print_figure_kwargs = {"bbox_inches": "tight", "pil_kwargs": {"quality": 85}}
+"""
+
+
+def setup_code(name: str, standalone: bool = False) -> str:
+    paths = _STANDALONE_PATHS if standalone else _CHECKOUT_PATHS
+    return _clean(paths.format(name=name)) + "\n\n" + _clean(_DISPLAY)
 
 
 def _clean(text: str) -> str:

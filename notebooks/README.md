@@ -6,7 +6,7 @@ own.
 
 | Notebook | Shows |
 |---|---|
-| [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells: dataset, augmentation, a short training run, the pipeline, a tactical map. Links to the others. |
+| [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells on the demo data: download, augmentation, a short training run, the pipeline, a tactical map. Needs no local data or weights and also runs in Colab. Links to the others. |
 | [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `load_statsbomb`, `show_samples`. |
 | [`02_augmentation`](02_augmentation.ipynb) | `tv.augment`: every geometric and photometric transform before and after, `Compose` and `OneOf`, boxes and keypoints under flips and affine transforms, `augment_dataset`, `show_augmentations`. |
 | [`03_training_and_evaluation`](03_training_and_evaluation.ipynb) | `tv.models` and `tv.evaluation`: one `train` call for `yolo`, `rfdetr` and `yolo_pose` (short demo runs), `TrainConfig` and backend options, `TrainResult`, `plot_training`, `evaluate` for boxes and keypoints, `plot_metrics`. |
@@ -14,6 +14,11 @@ own.
 | [`05_visualisation`](05_visualisation.ipynb) | `tv.viz`: `FrameAnnotator` styles and draw flags, `PitchRadar`, `overlay`, `render_video`, `plot_heatmap`, `plot_tracks`, `plot_distance_histogram`, `draw_pitch`, `show`. |
 
 ## Opening them
+
+`00_overview` opens in Google Colab from its badge
+([link](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/notebooks/00_overview.ipynb)):
+there its first cell installs the package from PyPI. It needs a GPU runtime
+and a Hugging Face token for the demo data (below). From a checkout:
 
 ```bash
 uv run --with jupyterlab jupyter lab notebooks/
@@ -63,8 +68,8 @@ credit:
 
 ## Local data and weights
 
-Datasets, weights and videos are not tracked by git. The notebooks and
-examples expect them under the repository root (symlinks work):
+Datasets, weights and videos are not tracked by git. Notebooks `01` to `05`
+and the examples expect them under the repository root (symlinks work):
 
 ```
 data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, player, referee)

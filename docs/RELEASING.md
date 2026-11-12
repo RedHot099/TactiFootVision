@@ -16,7 +16,17 @@ tags or publishes: agents never do either (global rule 3).
 3. The maintainer opens the overview notebook from the README badge in Google
    Colab, on the current default runtime, installing the TestPyPI pre-release
    of the version about to ship, and runs it top to bottom. This is a manual
-   step; no agent can do it.
+   step; no agent can do it. The notebook's first cell installs the latest
+   PyPI release; for the pre-release, replace its `%pip` line with these two
+   (the package from TestPyPI, its dependencies from PyPI) before running:
+
+   ```
+   %pip install -q --no-deps --index-url https://test.pypi.org/simple/ tactifoot-vision==X.Y.ZrcN
+   %pip install -q tactifoot-vision==X.Y.ZrcN
+   ```
+
+   Use a GPU runtime and an `HF_TOKEN` secret whose account has accepted the
+   conditions of the demo dataset.
 4. Decide the version (0.x SemVer: minor for features and breaking changes,
    patch for fixes). The version is the tag; `pyproject.toml` holds none.
 

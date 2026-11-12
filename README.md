@@ -11,6 +11,14 @@ TactiFoot Vision turns football match video into tactical data. It finds and fol
 
 ## Quick start
 
+To see the whole workflow without installing anything, open the overview
+notebook in Google Colab. It downloads an open demo match, trains a player
+detector for a few minutes, tracks the players and draws the tactical map:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/notebooks/00_overview.ipynb)
+
+To use the package on your own footage, install it from PyPI (Python 3.13):
+
 ```bash
 pip install tactifoot-vision
 ```
@@ -42,11 +50,12 @@ uv sync                 # the package, its dev tools and the notebook kernel
 uv run pytest -q        # the fast suite
 ```
 
-The notebooks and examples expect local data and weights; see the
+The notebooks are generated from `notebooks/build/`. All but the overview
+notebook, and the examples, expect local data and weights; see the
 [notebooks README](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md).
 
 ## Learn more
 
-- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Start with `00_overview`.
+- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Start with `00_overview`, which also runs in Colab.
 - **[Architecture](https://github.com/RedHot099/TactiFootVision/blob/master/docs/ARCHITECTURE.md):** modules, interfaces, run files and the CLI.
 - **[Examples](https://github.com/RedHot099/TactiFootVision/tree/master/examples):** runnable scripts for each area and the CLI.
