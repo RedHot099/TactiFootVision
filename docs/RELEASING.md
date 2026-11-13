@@ -33,9 +33,9 @@ tags or publishes: agents never do either (global rule 3).
    Colab
    (https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/notebooks/00_overview.ipynb),
    on the current default runtime, installing the TestPyPI pre-release of the
-   version about to ship, and runs it top to bottom. The README badge opens
-   the last release instead, so it is not the link for this run. This is a
-   manual step; no agent can do it. The notebook's first cell installs the
+   version about to ship, and runs it top to bottom. The README badge names
+   a release tag, so it is not the link for this run. This is a manual step;
+   no agent can do it. The notebook's first cell installs the
    latest PyPI release; for the pre-release, replace its `%pip` line with
    these two (the package from TestPyPI, its dependencies from PyPI) before
    running:
