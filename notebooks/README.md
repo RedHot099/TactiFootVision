@@ -15,8 +15,8 @@ own.
 
 ## Opening them
 
-`00_overview` opens in Google Colab from its badge, as of the latest release
-([link](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)):
+`00_overview` opens in Google Colab, as it is at the latest release, from its
+badge ([link](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)):
 there its first cell installs the package from PyPI. It needs a GPU runtime
 and a Hugging Face token for the demo data (below). From a checkout:
 
