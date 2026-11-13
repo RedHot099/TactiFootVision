@@ -15,7 +15,7 @@ To see the whole workflow without installing anything, open the overview
 notebook in Google Colab. It downloads an open demo match, trains a player
 detector for a few minutes, tracks the players and draws the tactical map:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/notebooks/00_overview.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
 
 To use the package on your own footage, install it from PyPI (Python 3.13):
 

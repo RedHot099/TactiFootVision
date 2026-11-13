@@ -2,6 +2,7 @@
 
 import ast
 import importlib.util
+import re
 import textwrap
 from pathlib import Path
 
@@ -152,12 +153,20 @@ def test_the_overview_notebook_needs_no_local_data_or_weights(build):
     assert not {"MODELS", "VIDEO"} & names
 
 
-def test_the_colab_links_open_the_overview_notebook_on_master():
+def test_the_colab_links_open_the_overview_notebook_of_one_release():
+    # `master` may use API newer than the package the first cell installs, so
+    # the badge opens the notebook as it was at a release (never an rc).
     from nb00_overview import COLAB_URL  # the notebook's own badge
 
     root = BUILD_DIR.parents[1]
-    prefix = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/"
-    assert COLAB_URL.startswith(prefix)
-    assert (root / COLAB_URL.removeprefix(prefix)).is_file()
-    for readme in ("README.md", "notebooks/README.md"):
-        assert f"]({COLAB_URL})" in (root / readme).read_text(), readme
+    link = re.fullmatch(
+        r"https://colab\.research\.google\.com/github/RedHot099/TactiFootVision"
+        r"/blob/v\d+\.\d+\.\d+/(notebooks/00_overview\.ipynb)",
+        COLAB_URL,
+    )
+    assert link, COLAB_URL
+    assert (root / link[1]).is_file()
+    for page in ("README.md", "notebooks/README.md"):
+        assert f"]({COLAB_URL})" in (root / page).read_text(), page
+    built = nbformat.read(root / link[1], as_version=4)
+    assert f"]({COLAB_URL})" in built.cells[0].source
