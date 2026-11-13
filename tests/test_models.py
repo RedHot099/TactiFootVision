@@ -461,6 +461,138 @@ def test_repr_shows_class_conf_only_when_set(thresholding_detector):
     assert "class_conf={'ball': 0.05}" in repr(model)
 
 
+# ------------------------------------------------- resized input (pitch models)
+class _FakeResizePredictor:
+    """Ultralytics-like: records the image it gets and answers in that image's pixels."""
+
+    names = {0: "pitch"}
+    overrides = {"imgsz": 32}  # the size the checkpoint was trained at
+
+    def __init__(self, keypoints=None):
+        self.keypoints = keypoints
+        self.images, self.calls = [], []
+
+    def predict(self, image, **options):
+        import torch
+        from ultralytics.engine.results import Results
+
+        self.images.append(image)
+        self.calls.append(options)
+        boxes = torch.tensor([[4.0, 8.0, 12.0, 16.0, 0.9, 0.0]])
+        keypoints = None if self.keypoints is None else torch.tensor(self.keypoints)
+        return [
+            Results(
+                image, path="frame", names=self.names, boxes=boxes, keypoints=keypoints
+            )
+        ]
+
+
+def _ultralytics_with(monkeypatch, cls, predictor, **options):
+    monkeypatch.setattr(
+        cls, "_load", lambda self, weights: setattr(self, "_yolo", predictor)
+    )
+    return cls(device="cpu", **options)
+
+
+def test_stretch_resizes_to_a_square_and_scales_pose_outputs_back(monkeypatch):
+    # The pitch keypoint model was trained on frames stretched to 640 x 640; a
+    # 64 x 48 frame stretched to the trained 32 x 32 has pixels 2 wide and 1.5 high.
+    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="stretch")
+    keypoints = model(np.zeros((48, 64, 3), np.uint8))
+    assert predictor.images[-1].shape == (32, 32, 3)
+    assert predictor.calls[-1]["imgsz"] == 32
+    np.testing.assert_allclose(keypoints.xy[0], [[8, 12], [24, 24]])
+    np.testing.assert_allclose(keypoints.confidence[0], [0.9, 0.8])
+    np.testing.assert_allclose(keypoints.data["xyxy"], [[8, 12, 24, 24]])
+    explicit = _ultralytics_with(
+        monkeypatch, YOLOPoseModel, predictor, resize="stretch", imgsz=16
+    )
+    np.testing.assert_allclose(
+        explicit(np.zeros((48, 64, 3), np.uint8)).xy[0], [[16, 24], [48, 48]]
+    )
+    assert predictor.images[-1].shape == (16, 16, 3)
+
+
+def test_stretch_scales_detection_boxes_back(monkeypatch):
+    predictor = _FakeResizePredictor()
+    predictor.names = dict(enumerate(FOOTBALL_CLASSES))
+    model = _ultralytics_with(monkeypatch, YOLODetector, predictor, resize="stretch")
+    detections = model(np.zeros((48, 64, 3), np.uint8))
+    np.testing.assert_allclose(detections.xyxy, [[8, 12, 24, 24]])
+
+
+def test_the_letterbox_gives_ultralytics_the_frame_unchanged(monkeypatch):
+    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor)
+    frame = np.zeros((48, 64, 3), np.uint8)
+    keypoints = model(frame)
+    assert predictor.images[-1] is frame and "imgsz" not in predictor.calls[-1]
+    np.testing.assert_allclose(keypoints.xy[0], [[4, 8], [12, 16]])
+
+
+@pytest.mark.parametrize("recorded", [None, [640, 384]])
+@pytest.mark.parametrize("resize", ["stretch", "square"])
+def test_stretch_and_square_need_a_square_training_size(monkeypatch, recorded, resize):
+    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    predictor.overrides = {} if recorded is None else {"imgsz": recorded}
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize=resize)
+    with pytest.raises(
+        ValueError, match=f"resize='{resize}' needs a square training size"
+    ):
+        model(np.zeros((48, 64, 3), np.uint8))
+    predictor.overrides = {"imgsz": [32, 32]}
+    assert model(np.zeros((48, 64, 3), np.uint8)).xy.shape == (1, 2, 2)
+
+
+def test_square_pads_to_a_centred_grey_square_and_moves_pose_outputs_back(monkeypatch):
+    # Ultralytics trains on images letterboxed onto a square canvas; a 64 x 48
+    # frame becomes a 64 x 64 canvas with 8 grey rows above and below it.
+    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="square")
+    frame = np.random.default_rng(0).integers(0, 255, (48, 64, 3), np.uint8)
+    keypoints = model(frame)
+    canvas = predictor.images[-1]
+    assert canvas.shape == (64, 64, 3) and canvas.dtype == np.uint8
+    np.testing.assert_array_equal(canvas[8:56], frame)
+    assert (canvas[:8] == 114).all() and (canvas[56:] == 114).all()
+    assert predictor.calls[-1]["imgsz"] == 32  # the training size
+    np.testing.assert_allclose(keypoints.xy[0], [[4, 0], [12, 8]])
+    np.testing.assert_allclose(keypoints.confidence[0], [0.9, 0.8])
+    np.testing.assert_allclose(keypoints.data["xyxy"], [[4, 0, 12, 8]])
+
+
+def test_square_pads_a_portrait_frame_left_and_right(monkeypatch):
+    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    model = _ultralytics_with(
+        monkeypatch, YOLOPoseModel, predictor, resize="square", imgsz=16
+    )
+    frame = np.full((65, 50, 3), 7, np.uint8)  # odd padding: 7 columns left, 8 right
+    keypoints = model(frame)
+    canvas = predictor.images[-1]
+    assert canvas.shape == (65, 65, 3) and predictor.calls[-1]["imgsz"] == 16
+    assert (canvas[:, :7] == 114).all() and (canvas[:, 57:] == 114).all()
+    assert (canvas[:, 7:57] == 7).all()
+    np.testing.assert_allclose(keypoints.xy[0], [[-3, 8], [5, 16]])
+
+
+def test_square_moves_detection_boxes_back(monkeypatch):
+    predictor = _FakeResizePredictor()
+    predictor.names = dict(enumerate(FOOTBALL_CLASSES))
+    model = _ultralytics_with(monkeypatch, YOLODetector, predictor, resize="square")
+    detections = model(np.zeros((48, 64, 3), np.uint8))
+    np.testing.assert_allclose(detections.xyxy, [[4, 0, 12, 8]])
+
+
+def test_resize_is_checked(monkeypatch):
+    with pytest.raises(
+        ValueError, match="resize must be one of letterbox, square, stretch"
+    ):
+        _ultralytics_with(
+            monkeypatch, YOLOPoseModel, _FakeResizePredictor(), resize="pad"
+        )
+
+
 # ======================================================= real weights / GPU
 @pytest.fixture(scope="module")
 def football() -> tv.Dataset:

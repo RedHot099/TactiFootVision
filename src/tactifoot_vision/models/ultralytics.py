@@ -5,8 +5,9 @@ import logging
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal, get_args
 
+import cv2
 import numpy as np
 import pandas as pd
 import supervision as sv
@@ -25,6 +26,10 @@ from tactifoot_vision.utils import cache_dir
 
 logger = logging.getLogger(__name__)
 
+Resize = Literal["letterbox", "square", "stretch"]
+# Ultralytics' letterbox grey, the colour of the bands around a training image.
+_PAD_VALUE = 114
+
 
 class _UltralyticsModel(Model):
     """Loading, settings and training shared by the Ultralytics backends."""
@@ -41,6 +46,7 @@ class _UltralyticsModel(Model):
         conf: float = 0.25,
         iou: float = 0.7,
         imgsz: int | None = None,
+        resize: Resize = "letterbox",
         device: str | None = None,
     ) -> None:
         """
@@ -50,10 +56,30 @@ class _UltralyticsModel(Model):
             conf: minimum confidence of returned objects.
             iou: IoU threshold of non-maximum suppression.
             imgsz: inference size; ``None`` keeps the size the model was trained at.
+            resize: how the image becomes the model's input; outputs are always in
+                image pixels. Match it to how the checkpoint saw its training images:
+
+                * ``"letterbox"``: Ultralytics' inference default, the aspect ratio
+                  kept and the image padded only to a multiple of the stride
+                  (960 x 544 for a 16:9 frame at 960).
+                * ``"square"``: the aspect ratio kept and the image padded to a
+                  centred square with Ultralytics' grey (114), as Ultralytics'
+                  training letterboxes every image. For checkpoints that learnt
+                  from those bands, such as a pitch keypoint model trained on
+                  SoccerNet frames: with ``"letterbox"`` it finds the pitch on
+                  20% of SoccerNet GSR frames, with ``"square"`` on all.
+                * ``"stretch"``: resized to ``imgsz`` x ``imgsz``, ignoring the
+                  aspect ratio, for checkpoints trained on images stretched to a
+                  square, such as Roboflow exports with "Resize: Stretch".
             device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
         """
+        if resize not in get_args(Resize):
+            raise ValueError(
+                f"resize must be one of {', '.join(get_args(Resize))}, got {resize!r}"
+            )
         self.iou = iou
         self.imgsz = imgsz
+        self.resize = resize
         super().__init__(weights, conf=conf, device=device)
 
     def _load(self, weights: str | Path | None) -> None:
@@ -75,16 +101,33 @@ class _UltralyticsModel(Model):
         names = self._yolo.names
         return [names[i] for i in sorted(names)]
 
-    def _run(self, image: np.ndarray) -> Any:
+    def _run(self, image: np.ndarray) -> tuple[Any, np.ndarray, np.ndarray]:
+        """The Ultralytics result and the ``(x, y)`` scale and shift from its pixels
+        to ``image``'s: ``image_xy = result_xy * scale + shift``."""
         options: dict[str, Any] = {
             "conf": self._lowest_conf,
             "iou": self.iou,
             "device": self.device,
             "verbose": False,
         }
-        if self.imgsz is not None:
-            options["imgsz"] = self.imgsz
-        return self._yolo.predict(image, **options)[0]
+        size = self.imgsz
+        scale, shift = np.ones(2, np.float32), np.zeros(2, np.float32)
+        height, width = image.shape[:2]
+        if self.resize == "stretch":
+            size = size or _trained_size(self._yolo, self.resize)
+            image = cv2.resize(image, (size, size))
+            scale = np.float32([width / size, height / size])
+        elif self.resize == "square":
+            size = size or _trained_size(self._yolo, self.resize)
+            side = max(height, width)
+            top, left = (side - height) // 2, (side - width) // 2
+            canvas = np.full((side, side, *image.shape[2:]), _PAD_VALUE, image.dtype)
+            canvas[top : top + height, left : left + width] = image
+            image = canvas
+            shift = np.float32([-left, -top])
+        if size is not None:
+            options["imgsz"] = size
+        return self._yolo.predict(image, **options)[0], scale, shift
 
     def _check_options(self, config: TrainConfig) -> None:
         from ultralytics.cfg import DEFAULT_CFG_DICT
@@ -174,6 +217,7 @@ class YOLODetector(_UltralyticsModel):
         class_conf: Mapping[str, float] | None = None,
         iou: float = 0.7,
         imgsz: int | None = None,
+        resize: Resize = "letterbox",
         device: str | None = None,
     ) -> None:
         """
@@ -186,14 +230,20 @@ class YOLODetector(_UltralyticsModel):
                 candidates are kept.
             iou: IoU threshold of non-maximum suppression.
             imgsz: inference size; ``None`` keeps the size the model was trained at.
+            resize: ``"letterbox"``, ``"square"`` or ``"stretch"``, as for every
+                Ultralytics backend: how the image becomes the model's input.
             device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
         """
         self.class_conf = check_class_conf(class_conf)
-        super().__init__(weights, conf=conf, iou=iou, imgsz=imgsz, device=device)
+        super().__init__(
+            weights, conf=conf, iou=iou, imgsz=imgsz, resize=resize, device=device
+        )
 
     def predict(self, image: np.ndarray) -> sv.Detections:
         """Detect objects in one BGR image."""
-        detections = sv.Detections.from_ultralytics(self._run(image))
+        result, scale, shift = self._run(image)
+        detections = sv.Detections.from_ultralytics(result)
+        detections.xyxy = detections.xyxy * np.tile(scale, 2) + np.tile(shift, 2)
         detections.data[DetectionKey.CLASS_NAME] = np.asarray(
             self.class_names, dtype=str
         )[detections.class_id.astype(int)]
@@ -221,7 +271,7 @@ class YOLOPoseModel(_UltralyticsModel):
 
     def predict(self, image: np.ndarray) -> sv.KeyPoints:
         """Detect keypoint instances in one BGR image."""
-        result = self._run(image)
+        result, scale, shift = self._run(image)
         if result.keypoints is None or len(result.boxes) == 0:
             return _keypoints_from_arrays(
                 np.zeros((0, 0, 3), np.float32),
@@ -230,13 +280,28 @@ class YOLOPoseModel(_UltralyticsModel):
                 np.zeros(0, int),
                 self.class_names,
             )
+        keypoints = result.keypoints.data.cpu().numpy()
+        keypoints[..., :2] = keypoints[..., :2] * scale + shift
         return _keypoints_from_arrays(
-            result.keypoints.data.cpu().numpy(),
-            result.boxes.xyxy.cpu().numpy(),
+            keypoints,
+            result.boxes.xyxy.cpu().numpy() * np.tile(scale, 2) + np.tile(shift, 2),
             result.boxes.conf.cpu().numpy(),
             result.boxes.cls.cpu().numpy().astype(int),
             self.class_names,
         )
+
+
+def _trained_size(yolo: Any, resize: str) -> int:
+    """The square input size a checkpoint was trained at (``imgsz`` of its training arguments)."""
+    size = getattr(yolo, "overrides", {}).get("imgsz")
+    if isinstance(size, list | tuple) and len(set(size)) == 1:
+        size = size[0]
+    if not isinstance(size, int):
+        raise ValueError(
+            f"resize={resize!r} needs a square training size, but the checkpoint "
+            f"records imgsz={size!r}; pass imgsz"
+        )
+    return size
 
 
 def _keypoints_from_arrays(

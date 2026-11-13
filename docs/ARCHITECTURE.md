@@ -315,6 +315,14 @@ examples/             one script per functional area
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
 * `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
   `yolo_pose.predict` returns `sv.KeyPoints` of all instances sorted by confidence.
+  Both take `resize`, how the image becomes the model's input, to match how
+  the checkpoint saw its training images: `"letterbox"` (the default,
+  Ultralytics' inference letterbox, padded only to a multiple of the stride),
+  `"square"` (padded to a centred grey square, as Ultralytics letterboxes
+  training images) or `"stretch"` (resized to `imgsz` x `imgsz`, ignoring the
+  aspect ratio, as Roboflow's "Resize: Stretch" does). Outputs are in image
+  pixels either way. `"square"` and `"stretch"` use the checkpoint's training
+  size unless `imgsz` is given.
 * `rfdetr`: RF-DETR (`size` option: nano/small/medium/base/large); training
   exports with `to_coco`; class names come from the checkpoint.
 * `Model.train` picks the run folder (`output_dir/name`, then `name2`, ... unless
