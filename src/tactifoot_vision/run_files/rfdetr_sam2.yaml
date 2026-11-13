@@ -10,7 +10,7 @@
 #               sam2 = "external/segment-anything-2-real-time"
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("rfdetr", "rf-detr-base.pth", conf=0.5, size="base"),
-#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt", conf=0.5),
+#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt"),
 #                   tracker=tv.tracking.create_tracker(
 #                       "sam2",
 #                       checkpoint=f"{sam2}/checkpoints/sam2.1_hiera_tiny.pt",
@@ -35,7 +35,9 @@ detector:
 keypoints:
   type: yolo_pose
   weights: pitch_yolo11m_pose.pt
-  conf: 0.5
+  # A checkpoint has its own settings: conf, and resize: square when it learnt
+  # on frames padded to a square; the homography section takes min_confidence,
+  # ransac_threshold and refine_with_lines (tv.pitch.HomographyEstimator).
 
 tracker:
   type: sam2

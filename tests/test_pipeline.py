@@ -472,9 +472,15 @@ def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
         pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
+    # The pitch model's settings, from the sidecar beside its weights.
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model("yolo_pose", pitch_weights),
+        keypoint_model=tv.load_model(
+            "yolo_pose", pitch_weights, conf=0.1, resize="square"
+        ),
+        homography=tv.pitch.HomographyEstimator(
+            min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True
+        ),
         team_classifier=TeamClassifier("siglip"),
     )
     result = pipeline.run(video, end=50, progress=False)

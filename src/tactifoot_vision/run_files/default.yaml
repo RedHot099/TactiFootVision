@@ -6,7 +6,7 @@
 #   Notebook: no run file, the same objects in plain Python:
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("yolo", "detector_yolo11l.pt", conf=0.3, iou=0.5),
-#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt", conf=0.5),
+#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt"),
 #                   tracker=tv.tracking.create_tracker("bytetrack", lost_track_buffer=30),
 #                   team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 #               )
@@ -30,7 +30,8 @@ detector:                   # tv.load_model(type, weights, **rest)
 keypoints:                  # null: no homography, no pitch positions
   type: yolo_pose
   weights: pitch_yolo11m_pose.pt
-  conf: 0.5
+  # A checkpoint has its own settings: conf, and resize: square when it learnt
+  # on frames padded to a square (see also the homography section below).
 
 tracker:                    # tv.tracking.create_tracker(type, **rest); null: no tracking
   type: bytetrack           # bytetrack | sam2
@@ -40,7 +41,10 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
   embedder: siglip          # siglip | resnet
 
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
-# homography: {smoothing_window: 5}    # tv.pitch.HomographyEstimator(pitch, ...)
+# homography:                         # tv.pitch.HomographyEstimator(pitch, ...)
+#   min_confidence: 0.3                # weakest keypoint used; fit it to the pitch model
+#   ransac_threshold: 2.0              # metres; the default 10 favours smooth positions
+#   refine_with_lines: true            # fit each frame to its painted lines
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
 # postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order

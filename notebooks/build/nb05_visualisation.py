@@ -41,9 +41,14 @@ import tactifoot_vision as tv
         body="""
 video = tv.VideoReader(VIDEO)
 detector = tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3)
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt")
+# The pitch model with its own settings (see 04_inference).
+pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square")
+estimator = tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)
 pipeline = tv.Pipeline(
-    detector=detector, keypoint_model=pitch_model, team_classifier=tv.teams.TeamClassifier(embedder="siglip")
+    detector=detector,
+    keypoint_model=pitch_model,
+    homography=estimator,
+    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
 result = pipeline.run(VIDEO, end=250, progress=False)
 frame_result = result[200]
@@ -140,7 +145,9 @@ if SAM2_CHECKPOINT.is_file() and importlib.util.find_spec("hydra") is not None:
         checkpoint=SAM2_CHECKPOINT,
         config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
     )
-    masked = tv.Pipeline(detector=detector, keypoint_model=pitch_model, tracker=sam2, keep_masks=True).run(
+    masked = tv.Pipeline(
+        detector=detector, keypoint_model=pitch_model, homography=estimator, tracker=sam2, keep_masks=True
+    ).run(
         VIDEO, start=frame_result.index - 30, end=frame_result.index + 1, progress=False)
     masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_keypoints=False).annotate(frame, masked[-1])
     display(tv.show(masks_view, titles="SAM2 masks", width=11))

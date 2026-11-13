@@ -494,34 +494,6 @@ def _ultralytics_with(monkeypatch, cls, predictor, **options):
     return cls(device="cpu", **options)
 
 
-def test_stretch_resizes_to_a_square_and_scales_pose_outputs_back(monkeypatch):
-    # The pitch keypoint model was trained on frames stretched to 640 x 640; a
-    # 64 x 48 frame stretched to the trained 32 x 32 has pixels 2 wide and 1.5 high.
-    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
-    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="stretch")
-    keypoints = model(np.zeros((48, 64, 3), np.uint8))
-    assert predictor.images[-1].shape == (32, 32, 3)
-    assert predictor.calls[-1]["imgsz"] == 32
-    np.testing.assert_allclose(keypoints.xy[0], [[8, 12], [24, 24]])
-    np.testing.assert_allclose(keypoints.confidence[0], [0.9, 0.8])
-    np.testing.assert_allclose(keypoints.data["xyxy"], [[8, 12, 24, 24]])
-    explicit = _ultralytics_with(
-        monkeypatch, YOLOPoseModel, predictor, resize="stretch", imgsz=16
-    )
-    np.testing.assert_allclose(
-        explicit(np.zeros((48, 64, 3), np.uint8)).xy[0], [[16, 24], [48, 48]]
-    )
-    assert predictor.images[-1].shape == (16, 16, 3)
-
-
-def test_stretch_scales_detection_boxes_back(monkeypatch):
-    predictor = _FakeResizePredictor()
-    predictor.names = dict(enumerate(FOOTBALL_CLASSES))
-    model = _ultralytics_with(monkeypatch, YOLODetector, predictor, resize="stretch")
-    detections = model(np.zeros((48, 64, 3), np.uint8))
-    np.testing.assert_allclose(detections.xyxy, [[8, 12, 24, 24]])
-
-
 def test_the_letterbox_gives_ultralytics_the_frame_unchanged(monkeypatch):
     predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
     model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor)
@@ -532,13 +504,12 @@ def test_the_letterbox_gives_ultralytics_the_frame_unchanged(monkeypatch):
 
 
 @pytest.mark.parametrize("recorded", [None, [640, 384]])
-@pytest.mark.parametrize("resize", ["stretch", "square"])
-def test_stretch_and_square_need_a_square_training_size(monkeypatch, recorded, resize):
+def test_square_needs_a_square_training_size(monkeypatch, recorded):
     predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
     predictor.overrides = {} if recorded is None else {"imgsz": recorded}
-    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize=resize)
+    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="square")
     with pytest.raises(
-        ValueError, match=f"resize='{resize}' needs a square training size"
+        ValueError, match="resize='square' needs a square training size"
     ):
         model(np.zeros((48, 64, 3), np.uint8))
     predictor.overrides = {"imgsz": [32, 32]}
@@ -585,11 +556,9 @@ def test_square_moves_detection_boxes_back(monkeypatch):
 
 
 def test_resize_is_checked(monkeypatch):
-    with pytest.raises(
-        ValueError, match="resize must be one of letterbox, square, stretch"
-    ):
+    with pytest.raises(ValueError, match="resize must be one of letterbox, square"):
         _ultralytics_with(
-            monkeypatch, YOLOPoseModel, _FakeResizePredictor(), resize="pad"
+            monkeypatch, YOLOPoseModel, _FakeResizePredictor(), resize="stretch"
         )
 
 
