@@ -13,12 +13,14 @@ tags or publishes: agents never do either (global rule 3).
    `tests/colab-constraints.txt`; if Colab has moved (compare
    https://github.com/googlecolab/backend-info/blob/main/pip-freeze.gpu.txt
    with the file), update the constraints first and rerun the gate.
-3. The maintainer opens the overview notebook from the README badge in Google
-   Colab, on the current default runtime, installing the TestPyPI pre-release
-   of the version about to ship, and runs it top to bottom. This is a manual
-   step; no agent can do it. The notebook's first cell installs the latest
-   PyPI release; for the pre-release, replace its `%pip` line with these two
-   (the package from TestPyPI, its dependencies from PyPI) before running:
+3. The maintainer opens the overview notebook of `master` in Google Colab
+   (https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/master/notebooks/00_overview.ipynb;
+   the README badge opens the last release, not this one), on the current
+   default runtime, installing the TestPyPI pre-release of the version about
+   to ship, and runs it top to bottom. This is a manual step; no agent can do
+   it. The notebook's first cell installs the latest PyPI release; for the
+   pre-release, replace its `%pip` line with these two (the package from
+   TestPyPI, its dependencies from PyPI) before running:
 
    ```
    %pip install -q --no-deps --index-url https://test.pypi.org/simple/ tactifoot-vision==X.Y.ZrcN
@@ -29,6 +31,18 @@ tags or publishes: agents never do either (global rule 3).
    conditions of the demo dataset.
 4. Decide the version (0.x SemVer: minor for features and breaking changes,
    patch for fixes). The version is the tag; `pyproject.toml` holds none.
+5. Move the Colab badge to that version, in the last pull request before the
+   release (not for an `rcN`). The badge opens the notebook as it is at the
+   release tag, because its first cell installs the released package and
+   `master` may be ahead of it. The link is in four files, and
+   `tests/test_notebook_build.py` checks they agree:
+
+   ```
+   git grep -l 'blob/vA.B.C/notebooks/00_overview.ipynb' \
+     | xargs sed -i 's#blob/vA.B.C/notebooks/00_overview#blob/vX.Y.Z/notebooks/00_overview#'
+   ```
+
+   Until the release creates the tag, the badge leads nowhere.
 
 ## The release
 

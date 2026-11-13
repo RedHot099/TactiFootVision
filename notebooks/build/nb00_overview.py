@@ -11,11 +11,10 @@ from tactifoot_vision.data.demo import ATTRIBUTION
 WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
 
 
-_ON_MASTER = "RedHot099/TactiFootVision/blob/master"
-REPO_URL = f"https://github.com/{_ON_MASTER}"
-COLAB_URL = (
-    f"https://colab.research.google.com/github/{_ON_MASTER}/notebooks/00_overview.ipynb"
-)
+REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
+# The badge opens the notebook of the latest release, the package its first
+# cell installs; `master` may be ahead of it. docs/RELEASING.md moves the tag.
+COLAB_URL = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb"
 
 
 def notebook() -> Notebook:
