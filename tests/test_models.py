@@ -254,8 +254,15 @@ class _FakeYOLO:
 
         import torch
 
+        save_dir = Path(args["project"]) / args["name"]
+        csv = save_dir / "results.csv"
         trainer = SimpleNamespace(
-            epochs=1, start_epoch=0, train_loader=[0, 1], tloss=None, metrics={}
+            epochs=1,
+            start_epoch=0,
+            train_loader=[0, 1],
+            tloss=None,
+            metrics={},
+            csv=csv,
         )
         self._run("on_train_start", trainer)  # before the trainer has an epoch
         trainer.epoch = 0
@@ -263,22 +270,21 @@ class _FakeYOLO:
             trainer.tloss = {"box": torch.tensor(loss), "cls": torch.tensor(0.5)}
             self._run("on_train_batch_end", trainer)
         logging.getLogger("ultralytics").info("Epoch    GPU_mem   box_loss")
+        if not csv.is_file():
+            csv.write_text("epoch,train/box_loss,metrics/mAP50(B)\n")
+        rows = len(csv.read_text().splitlines()) - 1
+        with csv.open("a") as fh:  # written before "on_fit_epoch_end"
+            fh.write(f"{rows + 1},2.0,0.7\n")
         trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
         self._run("on_fit_epoch_end", trainer)
         trainer.epoch = 1  # the final validation of best.pt, past the last epoch
         self._run("on_fit_epoch_end", trainer)
         self._run("on_train_end", trainer)
-        save_dir = Path(args["project"]) / args["name"]
-        csv = save_dir / "results.csv"
-        if not csv.is_file():
-            csv.write_text("epoch,metrics/mAP50-95(B)\n")
-        rows = len(csv.read_text().splitlines()) - 1
-        with csv.open("a") as fh:
-            fh.write(f"{rows + 1},0.5\n")
         (save_dir / "weights").mkdir(exist_ok=True)
         (save_dir / "weights" / "best.pt").write_bytes(b"")
-        metrics = {"metrics/mAP50-95(B)": 0.5}
-        self.trainer = SimpleNamespace(save_dir=save_dir, metrics=metrics)
+        self.trainer = SimpleNamespace(
+            save_dir=save_dir, metrics={"metrics/mAP50-95(B)": 0.5}
+        )
 
 
 class _FakeRFDETR:
@@ -360,6 +366,37 @@ def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
         dataset, output_dir=tmp_path / "runs", exist_ok=True, progress=False
     )
     assert len(bars) == 1 and "GPU_mem" in caplog.text
+
+
+def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
+    fake_yolo, tmp_path, monkeypatch
+):
+    from matplotlib.figure import Figure
+
+    shown = []
+
+    class Handle:
+        def update(self, figure):
+            shown.append(("update", figure))
+
+    def display(figure, display_id):
+        shown.append(("display", figure))
+        return Handle()
+
+    monkeypatch.setattr("IPython.display.display", display)
+    monkeypatch.setattr(ultralytics_backend, "_in_notebook", lambda: True)
+    fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
+    # After the epoch, then again after the final validation of best.pt.
+    assert [kind for kind, _ in shown] == ["display", "update"]
+    assert all(isinstance(figure, Figure) for _, figure in shown)
+
+
+def test_outside_a_notebook_no_curves_are_drawn(fake_yolo, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "IPython.display.display", lambda *a, **k: pytest.fail("displayed")
+    )
+    assert not ultralytics_backend._in_notebook()  # pytest has no kernel
+    fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
 
 
 def test_ultralytics_replaces_a_dangling_amp_probe_link(

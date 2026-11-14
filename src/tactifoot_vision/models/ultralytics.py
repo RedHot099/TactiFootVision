@@ -217,11 +217,13 @@ def _console(yolo: Any, progress: bool) -> Iterator[None]:
 class _TrainingBar:
     """One bar over every batch of a run, fed by Ultralytics' trainer callbacks:
     the epoch and the training loss from the first batch, the validation mAP50
-    after each epoch."""
+    after each epoch. In a notebook, :func:`tv.viz.plot_training` of the
+    history so far is drawn under the bar and redrawn after each epoch."""
 
     def __init__(self) -> None:
         self._bar: Any = None
         self._map50 = ""
+        self._curves: Any = None  # the notebook display that holds the plot
 
     def start(self, trainer: Any) -> None:
         batches = len(trainer.train_loader)
@@ -240,6 +242,23 @@ class _TrainingBar:
             self._map50 = f"{trainer.metrics[keys[-1]]:.3f}"
         if self._bar is not None:
             self._show(trainer)
+        self._plot(trainer)
+
+    def _plot(self, trainer: Any) -> None:
+        # Ultralytics appends the epoch to results.csv before "on_fit_epoch_end";
+        # the final validation of best.pt calls it once more and adds no row.
+        csv = Path(getattr(trainer, "csv", ""))
+        if not _in_notebook() or not csv.is_file():
+            return
+        from IPython.display import display
+
+        from tactifoot_vision.viz import plot_training
+
+        figure = plot_training(_read_results_csv(csv))
+        if self._curves is None:
+            self._curves = display(figure, display_id=True)
+        else:
+            self._curves.update(figure)
 
     def close(self, trainer: Any = None) -> None:
         if self._bar is not None:
@@ -259,6 +278,15 @@ class _TrainingBar:
         if self._map50:
             parts.append(f"val mAP50 {self._map50}")
         self._bar.set_postfix_str(", ".join(parts), refresh=refresh)
+
+
+def _in_notebook() -> bool:
+    """Whether this runs in a Jupyter kernel (Colab too), where figures display."""
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return False
+    return hasattr(get_ipython(), "kernel")  # a terminal IPython has none
 
 
 @MODELS.register(ModelType.YOLO)
