@@ -236,8 +236,18 @@ def _tiny_dataset(tmp_path: Path) -> tv.Dataset:
 
 
 class _FakeYOLO:
-    """Trains like Ultralytics: appends one row per epoch to ``results.csv``,
-    runs the trainer callbacks of one two-batch epoch and logs a line."""
+    """Trains like Ultralytics 8.4: runs the trainer callbacks of two-batch
+    epochs, appending one row per epoch to ``results.csv`` before
+    "on_fit_epoch_end", then validates best.pt past the last epoch.
+
+    ``epochs`` are planned and ``epochs_run`` run (fewer: an early stop);
+    ``start_epoch`` resumes; ``later_batches`` changes the loader after the
+    first epoch (Ultralytics' out-of-memory retry); ``fail`` raises after the
+    first batch; ``write_csv=False`` leaves no history.
+    """
+
+    start_epoch, epochs, epochs_run, later_batches = 0, 1, 1, 2
+    fail, write_csv = False, True
 
     def __init__(self):
         self.callbacks = {}
@@ -249,8 +259,6 @@ class _FakeYOLO:
         for callback in self.callbacks.get(event, []):
             callback(trainer)
 
-    start_epoch = 0  # a resumed run starts later
-
     def train(self, **args):
         import logging
 
@@ -258,8 +266,9 @@ class _FakeYOLO:
 
         save_dir = Path(args["project"]) / args["name"]
         csv = save_dir / "results.csv"
+        csv.unlink(missing_ok=True)
         trainer = SimpleNamespace(
-            epochs=self.start_epoch + 1,
+            epochs=self.start_epoch + self.epochs,
             start_epoch=self.start_epoch,
             train_loader=[0, 1],
             tloss=None,
@@ -267,22 +276,33 @@ class _FakeYOLO:
             csv=csv,
         )
         self._run("on_train_start", trainer)  # before the trainer has an epoch
-        trainer.epoch = self.start_epoch
-        for loss in (3.0, 2.0):  # a running mean per loss, tensors as values
-            trainer.tloss = {"box": torch.tensor(loss), "cls": torch.tensor(0.5)}
-            self._run("on_train_batch_end", trainer)
-        # What Ultralytics' own log (and its bars) would print at.
-        self.log_level = logging.getLogger("ultralytics").getEffectiveLevel()
-        if not csv.is_file():
-            csv.write_text("epoch,train/box_loss,metrics/mAP50(B)\n")
-        rows = len(csv.read_text().splitlines()) - 1
-        with csv.open("a") as fh:  # written before "on_fit_epoch_end"
-            fh.write(f"{rows + 1},2.0,0.7\n")
-        trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
-        self._run("on_fit_epoch_end", trainer)
+        for epoch in range(self.start_epoch, self.start_epoch + self.epochs_run):
+            trainer.epoch = epoch
+            if epoch > self.start_epoch:
+                trainer.train_loader = list(range(self.later_batches))
+            self._run("on_train_epoch_start", trainer)
+            for batch in range(len(trainer.train_loader)):
+                # A running mean per loss, tensors as values.
+                loss = 3.0 - batch
+                trainer.tloss = {"box": torch.tensor(loss), "cls": torch.tensor(0.5)}
+                self._run("on_train_batch_end", trainer)
+                if self.fail:
+                    raise RuntimeError("CUDA out of memory")
+            # What Ultralytics' own log (and its bars) would print at.
+            self.log_level = logging.getLogger("ultralytics").getEffectiveLevel()
+            if self.write_csv:
+                if not csv.is_file():
+                    csv.write_text("epoch,train/box_loss,metrics/mAP50(B)\n")
+                with csv.open("a") as fh:
+                    fh.write(f"{epoch + 1},2.0,0.7\n")
+            trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
+            self._run("on_fit_epoch_end", trainer)
         trainer.epoch += 1  # the final validation of best.pt, past the last epoch
         self._run("on_fit_epoch_end", trainer)
+        trainer.epoch -= 1
         self._run("on_train_end", trainer)
+        if not csv.is_file():  # TrainResult needs a history
+            csv.write_text("epoch,metrics/mAP50-95(B)\n1,0.5\n")
         (save_dir / "weights").mkdir(exist_ok=True)
         (save_dir / "weights" / "best.pt").write_bytes(b"")
         self.trainer = SimpleNamespace(
@@ -334,26 +354,40 @@ def test_rerunning_into_the_same_run_folder_starts_a_fresh_history(
     assert len(first.history) == len(second.history) == 1
 
 
+class _RecordingBar:
+    """Stands in for tqdm: what the training bar was told."""
+
+    def __init__(self, total, **kwargs):
+        self.total, self.n, self.postfix, self.closed = total, 0, "", False
+
+    def update(self, n):
+        self.n += n
+
+    def refresh(self):
+        pass
+
+    def set_postfix_str(self, text, refresh=True):
+        self.postfix = text
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def bars(monkeypatch):
+    made = []
+
+    def bar(total, **kwargs):
+        made.append(_RecordingBar(total, **kwargs))
+        return made[-1]
+
+    monkeypatch.setattr(ultralytics_backend, "tqdm", bar)
+    return made
+
+
 def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
-    fake_yolo, tmp_path, monkeypatch
+    fake_yolo, tmp_path, bars
 ):
-    bars = []
-
-    class Bar:
-        def __init__(self, total, **kwargs):
-            self.total, self.n, self.postfix, self.closed = total, 0, "", False
-            bars.append(self)
-
-        def update(self, n):
-            self.n += n
-
-        def set_postfix_str(self, text, refresh=True):
-            self.postfix = text
-
-        def close(self):
-            self.closed = True
-
-    monkeypatch.setattr(ultralytics_backend, "tqdm", Bar)
     import ultralytics  # noqa: F401  (its import sets its logger's level)
 
     level = logging.getLogger("ultralytics").level
@@ -371,10 +405,51 @@ def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
     )
     assert len(bars) == 1 and fake_yolo._yolo.log_level == logging.INFO
 
-    fake_yolo._yolo.start_epoch = 4  # resumed: epoch 5 of 5 is the only one left
-    fake_yolo.train(dataset, output_dir=tmp_path / "runs", exist_ok=True)
-    assert (bars[-1].total, bars[-1].n) == (2, 2)
-    assert bars[-1].postfix.startswith("epoch 5/5")
+
+def test_the_training_bar_never_makes_ultralytics_louder(fake_yolo, tmp_path, bars):
+    log = logging.getLogger("ultralytics")
+    level = log.level
+    log.setLevel(logging.ERROR)  # what YOLO_VERBOSE=False sets
+    try:
+        fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
+        assert fake_yolo._yolo.log_level == logging.ERROR
+        assert log.level == logging.ERROR
+    finally:
+        log.setLevel(level)
+
+
+@pytest.mark.parametrize(
+    ("run", "total", "postfix"),
+    [
+        ({"start_epoch": 4}, 2, "epoch 5/5"),  # resumed: one epoch left
+        ({"epochs": 3, "epochs_run": 1}, 2, "epoch 1/3"),  # stopped early: full
+        ({"epochs": 2, "epochs_run": 2, "later_batches": 4}, 6, "epoch 2/2"),
+    ],
+)
+def test_the_training_bar_counts_the_batches_the_run_has(
+    fake_yolo, tmp_path, bars, run, total, postfix
+):
+    for name, value in run.items():
+        setattr(fake_yolo._yolo, name, value)
+    fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
+    [bar] = bars
+    assert (bar.total, bar.n, bar.closed) == (total, total, True)
+    assert bar.postfix.startswith(postfix)
+
+
+def test_a_failed_training_restores_the_log_and_leaves_no_callbacks(
+    fake_yolo, tmp_path, bars
+):
+    import ultralytics  # noqa: F401  (its import sets its logger's level)
+
+    level = logging.getLogger("ultralytics").level
+    fake_yolo._yolo.fail = True
+    with pytest.raises(RuntimeError, match="out of memory"):
+        fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
+    [bar] = bars
+    assert bar.closed and bar.n < bar.total  # tqdm shows an unfinished bar
+    assert logging.getLogger("ultralytics").level == level
+    assert all(not callbacks for callbacks in fake_yolo._yolo.callbacks.values())
 
 
 def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
@@ -402,6 +477,16 @@ def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
         html = image._repr_html_()
         assert html.startswith('<img src="data:image/png;base64,')
         assert "background: transparent" in html and "max-width: 100%" in html
+        assert repr(image) == "Training curves"  # no memory address in the notebook
+
+
+def test_without_a_history_no_curves_are_drawn(fake_yolo, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "IPython.display.display", lambda *a, **k: pytest.fail("displayed")
+    )
+    monkeypatch.setattr(ultralytics_backend, "_in_notebook", lambda: True)
+    fake_yolo._yolo.write_csv = False
+    fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
 
 
 def test_outside_a_notebook_no_curves_are_drawn(fake_yolo, tmp_path, monkeypatch):

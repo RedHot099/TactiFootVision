@@ -5,6 +5,7 @@ import contextlib
 import io
 import logging
 import re
+import sys
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, ClassVar
@@ -200,18 +201,20 @@ def _console(yolo: Any, progress: bool) -> Iterator[None]:
     bar = _TrainingBar()
     events = {
         "on_train_start": bar.start,
+        "on_train_epoch_start": bar.epoch_start,
         "on_train_batch_end": bar.batch_end,
         "on_fit_epoch_end": bar.epoch_end,
-        "on_train_end": bar.close,
+        "on_train_end": bar.finish,
     }
     for event, callback in events.items():
         yolo.add_callback(event, callback)
-    log.setLevel(logging.WARNING)
+    # Never louder than the user set it (YOLO_VERBOSE=False means errors only).
+    log.setLevel(max(log.getEffectiveLevel(), logging.WARNING))
     try:
         yield
     finally:
         log.setLevel(level)
-        bar.close()
+        bar.close()  # still open only when training failed: tqdm marks it so
         for event, callback in events.items():
             yolo.callbacks[event].remove(callback)
 
@@ -231,12 +234,24 @@ class _TrainingBar:
         self._bar: Any = None
         self._map50 = ""
         self._curves: Any = None  # the notebook display that holds the plot
+        self._epoch = 0  # the epoch under way, from "on_train_epoch_start"
 
     def start(self, trainer: Any) -> None:
+        self._epoch = getattr(trainer, "start_epoch", 0)
         batches = len(trainer.train_loader)
         epochs = trainer.epochs - getattr(trainer, "start_epoch", 0)  # a resumed run
         self._bar = tqdm(total=epochs * batches, desc="Training", unit="batch")
         self._show(trainer)
+
+    def epoch_start(self, trainer: Any) -> None:
+        # Ultralytics may change the run under way: a smaller batch after an
+        # out-of-memory error, a redone epoch after NaN losses, epochs from a
+        # time limit. Count the batches left from here.
+        self._epoch = trainer.epoch
+        if self._bar is not None:
+            left = trainer.epochs - trainer.epoch
+            self._bar.total = self._bar.n + left * len(trainer.train_loader)
+            self._bar.refresh()
 
     def batch_end(self, trainer: Any) -> None:
         if self._bar is not None:
@@ -273,16 +288,21 @@ class _TrainingBar:
         else:
             self._curves.update(image)
 
-    def close(self, trainer: Any = None) -> None:
+    def finish(self, trainer: Any) -> None:
+        """Training ended, perhaps early (patience, time limit): a full bar."""
+        if self._bar is not None:
+            self._bar.total = self._bar.n
+        self.close()
+
+    def close(self) -> None:
         if self._bar is not None:
             self._bar.close()
             self._bar = None
 
     def _show(self, trainer: Any, refresh: bool = True) -> None:
-        # The trainer sets ``epoch`` when the first epoch starts, after
-        # "on_train_start"; the final validation runs past the last one.
-        epoch = getattr(trainer, "epoch", getattr(trainer, "start_epoch", 0))
-        parts = [f"epoch {min(epoch + 1, trainer.epochs)}/{trainer.epochs}"]
+        # Not trainer.epoch: the final validation of best.pt runs one past the
+        # last epoch, which after an early stop is not the last planned one.
+        parts = [f"epoch {self._epoch + 1}/{trainer.epochs}"]
         # The running mean of each loss: a dict by name (a tensor before 8.4).
         losses = getattr(trainer, "tloss", None)
         if losses is not None:
@@ -305,6 +325,9 @@ class _TransparentImage:
     def __init__(self, png: bytes) -> None:
         self.png = png
 
+    def __repr__(self) -> str:  # the text/plain output: no memory address
+        return "Training curves"
+
     def _repr_png_(self) -> bytes:
         return self.png
 
@@ -316,10 +339,10 @@ class _TransparentImage:
 
 def _in_notebook() -> bool:
     """Whether this runs in a Jupyter kernel (Colab too), where figures display."""
-    try:
-        from IPython import get_ipython
-    except ImportError:
+    if "IPython" not in sys.modules:  # a script or the CLI: no kernel to ask
         return False
+    from IPython import get_ipython
+
     return hasattr(get_ipython(), "kernel")  # a terminal IPython has none
 
 
