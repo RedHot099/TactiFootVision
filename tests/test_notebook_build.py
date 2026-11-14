@@ -82,10 +82,12 @@ def test_a_live_log_shows_while_running_and_is_not_saved(build):
     widget = nbformat.v4.new_output(
         "display_data", data={"application/vnd.jupyter.widget-view+json": {}}
     )
-    node.cells[0].outputs = [stream, widget, result]
+    plot = nbformat.v4.new_output("display_data", data={"image/png": "iVBOR"})
+    node.cells[0].outputs = [stream, widget, plot, result]
     node.cells[1].outputs = [stream]
     build._drop_unsaved_streams(node)
-    assert [o.output_type for o in node.cells[0].outputs] == ["execute_result"]
+    kept = node.cells[0].outputs
+    assert kept == [plot, result]  # the plot's last state stays
     assert node.cells[1].outputs == [stream]
 
 

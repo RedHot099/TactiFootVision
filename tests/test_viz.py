@@ -1528,6 +1528,25 @@ def test_plot_training_ultralytics_and_rfdetr(tmp_path: Path) -> None:
     assert isinstance(viz.plot_training(pd.DataFrame({"epoch": [1]})), Figure)
 
 
+def test_plot_training_skips_loss_terms_and_draws_transparent(tmp_path: Path) -> None:
+    from matplotlib.colors import to_rgba
+
+    epochs = np.arange(1, 4)
+    history = pd.DataFrame({
+        "epoch": epochs, "train/box_loss": 1 / epochs, "train/cls_loss": 2 / epochs,
+        "train/dfl_loss": 3 / epochs, "metrics/mAP50(B)": epochs / 10,
+    })  # fmt: skip
+    fig = viz.plot_training(history, skip_losses=("dfl",), transparent=True)
+    visible = [a for a in fig.axes if a.get_visible()]
+    assert [a.get_title(loc="left") for a in visible] == [
+        "box loss", "cls loss", "box metrics",
+    ]  # fmt: skip
+    assert len({a.get_position().y0 for a in visible}) == 1  # one row
+    assert to_rgba(fig.get_facecolor())[3] == 0
+    assert all(to_rgba(a.get_facecolor())[3] == 0 for a in visible)
+    assert to_rgba(viz.plot_training(history).get_facecolor())[3] == 1  # default
+
+
 def test_pitch_plots(result: PipelineResult, empty_result: PipelineResult) -> None:
     assert isinstance(viz.draw_pitch(), Figure)
     for res in (result, empty_result):

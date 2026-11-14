@@ -112,10 +112,9 @@ This run starts from the COCO weights Ultralytics publishes and trains for
 because the players are small: about a minute on a desktop GPU, several on
 a Colab T4. While it runs, one bar shows the epoch, the training loss and
 the validation mAP50, and the loss and metric curves under it are redrawn
-after every epoch (`progress=False` gives the backend's own log instead).
-The saved copy of this notebook leaves the live view out; the next cell
-draws the same curves from the finished run. The score comes from
-`evaluate`, the same code for every backend.
+after every epoch (`progress=False` gives the backend's own log instead;
+`tv.viz.plot_training(training)` draws the curves of a finished run). The
+score comes from `evaluate`, the same code for every backend.
 """)
     nb.code(
         f"""
@@ -124,7 +123,6 @@ training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch
 """,
         live_log=True,
     )
-    nb.code("tv.viz.plot_training(training)")
     nb.code("""
 import pandas as pd
 

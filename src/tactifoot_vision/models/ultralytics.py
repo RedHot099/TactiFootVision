@@ -1,6 +1,7 @@
 """Ultralytics YOLO backends: box detection (``yolo``) and keypoints (``yolo_pose``)."""
 
 import contextlib
+import io
 import logging
 import re
 from collections.abc import Iterator, Mapping
@@ -214,6 +215,11 @@ def _console(yolo: Any, progress: bool) -> Iterator[None]:
             yolo.callbacks[event].remove(callback)
 
 
+# Ultralytics' distribution focal loss tracks the box loss; without it the
+# live plot (box loss, class loss, metrics) fits one row.
+_HIDDEN_LOSSES = ("dfl",)
+
+
 class _TrainingBar:
     """One bar over every batch of a run, fed by Ultralytics' trainer callbacks:
     the epoch and the training loss from the first batch, the validation mAP50
@@ -250,15 +256,22 @@ class _TrainingBar:
         csv = Path(getattr(trainer, "csv", ""))
         if not _in_notebook() or not csv.is_file():
             return
-        from IPython.display import display
+        from IPython.display import Image, display
 
         from tactifoot_vision.viz import plot_training
 
-        figure = plot_training(_read_results_csv(csv))
+        # PNG keeps the transparency (a notebook may show figures as JPEG),
+        # so the plot reads on light and dark notebook themes alike.
+        figure = plot_training(
+            _read_results_csv(csv), skip_losses=_HIDDEN_LOSSES, transparent=True
+        )
+        png = io.BytesIO()
+        figure.savefig(png, format="png", dpi=100, transparent=True)
+        image = Image(data=png.getvalue(), format="png")
         if self._curves is None:
-            self._curves = display(figure, display_id=True)
+            self._curves = display(image, display_id=True)
         else:
-            self._curves.update(figure)
+            self._curves.update(image)
 
     def close(self, trainer: Any = None) -> None:
         if self._bar is not None:

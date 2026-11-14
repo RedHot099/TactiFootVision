@@ -371,16 +371,16 @@ def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
 def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
     fake_yolo, tmp_path, monkeypatch
 ):
-    from matplotlib.figure import Figure
+    from IPython.display import Image
 
     shown = []
 
     class Handle:
-        def update(self, figure):
-            shown.append(("update", figure))
+        def update(self, image):
+            shown.append(("update", image))
 
-    def display(figure, display_id):
-        shown.append(("display", figure))
+    def display(image, display_id):
+        shown.append(("display", image))
         return Handle()
 
     monkeypatch.setattr("IPython.display.display", display)
@@ -388,7 +388,9 @@ def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
     fake_yolo.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs")
     # After the epoch, then again after the final validation of best.pt.
     assert [kind for kind, _ in shown] == ["display", "update"]
-    assert all(isinstance(figure, Figure) for _, figure in shown)
+    # PNG, not the notebook's figure format: JPEG has no transparency.
+    assert all(isinstance(image, Image) for _, image in shown)
+    assert all(image.format == "png" for _, image in shown)
 
 
 def test_outside_a_notebook_no_curves_are_drawn(fake_yolo, tmp_path, monkeypatch):

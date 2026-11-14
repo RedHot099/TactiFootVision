@@ -9,7 +9,7 @@ import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any
 
 import cv2
@@ -45,6 +45,7 @@ _INK_2 = "#52514E"
 _MUTED = "#898781"
 _GRID = "#E1E0D9"
 _AXIS = "#C3C2B7"
+_GREY = "#8E8D88"  # chrome of a transparent chart: legible on white and on near-black
 # Categorical series colours in fixed order (validated for colour-blind separation).
 _SERIES = (
     "#2A78D6",
@@ -364,12 +365,21 @@ def _metric_series(history: pd.DataFrame) -> dict[str, dict[str, pd.Series]]:
     return groups
 
 
-def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
+def plot_training(
+    train_result: "TrainResult | pd.DataFrame",
+    *,
+    skip_losses: Sequence[str] = (),
+    transparent: bool = False,
+) -> "Figure":
     """Loss curves (train vs validation, one panel per loss term) and validation metrics.
 
     Understands Ultralytics ``results.csv`` columns (``train/box_loss``,
     ``metrics/mAP50(B)``, ...) and RF-DETR logs (``train_loss``, ``test_loss``,
     ``test_coco_eval_bbox``, ...). The best epoch of the headline metric is marked.
+    ``skip_losses`` leaves loss terms out by name (``("dfl",)`` drops
+    Ultralytics' distribution focal loss). ``transparent`` draws on no
+    background, in a grey that reads on light and dark pages; save such a
+    figure as PNG with ``transparent=True``.
     """
     history = getattr(train_result, "history", train_result)
     history = history.reset_index(drop=True)
@@ -384,7 +394,11 @@ def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
         raise ValueError(
             f"The history's epoch column must hold epoch numbers, got {bad!r}"
         )
-    losses = _loss_series(history)
+    losses = {
+        title: series
+        for title, series in _loss_series(history).items()
+        if title.removesuffix(" loss") not in skip_losses
+    }
     metrics = _metric_series(history)
     panels: list[tuple[str, dict[str, pd.Series]]] = [
         *list(losses.items())[:6],
@@ -394,7 +408,7 @@ def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
         ],
     ]
     name = getattr(train_result, "model_type", None)
-    with _theme():
+    with _theme(), _transparent_theme(transparent):
         if not panels:
             fig = _new_figure(6, 3)
             ax = fig.add_subplot()
@@ -455,13 +469,30 @@ def plot_training(train_result: "TrainResult | pd.DataFrame") -> "Figure":
                 ],
             )
         )
-        fig.suptitle(title, x=0.01, ha="left", color=_INK)
+        fig.suptitle(title, x=0.01, ha="left", color=_GREY if transparent else _INK)
     return fig
+
+
+def _transparent_theme(on: bool) -> AbstractContextManager:
+    """No background and one mid grey for text and lines, legible on light and dark."""
+    import matplotlib as mpl
+
+    if not on:
+        return nullcontext()
+    return mpl.rc_context({
+        "figure.facecolor": "none", "axes.facecolor": "none", "savefig.facecolor": "none",
+        "axes.edgecolor": _GREY, "axes.labelcolor": _GREY, "axes.titlecolor": _GREY,
+        "xtick.color": _GREY, "ytick.color": _GREY, "xtick.labelcolor": _GREY,
+        "ytick.labelcolor": _GREY, "legend.labelcolor": _GREY, "text.color": _GREY,
+        "grid.color": _GREY, "grid.alpha": 0.3,
+    })  # fmt: skip
 
 
 def _plot_metric_panel(
     ax: "Axes", epochs: np.ndarray, series: dict[str, pd.Series], marker: str | None
 ) -> None:
+    import matplotlib as mpl
+
     order = list(_METRIC_COLORS)
     labels = sorted(series, key=lambda m: order.index(m) if m in order else len(order))
     for label in labels:
@@ -472,12 +503,14 @@ def _plot_metric_panel(
     if np.isfinite(values).any():
         best = int(np.nanargmax(values))
         color = _METRIC_COLORS.get(headline, _MUTED)
-        ax.plot(epochs[best], values[best], "o", ms=8, color=color, mec=_SURFACE, mew=2)
+        # The theme's background rings the dot (none on a transparent chart).
+        ring = mpl.rcParams["axes.facecolor"]
+        ax.plot(epochs[best], values[best], "o", ms=8, color=color, mec=ring, mew=2)
         left = epochs[best] > np.nanmean(epochs)
         ax.annotate(
             f"best {headline} {values[best]:.3f}\nepoch {epochs[best]:g}", (epochs[best], values[best]),
             xytext=(-8 if left else 8, -10), textcoords="offset points", fontsize=8,
-            ha="right" if left else "left", va="top", color=_INK_2,
+            ha="right" if left else "left", va="top", color=mpl.rcParams["text.color"],
         )  # fmt: skip
     low = min(0.0, float(np.nanmin([np.nanmin(v) for v in series.values()])))
     high = max(1.0, float(np.nanmax([np.nanmax(v) for v in series.values()])))

@@ -94,16 +94,27 @@ def _drop_unsaved_streams(node: nbformat.NotebookNode) -> None:
     process's own stderr and ends up in the saved notebook, with this
     machine's paths. A live-log cell shows a trainer's progress to whoever
     runs it, as text or as a progress-bar widget, and the saved notebook gets
-    none of it. Errors and results of such cells are kept.
+    none of it; its figures (the last state of a plot redrawn in place),
+    errors and results are kept.
     """
     for cell in node.cells:
         if cell.cell_type != "code":
             continue
         if LIVE_LOG in cell.metadata.get("tags", []):
-            kept = {"execute_result", "error"}
-            cell.outputs = [o for o in cell.outputs if o.output_type in kept]
+            cell.outputs = [o for o in cell.outputs if not _live(o)]
         elif cell.source.startswith("%%capture"):
             cell.outputs = [o for o in cell.outputs if o.output_type != "stream"]
+
+
+def _live(output: nbformat.NotebookNode) -> bool:
+    """Printed text or a progress-bar widget: the running view of a live-log cell."""
+    if output.output_type == "stream":
+        return True
+    data = output.get("data", {})
+    return output.output_type == "display_data" and _WIDGET in data
+
+
+_WIDGET = "application/vnd.jupyter.widget-view+json"
 
 
 def _execute(node: nbformat.NotebookNode) -> tuple[bool, float, str]:
