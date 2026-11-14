@@ -234,7 +234,8 @@ class _TrainingBar:
 
     def start(self, trainer: Any) -> None:
         batches = len(trainer.train_loader)
-        self._bar = tqdm(total=trainer.epochs * batches, desc="Training", unit="batch")
+        epochs = trainer.epochs - getattr(trainer, "start_epoch", 0)  # a resumed run
+        self._bar = tqdm(total=epochs * batches, desc="Training", unit="batch")
         self._show(trainer)
 
     def batch_end(self, trainer: Any) -> None:

@@ -249,6 +249,8 @@ class _FakeYOLO:
         for callback in self.callbacks.get(event, []):
             callback(trainer)
 
+    start_epoch = 0  # a resumed run starts later
+
     def train(self, **args):
         import logging
 
@@ -257,19 +259,20 @@ class _FakeYOLO:
         save_dir = Path(args["project"]) / args["name"]
         csv = save_dir / "results.csv"
         trainer = SimpleNamespace(
-            epochs=1,
-            start_epoch=0,
+            epochs=self.start_epoch + 1,
+            start_epoch=self.start_epoch,
             train_loader=[0, 1],
             tloss=None,
             metrics={},
             csv=csv,
         )
         self._run("on_train_start", trainer)  # before the trainer has an epoch
-        trainer.epoch = 0
+        trainer.epoch = self.start_epoch
         for loss in (3.0, 2.0):  # a running mean per loss, tensors as values
             trainer.tloss = {"box": torch.tensor(loss), "cls": torch.tensor(0.5)}
             self._run("on_train_batch_end", trainer)
-        logging.getLogger("ultralytics").info("Epoch    GPU_mem   box_loss")
+        # What Ultralytics' own log (and its bars) would print at.
+        self.log_level = logging.getLogger("ultralytics").getEffectiveLevel()
         if not csv.is_file():
             csv.write_text("epoch,train/box_loss,metrics/mAP50(B)\n")
         rows = len(csv.read_text().splitlines()) - 1
@@ -277,7 +280,7 @@ class _FakeYOLO:
             fh.write(f"{rows + 1},2.0,0.7\n")
         trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
         self._run("on_fit_epoch_end", trainer)
-        trainer.epoch = 1  # the final validation of best.pt, past the last epoch
+        trainer.epoch += 1  # the final validation of best.pt, past the last epoch
         self._run("on_fit_epoch_end", trainer)
         self._run("on_train_end", trainer)
         (save_dir / "weights").mkdir(exist_ok=True)
@@ -332,7 +335,7 @@ def test_rerunning_into_the_same_run_folder_starts_a_fresh_history(
 
 
 def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
-    fake_yolo, tmp_path, monkeypatch, caplog
+    fake_yolo, tmp_path, monkeypatch
 ):
     bars = []
 
@@ -351,21 +354,27 @@ def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
             self.closed = True
 
     monkeypatch.setattr(ultralytics_backend, "tqdm", Bar)
-    caplog.set_level(logging.INFO)
+    import ultralytics  # noqa: F401  (its import sets its logger's level)
+
     level = logging.getLogger("ultralytics").level
     dataset = _tiny_dataset(tmp_path)
     fake_yolo.train(dataset, output_dir=tmp_path / "runs", exist_ok=True)
     [bar] = bars
     assert (bar.total, bar.n, bar.closed) == (2, 2, True)
     assert bar.postfix == "epoch 1/1, loss 2.500, val mAP50 0.400"  # keypoints
-    assert "GPU_mem" not in caplog.text  # Ultralytics' own log is quiet
+    assert fake_yolo._yolo.log_level == logging.WARNING  # Ultralytics' log is quiet
     assert logging.getLogger("ultralytics").level == level  # restored
     assert all(not callbacks for callbacks in fake_yolo._yolo.callbacks.values())
 
     fake_yolo.train(
         dataset, output_dir=tmp_path / "runs", exist_ok=True, progress=False
     )
-    assert len(bars) == 1 and "GPU_mem" in caplog.text
+    assert len(bars) == 1 and fake_yolo._yolo.log_level == logging.INFO
+
+    fake_yolo._yolo.start_epoch = 4  # resumed: epoch 5 of 5 is the only one left
+    fake_yolo.train(dataset, output_dir=tmp_path / "runs", exist_ok=True)
+    assert (bars[-1].total, bars[-1].n) == (2, 2)
+    assert bars[-1].postfix.startswith("epoch 5/5")
 
 
 def test_in_a_notebook_the_training_curves_are_redrawn_each_epoch(
