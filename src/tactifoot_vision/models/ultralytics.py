@@ -230,8 +230,8 @@ class _TrainingBar:
 
     def batch_end(self, trainer: Any) -> None:
         if self._bar is not None:
+            self._show(trainer, refresh=False)  # drawn by the update
             self._bar.update(1)
-            self._show(trainer)
 
     def epoch_end(self, trainer: Any) -> None:
         # Pose runs report boxes (B) first, then keypoints (P): show the last.
@@ -246,15 +246,19 @@ class _TrainingBar:
             self._bar.close()
             self._bar = None
 
-    def _show(self, trainer: Any) -> None:
-        # The trainer sets ``epoch`` when the first epoch starts, after "on_train_start".
+    def _show(self, trainer: Any, refresh: bool = True) -> None:
+        # The trainer sets ``epoch`` when the first epoch starts, after
+        # "on_train_start"; the final validation runs past the last one.
         epoch = getattr(trainer, "epoch", getattr(trainer, "start_epoch", 0))
-        parts = [f"epoch {epoch + 1}/{trainer.epochs}"]
-        if getattr(trainer, "tloss", None) is not None:
-            parts.append(f"loss {float(trainer.tloss.sum()):.3f}")
+        parts = [f"epoch {min(epoch + 1, trainer.epochs)}/{trainer.epochs}"]
+        # The running mean of each loss: a dict by name (a tensor before 8.4).
+        losses = getattr(trainer, "tloss", None)
+        if losses is not None:
+            values = losses.values() if isinstance(losses, Mapping) else losses
+            parts.append(f"loss {sum(float(v) for v in values):.3f}")
         if self._map50:
             parts.append(f"val mAP50 {self._map50}")
-        self._bar.set_postfix_str(", ".join(parts), refresh=False)
+        self._bar.set_postfix_str(", ".join(parts), refresh=refresh)
 
 
 @MODELS.register(ModelType.YOLO)

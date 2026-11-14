@@ -259,11 +259,13 @@ class _FakeYOLO:
         )
         self._run("on_train_start", trainer)  # before the trainer has an epoch
         trainer.epoch = 0
-        for loss in (3.0, 2.0):
-            trainer.tloss = torch.tensor([loss, 0.5])
+        for loss in (3.0, 2.0):  # a running mean per loss, tensors as values
+            trainer.tloss = {"box": torch.tensor(loss), "cls": torch.tensor(0.5)}
             self._run("on_train_batch_end", trainer)
         logging.getLogger("ultralytics").info("Epoch    GPU_mem   box_loss")
         trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
+        self._run("on_fit_epoch_end", trainer)
+        trainer.epoch = 1  # the final validation of best.pt, past the last epoch
         self._run("on_fit_epoch_end", trainer)
         self._run("on_train_end", trainer)
         save_dir = Path(args["project"]) / args["name"]
