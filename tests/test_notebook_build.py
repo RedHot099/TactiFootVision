@@ -79,7 +79,10 @@ def test_a_live_log_shows_while_running_and_is_not_saved(build):
     assert not node.cells[0].source.startswith("%%capture")
     stream = nbformat.v4.new_output("stream", name="stderr", text="epoch 1/10\n")
     result = nbformat.v4.new_output("execute_result", data={"text/plain": "1"})
-    node.cells[0].outputs = [stream, result]
+    widget = nbformat.v4.new_output(
+        "display_data", data={"application/vnd.jupyter.widget-view+json": {}}
+    )
+    node.cells[0].outputs = [stream, widget, result]
     node.cells[1].outputs = [stream]
     build._drop_unsaved_streams(node)
     assert [o.output_type for o in node.cells[0].outputs] == ["execute_result"]

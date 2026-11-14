@@ -1,6 +1,7 @@
 """Model backends: registry, class-name mapping, output conversion and (with -m model) real weights."""
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -235,9 +236,35 @@ def _tiny_dataset(tmp_path: Path) -> tv.Dataset:
 
 
 class _FakeYOLO:
-    """Trains like Ultralytics: appends one row per epoch to ``results.csv``."""
+    """Trains like Ultralytics: appends one row per epoch to ``results.csv``,
+    runs the trainer callbacks of one two-batch epoch and logs a line."""
+
+    def __init__(self):
+        self.callbacks = {}
+
+    def add_callback(self, event, callback):
+        self.callbacks.setdefault(event, []).append(callback)
+
+    def _run(self, event, trainer):
+        for callback in self.callbacks.get(event, []):
+            callback(trainer)
 
     def train(self, **args):
+        import logging
+
+        import torch
+
+        trainer = SimpleNamespace(
+            epochs=1, epoch=0, train_loader=[0, 1], tloss=None, metrics={}
+        )
+        self._run("on_train_start", trainer)
+        for loss in (3.0, 2.0):
+            trainer.tloss = torch.tensor([loss, 0.5])
+            self._run("on_train_batch_end", trainer)
+        logging.getLogger("ultralytics").info("Epoch    GPU_mem   box_loss")
+        trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
+        self._run("on_fit_epoch_end", trainer)
+        self._run("on_train_end", trainer)
         save_dir = Path(args["project"]) / args["name"]
         csv = save_dir / "results.csv"
         if not csv.is_file():
@@ -293,6 +320,43 @@ def test_rerunning_into_the_same_run_folder_starts_a_fresh_history(
     second = model.train(dataset, **options)
     assert first.run_dir == second.run_dir
     assert len(first.history) == len(second.history) == 1
+
+
+def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
+    fake_yolo, tmp_path, monkeypatch, caplog
+):
+    bars = []
+
+    class Bar:
+        def __init__(self, total, **kwargs):
+            self.total, self.n, self.postfix, self.closed = total, 0, "", False
+            bars.append(self)
+
+        def update(self, n):
+            self.n += n
+
+        def set_postfix_str(self, text, refresh=True):
+            self.postfix = text
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(ultralytics_backend, "tqdm", Bar)
+    caplog.set_level(logging.INFO)
+    level = logging.getLogger("ultralytics").level
+    dataset = _tiny_dataset(tmp_path)
+    fake_yolo.train(dataset, output_dir=tmp_path / "runs", exist_ok=True)
+    [bar] = bars
+    assert (bar.total, bar.n, bar.closed) == (2, 2, True)
+    assert bar.postfix == "epoch 1/1, loss 2.500, val mAP50 0.400"  # keypoints
+    assert "GPU_mem" not in caplog.text  # Ultralytics' own log is quiet
+    assert logging.getLogger("ultralytics").level == level  # restored
+    assert all(not callbacks for callbacks in fake_yolo._yolo.callbacks.values())
+
+    fake_yolo.train(
+        dataset, output_dir=tmp_path / "runs", exist_ok=True, progress=False
+    )
+    assert len(bars) == 1 and "GPU_mem" in caplog.text
 
 
 def test_ultralytics_replaces_a_dangling_amp_probe_link(

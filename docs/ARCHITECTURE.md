@@ -327,6 +327,10 @@ examples/             one script per functional area
   `exist_ok=True`) and hands it to the backend, which exports the dataset into it.
   An `exist_ok=True` re-run deletes the previous run's `results.csv` /
   `log.txt` first, so history and metrics describe that run only.
+* `TrainConfig.progress` (default on) replaces Ultralytics' console log, sized
+  for a terminal and unreadable in a notebook cell, with one `tqdm.auto` bar
+  over every batch of the run: epoch, training loss, and the validation mAP50
+  after each epoch. Its warnings still show. RF-DETR keeps its own log.
 * `TrainConfig.backend_options` holds the keyword arguments that are not
   `TrainConfig` fields; they go verbatim to the backend. A `TrainConfig` is
   immutable; `config.model_copy(update={...})` derives another one.

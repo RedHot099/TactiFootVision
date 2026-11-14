@@ -3,13 +3,14 @@
 import contextlib
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
 import supervision as sv
+from tqdm.auto import tqdm
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
@@ -161,7 +162,7 @@ class _UltralyticsModel(Model):
             probe.unlink(missing_ok=True)  # a dangling link left by an interrupted run
             probe.symlink_to(_cached_asset(_AMP_CHECK_WEIGHTS))
         try:
-            with contextlib.chdir(run_dir):
+            with contextlib.chdir(run_dir), _console(self._yolo, config.progress):
                 self._yolo.train(**args)
         finally:
             if probe.is_symlink():
@@ -178,6 +179,80 @@ class _UltralyticsModel(Model):
             history=_read_results_csv(save_dir / "results.csv"),
             metrics=_standard_metrics(trainer.metrics or {}),
         )
+
+
+@contextlib.contextmanager
+def _console(yolo: Any, progress: bool) -> Iterator[None]:
+    """What an Ultralytics training run prints: its own log, or one progress bar.
+
+    Ultralytics' log draws a bar per epoch and per validation, sized for a
+    terminal: in a notebook the lines run past the cell and each redraw wipes
+    the epoch header. With ``progress`` its log is lowered to warnings (which
+    also turns its bars off) and :class:`_TrainingBar` shows the run instead.
+    """
+    if not progress:
+        yield
+        return
+    log = logging.getLogger("ultralytics")
+    level = log.level
+    bar = _TrainingBar()
+    events = {
+        "on_train_start": bar.start,
+        "on_train_batch_end": bar.batch_end,
+        "on_fit_epoch_end": bar.epoch_end,
+        "on_train_end": bar.close,
+    }
+    for event, callback in events.items():
+        yolo.add_callback(event, callback)
+    log.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        log.setLevel(level)
+        bar.close()
+        for event, callback in events.items():
+            yolo.callbacks[event].remove(callback)
+
+
+class _TrainingBar:
+    """One bar over every batch of a run, fed by Ultralytics' trainer callbacks:
+    the epoch and the training loss from the first batch, the validation mAP50
+    after each epoch."""
+
+    def __init__(self) -> None:
+        self._bar: Any = None
+        self._map50 = ""
+
+    def start(self, trainer: Any) -> None:
+        batches = len(trainer.train_loader)
+        self._bar = tqdm(total=trainer.epochs * batches, desc="Training", unit="batch")
+        self._show(trainer)
+
+    def batch_end(self, trainer: Any) -> None:
+        if self._bar is not None:
+            self._bar.update(1)
+            self._show(trainer)
+
+    def epoch_end(self, trainer: Any) -> None:
+        # Pose runs report boxes (B) first, then keypoints (P): show the last.
+        keys = [k for k in trainer.metrics or {} if k.startswith("metrics/mAP50(")]
+        if keys:
+            self._map50 = f"{trainer.metrics[keys[-1]]:.3f}"
+        if self._bar is not None:
+            self._show(trainer)
+
+    def close(self, trainer: Any = None) -> None:
+        if self._bar is not None:
+            self._bar.close()
+            self._bar = None
+
+    def _show(self, trainer: Any) -> None:
+        parts = [f"epoch {trainer.epoch + 1}/{trainer.epochs}"]
+        if trainer.tloss is not None:
+            parts.append(f"loss {float(trainer.tloss.sum()):.3f}")
+        if self._map50:
+            parts.append(f"val mAP50 {self._map50}")
+        self._bar.set_postfix_str(", ".join(parts), refresh=False)
 
 
 @MODELS.register(ModelType.YOLO)

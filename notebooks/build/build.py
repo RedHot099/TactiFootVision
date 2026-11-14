@@ -93,14 +93,16 @@ def _drop_unsaved_streams(node: nbformat.NotebookNode) -> None:
     compiler on a fresh environment's first training run) writes to the
     process's own stderr and ends up in the saved notebook, with this
     machine's paths. A live-log cell shows a trainer's progress to whoever
-    runs it, and the saved notebook gets none of it. Errors and results of
-    such cells are kept.
+    runs it, as text or as a progress-bar widget, and the saved notebook gets
+    none of it. Errors and results of such cells are kept.
     """
     for cell in node.cells:
         if cell.cell_type != "code":
             continue
-        captured = cell.source.startswith("%%capture")
-        if captured or LIVE_LOG in cell.metadata.get("tags", []):
+        if LIVE_LOG in cell.metadata.get("tags", []):
+            kept = {"execute_result", "error"}
+            cell.outputs = [o for o in cell.outputs if o.output_type in kept]
+        elif cell.source.startswith("%%capture"):
             cell.outputs = [o for o in cell.outputs if o.output_type != "stream"]
 
 

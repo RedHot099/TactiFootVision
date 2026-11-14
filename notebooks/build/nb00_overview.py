@@ -110,9 +110,10 @@ augmented.summary()
 This run starts from the COCO weights Ultralytics publishes and trains for
 {EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
 because the players are small: about a minute on a desktop GPU, several on
-a Colab T4. The cell prints the trainer's progress while it runs; the saved
-copy of this notebook leaves that log out. The score comes from `evaluate`,
-the same code for every backend.
+a Colab T4. While it runs, one bar shows the epoch, the training loss and,
+after each epoch, the validation mAP50 (`progress=False` gives the backend's
+own log instead); the saved copy of this notebook leaves the bar out. The
+score comes from `evaluate`, the same code for every backend.
 """)
     nb.code(
         f"""
