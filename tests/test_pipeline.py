@@ -472,10 +472,11 @@ def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
         pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
-    # The pitch model's settings, from the sidecar beside its weights. On these
-    # frames it finds no pitch at all without the square input; the clip's
-    # opening view, where its homography is wrong on part of the frames, is
-    # left out: this test checks that the parts work together.
+    # The pitch model with its settings, less the line refinement (eight times
+    # slower, the same positions here). On these frames it finds no pitch at
+    # all without the square input; the clip's opening view, where its
+    # homography is wrong on part of the frames, is left out: this test checks
+    # that the parts work together.
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
         keypoint_model=tv.load_model(

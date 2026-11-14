@@ -41,8 +41,9 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
   embedder: siglip          # siglip | resnet
 
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
-# homography:                         # tv.pitch.HomographyEstimator(pitch, ...)
-#   min_confidence: 0.3                # weakest keypoint used; fit it to the pitch model
+# homography:                          # tv.pitch.HomographyEstimator(pitch, ...); e.g.
+#   smoothing_window: 5                # frames averaged
+#   min_confidence: 0.3                # weakest keypoint used: depends on the pitch model
 #   ransac_threshold: 2.0              # metres; the default 10 favours smooth positions
 #   refine_with_lines: true            # fit each frame to its painted lines
 # pipeline:                            # remaining tv.Pipeline(...) arguments

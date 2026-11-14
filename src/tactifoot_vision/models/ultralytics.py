@@ -5,7 +5,7 @@ import logging
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, ClassVar, Literal, get_args
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,7 @@ import supervision as sv
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
-from tactifoot_vision.enums import DetectionKey, ModelType
+from tactifoot_vision.enums import DetectionKey, ModelType, Resize
 from tactifoot_vision.models.base import (
     MODELS,
     Model,
@@ -25,7 +25,6 @@ from tactifoot_vision.utils import cache_dir
 
 logger = logging.getLogger(__name__)
 
-Resize = Literal["letterbox", "square"]
 # Ultralytics' letterbox grey, the colour of the bands around a training image.
 _PAD_VALUE = 114
 
@@ -45,7 +44,7 @@ class _UltralyticsModel(Model):
         conf: float = 0.25,
         iou: float = 0.7,
         imgsz: int | None = None,
-        resize: Resize = "letterbox",
+        resize: Resize | str = Resize.LETTERBOX,
         device: str | None = None,
     ) -> None:
         """
@@ -64,20 +63,15 @@ class _UltralyticsModel(Model):
                 * ``"square"``: the aspect ratio kept and the image padded to a
                   centred square with Ultralytics' grey (114), as Ultralytics'
                   training letterboxes every image. For checkpoints that learnt
-                  from those bands, such as a pitch keypoint model trained on
-                  SoccerNet frames: with ``"letterbox"`` it finds the pitch on
-                  20% of SoccerNet GSR frames, with ``"square"`` on all. The
-                  square is resized to ``imgsz``, by default the size the
-                  checkpoint was trained at.
+                  from those bands and miss without them, such as a pitch
+                  keypoint model trained on broadcast frames. The square is
+                  resized to ``imgsz``, by default the size the checkpoint
+                  was trained at.
             device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
         """
-        if resize not in get_args(Resize):
-            raise ValueError(
-                f"resize must be one of {', '.join(get_args(Resize))}, got {resize!r}"
-            )
         self.iou = iou
         self.imgsz = imgsz
-        self.resize = resize
+        self.resize = Resize.parse(resize, "resize")
         super().__init__(weights, conf=conf, device=device)
 
     def _load(self, weights: str | Path | None) -> None:
@@ -110,7 +104,7 @@ class _UltralyticsModel(Model):
         }
         size = self.imgsz
         shift = np.zeros(2, np.float32)
-        if self.resize == "square":
+        if self.resize == Resize.SQUARE:
             size = size or _trained_size(self._yolo)
             height, width = image.shape[:2]
             side = max(height, width)
@@ -211,7 +205,7 @@ class YOLODetector(_UltralyticsModel):
         class_conf: Mapping[str, float] | None = None,
         iou: float = 0.7,
         imgsz: int | None = None,
-        resize: Resize = "letterbox",
+        resize: Resize | str = Resize.LETTERBOX,
         device: str | None = None,
     ) -> None:
         """

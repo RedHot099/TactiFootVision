@@ -556,7 +556,9 @@ def test_square_moves_detection_boxes_back(monkeypatch):
 
 
 def test_resize_is_checked(monkeypatch):
-    with pytest.raises(ValueError, match="resize must be one of letterbox, square"):
+    with pytest.raises(
+        ValueError, match="Unknown resize 'stretch'. Available: letterbox, square"
+    ):
         _ultralytics_with(
             monkeypatch, YOLOPoseModel, _FakeResizePredictor(), resize="stretch"
         )

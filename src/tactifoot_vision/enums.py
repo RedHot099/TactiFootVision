@@ -160,6 +160,13 @@ class Reducer(Vocabulary):
     UMAP = "umap"
 
 
+class Resize(Vocabulary):
+    """How an Ultralytics backend turns an image into the model's input."""
+
+    LETTERBOX = "letterbox"  # aspect kept, padded to a multiple of the stride
+    SQUARE = "square"  # aspect kept, padded to a centred grey square
+
+
 class ModelType(Vocabulary):
     """A built-in model backend of ``MODELS``."""
 
