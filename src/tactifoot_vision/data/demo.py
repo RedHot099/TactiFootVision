@@ -7,7 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from tactifoot_vision.data.dataset import Dataset
 from tactifoot_vision.data.labelled_clip import load_labelled_clip
@@ -181,41 +181,63 @@ def _paths(home: Path, match: str) -> DemoData:
 
 
 def _download(match: str, into: Path, token: str | None) -> None:
-    """Fetch the match's files from the dataset repository into ``into`` (resumable)."""
+    """Fetch the match's files from the dataset repository into ``into`` (resumable).
+
+    One bar counts the files; ``huggingface_hub``'s own bars (two per file
+    with Xet storage) are off meanwhile.
+    """
+    from huggingface_hub.utils import (
+        are_progress_bars_disabled,
+        disable_progress_bars,
+        enable_progress_bars,
+    )
+
+    names = [f.format(m=match) for f in _SOURCE_FILES]
+    hub_bars = not are_progress_bars_disabled()
+    disable_progress_bars()
+    try:
+        for name in tqdm(names, desc=f"Downloading match {match}", unit="file"):
+            _download_file(name, into, token)
+    finally:
+        if hub_bars:
+            enable_progress_bars()
+
+
+def _download_file(name: str, into: Path, token: str | None) -> None:
+    """One file of the dataset repository; refusals and failures as errors that say what to do."""
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
-    for name in (f.format(m=match) for f in _SOURCE_FILES):
-        try:
-            hf_hub_download(
-                DATASET,
-                name,
-                repo_type="dataset",
-                revision=REVISION,
-                local_dir=into,
-                token=token,
-            )
-        except GatedRepoError as error:
+    try:
+        hf_hub_download(
+            DATASET,
+            name,
+            repo_type="dataset",
+            revision=REVISION,
+            local_dir=into,
+            token=token,
+        )
+    except GatedRepoError as error:
+        raise PermissionError(
+            f"{DATASET} is gated: open {DATASET_URL}, accept its conditions "
+            "with your Hugging Face account, then pass a token "
+            "(download_demo(token=...)), set HF_TOKEN, or add a Colab secret "
+            f"named HF_TOKEN. ({error.__class__.__name__}: {error})"
+        ) from error
+    except HfHubHTTPError as error:
+        if error.response is not None and error.response.status_code in (401, 403):
             raise PermissionError(
-                f"{DATASET} is gated: open {DATASET_URL}, accept its conditions "
-                "with your Hugging Face account, then pass a token "
-                "(download_demo(token=...)), set HF_TOKEN, or add a Colab secret "
-                f"named HF_TOKEN. ({error.__class__.__name__}: {error})"
+                f"{DATASET} refused the download of {name} (HTTP "
+                f"{error.response.status_code}): accept its conditions at "
+                f"{DATASET_URL} and pass a valid token."
             ) from error
-        except HfHubHTTPError as error:
-            if error.response is not None and error.response.status_code in (401, 403):
-                raise PermissionError(
-                    f"{DATASET} refused the download of {name} (HTTP "
-                    f"{error.response.status_code}): accept its conditions at "
-                    f"{DATASET_URL} and pass a valid token."
-                ) from error
-            raise ConnectionError(
-                f"Could not download {name} from {DATASET}: {error}"
-            ) from error
-        except OSError as error:  # network and disk failures
-            raise ConnectionError(
-                f"Could not download {name} from {DATASET}: {error}"
-            ) from error
+        raise ConnectionError(
+            f"Could not download {name} from {DATASET}: {error}"
+        ) from error
+    except OSError as error:  # network and disk failures
+        raise ConnectionError(
+            f"Could not download {name} from {DATASET}: {error}"
+        ) from error
 
 
 def _read_mot(path: Path) -> np.ndarray:

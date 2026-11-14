@@ -259,3 +259,25 @@ def test_a_fit_cap_of_exactly_n_teams_fits():
     classifier.fit_embeddings(embeddings)
     assert classifier._kmeans.labels_.shape == (2,)
     assert classifier.predict_embeddings(embeddings).shape == (4,)
+
+
+def test_siglip_loads_without_transformers_unused_weights_warning(monkeypatch):
+    import torch
+    from transformers import SiglipImageProcessor, SiglipVisionModel
+    from transformers.utils import logging as transformers_logging
+
+    seen = []
+
+    class Model(torch.nn.Module):
+        config = SimpleNamespace(hidden_size=4)
+
+    def from_pretrained(name):
+        seen.append(transformers_logging.get_verbosity())
+        return Model()
+
+    monkeypatch.setattr(SiglipVisionModel, "from_pretrained", from_pretrained)
+    monkeypatch.setattr(SiglipImageProcessor, "from_pretrained", lambda name: None)
+    before = transformers_logging.get_verbosity()
+    SigLIPEmbedder(device="cpu")
+    assert seen == [transformers_logging.ERROR]  # the load report is a warning
+    assert transformers_logging.get_verbosity() == before

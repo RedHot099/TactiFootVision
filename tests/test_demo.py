@@ -213,3 +213,16 @@ def test_the_real_match_downloads_and_loads_through_the_readers():
     dataset = tv.data.Dataset.from_yolo(data.detect_yaml)
     assert len(dataset["train"]) == 350 and len(dataset["valid"]) == 175
     assert data.events_json.is_file() and data.calibration_dir.is_dir()
+
+
+def test_the_download_shows_one_bar_in_place_of_the_hubs(tmp_path, monkeypatch):
+    from huggingface_hub.utils import are_progress_bars_disabled
+
+    hub_bars = []
+    monkeypatch.setattr(
+        "huggingface_hub.hf_hub_download",
+        lambda *args, **kwargs: hub_bars.append(not are_progress_bars_disabled()),
+    )
+    demo._download("118577", tmp_path, token=None)
+    assert hub_bars == [False] * len(demo._SOURCE_FILES)
+    assert not are_progress_bars_disabled()  # restored

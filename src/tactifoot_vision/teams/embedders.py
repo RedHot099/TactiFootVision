@@ -118,9 +118,11 @@ class SigLIPEmbedder(Embedder):
         self.color_space = color_space
         self.device = resolve_device(device)
         self._processor = SiglipImageProcessor.from_pretrained(model_name)
-        self._model = (
-            SiglipVisionModel.from_pretrained(model_name).eval().to(self.device)
-        )
+        with _transformers_errors_only():
+            # The checkpoint holds the text tower too; transformers 5 warns
+            # with a table of every key the vision model leaves unused.
+            model = SiglipVisionModel.from_pretrained(model_name)
+        self._model = model.eval().to(self.device)
         self._dim = int(self._model.config.hidden_size)
 
     def embed(self, crops: Sequence[np.ndarray]) -> np.ndarray:
@@ -180,3 +182,16 @@ def _inference(device: str) -> Iterator[None]:
                 yield
         else:
             yield
+
+
+@contextlib.contextmanager
+def _transformers_errors_only() -> Iterator[None]:
+    """Lower transformers' log to errors for the block, then restore it."""
+    from transformers.utils import logging as transformers_logging
+
+    level = transformers_logging.get_verbosity()
+    transformers_logging.set_verbosity_error()
+    try:
+        yield
+    finally:
+        transformers_logging.set_verbosity(level)
