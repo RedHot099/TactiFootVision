@@ -117,7 +117,7 @@ score comes from `evaluate`, the same code for every backend.
 """)
     nb.code(
         f"""
-training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=8,
+training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=16,
                     imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
 """,
         live_log=True,
