@@ -1,5 +1,6 @@
 """Ultralytics YOLO backends: box detection (``yolo``) and keypoints (``yolo_pose``)."""
 
+import base64
 import contextlib
 import io
 import logging
@@ -256,18 +257,16 @@ class _TrainingBar:
         csv = Path(getattr(trainer, "csv", ""))
         if not _in_notebook() or not csv.is_file():
             return
-        from IPython.display import Image, display
+        from IPython.display import display
 
         from tactifoot_vision.viz import plot_training
 
-        # PNG keeps the transparency (a notebook may show figures as JPEG),
-        # so the plot reads on light and dark notebook themes alike.
         figure = plot_training(
             _read_results_csv(csv), skip_losses=_HIDDEN_LOSSES, transparent=True
         )
         png = io.BytesIO()
         figure.savefig(png, format="png", dpi=100, transparent=True)
-        image = Image(data=png.getvalue(), format="png")
+        image = _TransparentImage(png.getvalue())
         if self._curves is None:
             self._curves = display(image, display_id=True)
         else:
@@ -291,6 +290,27 @@ class _TrainingBar:
         if self._map50:
             parts.append(f"val mAP50 {self._map50}")
         self._bar.set_postfix_str(", ".join(parts), refresh=refresh)
+
+
+class _TransparentImage:
+    """A PNG that a notebook shows without a background, at most as wide as the cell.
+
+    Shown as HTML: Colab's dark theme puts a white background under image
+    outputs, which an inline style overrides. The PNG is the fallback for
+    viewers that do not render HTML. (A figure in the notebook's own format
+    may be JPEG, which has no transparency.)
+    """
+
+    def __init__(self, png: bytes) -> None:
+        self.png = png
+
+    def _repr_png_(self) -> bytes:
+        return self.png
+
+    def _repr_html_(self) -> str:
+        data = base64.b64encode(self.png).decode("ascii")
+        style = "background: transparent; max-width: 100%; height: auto"
+        return f'<img src="data:image/png;base64,{data}" style="{style}">'
 
 
 def _in_notebook() -> bool:
