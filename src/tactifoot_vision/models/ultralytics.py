@@ -247,8 +247,10 @@ class _TrainingBar:
             self._bar = None
 
     def _show(self, trainer: Any) -> None:
-        parts = [f"epoch {trainer.epoch + 1}/{trainer.epochs}"]
-        if trainer.tloss is not None:
+        # The trainer sets ``epoch`` when the first epoch starts, after "on_train_start".
+        epoch = getattr(trainer, "epoch", getattr(trainer, "start_epoch", 0))
+        parts = [f"epoch {epoch + 1}/{trainer.epochs}"]
+        if getattr(trainer, "tloss", None) is not None:
             parts.append(f"loss {float(trainer.tloss.sum()):.3f}")
         if self._map50:
             parts.append(f"val mAP50 {self._map50}")

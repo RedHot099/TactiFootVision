@@ -255,9 +255,10 @@ class _FakeYOLO:
         import torch
 
         trainer = SimpleNamespace(
-            epochs=1, epoch=0, train_loader=[0, 1], tloss=None, metrics={}
+            epochs=1, start_epoch=0, train_loader=[0, 1], tloss=None, metrics={}
         )
-        self._run("on_train_start", trainer)
+        self._run("on_train_start", trainer)  # before the trainer has an epoch
+        trainer.epoch = 0
         for loss in (3.0, 2.0):
             trainer.tloss = torch.tensor([loss, 0.5])
             self._run("on_train_batch_end", trainer)
