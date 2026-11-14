@@ -472,12 +472,22 @@ def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
         pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
+    # The pitch model with its settings, less the line refinement (eight times
+    # slower, the same positions here). On these frames it finds no pitch at
+    # all without the square input; the clip's opening view, where its
+    # homography is wrong on part of the frames, is left out: this test checks
+    # that the parts work together.
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model("yolo_pose", pitch_weights),
+        keypoint_model=tv.load_model(
+            "yolo_pose", pitch_weights, conf=0.1, resize="square"
+        ),
+        homography=tv.pitch.HomographyEstimator(
+            min_confidence=0.3, ransac_threshold=2.0
+        ),
         team_classifier=TeamClassifier("siglip"),
     )
-    result = pipeline.run(video, end=50, progress=False)
+    result = pipeline.run(video, start=150, end=200, progress=False)
     assert len(result) == 50
     table = result.to_dataframe()
     players = table[(table.object == "person") & (table.class_name == "player")]

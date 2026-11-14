@@ -22,7 +22,7 @@ VOCABULARIES = [
 
 
 def test_every_vocabulary_is_a_str_enum_whose_members_equal_their_values():
-    assert len(VOCABULARIES) == 18
+    assert len(VOCABULARIES) == 19
     for enum in VOCABULARIES:
         assert issubclass(enum, StrEnum) and enum.__doc__
         for member in enum:

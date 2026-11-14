@@ -191,11 +191,15 @@ tv.viz.plot_metrics(detection_metrics)
 Keypoint models get the mean pixel error of labelled landmarks and PCK, the
 share of landmarks closer than a fraction of the image diagonal (5% by
 default). Evaluation options pass through, here a stricter `pck_threshold`.
+The model in `models/` was trained on SoccerNet broadcast frames, not on this
+dataset, and scores poorly on its images.
 """)
     nb.code("""
 pitch_models = {
     "YOLOv8n-pose (demo run)": pose_run.load(),
-    "YOLO11m-pose (models/)": tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt"),
+    "YOLO11m-pose (models/)": tv.load_model(
+        "yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square"
+    ),
 }
 pitch_metrics = {name: model.evaluate(pitch_data, pck_threshold=0.02) for name, model in pitch_models.items()}
 pd.DataFrame({name: m.as_dict() for name, m in pitch_metrics.items()}).T.round(3)
