@@ -78,7 +78,7 @@ data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
 data/videos/broadcast_60s.mp4     one minute of match footage
 models/detector_yolo11l.pt        trained detector (YOLO11l, 1280)
 models/rfdetr_smoketest_sample.pth  RF-DETR base fine-tuned for one epoch on a sample (football classes, no accuracy)
-models/pitch_yolo11m_pose.pt      trained pitch keypoint model (YOLO11m pose, 960)
+models/pitch_yolo11m_pose.pt      trained pitch keypoint model (YOLO11m pose, 960; loaded with conf=0.1, resize="square")
 external/segment-anything-2-real-time/   optional, for the SAM2 tracker
 ```
 

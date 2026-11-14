@@ -30,10 +30,19 @@ for name, model in detectors.items():
     )
 
 # Pitch keypoints -> homography -> pitch coordinates of the players' feet.
-pitch_model = tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt")
+# This pitch model learnt on frames padded to a square, so it sees them that
+# way here; the estimator's settings are the ones it was tuned with (the line
+# refinement leaves out the people's boxes).
+pitch_model = tv.load_model(
+    "yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square"
+)
 keypoints = pitch_model(frame)
-homography = tv.pitch.HomographyEstimator().update(keypoints)
-feet = detectors["yolo"](frame).get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+people = detectors["yolo"](frame)
+estimator = tv.pitch.HomographyEstimator(
+    min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True
+)
+homography = estimator.update(keypoints, frame, people.xyxy)
+feet = people.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 print(
     "first players on the pitch (m):",
     tv.pitch.frame_to_pitch(feet, homography)[:3].round(1),
@@ -43,6 +52,7 @@ print(
 pipeline = tv.Pipeline(
     detector=detectors["yolo"],
     keypoint_model=pitch_model,
+    homography=estimator,
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
@@ -57,6 +67,7 @@ result.export(OUT, period=1)
 rfdetr_pipeline = tv.Pipeline(
     detector=detectors["rfdetr"],
     keypoint_model=pitch_model,
+    homography=estimator,
     tracker="bytetrack",
 )
 rfdetr_result = rfdetr_pipeline.run(VIDEO, end=50)

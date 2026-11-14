@@ -62,7 +62,9 @@ detectors = {
     "yolo": tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3),
     "rfdetr": tv.load_model("rfdetr", MODELS / "rfdetr_smoketest_sample.pth", conf=0.5),
 }
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt")
+# This pitch model learnt on frames padded to a square, so it gets them that
+# way (resize="square"), and its pitches score low: conf=0.1 keeps them.
+pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square")
 
 views = []
 for name, model in detectors.items():
@@ -79,7 +81,7 @@ positions with a confidence each, in the order of `tv.SoccerPitch`'s vertices.
     nb.code("""
 keypoints = pitch_model(frame)
 print("xy:", keypoints.xy.shape, " confidence:", keypoints.confidence.shape)
-confident = keypoints.confidence[0] > 0.5
+confident = keypoints.confidence[0] > 0.3
 print("confident landmarks:", np.flatnonzero(confident).tolist())
 labelled = sv.VertexLabelAnnotator(text_scale=0.5, border_radius=4).annotate(
     frame.copy(), sv.KeyPoints(xy=keypoints.xy[:, confident]), labels=[str(i) for i in np.flatnonzero(confident)]
@@ -109,13 +111,17 @@ fig
 the confident landmarks (RANSAC) and averages the last few fits to steady it
 over time. `estimator.used_indices` lists the landmarks given to RANSAC, those
 with confidence of at least `min_confidence`; RANSAC may still treat some of
-them as outliers, so they are not all inliers. `frame_to_pitch` then maps
-pixels to metres; here the players' feet, the bottom centre of their boxes.
+them as outliers, so they are not all inliers. The settings below are the
+ones this pitch model was tuned with: landmarks from confidence 0.3, a RANSAC
+limit of 2 m, and `refine_with_lines`, which then fits the matrix to the
+painted lines of the frame, leaving out the people's boxes (so `update` takes
+the frame and the boxes too). `frame_to_pitch` then maps pixels to metres;
+here the players' feet, the bottom centre of their boxes.
 """)
     nb.code("""
-estimator = tv.pitch.HomographyEstimator(pitch)
-homography = estimator.update(keypoints)
+estimator = tv.pitch.HomographyEstimator(pitch, min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)
 detections = detectors["yolo"](frame)
+homography = estimator.update(keypoints, frame, detections.xyxy)
 feet = detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 on_pitch = tv.pitch.frame_to_pitch(feet, homography)
 print("confident landmarks given to RANSAC:", estimator.used_indices.tolist())
@@ -237,12 +243,14 @@ during the pass, goalkeepers join the team whose players are nearest, and ball
 positions that jump implausibly far are dropped. Every run fits the team
 classifier on its own crops, so one pipeline can process several matches;
 `refit_teams=False` keeps a classifier that is already fitted. Every part is
-an object you pass in; a tracker can also be given by name.
+an object you pass in; a tracker can also be given by name. The estimator is
+the one from above, with the pitch model's settings.
 """)
     nb.code("""
 pipeline = tv.Pipeline(
     detector=detectors["yolo"],
     keypoint_model=pitch_model,
+    homography=estimator,
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
@@ -318,7 +326,7 @@ Components are plain objects, so changing one is a change of argument. Here
 RF-DETR replaces YOLO and there is no team classifier.
 """)
     nb.code("""
-rfdetr_result = tv.Pipeline(detector=detectors["rfdetr"], keypoint_model=pitch_model).run(
+rfdetr_result = tv.Pipeline(detector=detectors["rfdetr"], keypoint_model=pitch_model, homography=estimator).run(
     VIDEO, end=125, progress=False)
 print(len(rfdetr_result), "frames,", len(rfdetr_result.track_ids), "tracks")
 """)
@@ -332,7 +340,8 @@ if sam2_tracker is None:
     print("Skipped: SAM2 is not available (see the Trackers section).")
 else:
     masked = tv.Pipeline(
-        detector=detectors["rfdetr"], keypoint_model=pitch_model, tracker=sam2_tracker, keep_masks=True,
+        detector=detectors["rfdetr"], keypoint_model=pitch_model, homography=estimator,
+        tracker=sam2_tracker, keep_masks=True,
     ).run(VIDEO, end=60, progress=False)
     masks = masked[-1].masks
     print(len(masked), "frames,", len(masked.track_ids), "tracks;",

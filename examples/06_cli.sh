@@ -10,7 +10,8 @@ uv run tactifoot info
 
 # Inference: a run file says how to process video; run inputs are flags.
 # `tactifoot init` writes a commented run file to start from (its weights are
-# bare names in the working directory; here they live in models/).
+# bare names in the working directory; here they live in models/, and the
+# pitch model gets its own settings: a square input and its homography ones).
 # --set overrides one run file value for this run (the value is YAML).
 # In Python: tv.run_file.load(path, overrides).run(video, output_dir, start=..., end=...).
 # render.annotator.trail_seconds draws the ball's last second in the video,
@@ -23,6 +24,8 @@ uv run tactifoot init "$OUT/pipeline.yaml"
 uv run tactifoot run "$OUT/pipeline.yaml" --video "$VIDEO" --output-dir "$OUT/run" \
     --set detector.weights=models/detector_yolo11l.pt \
     --set keypoints.weights=models/pitch_yolo11m_pose.pt \
+    --set keypoints.conf=0.1 --set keypoints.resize=square \
+    --set 'homography={min_confidence: 0.3, ransac_threshold: 2.0, refine_with_lines: true}' \
     --start 250 --end 300 \
     --set teams=null --set render.annotator.style=video_game \
     --set render.annotator.trail_seconds=1.0 --set render.radar.trail_seconds=2.0 \

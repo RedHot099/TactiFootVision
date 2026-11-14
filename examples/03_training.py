@@ -55,7 +55,7 @@ tv.viz.plot_metrics(metrics).savefig(OUT / "detector_comparison.png")
 
 pitch_metrics = {
     "YOLOv8n-pose (demo run)": pose_run.load().evaluate(pitch),
-    "YOLO11m-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt").evaluate(pitch),
+    "YOLO11m-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square").evaluate(pitch),
 }  # fmt: skip
 for name, m in pitch_metrics.items():
     print(
