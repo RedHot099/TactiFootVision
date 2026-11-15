@@ -29,6 +29,9 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
 
+LIVE_LOG = "live-log"  # tag of a cell whose printed text is not saved
+
+
 class Notebook:
     """Cells of one notebook, added top to bottom."""
 
@@ -43,8 +46,13 @@ class Notebook:
     def md(self, text: str) -> None:
         self.cells.append(nbformat.v4.new_markdown_cell(_clean(text)))
 
-    def code(self, text: str) -> None:
-        self.cells.append(nbformat.v4.new_code_cell(_clean(text)))
+    def code(self, text: str, live_log: bool = False) -> None:
+        """A code cell. A ``live_log`` cell shows what it prints while it runs,
+        a trainer's progress, and the builder saves it without that text."""
+        cell = nbformat.v4.new_code_cell(_clean(text))
+        if live_log:
+            cell.metadata["tags"] = [LIVE_LOG]
+        self.cells.append(cell)
 
     def setup(
         self, imports: str = BASE_IMPORTS, body: str = "", standalone: bool = False

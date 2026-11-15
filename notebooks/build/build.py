@@ -22,7 +22,7 @@ import nb04_inference
 import nb05_visualisation
 import nbclient
 import nbformat
-from common import NOTEBOOK_DIR
+from common import LIVE_LOG, NOTEBOOK_DIR
 
 GENERATORS = (
     nb00_overview,
@@ -68,7 +68,7 @@ def main() -> int:
             continue
         node = nbformat.read(notebook.path, as_version=4)
         ok, seconds, error = _execute(node)
-        _drop_captured_streams(node)
+        _drop_unsaved_streams(node)
         nbformat.write(node, notebook.path)
         failed += not ok
         size = notebook.path.stat().st_size / 1e6
@@ -86,17 +86,35 @@ def _selected(name: str, wanted: list[str]) -> bool:
     return any(name.startswith(w) or short.startswith(w) for w in wanted)
 
 
-def _drop_captured_streams(node: nbformat.NotebookNode) -> None:
-    """Remove stream output from ``%%capture`` cells.
+def _drop_unsaved_streams(node: nbformat.NotebookNode) -> None:
+    """Remove stream output from ``%%capture`` cells and live-log cells.
 
     The magic captures what Python writes; a program a library starts (a C
     compiler on a fresh environment's first training run) writes to the
     process's own stderr and ends up in the saved notebook, with this
-    machine's paths. Errors and results of such a cell are kept.
+    machine's paths. A live-log cell shows a trainer's progress to whoever
+    runs it, as text or as a progress-bar widget, and the saved notebook gets
+    none of it; its figures (the last state of a plot redrawn in place),
+    errors and results are kept.
     """
     for cell in node.cells:
-        if cell.cell_type == "code" and cell.source.startswith("%%capture"):
+        if cell.cell_type != "code":
+            continue
+        if LIVE_LOG in cell.metadata.get("tags", []):
+            cell.outputs = [o for o in cell.outputs if not _live(o)]
+        elif cell.source.startswith("%%capture"):
             cell.outputs = [o for o in cell.outputs if o.output_type != "stream"]
+
+
+def _live(output: nbformat.NotebookNode) -> bool:
+    """Printed text or a progress-bar widget: the running view of a live-log cell."""
+    if output.output_type == "stream":
+        return True
+    data = output.get("data", {})
+    return output.output_type == "display_data" and _WIDGET in data
+
+
+_WIDGET = "application/vnd.jupyter.widget-view+json"
 
 
 def _execute(node: nbformat.NotebookNode) -> tuple[bool, float, str]:

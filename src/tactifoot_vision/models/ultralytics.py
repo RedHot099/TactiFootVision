@@ -1,15 +1,19 @@
 """Ultralytics YOLO backends: box detection (``yolo``) and keypoints (``yolo_pose``)."""
 
+import base64
 import contextlib
+import io
 import logging
 import re
-from collections.abc import Mapping
+import sys
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
 import supervision as sv
+from tqdm.auto import tqdm
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
@@ -161,7 +165,7 @@ class _UltralyticsModel(Model):
             probe.unlink(missing_ok=True)  # a dangling link left by an interrupted run
             probe.symlink_to(_cached_asset(_AMP_CHECK_WEIGHTS))
         try:
-            with contextlib.chdir(run_dir):
+            with contextlib.chdir(run_dir), _console(self._yolo, config.progress):
                 self._yolo.train(**args)
         finally:
             if probe.is_symlink():
@@ -178,6 +182,168 @@ class _UltralyticsModel(Model):
             history=_read_results_csv(save_dir / "results.csv"),
             metrics=_standard_metrics(trainer.metrics or {}),
         )
+
+
+@contextlib.contextmanager
+def _console(yolo: Any, progress: bool) -> Iterator[None]:
+    """What an Ultralytics training run prints: its own log, or one progress bar.
+
+    Ultralytics' log draws a bar per epoch and per validation, sized for a
+    terminal: in a notebook the lines run past the cell and each redraw wipes
+    the epoch header. With ``progress`` its log is lowered to warnings (which
+    also turns its bars off) and :class:`_TrainingBar` shows the run instead.
+    """
+    if not progress:
+        yield
+        return
+    log = logging.getLogger("ultralytics")
+    level = log.level
+    bar = _TrainingBar()
+    events = {
+        "on_train_start": bar.start,
+        "on_train_epoch_start": bar.epoch_start,
+        "on_train_batch_end": bar.batch_end,
+        "on_fit_epoch_end": bar.epoch_end,
+        "on_train_end": bar.finish,
+    }
+    for event, callback in events.items():
+        yolo.add_callback(event, callback)
+    # Never louder than the user set it (YOLO_VERBOSE=False means errors only).
+    log.setLevel(max(log.getEffectiveLevel(), logging.WARNING))
+    try:
+        yield
+    finally:
+        log.setLevel(level)
+        bar.close()  # still open only when training failed: tqdm marks it so
+        for event, callback in events.items():
+            yolo.callbacks[event].remove(callback)
+
+
+# Ultralytics' distribution focal loss tracks the box loss; without it the
+# live plot (box loss, class loss, metrics) fits one row.
+_HIDDEN_LOSSES = ("dfl",)
+
+
+class _TrainingBar:
+    """One bar over every batch of a run, fed by Ultralytics' trainer callbacks:
+    the epoch and the training loss from the first batch, the validation mAP50
+    after each epoch. In a notebook, :func:`tv.viz.plot_training` of the
+    history so far is drawn under the bar and redrawn after each epoch."""
+
+    def __init__(self) -> None:
+        self._bar: Any = None
+        self._map50 = ""
+        self._curves: Any = None  # the notebook display that holds the plot
+        self._epoch = 0  # the epoch under way, from "on_train_epoch_start"
+
+    def start(self, trainer: Any) -> None:
+        self._epoch = getattr(trainer, "start_epoch", 0)
+        batches = len(trainer.train_loader)
+        epochs = trainer.epochs - getattr(trainer, "start_epoch", 0)  # a resumed run
+        self._bar = tqdm(total=epochs * batches, desc="Training", unit="batch")
+        self._show(trainer)
+
+    def epoch_start(self, trainer: Any) -> None:
+        # Ultralytics may change the run under way: a smaller batch after an
+        # out-of-memory error, a redone epoch after NaN losses, epochs from a
+        # time limit. Count the batches left from here.
+        self._epoch = trainer.epoch
+        if self._bar is not None:
+            left = trainer.epochs - trainer.epoch
+            self._bar.total = self._bar.n + left * len(trainer.train_loader)
+            self._bar.refresh()
+
+    def batch_end(self, trainer: Any) -> None:
+        if self._bar is not None:
+            self._show(trainer, refresh=False)  # drawn by the update
+            self._bar.update(1)
+
+    def epoch_end(self, trainer: Any) -> None:
+        # Pose runs report boxes (B) first, then keypoints (P): show the last.
+        keys = [k for k in trainer.metrics or {} if k.startswith("metrics/mAP50(")]
+        if keys:
+            self._map50 = f"{trainer.metrics[keys[-1]]:.3f}"
+        if self._bar is not None:
+            self._show(trainer)
+        self._plot(trainer)
+
+    def _plot(self, trainer: Any) -> None:
+        # Ultralytics appends the epoch to results.csv before "on_fit_epoch_end";
+        # the final validation of best.pt calls it once more and adds no row.
+        csv = Path(getattr(trainer, "csv", ""))
+        if not _in_notebook() or not csv.is_file():
+            return
+        from IPython.display import display
+
+        from tactifoot_vision.viz import plot_training
+
+        figure = plot_training(
+            _read_results_csv(csv), skip_losses=_HIDDEN_LOSSES, transparent=True
+        )
+        png = io.BytesIO()
+        figure.savefig(png, format="png", dpi=100, transparent=True)
+        image = _TransparentImage(png.getvalue())
+        if self._curves is None:
+            self._curves = display(image, display_id=True)
+        else:
+            self._curves.update(image)
+
+    def finish(self, trainer: Any) -> None:
+        """Training ended, perhaps early (patience, time limit): a full bar."""
+        if self._bar is not None:
+            self._bar.total = self._bar.n
+        self.close()
+
+    def close(self) -> None:
+        if self._bar is not None:
+            self._bar.close()
+            self._bar = None
+
+    def _show(self, trainer: Any, refresh: bool = True) -> None:
+        # Not trainer.epoch: the final validation of best.pt runs one past the
+        # last epoch, which after an early stop is not the last planned one.
+        parts = [f"epoch {self._epoch + 1}/{trainer.epochs}"]
+        # The running mean of each loss: a dict by name (a tensor before 8.4).
+        losses = getattr(trainer, "tloss", None)
+        if losses is not None:
+            values = losses.values() if isinstance(losses, Mapping) else losses
+            parts.append(f"loss {sum(float(v) for v in values):.3f}")
+        if self._map50:
+            parts.append(f"val mAP50 {self._map50}")
+        self._bar.set_postfix_str(", ".join(parts), refresh=refresh)
+
+
+class _TransparentImage:
+    """A PNG that a notebook shows without a background, at most as wide as the cell.
+
+    Shown as HTML: Colab's dark theme puts a white background under image
+    outputs, which an inline style overrides. The PNG is the fallback for
+    viewers that do not render HTML. (A figure in the notebook's own format
+    may be JPEG, which has no transparency.)
+    """
+
+    def __init__(self, png: bytes) -> None:
+        self.png = png
+
+    def __repr__(self) -> str:  # the text/plain output: no memory address
+        return "Training curves"
+
+    def _repr_png_(self) -> bytes:
+        return self.png
+
+    def _repr_html_(self) -> str:
+        data = base64.b64encode(self.png).decode("ascii")
+        style = "background: transparent; max-width: 100%; height: auto"
+        return f'<img src="data:image/png;base64,{data}" style="{style}">'
+
+
+def _in_notebook() -> bool:
+    """Whether this runs in a Jupyter kernel (Colab too), where figures display."""
+    if "IPython" not in sys.modules:  # a script or the CLI: no kernel to ask
+        return False
+    from IPython import get_ipython
+
+    return hasattr(get_ipython(), "kernel")  # a terminal IPython has none
 
 
 @MODELS.register(ModelType.YOLO)

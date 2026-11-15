@@ -64,9 +64,31 @@ def test_what_leaks_past_a_capture_magic_is_not_saved(build):
         nbformat.v4.new_code_cell("%%capture log\ntrain()", outputs=[stream, result]),
         nbformat.v4.new_code_cell("print(1)", outputs=[stream]),
     ]
-    build._drop_captured_streams(node)
+    build._drop_unsaved_streams(node)
     assert [o.output_type for o in node.cells[0].outputs] == ["execute_result"]
     assert node.cells[1].outputs == [stream]  # an ordinary cell keeps its output
+
+
+def test_a_live_log_shows_while_running_and_is_not_saved(build):
+    import common
+
+    notebook = common.Notebook("demo")
+    notebook.code("train()", live_log=True)
+    notebook.code("print(1)")
+    node = notebook.to_node()
+    assert not node.cells[0].source.startswith("%%capture")
+    stream = nbformat.v4.new_output("stream", name="stderr", text="epoch 1/10\n")
+    result = nbformat.v4.new_output("execute_result", data={"text/plain": "1"})
+    widget = nbformat.v4.new_output(
+        "display_data", data={"application/vnd.jupyter.widget-view+json": {}}
+    )
+    plot = nbformat.v4.new_output("display_data", data={"image/png": "iVBOR"})
+    node.cells[0].outputs = [stream, widget, plot, result]
+    node.cells[1].outputs = [stream]
+    build._drop_unsaved_streams(node)
+    kept = node.cells[0].outputs
+    assert kept == [plot, result]  # the plot's last state stays
+    assert node.cells[1].outputs == [stream]
 
 
 def _without_magics(source: str) -> str:

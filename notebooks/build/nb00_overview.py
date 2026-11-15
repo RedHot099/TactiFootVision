@@ -31,9 +31,15 @@ match, trains a player detector on it for a few minutes, tracks the players
 through a clip and draws them on the pitch. It needs no local data or
 weights, so it runs the same from a checkout and on Google Colab.
 
-**On Colab**, pick a GPU first (Runtime, Change runtime type, T4 GPU) and add
-your Hugging Face token as a secret named `HF_TOKEN` (the key icon on the
-left) with notebook access switched on; step 1 says why.
+**On Colab**, pick a GPU first (Runtime, Change runtime type, T4 GPU). The
+demo data needs your own free Hugging Face token (step 1 says why):
+
+1. Sign in to Hugging Face and accept the conditions on the
+   [SoccerTrack v2 page](https://huggingface.co/datasets/atomscott/soccertrack-v2).
+2. Create a token of type "Read" under
+   [Access Tokens](https://huggingface.co/settings/tokens).
+3. In Colab, open Secrets (the key icon on the left), add a secret named
+   `HF_TOKEN` with the token as its value and switch on notebook access.
 
 Each stage has its own notebook with the details. Those still read local data
 and run from a checkout only:
@@ -104,13 +110,19 @@ augmented.summary()
 This run starts from the COCO weights Ultralytics publishes and trains for
 {EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
 because the players are small: about a minute on a desktop GPU, several on
-a Colab T4. The score comes from `evaluate`, the same code for every backend.
+a Colab T4. While it runs, one bar shows the epoch, the training loss and
+the validation mAP50, and the loss and metric curves under it are redrawn
+after every epoch (`progress=False` gives the backend's own log instead;
+`tv.viz.plot_training(training)` draws the curves of a finished run). The
+score comes from `evaluate`, the same code for every backend.
 """)
-    nb.code(f"""
-%%capture train_log
-training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=8,
+    nb.code(
+        f"""
+training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=16,
                     imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
-""")
+""",
+        live_log=True,
+    )
     nb.code("""
 import pandas as pd
 

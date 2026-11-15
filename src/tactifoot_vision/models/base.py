@@ -58,6 +58,11 @@ class TrainConfig(BaseModel):
     exist_ok: bool = Field(
         False, description="Reuse output_dir/name instead of creating name2, name3, ..."
     )
+    progress: bool = Field(
+        True,
+        description="One progress bar for the run in place of the backend's own "
+        "console log (Ultralytics backends; RF-DETR keeps its log)",
+    )
 
     @property
     def backend_options(self) -> dict[str, Any]:
