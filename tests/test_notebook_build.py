@@ -273,6 +273,29 @@ def test_the_colab_links_open_each_notebook_at_one_release():
     assert f"]({url})" in overview().cells[0].source
 
 
+def test_the_readme_badges_sit_under_the_video(build):
+    from nb00_overview import notebook as overview
+
+    lines = (BUILD_DIR.parents[1] / "README.md").read_text().splitlines()
+    video = next(i for i, line in enumerate(lines) if "tactifoot_promo" in line)
+    # one paragraph, one badge per line, right after the video
+    row = lines[video + 2 :]
+    badges = "\n".join(row[: row.index("")])
+    expected = [
+        overview().colab_url,
+        "https://img.shields.io/pypi/v/tactifoot-vision",
+        "https://img.shields.io/pypi/pyversions/tactifoot-vision",
+        "https://img.shields.io/pypi/l/tactifoot-vision",
+        "actions/workflows/ci.yml/badge.svg",
+        "https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json",
+    ]
+    positions = [badges.find(part) for part in expected]
+    assert -1 not in positions and positions == sorted(positions), badges
+    quick_start = lines.index("## Quick start")
+    later = "\n".join(lines[quick_start:])
+    assert "colab-badge.svg" not in later  # the badge moved up, not copied
+
+
 @pytest.mark.parametrize("name", NOTEBOOKS)
 def test_every_notebook_installs_the_package_when_it_is_missing(build, name):
     import common

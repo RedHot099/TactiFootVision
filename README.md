@@ -2,6 +2,13 @@
 
 ![TactiFoot Vision on one attacking move](https://raw.githubusercontent.com/RedHot099/TactiFootVision/master/docs/media/tactifoot_promo.avif)
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
+[![PyPI](https://img.shields.io/pypi/v/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
+[![Python](https://img.shields.io/pypi/pyversions/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
+[![License](https://img.shields.io/pypi/l/tactifoot-vision)](https://github.com/RedHot099/TactiFootVision/blob/master/LICENSE)
+[![CI](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 TactiFoot Vision turns football match video into tactical data. It finds and follows every player and the ball, works out who plays for which team, and maps the action onto the pitch in metres.
 
 - **Data:** load, convert, split and augment annotated football datasets.
@@ -12,10 +19,9 @@ TactiFoot Vision turns football match video into tactical data. It finds and fol
 ## Quick start
 
 To see the whole workflow without installing anything, open the overview
-notebook in Google Colab. It downloads an open demo match, trains a player
-detector for a few minutes, tracks the players and draws the tactical map:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
+notebook in Google Colab (the badge above). It downloads an open demo match,
+trains a player detector for a few minutes, tracks the players and draws the
+tactical map.
 
 To use the package on your own footage, install it from PyPI (Python 3.13):
 
