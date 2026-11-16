@@ -188,7 +188,7 @@ def test_a_failed_download_is_a_connection_error(tmp_path, monkeypatch):
 
 @pytest.mark.model
 def test_the_real_match_downloads_and_loads_through_the_readers():
-    """Needs the Hugging Face gate accepted and a token (saved login on omarchy); 300 MB once."""
+    """Needs the Hugging Face gate accepted and a token (a saved login); 300 MB once."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "data" / "demo"

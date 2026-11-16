@@ -3,7 +3,7 @@ name: release
 # The maintainer creates a GitHub Release (which creates the tag vX.Y.Z);
 # this builds the distributions, publishes them to TestPyPI, and then to
 # PyPI once the maintainer approves the `pypi` environment. Both indexes use
-# Trusted Publishing (OIDC), so there are no API tokens: see docs/RELEASING.md.
+# Trusted Publishing (OIDC), so there are no API tokens.
 on:
   release:
     types: [published]
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: testpypi
     environment:
-      name: pypi  # requires the maintainer's approval (docs/RELEASING.md)
+      name: pypi  # requires the maintainer's approval
       url: https://pypi.org/p/tactifoot-vision
     permissions:
       id-token: write

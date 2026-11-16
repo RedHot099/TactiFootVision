@@ -1,15 +1,15 @@
-# What the default Google Colab runtime ships, for scripts/colab-smoke.sh:
+# What the default Google Colab runtime ships, for the colab smoke job in CI:
 # `pip install dist/*.whl -c tests/colab-constraints.txt` must resolve without
 # downgrading any of these. Source: https://github.com/googlecolab/backend-info
-# (pip-freeze.gpu.txt, read 2026-11-03; Python 3.13, Ubuntu 24.04). Update it
+# (pip-freeze.gpu.txt, read 2026-11-15; Python 3.13, Ubuntu 24.04). Update it
 # when Colab publishes a new runtime (research.google.com/colaboratory/runtime-version-faq.html)
-# and rerun the smoke and the GPU gate. CUDA local tags are dropped: pip
-# treats torch==2.11.0 as satisfied by 2.11.0+cu130 or 2.11.0+cpu.
+# and rerun the smoke. CUDA local tags are dropped: pip
+# treats torch==2.14.1 as satisfied by 2.14.1+cu130 or 2.14.1+cpu.
 
 numpy==2.4.6
-torch==2.11.0
-torchvision==0.26.0
-transformers==5.22.0
+torch==2.14.1
+torchvision==0.29.1
+transformers==5.22.1
 pillow==11.3.0
 opencv-python==5.0.0.93
 opencv-python-headless==5.0.0.93
@@ -18,7 +18,7 @@ scikit-learn==1.6.1
 scipy==1.16.3
 pandas==2.2.3
 matplotlib==3.10.0
-pydantic==2.14.1
+pydantic==2.14.2
 tqdm==4.67.3
 PyYAML==6.0.3
 pyarrow==23.0.1
@@ -29,6 +29,6 @@ pynndescent==0.7.0
 huggingface_hub==1.33.0
 tokenizers==0.23.3
 safetensors==0.8.0
-timm==1.0.30
+timm==1.0.31
 requests==2.32.4
 psutil==5.9.5

@@ -17,7 +17,7 @@ def postprocess_registry(monkeypatch):
 
 
 # ----------------------------------------- checkpoints of the -m model tests
-# The files in models/ on omarchy; each trained one has a .json sidecar.
+# The files in models/; each trained one has a .json sidecar.
 @pytest.fixture(scope="session")
 def detector_weights() -> Path:
     """The football detector: YOLO11l at 1280, ball/goalkeeper/player/referee."""
