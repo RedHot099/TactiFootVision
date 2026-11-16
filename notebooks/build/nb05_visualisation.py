@@ -171,17 +171,6 @@ custom = tv.viz.FrameAnnotator(
 tv.show(custom.annotate(frame, frame_result)[window], width=12)
 """)
     nb.md("""
-`draw_points` puts arbitrary pitch positions on the radar, for example
-positions from another source. Here: the pitch positions of everyone in the
-frame, all in one colour.
-""")
-    nb.code("""
-tracks = result.to_dataframe()
-in_frame = tracks[(tracks["frame"] == frame_result.index) & tracks["pitch_x"].notna()]
-tv.show(radar.draw_points(in_frame[["pitch_x", "pitch_y"]].to_numpy(), "#FFD400"),
-        titles="draw_points: positions of everyone in the frame", width=7)
-""")
-    nb.md("""
 `trail_seconds` draws the ball's recent path. Drawing keeps no memory between
 frames, so `annotate` takes the earlier frames as `history`, oldest first, and
 `result.window(index, seconds)` gives them (ADR 0003). Each earlier ball
@@ -254,6 +243,17 @@ radar = tv.viz.PitchRadar()
 radar_ids = tv.viz.PitchRadar(draw_ids=True, width_px=900, pitch_color="#1D3557", line_color="#A8DADC")
 tv.show([radar.draw(frame_result), radar_ids.draw(frame_result)], titles=["PitchRadar()", "draw_ids, custom colours"],
         cols=2, width=13)
+""")
+    nb.md("""
+`draw_points` puts arbitrary pitch positions on the radar, for example
+positions from another source. Here: the pitch positions of everyone in the
+frame, all in one colour.
+""")
+    nb.code("""
+tracks = result.to_dataframe()
+in_frame = tracks[(tracks["frame"] == frame_result.index) & tracks["pitch_x"].notna()]
+tv.show(radar.draw_points(in_frame[["pitch_x", "pitch_y"]].to_numpy(), "#FFD400"),
+        titles="draw_points: positions of everyone in the frame", width=7)
 """)
     nb.md("""
 `trail_seconds` draws a tail behind each person, so the teams' movement shows.

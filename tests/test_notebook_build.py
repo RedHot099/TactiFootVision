@@ -281,6 +281,47 @@ def test_the_readme_opens_with_its_badges(build):
 
 
 @pytest.mark.parametrize("name", NOTEBOOKS)
+def test_no_cell_uses_a_name_a_later_cell_defines(build, name):
+    import ast
+
+    cells = [
+        ast.parse(_without_magics(c.source))
+        for c in _generated(name)
+        if c.cell_type == "code"
+    ]
+
+    def assigned(tree):
+        """Every name the cell binds: assignments, arguments, defs, imports."""
+        names = set()
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                names.add(n.id)
+            elif isinstance(n, ast.arg):
+                names.add(n.arg)
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                names.add(n.name)
+            elif isinstance(n, ast.FunctionDef | ast.ClassDef):
+                names.add(n.name)
+            elif isinstance(n, ast.alias):
+                names.add((n.asname or n.name).split(".")[0])
+        return names
+
+    defined = set()
+    for i, tree in enumerate(cells):
+        later = set().union(*(assigned(t) for t in cells[i + 1 :])) - defined
+        used = {
+            n.id
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+        }
+        early = (used & later) - assigned(tree)
+        assert not early, (
+            f"cell {i} of {name} uses {sorted(early)} before it is defined"
+        )
+        defined |= assigned(tree)
+
+
+@pytest.mark.parametrize("name", NOTEBOOKS)
 def test_every_notebook_installs_the_package_when_it_is_missing(build, name):
     import common
 
