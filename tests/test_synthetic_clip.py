@@ -272,7 +272,9 @@ def test_every_broadcast_view_has_the_frame_centre_on_the_pitch(tmp_path):
 
 
 def test_broadcast_views_look_across_from_one_touchline_and_pan_tilt_and_zoom():
-    homographies = broadcast_homographies(200, FRAME, seed=0)
+    homographies = broadcast_homographies(
+        200, FRAME, field_of_view=(15.0, 60.0), seed=0
+    )
     width, height = FRAME
 
     centres = _centres(homographies)
@@ -306,3 +308,30 @@ def test_broadcast_views_look_across_from_one_touchline_and_pan_tilt_and_zoom():
 def test_broadcast_homographies_refuse_invalid_arguments(count, frame_size, message):
     with pytest.raises(ValueError, match=message):
         broadcast_homographies(count, frame_size)
+
+
+def _landmarks_in_view(homography, size):
+    width, height = size
+    points = pitch_to_frame(SoccerPitch().vertices, homography)
+    inside = (points[:, 0] >= 0) & (points[:, 0] < width)
+    return int((inside & (points[:, 1] >= 0) & (points[:, 1] < height)).sum())
+
+
+def test_a_wider_field_of_view_shows_more_pitch_landmarks():
+    size = (640, 360)
+    counts = {
+        fov: np.median(
+            [
+                _landmarks_in_view(h, size)
+                for h in broadcast_homographies(60, size, field_of_view=fov, seed=1)
+            ]
+        )
+        for fov in ((15.0, 30.0), (35.0, 75.0))
+    }
+    assert counts[(35.0, 75.0)] > counts[(15.0, 30.0)] + 3
+
+
+@pytest.mark.parametrize("field_of_view", [(0, 40), (50, 40), (40, 180)])
+def test_broadcast_homographies_refuse_an_invalid_field_of_view(field_of_view):
+    with pytest.raises(ValueError, match="field_of_view"):
+        broadcast_homographies(2, field_of_view=field_of_view)

@@ -15,7 +15,7 @@ import tactifoot_vision as tv
 """
 
 
-# First lines of a notebook that also runs outside a checkout: on a fresh Colab
+# First lines of every notebook, which also runs outside a checkout: on a fresh Colab
 # runtime the package is missing and comes from PyPI (the core, no extras: the
 # rfdetr extra would downgrade Colab's numpy and transformers); in a checkout
 # it is installed already and nothing happens.
@@ -30,17 +30,6 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 # package their first cell installs; `master` may be ahead of it. A release
 # moves it to its own tag (never an rc).
 RELEASE_TAG = "v0.3.0"
-# Notebooks that run on Colab, by name.
-COLAB_READY = frozenset(
-    {
-        "00_overview",
-        "01_data",
-        "02_augmentation",
-        "03_training_and_evaluation",
-        "04_inference",
-        "05_visualisation",
-    }
-)
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
 _COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
 
@@ -75,8 +64,11 @@ pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pos
 """
 
 # The pitch keypoint set a short `yolo_pose` run learns from within minutes on
-# a T4: six clips of 40 broadcast views with noise and occluding boxes, split
-# per clip into 160 training, 40 validation and 40 test frames. The model test
+# a T4: fifteen clips of 40 broadcast views with noise and occluding boxes,
+# split per clip into 400 training, 120 validation and 80 test frames. Of the
+# recipes tried in the lab (1116-154213), this one learns the landmarks (PCK
+# 0.80 at 5%) where six clips of views zoomed in further reached 0.06. The
+# model test
 # `test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views` trains
 # on the same recipe. Defines `size` and `pitch_data`.
 PITCH_TRAINING_DATASET = """
@@ -91,7 +83,7 @@ clips = [
         occluders=3,  # player-sized boxes over the markings
         seed=seed,
     )
-    for seed in range(6)
+    for seed in range(15)
 ]
 pitch_data = tv.data.Dataset.from_clips(clips, train=0.66, valid=0.17, test=0.17, task="pose")
 """
@@ -112,8 +104,12 @@ training = tv.train("yolo", dataset, weights="{DETECTOR_WEIGHTS}", epochs={DETEC
 # The RF-DETR guard: its cells run only where the `rfdetr` extra imports,
 # which Colab's runtime does not have. Defines `has_rfdetr`.
 RFDETR_GUARD = """
+import warnings
+
 try:
-    tv.utils.require_extra("rfdetr")
+    with warnings.catch_warnings():  # RF-DETR's import warns about torch.jit and its own regexes
+        warnings.simplefilter("ignore")
+        tv.utils.require_extra("rfdetr")
     has_rfdetr = True
 except ImportError as error:
     has_rfdetr = False
@@ -197,16 +193,12 @@ class Notebook:
         self.cells: list[nbformat.NotebookNode] = []
 
     @property
-    def colab_ready(self) -> bool:
-        return self.name in COLAB_READY
-
-    @property
     def colab_url(self) -> str:
         return f"{_COLAB_BASE}/{RELEASE_TAG}/notebooks/{self.name}.ipynb"
 
     @property
     def badge(self) -> str:
-        """The "Open in Colab" badge for the title cell of a Colab-ready notebook."""
+        """The "Open in Colab" badge for the title cell of a notebook."""
         return f"[![Open In Colab]({_COLAB_BADGE})]({self.colab_url})"
 
     @property
@@ -224,27 +216,15 @@ class Notebook:
             cell.metadata["tags"] = [LIVE_LOG]
         self.cells.append(cell)
 
-    def setup(
-        self,
-        imports: str = BASE_IMPORTS,
-        body: str = "",
-        standalone: bool | None = None,
-    ) -> None:
+    def setup(self, imports: str = BASE_IMPORTS, body: str = "") -> None:
         """The first code cell: imports, repository paths, logging and figure format.
 
         ``imports`` replaces the default import block (keep ``os``, ``Path`` and
-        ``tv`` in it); ``body`` adds notebook-specific lines at the end. A
-        Colab-ready notebook (``standalone`` by default) also runs outside a
-        checkout: the cell installs the package when it is missing, and no
-        path points at local data or weights.
+        ``tv`` in it); ``body`` adds notebook-specific lines at the end. The
+        cell installs the package when it is missing (a fresh Colab runtime),
+        and no path points at local data or weights.
         """
-        standalone = self.colab_ready if standalone is None else standalone
-        parts = [
-            INSTALL if standalone else "",
-            imports,
-            setup_code(self.name, standalone),
-            body,
-        ]
+        parts = [INSTALL, imports, setup_code(self.name), body]
         self.code("\n\n".join(_clean(part) for part in parts if part))
 
     def to_node(self) -> nbformat.NotebookNode:
@@ -256,17 +236,7 @@ class Notebook:
         return node
 
 
-_CHECKOUT_PATHS = """
-# The repository root, found by walking up from the working directory and kept
-# relative, so printed paths do not depend on where the repository lives.
-_root = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "pyproject.toml").is_file())
-ROOT = Path(os.path.relpath(_root))
-DATA, MODELS = ROOT / "data", ROOT / "models"
-OUT = ROOT / "outputs" / "notebooks" / "{name}"
-VIDEO = DATA / "videos" / "broadcast_60s.mp4"
-"""
-
-_STANDALONE_PATHS = """
+_PATHS = """
 # The repository root when run from a checkout, else the working directory
 # (/content on Colab); kept relative, so printed paths are the same everywhere.
 _here = [Path.cwd(), *Path.cwd().parents]
@@ -284,9 +254,8 @@ tv.setup_logging("WARNING")
 """
 
 
-def setup_code(name: str, standalone: bool) -> str:
-    paths = _STANDALONE_PATHS if standalone else _CHECKOUT_PATHS
-    return _clean(paths.format(name=name)) + "\n\n" + _clean(_DISPLAY)
+def setup_code(name: str) -> str:
+    return _clean(_PATHS.format(name=name)) + "\n\n" + _clean(_DISPLAY)
 
 
 def _clean(text: str) -> str:

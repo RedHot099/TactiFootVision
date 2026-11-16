@@ -35,16 +35,16 @@ demo data needs your own free Hugging Face token (step 1 says why):
 3. In Colab, open Secrets (the key icon on the left), add a secret named
    `HF_TOKEN` with the token as its value and switch on notebook access.
 
-Each stage has its own notebook with the details. Those still read local data
-and run from a checkout only:
+Each stage has its own notebook with the details. Each opens in Colab too,
+with the same steps as this one:
 
-| stage | module | notebook |
-|---|---|---|
-| Data preparation | `tv.data` | [01_data]({REPO_URL}/notebooks/01_data.ipynb) |
-| Data augmentation | `tv.augment` | [02_augmentation]({REPO_URL}/notebooks/02_augmentation.ipynb) |
-| Training and evaluation | `tv.models`, `tv.evaluation` | [03_training_and_evaluation]({REPO_URL}/notebooks/03_training_and_evaluation.ipynb) |
-| Inference | `tv.tracking`, `tv.pitch`, `tv.teams`, `tv.pipeline` | [04_inference]({REPO_URL}/notebooks/04_inference.ipynb) |
-| Visualisation | `tv.viz` | [05_visualisation]({REPO_URL}/notebooks/05_visualisation.ipynb) |
+| stage | module | notebook | Colab |
+|---|---|---|---|
+| Data preparation | `tv.data` | [01_data]({REPO_URL}/notebooks/01_data.ipynb) | {Notebook("01_data").badge} |
+| Data augmentation | `tv.augment` | [02_augmentation]({REPO_URL}/notebooks/02_augmentation.ipynb) | {Notebook("02_augmentation").badge} |
+| Training and evaluation | `tv.models`, `tv.evaluation` | [03_training_and_evaluation]({REPO_URL}/notebooks/03_training_and_evaluation.ipynb) | {Notebook("03_training_and_evaluation").badge} |
+| Inference | `tv.tracking`, `tv.pitch`, `tv.teams`, `tv.pipeline` | [04_inference]({REPO_URL}/notebooks/04_inference.ipynb) | {Notebook("04_inference").badge} |
+| Visualisation | `tv.viz` | [05_visualisation]({REPO_URL}/notebooks/05_visualisation.ipynb) | {Notebook("05_visualisation").badge} |
 
 Everything is plain Python: build the objects you want and call them. The
 same steps exist as a command line (`tactifoot run`, `tactifoot train`,

@@ -903,7 +903,7 @@ def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
     tmp_path, monkeypatch
 ):
     # Open data only: the notebooks train their pitch model this way. About
-    # two minutes on a desktop GPU, starting from the default COCO pose weights.
+    # a minute and a half on a desktop GPU, starting from the default COCO pose weights.
     monkeypatch.chdir(tmp_path)
     size = (640, 360)
     clips = [
@@ -916,21 +916,22 @@ def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
             occluders=3,
             seed=seed,
         )
-        for seed in range(6)
+        for seed in range(15)
     ]
     dataset = tv.Dataset.from_clips(
         clips, train=0.66, valid=0.17, test=0.17, task="pose"
     )
     assert {s: len(dataset[s]) for s in dataset.split_names} == {
-        "train": 160,
-        "valid": 40,
-        "test": 40,
+        "train": 400,
+        "valid": 120,
+        "test": 80,
     }
 
     result = tv.train(
         "yolo_pose",
         dataset,
-        epochs=30,
+        epochs=40,
+        mosaic=0.0,
         batch_size=16,
         imgsz=640,
         workers=2,
@@ -941,9 +942,9 @@ def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
     # The test clip took no part in training or in picking the best epoch.
     metrics = tv.evaluate(result.load(conf=0.05), dataset, "test")
 
-    assert metrics.num_images == 40
+    assert metrics.num_images == 80
     assert metrics.detection_rate > 0
-    assert metrics.pck > 0
+    assert metrics.pck > 0.5  # 0.80 in the lab run that chose the recipe
 
 
 @pytest.mark.model

@@ -13,12 +13,7 @@ import pytest
 BUILD_DIR = Path(__file__).resolve().parents[1] / "notebooks" / "build"
 
 
-def _colab_ready_names_at_import() -> list[str]:
-    """The Colab-ready notebooks, read when the tests are collected."""
-    spec = importlib.util.spec_from_file_location("_common", BUILD_DIR / "common.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return sorted(module.COLAB_READY)
+NOTEBOOKS = sorted(path.stem[2:] for path in BUILD_DIR.glob("nb*.py"))
 
 
 @pytest.fixture
@@ -99,6 +94,21 @@ def test_a_live_log_shows_while_running_and_is_not_saved(build):
     assert node.cells[1].outputs == [stream]
 
 
+def test_no_saved_cell_keeps_a_widget(build):
+    import common
+
+    notebook = common.Notebook("demo")
+    notebook.code("download()")
+    node = notebook.to_node()
+    stream = nbformat.v4.new_output("stream", name="stdout", text="credit\n")
+    widget = nbformat.v4.new_output(
+        "display_data", data={"application/vnd.jupyter.widget-view+json": {}}
+    )
+    node.cells[0].outputs = [widget, stream]
+    build._drop_unsaved_streams(node)
+    assert node.cells[0].outputs == [stream]
+
+
 def _without_magics(source: str) -> str:
     """A code cell as plain Python: IPython magics become ``pass``."""
     return "\n".join(
@@ -172,12 +182,6 @@ def test_the_overview_notebook_installs_the_package_only_when_it_is_missing(
         assert calls == [("pip", "install -q tactifoot-vision")]
 
 
-def _colab_ready_names() -> list[str]:
-    import common
-
-    return sorted(common.COLAB_READY)
-
-
 def _generated(name: str) -> list[nbformat.NotebookNode]:
     """The cells the builder writes for notebook ``name``."""
     module = importlib.import_module(f"nb{name}")
@@ -203,8 +207,8 @@ def _called(cells: list[nbformat.NotebookNode]) -> set[str]:
     }
 
 
-@pytest.mark.parametrize("name", _colab_ready_names_at_import())
-def test_a_colab_ready_notebook_runs_on_what_it_downloads(build, name):
+@pytest.mark.parametrize("name", NOTEBOOKS)
+def test_a_notebook_runs_on_what_it_downloads(build, name):
     # The standalone first cell defines no MODELS or VIDEO, and the maintainer's
     # datasets, weights and checkouts are not on Colab under any path.
     nodes = _code_nodes(_generated(name))
@@ -219,8 +223,8 @@ def test_a_colab_ready_notebook_runs_on_what_it_downloads(build, name):
     assert not {"datasets", "keypoints", "models", "external"} & strings
 
 
-@pytest.mark.parametrize("name", _colab_ready_names_at_import())
-def test_a_colab_ready_notebook_tells_where_the_token_steps_are(build, name):
+@pytest.mark.parametrize("name", NOTEBOOKS)
+def test_a_notebook_tells_where_the_token_steps_are(build, name):
     import common
 
     title = _generated(name)[0].source
@@ -230,7 +234,7 @@ def test_a_colab_ready_notebook_tells_where_the_token_steps_are(build, name):
         assert f"]({overview.colab_url})" in title or "00_overview.ipynb)" in title
 
 
-@pytest.mark.parametrize("name", _colab_ready_names_at_import())
+@pytest.mark.parametrize("name", NOTEBOOKS)
 def test_statsbomb_data_is_shown_with_the_statsbomb_logo(build, name):
     # The StatsBomb Public Data User Agreement, 1.4: any publication of analysis
     # based on the data carries the StatsBomb logo.
@@ -244,16 +248,16 @@ def test_statsbomb_data_is_shown_with_the_statsbomb_logo(build, name):
     assert "load_statsbomb" in _called(cells)
 
 
-def test_the_colab_links_open_each_ready_notebook_at_one_release():
+def test_the_colab_links_open_each_notebook_at_one_release():
     # `master` may use API newer than the package the first cell installs, so
     # the badge opens the notebook as it was at a release (never an rc).
     import common
     from nb00_overview import notebook as overview
 
     assert re.fullmatch(r"v\d+\.\d+\.\d+", common.RELEASE_TAG)
-    assert "00_overview" in common.COLAB_READY
+    assert len(NOTEBOOKS) == 6
     root = BUILD_DIR.parents[1]
-    for name in _colab_ready_names():
+    for name in NOTEBOOKS:
         url = common.Notebook(name).colab_url
         assert url == (
             "https://colab.research.google.com/github/RedHot099/TactiFootVision"
@@ -269,21 +273,18 @@ def test_the_colab_links_open_each_ready_notebook_at_one_release():
     assert f"]({url})" in overview().cells[0].source
 
 
-def test_only_ready_notebooks_have_a_badge_and_a_standalone_first_cell():
+@pytest.mark.parametrize("name", NOTEBOOKS)
+def test_every_notebook_installs_the_package_when_it_is_missing(build, name):
     import common
 
-    for name in ("00_overview", "99_draft"):
-        nb = common.Notebook(name)
-        nb.setup()
-        ready = name in common.COLAB_READY
-        assert nb.colab_ready is ready
-        assert ("find_spec" in nb.cells[0].source) is ready
+    install = textwrap.dedent(common.INSTALL).strip()
+    first_code = next(c for c in _generated(name) if c.cell_type == "code")
+    assert first_code.source.startswith(install)
 
 
-def test_a_colab_ready_notebook_reads_no_local_data_or_weights():
-    # The other notebooks still read local data until they are made Colab-ready.
+def test_a_notebook_reads_no_local_data_or_weights():
     forbidden = ("models/", "data/datasets", "data/keypoints", "external/")
-    for name in _colab_ready_names():
+    for name in NOTEBOOKS:
         source = (BUILD_DIR / f"nb{name}.py").read_text()
         assert not [f for f in forbidden if f in source], name
 
@@ -319,10 +320,8 @@ def _string_arguments(cells: list[nbformat.NotebookNode], function: str) -> set[
     }
 
 
-@pytest.mark.parametrize("name", _colab_ready_names_at_import())
-def test_a_colab_ready_notebook_trains_the_demo_detector_with_the_shared_recipe(
-    build, name
-):
+@pytest.mark.parametrize("name", NOTEBOOKS)
+def test_a_notebook_trains_the_demo_detector_with_the_shared_recipe(build, name):
     # One recipe for the overview's detector, so the notebooks cannot drift apart.
     import common
 
@@ -551,9 +550,6 @@ def _keywords(cells: list[nbformat.NotebookNode]) -> set[str]:
 
 
 def test_the_inference_notebook_shows_every_stage_on_the_demo(build):
-    import common
-
-    assert "04_inference" in common.COLAB_READY
     cells = _generated("04_inference")
     called = _called(cells)
     attributes = {n.attr for n in _code_nodes(cells) if isinstance(n, ast.Attribute)}
@@ -582,12 +578,9 @@ def test_the_statsbomb_comparison_is_shown_not_run(build):
 def test_the_visualisation_notebook_shows_every_annotator_style_and_flag(build):
     import inspect
 
-    import common
-
     from tactifoot_vision.enums import AnnotatorStyle
     from tactifoot_vision.viz import FrameAnnotator
 
-    assert "05_visualisation" in common.COLAB_READY
     cells = _generated("05_visualisation")
     options = set(inspect.signature(FrameAnnotator).parameters) - {"pitch"}
     assert options <= _keywords(cells)

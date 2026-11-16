@@ -17,7 +17,7 @@ from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
 
 # Epochs of the pitch keypoint model: fewer than 03's 30, to keep the
 # notebook near ten minutes on a T4.
-PITCH_EPOCHS = 20
+PITCH_EPOCHS = 40
 
 
 def notebook() -> Notebook:
@@ -224,7 +224,7 @@ print(pitch_data)
     nb.code(
         f"""
 pose_run = tv.train("yolo_pose", pitch_data, weights="yolov8n-pose.pt", epochs={PITCH_EPOCHS}, batch_size=16,
-                    output_dir=OUT / "runs", name="pitch_pose", exist_ok=True)
+                    mosaic=0.0, output_dir=OUT / "runs", name="pitch_pose", exist_ok=True)
 """,
         live_log=True,
     )

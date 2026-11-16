@@ -50,12 +50,11 @@ uv sync                 # the package, its dev tools and the notebook kernel
 uv run pytest -q        # the fast suite
 ```
 
-The notebooks are generated from `notebooks/build/`. All but the overview
-notebook, and the examples, expect local data and weights; see the
-[notebooks README](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md).
+The notebooks are generated from `notebooks/build/`; the examples expect local
+data and weights. See the [notebooks README](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md).
 
 ## Learn more
 
-- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Start with `00_overview`, which also runs in Colab.
+- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Each opens in Colab; start with `00_overview`.
 - **[Architecture](https://github.com/RedHot099/TactiFootVision/blob/master/docs/ARCHITECTURE.md):** modules, interfaces, run files and the CLI.
 - **[Examples](https://github.com/RedHot099/TactiFootVision/tree/master/examples):** runnable scripts for each area and the CLI.

@@ -233,12 +233,13 @@ tv.viz.show_samples(pitch_data, "train", n=3)
     nb.md("""
 It trains with the same call and the shared config; the dataset's `flip_idx`
 goes into the exported `data.yaml`, so Ultralytics' own flip augmentation
-renames landmarks correctly. Thirty epochs from the COCO pose weights take a
-few minutes on a T4.
+renames landmarks correctly. Mosaic augmentation is off: it tiles four
+frames into one, and cuts the pitch, which fills the whole frame, into
+quarters. Forty epochs from the COCO pose weights take a few minutes on a T4.
 """)
     nb.code(
         """
-pose_run = tv.train("yolo_pose", pitch_data, config, weights="yolov8n-pose.pt", epochs=30, name="pitch_pose")
+pose_run = tv.train("yolo_pose", pitch_data, config, weights="yolov8n-pose.pt", epochs=40, mosaic=0.0, name="pitch_pose")
 """,
         live_log=True,
     )

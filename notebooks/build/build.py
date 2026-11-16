@@ -87,7 +87,7 @@ def _selected(name: str, wanted: list[str]) -> bool:
 
 
 def _drop_unsaved_streams(node: nbformat.NotebookNode) -> None:
-    """Remove stream output from ``%%capture`` cells and live-log cells.
+    """Remove stream output from ``%%capture`` and live-log cells, and widgets from every cell.
 
     The magic captures what Python writes; a program a library starts (a C
     compiler on a fresh environment's first training run) writes to the
@@ -104,14 +104,21 @@ def _drop_unsaved_streams(node: nbformat.NotebookNode) -> None:
             cell.outputs = [o for o in cell.outputs if not _live(o)]
         elif cell.source.startswith("%%capture"):
             cell.outputs = [o for o in cell.outputs if o.output_type != "stream"]
+        # A progress-bar widget (a download's, say) needs the live kernel that
+        # drew it; a saved notebook can only show it as a broken widget.
+        cell.outputs = [o for o in cell.outputs if not _widget(o)]
 
 
 def _live(output: nbformat.NotebookNode) -> bool:
     """Printed text or a progress-bar widget: the running view of a live-log cell."""
     if output.output_type == "stream":
         return True
-    data = output.get("data", {})
-    return output.output_type == "display_data" and _WIDGET in data
+    return _widget(output)
+
+
+def _widget(output: nbformat.NotebookNode) -> bool:
+    """A Jupyter widget's view, which only a live kernel can draw."""
+    return output.output_type == "display_data" and _WIDGET in output.get("data", {})
 
 
 _WIDGET = "application/vnd.jupyter.widget-view+json"

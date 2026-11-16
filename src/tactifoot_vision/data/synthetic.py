@@ -121,15 +121,19 @@ def synthetic_pitch_clip(
 
 
 def broadcast_homographies(
-    count: int, frame_size: tuple[int, int] = (1280, 720), *, seed: int = 0
+    count: int,
+    frame_size: tuple[int, int] = (1280, 720),
+    *,
+    field_of_view: tuple[float, float] = (35.0, 75.0),
+    seed: int = 0,
 ) -> list[np.ndarray]:
     """Frame -> pitch homographies of ``count`` random views of a broadcast camera.
 
     Each view is a main broadcast camera's, drawn independently: it stands
     10 to 35 m behind the touchline ``y = 68`` and 15 to 30 m above the
     ground, within 10 m of the halfway line, pans and tilts to aim the frame
-    centre at a point of the pitch, zooms between a horizontal field of view
-    of 15 and 60 degrees, and rolls by at most 2 degrees. That touchline is
+    centre at a point of the pitch, zooms to a horizontal field of view drawn
+    from ``field_of_view``, and rolls by at most 2 degrees. That touchline is
     nearest the bottom of the frame and ``x`` grows to the right, as in the
     pitch keypoint dataset. The frame centre always shows the pitch, as
     :func:`synthetic_pitch_clip` needs, and so does the middle of the frame a
@@ -140,6 +144,10 @@ def broadcast_homographies(
     Args:
         count: how many views.
         frame_size: ``(width, height)`` of the frames, in pixels.
+        field_of_view: the range of the horizontal field of view, in degrees.
+            The default keeps about ten of the 32 pitch landmarks in a typical
+            view; a keypoint model trained on views zoomed in further (15 to
+            60 degrees, about four landmarks a view) barely learns them.
         seed: seeds the views.
 
     Returns:
@@ -151,6 +159,11 @@ def broadcast_homographies(
         raise ValueError(f"count must be >= 1, got {count}")
     if width <= 0 or height <= 0:
         raise ValueError(f"frame_size must be positive, got {width} x {height}")
+    low, high = field_of_view
+    if not 0 < low <= high < 180:
+        raise ValueError(
+            f"field_of_view must be a range within (0, 180) degrees, got {field_of_view}"
+        )
     rng = np.random.default_rng(seed)
     homographies: list[np.ndarray] = []
     while len(homographies) < count:
@@ -164,9 +177,9 @@ def broadcast_homographies(
         target = np.array(
             [rng.uniform(0, _STD_LENGTH), rng.uniform(0, _STD_WIDTH), 0.0]
         )
-        field_of_view = np.radians(rng.uniform(15, 60))
+        angle = np.radians(rng.uniform(low, high))
         roll = np.radians(rng.uniform(-2, 2))
-        homography = _view(camera, target, field_of_view, roll, frame_size)
+        homography = _view(camera, target, angle, roll, frame_size)
         # An operator zooms in on the far side rather than film the stands.
         upper, in_front = project_points(
             [[width / 2, height / 4]], homography, (width / 2, height / 2)
