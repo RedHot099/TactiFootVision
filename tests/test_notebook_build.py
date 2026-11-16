@@ -349,16 +349,13 @@ def _rfdetr_guard(cells: list[nbformat.NotebookNode]) -> nbformat.NotebookNode:
     return guard
 
 
-def test_the_rfdetr_cells_run_only_where_the_extra_imports(build):
-    # Colab's runtime has no rfdetr extra: every cell that uses RF-DETR sits
-    # under the guard's flag, so the notebook still runs top to bottom there.
-    cells = [
-        c for c in _generated("03_training_and_evaluation") if c.cell_type == "code"
-    ]
-    guard = _rfdetr_guard(cells)
-    flag = "has_rfdetr"
-    assert f"{flag} = True" in guard.source
-    for cell in cells[cells.index(guard) + 1 :]:
+def _used_outside(
+    cells: list[nbformat.NotebookNode], flag: str, word: str
+) -> list[str]:
+    """Code cells that use ``word`` (in a name or as a string) other than
+    in the body of an ``if`` on ``flag``."""
+    outside = []
+    for cell in cells:
         tree = ast.parse(_without_magics(cell.source))
         guarded = {
             id(node)
@@ -372,21 +369,41 @@ def test_the_rfdetr_cells_run_only_where_the_extra_imports(build):
         uses = [
             node
             for node in ast.walk(tree)
-            if (isinstance(node, ast.Name) and "rfdetr" in node.id and node.id != flag)
-            or (isinstance(node, ast.Constant) and node.value == "rfdetr")
+            if (isinstance(node, ast.Name) and word in node.id and node.id != flag)
+            or (isinstance(node, ast.Constant) and node.value == word)
         ]
-        assert all(id(node) in guarded for node in uses), cell.source
+        if not all(id(node) in guarded for node in uses):
+            outside.append(cell.source)
+    return outside
 
 
+RFDETR_NOTEBOOKS = ["03_training_and_evaluation", "04_inference"]
+
+
+@pytest.mark.parametrize("name", RFDETR_NOTEBOOKS)
+def test_the_rfdetr_cells_run_only_where_the_extra_imports(build, name):
+    # Colab's runtime has no rfdetr extra: every cell that uses RF-DETR sits
+    # under the guard's flag, so the notebook still runs top to bottom there.
+    import common
+
+    cells = [c for c in _generated(name) if c.cell_type == "code"]
+    guard = _rfdetr_guard(cells)
+    assert guard.source == textwrap.dedent(common.RFDETR_GUARD).strip()
+    assert "has_rfdetr = True" in guard.source
+    later = cells[cells.index(guard) + 1 :]
+    assert later and not _used_outside(later, "has_rfdetr", "rfdetr")
+
+
+@pytest.mark.parametrize("name", RFDETR_NOTEBOOKS)
 def test_without_the_rfdetr_extra_one_line_says_how_to_run_its_cells(
-    build, monkeypatch, capsys
+    build, monkeypatch, capsys, name
 ):
     import sys
 
     import tactifoot_vision as tv
 
     monkeypatch.setitem(sys.modules, "rfdetr", None)  # import fails: not installed
-    guard = _rfdetr_guard(_generated("03_training_and_evaluation"))
+    guard = _rfdetr_guard(_generated(name))
     namespace = {"tv": tv}
     exec(guard.source, namespace)
 
@@ -394,3 +411,169 @@ def test_without_the_rfdetr_extra_one_line_says_how_to_run_its_cells(
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 1
     assert 'pip install "tactifoot-vision[rfdetr]"' in lines[0]
+
+
+SAM2_NOTEBOOKS = ["04_inference"]
+
+
+def _sam2_cells(name: str) -> tuple[str, str, list[str]]:
+    """The SAM2 install cell, the guard after it (as the builder shares them)
+    and the code cells after the guard."""
+    import common
+
+    sources = [c.source for c in _generated(name) if c.cell_type == "code"]
+    install = textwrap.dedent(common.SAM2_INSTALL).strip()
+    guard = textwrap.dedent(common.SAM2_GUARD).strip()
+    assert sources.count(install) == 1 and sources.count(guard) == 1, name
+    assert sources.index(install) < sources.index(guard)
+    return install, guard, sources[sources.index(guard) + 1 :]
+
+
+@pytest.mark.parametrize("name", SAM2_NOTEBOOKS)
+def test_the_sam2_cells_run_only_where_sam2_is_ready(build, name):
+    # Colab has no SAM2: every later cell that uses it sits under the guard's
+    # flag, so the notebook runs top to bottom without it.
+    *_, later = _sam2_cells(name)
+    later = [nbformat.v4.new_code_cell(source) for source in later]
+    assert later and not _used_outside(later, "has_sam2", "sam2")
+
+
+def _run_cell(source: str, namespace: dict) -> None:
+    """Run a code cell's source as IPython would, magics included."""
+    from IPython.core.inputtransformer2 import TransformerManager
+
+    exec(TransformerManager().transform_cell(source), namespace)
+
+
+class _Shell:
+    """What a cell's line magics reach: ``%pip`` is recorded, not run."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def run_line_magic(self, name: str, line: str) -> None:
+        self.calls.append((name, line))
+
+
+@pytest.mark.parametrize("cuda", [False, True])
+def test_without_sam2_one_line_says_how_to_enable_it(
+    build, monkeypatch, capsys, tmp_path, cuda
+):
+    import torch
+
+    import tactifoot_vision as tv
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
+    install, guard, _ = _sam2_cells("04_inference")
+    shell = _Shell()
+    namespace = {"tv": tv, "DATA": tmp_path / "data", "get_ipython": lambda: shell}
+    _run_cell(install, namespace)  # off by default: does nothing
+    _run_cell(guard, namespace)
+
+    assert shell.calls == [] and not (tmp_path / "data").exists()
+    assert namespace["has_sam2"] is False
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert "INSTALL_SAM2 = True" in lines[0]
+
+
+def test_the_sam2_install_cell_fetches_what_the_tracker_loads(
+    build, monkeypatch, capsys, tmp_path
+):
+    # On: the sam2 extra from PyPI, a clone of the real-time SAM2 repository
+    # and its tiny checkpoint, where the guard looks; a second run fetches
+    # nothing. The network is mocked.
+    import subprocess
+
+    import torch
+
+    import tactifoot_vision as tv
+
+    clones, downloads = [], []
+
+    def clone(command, check):
+        clones.append(command)
+        package = Path(command[-1]) / "sam2"
+        (package / "configs" / "sam2.1").mkdir(parents=True)
+        (package / "build_sam.py").touch()
+        (package / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml").touch()
+        (Path(command[-1]) / "checkpoints").mkdir()
+
+    def download(url, path, progress=True):
+        downloads.append(url)
+        Path(path).write_bytes(b"weights")
+
+    monkeypatch.setattr(subprocess, "run", clone)
+    monkeypatch.setattr(torch.hub, "download_url_to_file", download)
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: None if name == "hydra" else real_find_spec(name),
+    )
+    install, *_ = _sam2_cells("04_inference")
+    assert "INSTALL_SAM2 = False" in install  # off unless the reader turns it on
+    switched_on = install.replace("INSTALL_SAM2 = False", "INSTALL_SAM2 = True")
+    shell = _Shell()
+    namespace = {"tv": tv, "DATA": tmp_path / "data", "get_ipython": lambda: shell}
+    _run_cell(switched_on, namespace)
+
+    [(magic, line)] = shell.calls
+    assert magic == "pip" and '"tactifoot-vision[sam2]"' in line
+    [command] = clones
+    assert command[:2] == ["git", "clone"]
+    assert "https://github.com/Gy920/segment-anything-2-real-time" in command
+    assert downloads == [
+        "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt"
+    ]
+    assert namespace["SAM2_CHECKPOINT"].read_bytes() == b"weights"
+    assert namespace["SAM2_CONFIG"].is_file()
+    assert namespace["SAM2_REPO"].is_relative_to(tmp_path / "data")
+    assert "SAM2 installed" in capsys.readouterr().out
+
+    shell.calls.clear()
+    monkeypatch.setattr(importlib.util, "find_spec", real_find_spec)
+    _run_cell(switched_on, namespace)
+    assert len(clones) == 1 and len(downloads) == 1
+
+
+def _markdown(cells: list[nbformat.NotebookNode]) -> str:
+    return "\n".join(c.source for c in cells if c.cell_type == "markdown")
+
+
+def _keywords(cells: list[nbformat.NotebookNode]) -> set[str]:
+    return {
+        keyword.arg
+        for node in _code_nodes(cells)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+    }
+
+
+def test_the_inference_notebook_shows_every_stage_on_the_demo(build):
+    import common
+
+    assert "04_inference" in common.COLAB_READY
+    cells = _generated("04_inference")
+    called = _called(cells)
+    attributes = {n.attr for n in _code_nodes(cells) if isinstance(n, ast.Attribute)}
+    # pitch geometry: the demo camera's calibration, and a keypoint model
+    # trained and run on synthetic frames
+    assert {"FisheyeUndistortion", "frame_to_pitch", "pitch_to_frame"} <= attributes
+    assert "yolo_pose" in _string_arguments(cells, "train")
+    assert {"synthetic_pitch_clip", "evaluate_homography"} <= called
+    # trackers scored against the clip's truth, teams, the pipeline's outputs
+    assert {"create_tracker", "evaluate_tracking", "fit_predict"} <= called
+    assert {"to_freeze_frames", "export", "save", "load", "track_ball"} <= called
+    assert {"fixed_homography", "undistortion", "keypoint_model"} <= _keywords(cells)
+    assert {"keep_masks"} <= _keywords(cells)
+
+
+def test_the_statsbomb_comparison_is_shown_not_run(build):
+    # No open source pairs footage with 360 data of the same match.
+    cells = _generated("04_inference")
+    assert "compare_with_statsbomb" not in _called(cells)
+    assert "load_statsbomb" not in _called(cells)
+    fenced = re.findall(r"```python\n(.*?)```", _markdown(cells), re.S)
+    assert any("compare_with_statsbomb" in block for block in fenced)
+    assert any("download_statsbomb" in block for block in fenced)

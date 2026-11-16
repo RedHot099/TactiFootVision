@@ -32,7 +32,13 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 RELEASE_TAG = "v0.3.0"
 # Notebooks that run on Colab, by name.
 COLAB_READY = frozenset(
-    {"00_overview", "01_data", "02_augmentation", "03_training_and_evaluation"}
+    {
+        "00_overview",
+        "01_data",
+        "02_augmentation",
+        "03_training_and_evaluation",
+        "04_inference",
+    }
 )
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
 _COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
@@ -100,6 +106,80 @@ DETECTOR_WEIGHTS, DETECTOR_IMGSZ, DETECTOR_EPOCHS = "yolo11s.pt", 1920, 10
 DEMO_DETECTOR = f"""
 training = tv.train("yolo", dataset, weights="{DETECTOR_WEIGHTS}", epochs={DETECTOR_EPOCHS}, batch_size=16,
                     imgsz={DETECTOR_IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
+"""
+
+# The RF-DETR guard: its cells run only where the `rfdetr` extra imports,
+# which Colab's runtime does not have. Defines `has_rfdetr`.
+RFDETR_GUARD = """
+try:
+    tv.utils.require_extra("rfdetr")
+    has_rfdetr = True
+except ImportError as error:
+    has_rfdetr = False
+    print(f"Skipping the RF-DETR cells: {error} in a local environment (on Colab it would downgrade numpy and transformers)")
+"""
+
+# SAM2 is not on PyPI: the SAM2 tracker imports it from a clone of the
+# real-time SAM2 repository and loads a checkpoint from the clone's
+# `checkpoints/`. The notebooks keep the clone in DATA, next to the demo, and
+# install it only when the reader asks: about a minute on Colab (a 60 MB
+# shallow clone, the 156 MB checkpoint and the `sam2` extra's two packages).
+# Defines SAM2_REPO, SAM2_CHECKPOINT and SAM2_CONFIG.
+SAM2_INSTALL = """
+INSTALL_SAM2 = False  # True installs SAM2 here, in about a minute
+
+SAM2_REPO = DATA / "segment-anything-2-real-time"
+SAM2_CHECKPOINT = SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt"
+SAM2_CONFIG = SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml"
+
+if INSTALL_SAM2:
+    import importlib.util
+    import subprocess
+    import time
+
+    import torch
+
+    started = time.perf_counter()
+    if importlib.util.find_spec("hydra") is None or importlib.util.find_spec("iopath") is None:
+        %pip install -q "tactifoot-vision[sam2]"
+    if not (SAM2_REPO / "sam2").is_dir():
+        subprocess.run(
+            ["git", "clone", "-q", "--depth", "1", "https://github.com/Gy920/segment-anything-2-real-time", str(SAM2_REPO)],
+            check=True,
+        )
+    if not SAM2_CHECKPOINT.is_file():
+        torch.hub.download_url_to_file(
+            "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt", str(SAM2_CHECKPOINT),
+            progress=False,
+        )
+    print(f"SAM2 installed in {SAM2_REPO} ({time.perf_counter() - started:.0f} s)")
+"""
+
+# The SAM2 guard, after SAM2_INSTALL: SAM2 cells run only where the clone, its
+# checkpoint and the `sam2` extra are present, on a GPU (the real-time
+# predictor moves frames to CUDA). Defines `has_sam2` and, with it,
+# `sam2_tracker`.
+SAM2_GUARD = """
+import importlib.util
+import warnings
+
+import torch
+
+if not SAM2_CHECKPOINT.is_file() or not all(importlib.util.find_spec(m) for m in ("hydra", "iopath")):
+    sam2_missing = "SAM2 is not installed: set INSTALL_SAM2 = True in the cell above, then run it and this one again"
+elif not torch.cuda.is_available():
+    sam2_missing = "SAM2 runs on a GPU only (Runtime, Change runtime type, T4 GPU)"
+else:
+    sam2_missing = None
+has_sam2 = sam2_missing is None
+if has_sam2:
+    # The clone's optional compiled extension is not built: SAM2 warns and
+    # uses its Python fallback, which is fine here.
+    warnings.filterwarnings("ignore", message="Falling back to the Python connected-components")
+    sam2_tracker = tv.tracking.create_tracker("sam2", checkpoint=SAM2_CHECKPOINT, config=SAM2_CONFIG)
+    print("SAM2 tracker ready:", type(sam2_tracker).__name__)
+else:
+    print(f"Skipping the SAM2 cells: {sam2_missing}")
 """
 
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}

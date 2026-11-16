@@ -7,6 +7,7 @@ from common import (
     DETECTOR_WEIGHTS,
     PITCH_TRAINING_DATASET,
     REPO_URL,
+    RFDETR_GUARD,
     Notebook,
 )
 
@@ -179,14 +180,7 @@ environment with the extra (`pip install "tactifoot-vision[rfdetr]"`, or
 `uv sync --extra rfdetr` in a checkout) runs them. The saved outputs of this
 notebook come from such a run.
 """)
-    nb.code("""
-try:
-    tv.utils.require_extra("rfdetr")
-    has_rfdetr = True
-except ImportError as error:
-    has_rfdetr = False
-    print(f"Skipping the RF-DETR cells: {error} in a local environment (on Colab it would downgrade numpy and transformers)")
-""")
+    nb.code(RFDETR_GUARD)
     nb.md("""
 Here the model is created first and trained with `Model.train`, the method
 form of the same call; afterwards the object holds the trained weights.
