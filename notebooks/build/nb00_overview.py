@@ -12,9 +12,6 @@ WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
 
 
 REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
-# The badge opens the notebook of the latest release, the package its first
-# cell installs; `master` may be ahead of it. A release moves it to its own tag.
-COLAB_URL = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb"
 
 
 def notebook() -> Notebook:
@@ -22,7 +19,7 @@ def notebook() -> Notebook:
     nb.md(f"""
 # TactiFoot Vision: from dataset to tactical map
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]({COLAB_URL})
+{nb.badge}
 
 `tactifoot_vision` turns football video into tactical data: who is where on
 the pitch, in which team, frame by frame. This notebook runs the whole
@@ -57,7 +54,7 @@ same steps exist as a command line (`tactifoot run`, `tactifoot train`,
 `tactifoot evaluate`), described under "Run files and the CLI" in
 [docs/ARCHITECTURE.md]({REPO_URL}/docs/ARCHITECTURE.md).
 """)
-    nb.setup(standalone=True)
+    nb.setup()
 
     nb.md("""
 ## 1. Data

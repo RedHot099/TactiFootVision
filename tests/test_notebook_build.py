@@ -175,20 +175,51 @@ def test_the_overview_notebook_needs_no_local_data_or_weights(build):
     assert not {"MODELS", "VIDEO"} & names
 
 
-def test_the_colab_links_open_the_overview_notebook_of_one_release():
+def _colab_ready_names() -> list[str]:
+    import common
+
+    return sorted(common.COLAB_READY)
+
+
+def test_the_colab_links_open_each_ready_notebook_at_one_release():
     # `master` may use API newer than the package the first cell installs, so
     # the badge opens the notebook as it was at a release (never an rc).
-    from nb00_overview import COLAB_URL  # the notebook's own badge
+    import common
+    from nb00_overview import notebook as overview
 
+    assert re.fullmatch(r"v\d+\.\d+\.\d+", common.RELEASE_TAG)
+    assert "00_overview" in common.COLAB_READY
     root = BUILD_DIR.parents[1]
-    link = re.fullmatch(
-        r"https://colab\.research\.google\.com/github/RedHot099/TactiFootVision"
-        r"/blob/v\d+\.\d+\.\d+/(notebooks/00_overview\.ipynb)",
-        COLAB_URL,
-    )
-    assert link, COLAB_URL
-    assert (root / link[1]).is_file()
+    for name in _colab_ready_names():
+        url = common.Notebook(name).colab_url
+        assert url == (
+            "https://colab.research.google.com/github/RedHot099/TactiFootVision"
+            f"/blob/{common.RELEASE_TAG}/notebooks/{name}.ipynb"
+        )
+        assert (root / "notebooks" / f"{name}.ipynb").is_file()
+        built = nbformat.read(root / "notebooks" / f"{name}.ipynb", as_version=4)
+        assert f"]({url})" in built.cells[0].source, name
+    # the README pages link the overview
+    url = overview().colab_url
     for page in ("README.md", "notebooks/README.md"):
-        assert f"]({COLAB_URL})" in (root / page).read_text(), page
-    built = nbformat.read(root / link[1], as_version=4)
-    assert f"]({COLAB_URL})" in built.cells[0].source
+        assert f"]({url})" in (root / page).read_text(), page
+    assert f"]({url})" in overview().cells[0].source
+
+
+def test_only_ready_notebooks_have_a_badge_and_a_standalone_first_cell():
+    import common
+
+    for name in ("00_overview", "01_data"):
+        nb = common.Notebook(name)
+        nb.setup()
+        ready = name in common.COLAB_READY
+        assert nb.colab_ready is ready
+        assert ("find_spec" in nb.cells[0].source) is ready
+
+
+def test_a_colab_ready_notebook_reads_no_local_data_or_weights():
+    # 01 to 05 still read local data until they are made Colab-ready.
+    forbidden = ("models/", "data/datasets", "data/keypoints", "external/")
+    for name in _colab_ready_names():
+        source = (BUILD_DIR / f"nb{name}.py").read_text()
+        assert not [f for f in forbidden if f in source], name

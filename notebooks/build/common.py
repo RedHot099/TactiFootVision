@@ -26,6 +26,14 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
     %pip install -q tactifoot-vision
 """
 
+# The release the Colab badges open: the notebooks as they were at this tag, the
+# package their first cell installs; `master` may be ahead of it. A release
+# moves it to its own tag (never an rc).
+RELEASE_TAG = "v0.3.0"
+COLAB_READY = frozenset({"00_overview"})  # notebooks that run on Colab, by name
+_COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
+_COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
+
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
 
@@ -38,6 +46,19 @@ class Notebook:
     def __init__(self, name: str) -> None:
         self.name = name
         self.cells: list[nbformat.NotebookNode] = []
+
+    @property
+    def colab_ready(self) -> bool:
+        return self.name in COLAB_READY
+
+    @property
+    def colab_url(self) -> str:
+        return f"{_COLAB_BASE}/{RELEASE_TAG}/notebooks/{self.name}.ipynb"
+
+    @property
+    def badge(self) -> str:
+        """The "Open in Colab" badge for the title cell of a Colab-ready notebook."""
+        return f"[![Open In Colab]({_COLAB_BADGE})]({self.colab_url})"
 
     @property
     def path(self) -> Path:
@@ -55,16 +76,20 @@ class Notebook:
         self.cells.append(cell)
 
     def setup(
-        self, imports: str = BASE_IMPORTS, body: str = "", standalone: bool = False
+        self,
+        imports: str = BASE_IMPORTS,
+        body: str = "",
+        standalone: bool | None = None,
     ) -> None:
         """The first code cell: imports, repository paths, logging and figure format.
 
         ``imports`` replaces the default import block (keep ``os``, ``Path`` and
         ``tv`` in it); ``body`` adds notebook-specific lines at the end. A
-        ``standalone`` notebook also runs outside a checkout, on Colab: the
-        cell installs the package when it is missing, and no path points at
-        local data or weights.
+        Colab-ready notebook (``standalone`` by default) also runs outside a
+        checkout: the cell installs the package when it is missing, and no
+        path points at local data or weights.
         """
+        standalone = self.colab_ready if standalone is None else standalone
         parts = [
             INSTALL if standalone else "",
             imports,
