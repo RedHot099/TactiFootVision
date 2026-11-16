@@ -272,7 +272,7 @@ def test_the_colab_links_open_each_ready_notebook_at_one_release():
 def test_only_ready_notebooks_have_a_badge_and_a_standalone_first_cell():
     import common
 
-    for name in ("00_overview", "05_visualisation"):
+    for name in ("00_overview", "99_draft"):
         nb = common.Notebook(name)
         nb.setup()
         ready = name in common.COLAB_READY
@@ -413,7 +413,7 @@ def test_without_the_rfdetr_extra_one_line_says_how_to_run_its_cells(
     assert 'pip install "tactifoot-vision[rfdetr]"' in lines[0]
 
 
-SAM2_NOTEBOOKS = ["04_inference"]
+SAM2_NOTEBOOKS = ["04_inference", "05_visualisation"]
 
 
 def _sam2_cells(name: str) -> tuple[str, str, list[str]]:
@@ -577,3 +577,85 @@ def test_the_statsbomb_comparison_is_shown_not_run(build):
     fenced = re.findall(r"```python\n(.*?)```", _markdown(cells), re.S)
     assert any("compare_with_statsbomb" in block for block in fenced)
     assert any("download_statsbomb" in block for block in fenced)
+
+
+def test_the_visualisation_notebook_shows_every_annotator_style_and_flag(build):
+    import inspect
+
+    import common
+
+    from tactifoot_vision.enums import AnnotatorStyle
+    from tactifoot_vision.viz import FrameAnnotator
+
+    assert "05_visualisation" in common.COLAB_READY
+    cells = _generated("05_visualisation")
+    options = set(inspect.signature(FrameAnnotator).parameters) - {"pitch"}
+    assert options <= _keywords(cells)
+    assert {s.value for s in AnnotatorStyle} <= _strings(cells)
+    assert {
+        "PitchRadar",
+        "draw_points",
+        "overlay",
+        "render_video",
+        "plot_heatmap",
+        "plot_tracks",
+        "plot_distance_histogram",
+        "draw_pitch",
+        "show",
+    } <= _called(cells)
+    # the pipeline on the demo clip, as in 04_inference
+    assert {"fixed_homography", "undistortion"} <= _keywords(cells)
+
+
+def _strings(cells: list[nbformat.NotebookNode]) -> set[str]:
+    return {
+        node.value
+        for node in _code_nodes(cells)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
+def _function(call: ast.Call) -> str | None:
+    func = call.func
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+
+
+def _draws_pitch_lines(annotator: ast.Call) -> bool:
+    return not any(
+        keyword.arg == "draw_pitch_lines"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value is False
+        for keyword in annotator.keywords
+    )
+
+
+def test_the_visualisation_notebook_draws_pitch_lines_only_on_the_undistorted_frame(
+    build,
+):
+    # The demo homography holds in the undistorted image: on the fisheye frame
+    # as recorded its straight lines would miss the curved painted ones.
+    nodes = _code_nodes(_generated("05_visualisation"))
+    calls = [node for node in nodes if isinstance(node, ast.Call)]
+    annotators = [call for call in calls if _function(call) == "FrameAnnotator"]
+    named = {
+        target.id: node.value
+        for node in nodes
+        if isinstance(node, ast.Assign)
+        and any(node.value is annotator for annotator in annotators)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    drawn_on = []
+    for call in calls:
+        if _function(call) == "annotate":
+            receiver = call.func.value
+            annotator = (
+                named[receiver.id] if isinstance(receiver, ast.Name) else receiver
+            )
+            assert _function(annotator) == "FrameAnnotator", ast.unparse(call)
+            if _draws_pitch_lines(annotator):
+                drawn_on.append(ast.unparse(call.args[0]))
+        if _function(call) == "render_video":
+            (annotator,) = [k.value for k in call.keywords if k.arg == "annotator"]
+            assert not _draws_pitch_lines(annotator), ast.unparse(call)
+    assert drawn_on and set(drawn_on) == {"undistorted"}

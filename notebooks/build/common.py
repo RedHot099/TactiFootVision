@@ -38,6 +38,7 @@ COLAB_READY = frozenset(
         "02_augmentation",
         "03_training_and_evaluation",
         "04_inference",
+        "05_visualisation",
     }
 )
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
