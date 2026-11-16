@@ -259,14 +259,12 @@ def test_the_colab_links_open_each_notebook_at_one_release():
     assert f"]({url})" in overview().cells[0].source
 
 
-def test_the_readme_badges_sit_under_the_video(build):
+def test_the_readme_opens_with_its_badges(build):
     from nb00_overview import notebook as overview
 
     lines = (BUILD_DIR.parents[1] / "README.md").read_text().splitlines()
-    video = next(i for i, line in enumerate(lines) if "tactifoot_promo" in line)
-    # one paragraph, one badge per line, right after the video
-    row = lines[video + 2 :]
-    badges = "\n".join(row[: row.index("")])
+    # one paragraph, one badge per line, first thing on the page
+    badges = "\n".join(lines[: lines.index("")])
     expected = [
         overview().colab_url,
         "https://img.shields.io/pypi/v/tactifoot-vision",
