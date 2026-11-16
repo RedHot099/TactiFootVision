@@ -9,11 +9,17 @@ from tactifoot_vision.data import (
     LabelledClip,
     Truth,
     VideoReader,
+    broadcast_homographies,
     synthetic_pitch_clip,
 )
 from tactifoot_vision.evaluation import evaluate_homography
 from tactifoot_vision.pipeline import FrameResult, PipelineResult
-from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch, pitch_to_frame
+from tactifoot_vision.pitch import (
+    HomographyEstimator,
+    SoccerPitch,
+    frame_to_pitch,
+    pitch_to_frame,
+)
 
 FRAME = (320, 180)
 
@@ -203,3 +209,100 @@ def test_invalid_arguments_are_refused(tmp_path, homographies, options, message)
     with pytest.raises(ValueError, match=message):
         synthetic_pitch_clip(tmp_path / "x.mp4", homographies, **options)
     assert not (tmp_path / "x.mp4").exists()
+
+
+def test_an_image_sequence_path_writes_one_image_per_frame_from_0(tmp_path):
+    # Frames with a file of their own, so a dataset can reference them in place.
+    cameras = [_camera(pan) for pan in (0, 1, 2)]
+    pattern = tmp_path / "pan" / "%06d.png"
+
+    clip = synthetic_pitch_clip(pattern, cameras, FRAME, line_width=0.4)
+
+    assert (clip.name, clip.video_path) == ("pan", pattern)
+    assert sorted(p.name for p in pattern.parent.iterdir()) == [
+        f"{n:06d}.png" for n in range(3)
+    ]
+    video = VideoReader(pattern)
+    assert (video.size, video.frame_count) == (FRAME, 3)
+    # Lossless: the same pixels as the video's first frame, but for its codec.
+    video_clip = synthetic_pitch_clip(
+        tmp_path / "pan.mp4", cameras, FRAME, line_width=0.4
+    )
+    image, encoded = (
+        cv2.imread(str(pattern.parent / "000000.png")),
+        _frames(video_clip)[0],
+    )
+    assert np.abs(image.astype(int) - encoded).mean() < 3
+
+
+def test_an_image_sequence_with_images_beyond_the_new_frames_is_refused(tmp_path):
+    # A longer earlier render would leave frames the new clip does not label.
+    pattern = tmp_path / "pan" / "%06d.png"
+    synthetic_pitch_clip(pattern, [_camera(pan) for pan in (0, 1, 2)], FRAME)
+
+    with pytest.raises(ValueError, match="000002.png"):
+        synthetic_pitch_clip(pattern, [_camera(pan) for pan in (0, 1)], FRAME)
+    # The same length again overwrites its images.
+    synthetic_pitch_clip(pattern, [_camera(pan) for pan in (3, 4, 5)], FRAME)
+
+
+# ----------------------------------------------------- broadcast camera views
+def _centres(homographies, frame=FRAME):
+    centre = np.array([frame]) / 2
+    return np.array([frame_to_pitch(centre, h)[0] for h in homographies])
+
+
+def test_broadcast_homographies_follow_the_seed():
+    first = broadcast_homographies(5, FRAME, seed=1)
+    again = broadcast_homographies(5, FRAME, seed=1)
+    other = broadcast_homographies(5, FRAME, seed=2)
+
+    assert len(first) == 5 and all(h.shape == (3, 3) for h in first)
+    np.testing.assert_array_equal(np.stack(first), np.stack(again))
+    assert not np.allclose(np.stack(first), np.stack(other))
+
+
+def test_every_broadcast_view_has_the_frame_centre_on_the_pitch(tmp_path):
+    homographies = broadcast_homographies(200, FRAME, seed=0)
+
+    centres = _centres(homographies)
+    assert ((centres >= 0) & (centres <= [105, 68])).all()
+    # The renderer's precondition: it renders them all without complaint.
+    synthetic_pitch_clip(tmp_path / "views.mp4", homographies[:3], FRAME)
+
+
+def test_broadcast_views_look_across_from_one_touchline_and_pan_tilt_and_zoom():
+    homographies = broadcast_homographies(200, FRAME, seed=0)
+    width, height = FRAME
+
+    centres = _centres(homographies)
+    # Pan along the whole length; tilt from the near touchline into the far
+    # half (the far touchline itself stays above the centre, in view).
+    assert centres[:, 0].min() < 15 and centres[:, 0].max() > 90
+    assert centres[:, 1].min() < 25 and centres[:, 1].max() > 60
+    for h in homographies:
+        # As a main broadcast camera sees it: the touchline y = 68 is nearest
+        # the bottom of the frame, and x grows to the right.
+        middle = frame_to_pitch(
+            [[width / 2, height / 2], [width / 2, height], [width * 0.6, height / 2]],
+            h,
+        )
+        assert middle[1, 1] > middle[0, 1]
+        assert middle[2, 0] > middle[0, 0]
+    # Zoom: from wide views to close ones.
+    spans = [
+        np.linalg.norm(
+            np.subtract(*frame_to_pitch([[0, height / 2], [width, height / 2]], h))
+        )
+        for h in homographies
+    ]
+    assert min(spans) < 20 and max(spans) > 50
+
+
+@pytest.mark.parametrize(
+    ("count", "frame_size", "message"),
+    [(0, FRAME, "count"), (1, (0, 180), "frame_size")],
+)
+def test_broadcast_homographies_refuse_invalid_arguments(count, frame_size, message):
+    with pytest.raises(ValueError, match=message):
+        broadcast_homographies(count, frame_size)

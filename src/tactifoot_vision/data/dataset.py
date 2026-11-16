@@ -5,6 +5,7 @@ import numbers
 import random
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 
 import cv2
@@ -12,10 +13,13 @@ import numpy as np
 import pandas as pd
 
 from tactifoot_vision.data._files import clipped_box
-from tactifoot_vision.data.annotations import Annotations, Task
+from tactifoot_vision.data.annotations import VISIBLE, Annotations, Task
 from tactifoot_vision.data.labelled_clip import LabelledClip, Truth
 from tactifoot_vision.data.video import sequence_images
 from tactifoot_vision.enums import DetectionKey, LinkMode, ObjectKind, Role, Split
+from tactifoot_vision.pitch.homography import frame_to_pitch
+from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.projection import project_points
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,8 @@ logger = logging.getLogger(__name__)
 _CLIP_CLASSES = tuple(
     kind.value for kind in (Role.PLAYER, Role.GOALKEEPER, Role.REFEREE, ObjectKind.BALL)
 )
+# The one class of a pitch keypoint dataset from labelled clips.
+_PITCH_CLASS = "pitch"
 # OpenCV's image-sequence reader only finds a first image numbered 0 to 4.
 _LAST_FIRST_IMAGE = 4
 
@@ -128,30 +134,50 @@ class Dataset:
         valid: float = 0.2,
         test: float = 0.0,
         seed: int = 0,
+        task: Task | str = Task.DETECT,
     ) -> "Dataset":
-        """Detection dataset of the frames of labelled clips, split per clip.
+        """Detection or pitch keypoint dataset of the frames of labelled clips, split per clip.
 
         The fractions count clips, not frames, and are rounded as in
         :meth:`resplit`: every frame of a clip lands in the clip's split, so
-        adjacent frames never sit on both sides of a split. Each frame with a
-        box becomes a sample whose image is that frame's file of the clip's
-        image sequence, referenced in place; a frame without one is left
-        out, since a clip cannot tell an empty frame from an unlabelled one.
-        The images must be one per frame, numbered without a gap, the
+        adjacent frames never sit on both sides of a split. Each labelled
+        frame becomes a sample whose image is that frame's file of the
+        clip's image sequence, referenced in place.
+
+        ``task="detect"`` labels the clips' box truth. A frame without a box
+        is left out, since a clip cannot tell an empty frame from an
+        unlabelled one.
+
+        ``task="pose"`` labels the clips' calibration truth: each calibrated
+        frame becomes one ``pitch`` object whose 32 keypoints are the
+        :class:`~tactifoot_vision.pitch.SoccerPitch` vertices mapped into
+        the frame through the inverse of its frame -> pitch homography
+        (which must use the default pitch's units, as every reader gives
+        it). A vertex outside the frame, or beyond the horizon (on the far
+        side from the frame centre), is not labelled (``0 0 0``). The box
+        holds the part of the frame that shows the pitch; ``flip_idx`` is
+        the pitch's. A frame without calibration is left out, and so is one
+        that shows no pitch. A clip without calibration truth is refused.
+
+        For both tasks the images must be one per frame, numbered without a gap, the
         lowest-numbered being frame 0 as :class:`VideoReader` reads them; its
         number must be 0 to 4, the first numbers OpenCV looks for. The
         SoccerNet readers number from 1 (image ``n`` is frame ``n - 1``), so
         a SoccerNet folder that also holds an image 0 is refused rather than
-        read one frame off. Boxes are clipped to the image. A clip without a
-        boxed frame still takes a clip's share of its split, with a warning. Classes are ``player``,
-        ``goalkeeper``, ``referee`` and ``ball``. A clip without box truth or
-        with another class, one read from a video file (its frames have no
-        file of their own; extract them first), a missing or extra image and
-        the same clip passed twice are ``ValueError``, as is no clip at all.
+        read one frame off; :func:`synthetic_pitch_clip` writes such a
+        sequence when given a pattern. Detection boxes are clipped to the
+        image. A clip without a labelled frame still takes a clip's share of its
+        split, with a warning. Detection classes are ``player``,
+        ``goalkeeper``, ``referee`` and ``ball``. A clip without the task's
+        truth, one with another detection class, one read from a video file
+        (its frames have no file of their own; extract them first), a
+        missing or extra image and the same clip passed twice are
+        ``ValueError``, as is no clip at all.
         """
+        task = Task.parse(task, "task")
         clips = [clips] if isinstance(clips, LabelledClip) else list(clips)
         if not clips:
-            raise ValueError("A detection dataset from clips needs at least one clip")
+            raise ValueError("A dataset from clips needs at least one clip")
         seen: set[Path] = set()
         for clip in clips:
             # Resolved, so one sequence reached by two paths is caught too.
@@ -162,22 +188,35 @@ class Dataset:
                     "frames could land in two splits"
                 )
             seen.add(images)
-        pairs = [(clip, _clip_samples(clip)) for clip in clips]
+        pitch = SoccerPitch()
+        make_samples = (
+            _clip_samples
+            if task is Task.DETECT
+            else partial(_pitch_samples, pitch=pitch)
+        )
+        pairs = [(clip, make_samples(clip)) for clip in clips]
         for clip, samples in pairs:
             if not samples:
                 logger.warning(
-                    "Clip %s has no frame with a box; it makes no sample but "
+                    "Clip %s has no frame with %s; it makes no sample but "
                     "still counts as a clip in the split fractions",
                     clip.name,
+                    "a box" if task is Task.DETECT else "the pitch in view",
                 )
-        splits = _split_by_fractions(pairs, train, valid, test, seed)
+        splits = {
+            split: [sample for _, samples in members for sample in samples]
+            for split, members in _split_by_fractions(
+                pairs, train, valid, test, seed
+            ).items()
+        }
+        if task is Task.DETECT:
+            return cls(task=task, class_names=list(_CLIP_CLASSES), splits=splits)
         return cls(
-            task=Task.DETECT,
-            class_names=list(_CLIP_CLASSES),
-            splits={
-                split: [sample for _, samples in members for sample in samples]
-                for split, members in splits.items()
-            },
+            task=task,
+            class_names=[_PITCH_CLASS],
+            splits=splits,
+            num_keypoints=pitch.num_keypoints,
+            flip_idx=pitch.flip_idx,
         )
 
     # ------------------------------------------------------------------- access
@@ -350,6 +389,84 @@ def _clip_samples(clip: LabelledClip) -> list[Sample]:
             annotations = Annotations(np.array(boxes), class_ids)
             samples.append(Sample(image, clip.width, clip.height, annotations))
     return samples
+
+
+def _pitch_samples(clip: LabelledClip, pitch: SoccerPitch) -> list[Sample]:
+    """One ``pitch`` sample per calibrated frame of ``clip`` that shows the pitch."""
+    if Truth.CALIBRATION not in clip.truth:
+        raise ValueError(
+            f"Clip {clip.name} has no {Truth.CALIBRATION.value} truth, so it makes "
+            "no pitch keypoint samples"
+        )
+    frame_size = (clip.width, clip.height)
+    centre = (clip.width / 2, clip.height / 2)
+    samples = []
+    for frame, image in zip(clip.frames, _frame_images(clip), strict=True):
+        if frame.homography is None:
+            continue
+        box = _pitch_box(frame.homography, frame_size, pitch)
+        if box is None:
+            continue
+        # The frame centre's pitch point lies on the visible side of the horizon.
+        front = frame_to_pitch(np.array([centre]), frame.homography)[0]
+        xy, in_front = project_points(
+            pitch.vertices, np.linalg.inv(frame.homography), tuple(front)
+        )
+        shown = in_front & ((xy >= 0) & (xy <= frame_size)).all(axis=1)
+        keypoints = np.zeros((pitch.num_keypoints, 3), np.float32)
+        keypoints[shown, :2] = xy[shown]
+        keypoints[shown, 2] = VISIBLE
+        annotations = Annotations(
+            box[None], [0], keypoints=keypoints[None], flip_idx=pitch.flip_idx
+        )
+        samples.append(Sample(image, clip.width, clip.height, annotations))
+    return samples
+
+
+def _pitch_box(
+    homography: np.ndarray, frame_size: tuple[int, int], pitch: SoccerPitch
+) -> np.ndarray | None:
+    """``xyxy`` bounds of the part of the frame that shows ``pitch``, or ``None`` when none does.
+
+    The pitch rectangle is cut at the horizon, mapped into the frame and cut
+    to the frame; all three are convex, so the cuts are exact.
+    """
+    width, height = frame_size
+    to_frame = np.linalg.inv(homography)
+    centre = homography @ [width / 2, height / 2, 1]
+    # w of a pitch point in the frame, positive on the frame centre's side.
+    w = to_frame[2] * np.sign(to_frame[2] @ (centre / centre[2]))
+    corners = np.array(
+        [[0, 0], [pitch.length, 0], [pitch.length, pitch.width], [0, pitch.width]]
+    )
+    # Just short of the horizon, where frame coordinates grow without bound.
+    margin = 1e-6 * (w @ np.append(centre[:2] / centre[2], 1))
+    polygon = _cut(corners, w[0], w[1], w[2] - margin)
+    if len(polygon) == 0:
+        return None
+    projected = np.column_stack([polygon, np.ones(len(polygon))]) @ to_frame.T
+    polygon = projected[:, :2] / projected[:, 2:]
+    for a, b, c in ((1, 0, 0), (-1, 0, width), (0, 1, 0), (0, -1, height)):
+        polygon = _cut(polygon, a, b, c)
+        if len(polygon) == 0:
+            return None
+    return np.concatenate([polygon.min(axis=0), polygon.max(axis=0)])
+
+
+def _cut(polygon: np.ndarray, a: float, b: float, c: float) -> np.ndarray:
+    """The part of a convex ``(N, 2)`` polygon where ``a x + b y + c >= 0`` (Sutherland-Hodgman)."""
+    values = polygon @ [a, b] + c
+    kept = []
+    for i, (point, value) in enumerate(zip(polygon, values, strict=True)):
+        following, next_value = (
+            polygon[(i + 1) % len(polygon)],
+            values[(i + 1) % len(values)],
+        )
+        if value >= 0:
+            kept.append(point)
+        if (value >= 0) != (next_value >= 0):
+            kept.append(point + value / (value - next_value) * (following - point))
+    return np.array(kept).reshape(-1, 2)
 
 
 def _frame_images(clip: LabelledClip) -> list[Path]:

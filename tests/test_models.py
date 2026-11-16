@@ -899,6 +899,54 @@ def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypat
 
 
 @pytest.mark.model
+def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
+    tmp_path, monkeypatch
+):
+    # Open data only: the notebooks train their pitch model this way. About
+    # two minutes on a desktop GPU, starting from the default COCO pose weights.
+    monkeypatch.chdir(tmp_path)
+    size = (640, 360)
+    clips = [
+        tv.data.synthetic_pitch_clip(
+            tmp_path / "clips" / f"views-{seed}" / "%06d.jpg",
+            tv.data.broadcast_homographies(40, size, seed=seed),
+            size,
+            line_width=0.25,
+            noise=4,
+            occluders=3,
+            seed=seed,
+        )
+        for seed in range(6)
+    ]
+    dataset = tv.Dataset.from_clips(
+        clips, train=0.66, valid=0.17, test=0.17, task="pose"
+    )
+    assert {s: len(dataset[s]) for s in dataset.split_names} == {
+        "train": 160,
+        "valid": 40,
+        "test": 40,
+    }
+
+    result = tv.train(
+        "yolo_pose",
+        dataset,
+        epochs=30,
+        batch_size=16,
+        imgsz=640,
+        workers=2,
+        output_dir=tmp_path / "runs",
+        amp=False,  # the AMP check would download yolo11n.pt
+        plots=False,
+    )
+    # The test clip took no part in training or in picking the best epoch.
+    metrics = tv.evaluate(result.load(conf=0.05), dataset, "test")
+
+    assert metrics.num_images == 40
+    assert metrics.detection_rate > 0
+    assert metrics.pck > 0
+
+
+@pytest.mark.model
 def test_train_rfdetr_for_one_epoch(
     football, rfdetr_coco_weights, tmp_path, monkeypatch
 ):

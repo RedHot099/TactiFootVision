@@ -11,7 +11,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # The frame number in an OpenCV image-sequence pattern: %d, %6d, %06d.
-_FRAME_NUMBER = re.compile(r"%0?\d*d")
+FRAME_NUMBER = re.compile(r"%0?\d*d")
 
 
 class VideoReader:
@@ -120,7 +120,7 @@ def sequence_images(pattern: Path) -> list[tuple[int, Path]]:
 
     A path that is a file, or has no single frame number, is a ``ValueError``.
     """
-    parts = _FRAME_NUMBER.split(pattern.name)
+    parts = FRAME_NUMBER.split(pattern.name)
     if len(parts) != 2 or pattern.is_file():
         raise ValueError(f"{pattern} is not an image-sequence pattern such as %06d.jpg")
     if not pattern.parent.is_dir():

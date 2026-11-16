@@ -1,7 +1,7 @@
-"""Synthetic labelled clip: pitch markings rendered through known homographies."""
+"""Synthetic labelled clip: pitch markings rendered through known homographies, and broadcast camera views to render."""
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import cv2
@@ -9,12 +9,14 @@ import numpy as np
 import supervision as sv
 
 from tactifoot_vision.data.labelled_clip import LabelledClip, LabelledFrame, Truth
+from tactifoot_vision.data.video import FRAME_NUMBER, sequence_images
 from tactifoot_vision.pitch.pitch import (
     _STD_LENGTH,
     _STD_WIDTH,
     SoccerPitch,
     pitch_markings,
 )
+from tactifoot_vision.pitch.projection import project_points
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,13 @@ def synthetic_pitch_clip(
     scores any estimator against exact truth.
 
     Args:
-        path: the video file to write (MPEG-4); the clip is named after its stem.
+        path: the video file to write (MPEG-4), named after its stem, or an
+            OpenCV image-sequence pattern such as ``views/%06d.png``, named
+            after its folder: image ``n`` is frame ``n``, so
+            :meth:`~tactifoot_vision.data.Dataset.from_clips` can reference
+            the frames in place. A folder that already holds images of the
+            pattern numbered beyond the new frames is refused; images of
+            the new frames' numbers are overwritten.
         homographies: one 3x3 frame -> pitch homography per frame, in the
             units of ``pitch``, taking frame coordinates where pixel ``i``
             covers ``[i, i + 1)``. The frame centre must show the pitch: it
@@ -73,30 +81,31 @@ def synthetic_pitch_clip(
     pitch = pitch or SoccerPitch()
     homographies = [np.array(h, dtype=float) for h in homographies]
     _check_arguments(homographies, frame_size, fps, line_width, noise, occluders)
+    sequence = _is_sequence(path)
+    if sequence:
+        _check_no_later_images(path, len(homographies))
     texture, pitch_to_texture = _pitch_texture(pitch, line_width)
     rng = np.random.default_rng(seed)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    width, height = frame_size
-    writer = cv2.VideoWriter(
-        str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"OpenCV cannot write {path}")
-    try:
+    def images() -> Iterator[np.ndarray]:
         for homography in homographies:
             image = _render_frame(texture, pitch_to_texture @ homography, frame_size)
             for _ in range(occluders):
                 _draw_occluder(image, rng)
             if noise:
                 image = np.clip(image + rng.normal(0, noise, image.shape), 0, 255)
-            writer.write(np.round(image).astype(np.uint8))
-    finally:
-        writer.release()
+            yield np.round(image).astype(np.uint8)
 
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if sequence:
+        _write_images(path, images())
+    else:
+        _write_video(path, images(), fps, frame_size)
+
+    width, height = frame_size
     empty = sv.Detections.empty()
     clip = LabelledClip(
-        name=path.stem,
+        name=path.parent.name if sequence else path.stem,
         video_path=path,
         fps=float(fps),
         width=width,
@@ -109,6 +118,141 @@ def synthetic_pitch_clip(
     )
     logger.info("Wrote synthetic clip %s: %d frames", path, len(homographies))
     return clip
+
+
+def broadcast_homographies(
+    count: int, frame_size: tuple[int, int] = (1280, 720), *, seed: int = 0
+) -> list[np.ndarray]:
+    """Frame -> pitch homographies of ``count`` random views of a broadcast camera.
+
+    Each view is a main broadcast camera's, drawn independently: it stands
+    10 to 35 m behind the touchline ``y = 68`` and 15 to 30 m above the
+    ground, within 10 m of the halfway line, pans and tilts to aim the frame
+    centre at a point of the pitch, zooms between a horizontal field of view
+    of 15 and 60 degrees, and rolls by at most 2 degrees. That touchline is
+    nearest the bottom of the frame and ``x`` grows to the right, as in the
+    pitch keypoint dataset. The frame centre always shows the pitch, as
+    :func:`synthetic_pitch_clip` needs, and so does the middle of the frame a
+    quarter of the way down: like an operator's, a view towards the far side
+    is zoomed in rather than showing mostly stands, and the centre stays
+    short of the far touchline. The same arguments give the same views.
+
+    Args:
+        count: how many views.
+        frame_size: ``(width, height)`` of the frames, in pixels.
+        seed: seeds the views.
+
+    Returns:
+        ``count`` 3x3 frame -> pitch homographies onto the default
+        ``SoccerPitch`` (105 x 68 m), frame pixel ``i`` covering ``[i, i + 1)``.
+    """
+    width, height = frame_size
+    if count < 1:
+        raise ValueError(f"count must be >= 1, got {count}")
+    if width <= 0 or height <= 0:
+        raise ValueError(f"frame_size must be positive, got {width} x {height}")
+    rng = np.random.default_rng(seed)
+    homographies: list[np.ndarray] = []
+    while len(homographies) < count:
+        camera = np.array(
+            [
+                _STD_LENGTH / 2 + rng.uniform(-10, 10),
+                _STD_WIDTH + rng.uniform(10, 35),
+                -rng.uniform(15, 30),  # z points down, into the ground
+            ]
+        )
+        target = np.array(
+            [rng.uniform(0, _STD_LENGTH), rng.uniform(0, _STD_WIDTH), 0.0]
+        )
+        field_of_view = np.radians(rng.uniform(15, 60))
+        roll = np.radians(rng.uniform(-2, 2))
+        homography = _view(camera, target, field_of_view, roll, frame_size)
+        # An operator zooms in on the far side rather than film the stands.
+        upper, in_front = project_points(
+            [[width / 2, height / 4]], homography, (width / 2, height / 2)
+        )
+        on_pitch = (upper[0] >= 0) & (upper[0] <= [_STD_LENGTH, _STD_WIDTH])
+        if in_front[0] and on_pitch.all():
+            homographies.append(homography)
+    return homographies
+
+
+def _view(
+    camera: np.ndarray,
+    target: np.ndarray,
+    field_of_view: float,
+    roll: float,
+    frame_size: tuple[int, int],
+) -> np.ndarray:
+    """Frame -> pitch homography of a pinhole camera at ``camera`` aimed at ``target``.
+
+    Pitch space is ``(x, y, z)`` with ``z`` down, so it is right-handed and
+    the camera's image axes (right, down, forward) need no mirror.
+    """
+    forward = (target - camera) / np.linalg.norm(target - camera)
+    right = np.cross([0.0, 0.0, 1.0], forward)
+    right /= np.linalg.norm(right)
+    down = np.cross(forward, right)
+    right, down = (
+        np.cos(roll) * right + np.sin(roll) * down,
+        np.cos(roll) * down - np.sin(roll) * right,
+    )
+    rotation = np.stack([right, down, forward])
+    width, height = frame_size
+    focal = width / 2 / np.tan(field_of_view / 2)
+    intrinsics = np.array([[focal, 0, width / 2], [0, focal, height / 2], [0, 0, 1]])
+    # Ground points (x, y, 0, 1) -> frame: the x, y and translation columns.
+    pitch_to_frame = (
+        intrinsics @ rotation @ np.column_stack([[1.0, 0, 0], [0, 1.0, 0], -camera])
+    )
+    frame_to_pitch = np.linalg.inv(pitch_to_frame)
+    # Scaled so the frame centre, which shows target, has w = 1.
+    return frame_to_pitch / (frame_to_pitch[2] @ [width / 2, height / 2, 1])
+
+
+def _is_sequence(path: Path) -> bool:
+    """Whether ``path`` is an image-sequence pattern rather than a video file."""
+    try:
+        sequence_images(path)
+    except ValueError:
+        return False
+    return True
+
+
+def _check_no_later_images(pattern: Path, count: int) -> None:
+    """Refuse a folder holding images of ``pattern`` the new frames would not overwrite."""
+    stale = [path for number, path in sequence_images(pattern) if number >= count]
+    if stale:
+        raise ValueError(
+            f"{stale[0]} is beyond the {count} frames to write to {pattern}; "
+            "remove it, or write to another folder, so the sequence holds only "
+            "the new frames"
+        )
+
+
+def _write_images(pattern: Path, images: Iterator[np.ndarray]) -> None:
+    """Image ``n`` of ``images`` to ``pattern`` numbered ``n``."""
+    prefix, suffix = FRAME_NUMBER.split(pattern.name)  # one number: _is_sequence
+    number = pattern.name[len(prefix) : len(pattern.name) - len(suffix)]
+    for index, image in enumerate(images):
+        name = prefix + number % index + suffix
+        if not cv2.imwrite(str(pattern.parent / name), image):
+            raise RuntimeError(f"OpenCV cannot write {pattern.parent / name}")
+
+
+def _write_video(
+    path: Path, images: Iterator[np.ndarray], fps: float, frame_size: tuple[int, int]
+) -> None:
+    writer = cv2.VideoWriter(
+        str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"OpenCV cannot write {path}")
+    try:
+        for image in images:
+            writer.write(image)
+    finally:
+        writer.release()
 
 
 def _check_arguments(
