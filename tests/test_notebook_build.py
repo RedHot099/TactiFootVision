@@ -259,12 +259,13 @@ def test_the_colab_links_open_each_notebook_at_one_release():
     assert f"]({url})" in overview().cells[0].source
 
 
-def test_the_readme_opens_with_its_badges(build):
+def test_the_readme_badges_sit_under_the_title(build):
     from nb00_overview import notebook as overview
 
     lines = (BUILD_DIR.parents[1] / "README.md").read_text().splitlines()
-    # one paragraph, one badge per line, first thing on the page
-    badges = "\n".join(lines[: lines.index("")])
+    # one paragraph, one badge per line, right under the title
+    assert lines[0] == "# TactiFoot Vision" and lines[1] == ""
+    badges = "\n".join(lines[2 : lines.index("", 2)])
     expected = [
         overview().colab_url,
         "https://img.shields.io/pypi/v/tactifoot-vision",

@@ -1,11 +1,11 @@
+# TactiFoot Vision
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
 [![PyPI](https://img.shields.io/pypi/v/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
 [![Python](https://img.shields.io/pypi/pyversions/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
 [![License](https://img.shields.io/pypi/l/tactifoot-vision)](https://github.com/RedHot099/TactiFootVision/blob/master/LICENSE)
 [![CI](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-
-# TactiFoot Vision
 
 ![TactiFoot Vision on one attacking move](https://raw.githubusercontent.com/RedHot099/TactiFootVision/master/docs/media/tactifoot_promo.avif)
 
