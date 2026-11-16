@@ -72,6 +72,7 @@ import pandas as pd
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import DetectionKey, EmbedderType, ModelType, ObjectKind, Resize, Role, Split, Task, TrackerType
 """
     )
 
@@ -110,7 +111,7 @@ and RF-DETR are interchangeable. Supervision's annotators draw them directly.
 detector = training.load(conf=0.3)
 frame = video.read(100)
 detections = detector(frame)
-print(f"{len(detections)} objects", dict(Counter(detections.data["class_name"].tolist())))
+print(f"{len(detections)} objects", dict(Counter(detections.data[DetectionKey.CLASS_NAME].tolist())))
 annotated = sv.BoxAnnotator(thickness=2).annotate(frame.copy(), detections)
 tv.show(annotated, width=16)
 """)
@@ -138,11 +139,11 @@ if has_rfdetr:
     # about a meshgrid argument inside RF-DETR; both are benign here.
     logging.getLogger("rfdetr.detr").addFilter(lambda record: "not optimized for inference" not in record.getMessage())
     warnings.filterwarnings("ignore", message="torch.meshgrid")
-    rfdetr = tv.load_model("rfdetr", size="base", conf=0.5)  # weights=None: the COCO weights
+    rfdetr = tv.load_model(ModelType.RFDETR, size="base", conf=0.5)  # weights=None: the COCO weights
     found = rfdetr(frame[window])
-    print("RF-DETR (COCO weights):", dict(Counter(found.data["class_name"].tolist())))
+    print("RF-DETR (COCO weights):", dict(Counter(found.data[DetectionKey.CLASS_NAME].tolist())))
     view = sv.BoxAnnotator(thickness=1).annotate(frame[window].copy(), found)
-    views.append(sv.LabelAnnotator(text_scale=0.4).annotate(view, found, labels=list(found.data["class_name"])))
+    views.append(sv.LabelAnnotator(text_scale=0.4).annotate(view, found, labels=list(found.data[DetectionKey.CLASS_NAME])))
     titles.append("RF-DETR with COCO weights, run on this window")
 tv.show(views, titles=titles, cols=1, width=10)
 """)
@@ -183,7 +184,7 @@ with np.load(demo.calibration) as calibration:
 feet = detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 on_pitch = tv.pitch.frame_to_pitch(undistortion.points(feet), homography)
 pd.DataFrame(on_pitch, columns=["x (m)", "y (m)"]).assign(
-    class_name=detections.data["class_name"]).head().round(1)
+    class_name=detections.data[DetectionKey.CLASS_NAME]).head().round(1)
 """)
     nb.md("""
 `pitch_to_frame` goes the other way. In the undistorted frame the pitch's
@@ -223,7 +224,7 @@ print(pitch_data)
 """)
     nb.code(
         f"""
-pose_run = tv.train("yolo_pose", pitch_data, weights="yolov8n-pose.pt", epochs={PITCH_EPOCHS}, batch_size=16,
+pose_run = tv.train(ModelType.YOLO_POSE, pitch_data, weights="yolov8n-pose.pt", epochs={PITCH_EPOCHS}, batch_size=16,
                     mosaic=0.0, output_dir=OUT / "runs", name="pitch_pose", exist_ok=True)
 """,
         live_log=True,
@@ -239,8 +240,8 @@ threshold keeps the uncertain landmarks of a short run.
 """)
     nb.code("""
 pitch_scores = {
-    resize: tv.evaluate(pose_run.load(conf=0.05, resize=resize), pitch_data, "test")
-    for resize in ("letterbox", "square")
+    resize: tv.evaluate(pose_run.load(conf=0.05, resize=resize), pitch_data, Split.TEST)
+    for resize in (Resize.LETTERBOX, Resize.SQUARE)
 }
 resize = max(pitch_scores, key=lambda name: pitch_scores[name].pck)
 pitch_model = pose_run.load(conf=0.05, resize=resize)
@@ -304,7 +305,7 @@ frame. Trackers are created by name with `create_tracker`; all of them have
 """)
     nb.code("""
 print("available:", tv.tracking.available_trackers())
-tracker = tv.tracking.create_tracker("bytetrack", lost_track_buffer=30)
+tracker = tv.tracking.create_tracker(TrackerType.BYTETRACK, lost_track_buffer=30)
 tracker.reset(fps=video.fps)
 ids_per_frame = []
 for _, image in video.frames(start=0, end=50):
@@ -323,7 +324,7 @@ so it is off here.
 """)
     nb.code("""
 TRACKED = 250  # frames scored: the first ten seconds of the clip
-bytetrack_run = tv.Pipeline(detector=detector, tracker="bytetrack").run(clip.video_path, end=TRACKED, progress=False)
+bytetrack_run = tv.Pipeline(detector=detector, tracker=TrackerType.BYTETRACK).run(clip.video_path, end=TRACKED, progress=False)
 tracking = {"ByteTrack": tv.evaluation.evaluate_tracking(bytetrack_run, clip, hota=False)}
 pd.Series(tracking["ByteTrack"].as_dict()).dropna().round(3).to_frame("ByteTrack")
 """)
@@ -380,12 +381,12 @@ two teams. Referees and goalkeepers are handled by the pipeline later.
 crops = []
 for _, image in video.frames(start=0, end=len(clip), stride=75):
     people = detector(image)
-    players = people[people.data["class_name"] == "player"]
+    players = people[people.data[DetectionKey.CLASS_NAME] == Role.PLAYER]
     crops += [crop for crop in tv.teams.extract_crops(image, players.xyxy, scale=0.8) if crop is not None]
 print(len(crops), "player crops; embedders:", tv.teams.available_embedders())
 """)
     nb.code("""
-classifier = tv.teams.TeamClassifier(embedder="siglip")
+classifier = tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP)
 teams = classifier.fit_predict(crops)
 print(classifier, "| team sizes:", np.bincount(teams).tolist())
 
@@ -398,7 +399,7 @@ The embedder is swappable. ResNet-18 features are cheaper than SigLIP; team
 numbers are arbitrary, so agreement is measured up to swapping 0 and 1.
 """)
     nb.code("""
-resnet_teams = tv.teams.TeamClassifier(embedder="resnet").fit_predict(crops)
+resnet_teams = tv.teams.TeamClassifier(embedder=EmbedderType.RESNET).fit_predict(crops)
 agreement = max(np.mean(resnet_teams == teams), np.mean(resnet_teams != teams))
 print(f"ResNet and SigLIP agree on {agreement:.0%} of the crops")
 """)
@@ -422,8 +423,8 @@ pipeline = tv.Pipeline(
     detector=detector,
     fixed_homography=demo.calibration,
     undistortion=demo.calibration,
-    tracker="bytetrack",
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    tracker=TrackerType.BYTETRACK,
+    team_classifier=tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP),
 )
 result = pipeline.run(clip.video_path, end=TRACKED, progress=False)
 print(len(result), "frames,", len(result.track_ids), "tracks,", f"{result.fps:.0f} fps")
@@ -449,7 +450,7 @@ are described here rather than shown.
 """)
     nb.code("""
 tracks = result.to_dataframe()
-people = tracks[tracks["object"] == "person"]
+people = tracks[tracks["object"] == ObjectKind.PERSON]
 print("tracks with more than one team:", int((people.groupby("track_id")["team_id"].nunique() > 1).sum()))
 people.groupby(["class_name", "team_id"])["track_id"].nunique().unstack(fill_value=0)
 """)

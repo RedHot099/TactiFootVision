@@ -50,8 +50,23 @@ Everything is plain Python: build the objects you want and call them. The
 same steps exist as a command line (`tactifoot run`, `tactifoot train`,
 `tactifoot evaluate`), described under "Run files and the CLI" in
 [docs/ARCHITECTURE.md]({REPO_URL}/docs/ARCHITECTURE.md).
+
+A value from a fixed set, such as a backend, a split or a tracker, is a
+member of an enum in `tactifoot_vision.enums`, imported in the first cell:
+`from tactifoot_vision.enums import ModelType, Split, TrackerType`. Typing
+`ModelType.` lets the editor list the choices; the plain strings (`"yolo"`,
+`"train"`) work too.
 """)
-    nb.setup()
+    nb.setup(
+        imports="""
+import logging
+import os
+from pathlib import Path
+
+import tactifoot_vision as tv
+from tactifoot_vision.enums import AnnotatorStyle, EmbedderType, ModelType, Split, TrackerType
+"""
+    )
 
     nb.md("""
 ## 1. Data
@@ -73,7 +88,7 @@ the 22 players; this data has no ball, referee or goalkeeper boxes.
 demo = tv.data.download_demo(DATA / "demo")
 dataset = tv.load_dataset(demo.detect_yaml)
 print(dataset)
-tv.viz.show_samples(dataset, "train", n=2, cols=1)
+tv.viz.show_samples(dataset, Split.TRAIN, n=2, cols=1)
 """)
 
     nb.md("""
@@ -91,7 +106,7 @@ recipe = tv.augment.Compose([
     tv.augment.RandomAffine(degrees=3, translate=0.05),
     tv.augment.ColorJitter(),
 ])
-small = dataset.subset({"train": 40, "valid": 10}, seed=0)
+small = dataset.subset({Split.TRAIN: 40, Split.VALID: 10}, seed=0)
 shutil.rmtree(OUT / "augmented", ignore_errors=True)
 augmented = tv.augment.augment_dataset(small, recipe, OUT / "augmented", copies=1, progress=False)
 augmented.summary()
@@ -134,8 +149,8 @@ pipeline = tv.Pipeline(
     detector=detector,
     fixed_homography=demo.calibration,
     undistortion=demo.calibration,
-    tracker="bytetrack",
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    tracker=TrackerType.BYTETRACK,
+    team_classifier=tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP),
 )
 result = pipeline.run(clip.video_path, end=250, progress=False)  # 10 seconds
 print(len(result), "frames,", len(result.track_ids), "tracks")
@@ -170,7 +185,7 @@ then where each team spent the clip.
 frame_result = result[200]
 frame = tv.VideoReader(clip.video_path).read(frame_result.index)
 # The pitch lines are left out: they are straight in the model and curved in a fisheye frame.
-annotator = tv.viz.FrameAnnotator(style="video_game", draw_pitch_lines=False)
+annotator = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, draw_pitch_lines=False)
 tv.show(annotator.annotate(frame, frame_result), width=16)
 """)
     nb.code("""

@@ -44,6 +44,7 @@ datasets are introduced in [01_data]({REPO_URL}/notebooks/01_data.ipynb).
 """)
     nb.setup(
         imports="""
+import logging
 import os
 import shutil
 from dataclasses import replace
@@ -54,6 +55,7 @@ import numpy as np
 
 import tactifoot_vision as tv
 from tactifoot_vision import augment as A
+from tactifoot_vision.enums import Role, Split, Task
 """
     )
 
@@ -73,7 +75,7 @@ transforms act the same on full frames, as the
 """)
     nb.code("""
 demo = tv.data.download_demo(DATA / "demo")
-frames = tv.load_dataset(demo.detect_yaml).subset({"train": 60, "valid": 20}, seed=0)
+frames = tv.load_dataset(demo.detect_yaml).subset({Split.TRAIN: 60, Split.VALID: 20}, seed=0)
 
 
 def window(sample, folder, size=(1280, 720)):
@@ -101,8 +103,8 @@ windows = tv.data.Dataset(
 print(frames)
 print(windows)
 
-x0, y0 = cuts["train"][3][1]
-frame = tv.viz.draw_annotations(*frames.read("train", 3), frames.class_names)
+x0, y0 = cuts[Split.TRAIN][3][1]
+frame = tv.viz.draw_annotations(*frames.read(Split.TRAIN, 3), frames.class_names)
 cv2.rectangle(frame, (x0, y0), (x0 + 1280, y0 + 720), (255, 255, 255), 6)
 tv.show(frame, "a demo frame and its window", width=14)
 """)
@@ -112,7 +114,7 @@ Every transform has a probability `p` of being applied. Calls take a seeded
 the labels before and after with `tv.viz.draw_annotations`.
 """)
     nb.code("""
-image, labels = windows.read("train", 3)
+image, labels = windows.read(Split.TRAIN, 3)
 
 
 def before_after(transform, image, labels, class_names, seeds=(0,), width=14):
@@ -160,7 +162,7 @@ photometric = {
     "GaussianNoise": A.GaussianNoise(std=(12.0, 12.0), p=1.0),
     "JpegCompression": A.JpegCompression(quality=(8, 8), p=1.0),
 }
-player = labels.boxes[list(labels.class_ids).index(windows.class_names.index("player"))]
+player = labels.boxes[list(labels.class_ids).index(windows.class_names.index(Role.PLAYER))]
 cx, cy = (player[:2] + player[2:]) / 2
 x0, y0 = int(max(0, cx - 120)), int(max(0, cy - 90))
 zoom = (slice(y0, y0 + 180), slice(x0, x0 + 240))
@@ -216,8 +218,8 @@ examples below use the training frame with the most landmarks in view.
 {SYNTHETIC_PITCH_DATASET.strip()}
 print(pitch_data)
 
-in_view = [int((s.annotations.keypoints[..., 2] > 0).sum()) for s in pitch_data["train"]]
-pitch_image, pitch_labels = pitch_data.read("train", int(np.argmax(in_view)))
+in_view = [int((s.annotations.keypoints[..., 2] > 0).sum()) for s in pitch_data[Split.TRAIN]]
+pitch_image, pitch_labels = pitch_data.read(Split.TRAIN, int(np.argmax(in_view)))
 print("landmarks in view:", max(in_view), "of", pitch_labels.num_keypoints)
 """)
     nb.code("""
@@ -367,8 +369,8 @@ print(augmented)
 augmented.summary()
 """)
     nb.code("""
-originals = len(windows["train"])
-tv.viz.show_samples(augmented.with_split("train", augmented["train"][originals:]), "train", n=4, cols=2)
+originals = len(windows[Split.TRAIN])
+tv.viz.show_samples(augmented.with_split(Split.TRAIN, augmented[Split.TRAIN][originals:]), Split.TRAIN, n=4, cols=2)
 """)
 
     nb.md(f"""

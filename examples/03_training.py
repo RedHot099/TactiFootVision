@@ -5,19 +5,21 @@ subsets for real training. Run from the repository root:
 ``uv run python examples/03_training.py``
 """
 
+import logging
 import shutil
 from pathlib import Path
 
 import tactifoot_vision as tv
 from tactifoot_vision import augment as A
+from tactifoot_vision.enums import ModelType, Resize, Split
 
 OUT = Path("outputs/examples/03_training")
 EPOCHS = 3
-tv.setup_logging("INFO")
+tv.setup_logging(logging.INFO)
 
 detection = tv.load_dataset("data/datasets/football_yolo")
 pitch = tv.load_dataset("data/keypoints")
-train_subset = detection.subset({"train": 150, "valid": 40}, seed=0)
+train_subset = detection.subset({Split.TRAIN: 150, Split.VALID: 40}, seed=0)
 
 transform = A.Compose(
     [A.HorizontalFlip(), A.RandomAffine(degrees=3, translate=0.05), A.ColorJitter()]
@@ -26,11 +28,11 @@ shutil.rmtree(OUT / "augmented", ignore_errors=True)  # augment_dataset never ov
 augmented = A.augment_dataset(train_subset, transform, OUT / "augmented", copies=1)
 
 # Same call for every backend; backend-specific options pass straight through.
-yolo_run = tv.train("yolo", augmented, weights="yolo11n.pt", epochs=EPOCHS, batch_size=16,
+yolo_run = tv.train(ModelType.YOLO, augmented, weights="yolo11n.pt", epochs=EPOCHS, batch_size=16,
                     output_dir=OUT / "runs", name="yolo11n")  # fmt: skip
-pose_run = tv.train("yolo_pose", pitch, weights="yolov8n-pose.pt", epochs=EPOCHS,
+pose_run = tv.train(ModelType.YOLO_POSE, pitch, weights="yolov8n-pose.pt", epochs=EPOCHS,
                     batch_size=16, output_dir=OUT / "runs", name="pitch_pose")  # fmt: skip
-rfdetr_run = tv.train("rfdetr", train_subset, weights=None, epochs=1,
+rfdetr_run = tv.train(ModelType.RFDETR, train_subset, weights=None, epochs=1,
                       batch_size=4, output_dir=OUT / "runs", name="rfdetr",
                       grad_accum_steps=2)  # fmt: skip
 
@@ -39,13 +41,13 @@ for run in (yolo_run, pose_run, rfdetr_run):
     tv.viz.plot_training(run).savefig(OUT / f"training_{run.model_type}.png")
 
 # Backend-independent metrics on the same validation split.
-valid = detection.subset({"valid": 100}, seed=1)
+valid = detection.subset({Split.VALID: 100}, seed=1)
 models = {
     "YOLO11n (demo run)": yolo_run.load(),
     "RF-DETR (demo run)": rfdetr_run.load(),
-    "YOLO11l (football)": tv.load_model("yolo", "models/detector_yolo11l.pt"),
+    "YOLO11l (football)": tv.load_model(ModelType.YOLO, "models/detector_yolo11l.pt"),
     "RF-DETR base (football)": tv.load_model(
-        "rfdetr", "models/rfdetr_smoketest_sample.pth"
+        ModelType.RFDETR, "models/rfdetr_smoketest_sample.pth"
     ),
 }
 metrics = {name: model.evaluate(valid) for name, model in models.items()}
@@ -55,7 +57,7 @@ tv.viz.plot_metrics(metrics).savefig(OUT / "detector_comparison.png")
 
 pitch_metrics = {
     "YOLOv8n-pose (demo run)": pose_run.load().evaluate(pitch),
-    "YOLO11m-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square").evaluate(pitch),
+    "YOLO11m-pose (football)": tv.load_model(ModelType.YOLO_POSE, "models/pitch_yolo11m_pose.pt", conf=0.1, resize=Resize.SQUARE).evaluate(pitch),
 }  # fmt: skip
 for name, m in pitch_metrics.items():
     print(

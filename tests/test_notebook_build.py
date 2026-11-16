@@ -355,18 +355,32 @@ def test_the_augmentation_notebook_shows_every_transform(build):
     assert transforms | {"augment_dataset", "show_augmentations"} <= called
 
 
+def _value(node: ast.AST) -> str | None:
+    """The string a literal or a ``tv.enums`` member (``ModelType.YOLO``) stands for."""
+    from tactifoot_vision import enums
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        vocabulary = getattr(enums, node.value.id, None)
+        if isinstance(vocabulary, type) and issubclass(vocabulary, enums.Vocabulary):
+            member = getattr(vocabulary, node.attr, None)
+            return member.value if isinstance(member, vocabulary) else None
+    return None
+
+
 def _string_arguments(cells: list[nbformat.NotebookNode], function: str) -> set[str]:
-    """First arguments of the calls to ``function`` that are string literals."""
+    """First arguments of the calls to ``function`` that are string literals or
+    enum members, as strings."""
     return {
-        node.args[0].value
+        _value(node.args[0])
         for node in _code_nodes(cells)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute | ast.Name)
         and (node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id)
         == function
         and node.args
-        and isinstance(node.args[0], ast.Constant)
-    }
+    } - {None}
 
 
 @pytest.mark.parametrize("name", NOTEBOOKS)
@@ -378,7 +392,11 @@ def test_a_notebook_trains_the_demo_detector_with_the_shared_recipe(build, name)
     if "yolo" not in _string_arguments(cells, "train"):
         pytest.skip(f"{name} trains no detector")
     recipe = textwrap.dedent(common.DEMO_DETECTOR).strip()
-    trains = [c for c in cells if c.cell_type == "code" and '"yolo"' in c.source]
+    trains = [
+        c
+        for c in cells
+        if c.cell_type == "code" and "yolo" in _string_arguments([c], "train")
+    ]
     assert [c.source for c in trains] == [recipe]
     assert trains[0].metadata["tags"] == [common.LIVE_LOG]
 
@@ -400,8 +418,9 @@ def _rfdetr_guard(cells: list[nbformat.NotebookNode]) -> nbformat.NotebookNode:
 def _used_outside(
     cells: list[nbformat.NotebookNode], flag: str, word: str
 ) -> list[str]:
-    """Code cells that use ``word`` (in a name or as a string) other than
-    in the body of an ``if`` on ``flag``."""
+    """Code cells that use ``word`` (in a name, as a string or as an enum
+    member such as ``ModelType.RFDETR``) other than in the body of an ``if``
+    on ``flag``."""
     outside = []
     for cell in cells:
         tree = ast.parse(_without_magics(cell.source))
@@ -419,6 +438,7 @@ def _used_outside(
             for node in ast.walk(tree)
             if (isinstance(node, ast.Name) and word in node.id and node.id != flag)
             or (isinstance(node, ast.Constant) and node.value == word)
+            or (isinstance(node, ast.Attribute) and node.attr.lower() == word)
         ]
         if not all(id(node) in guarded for node in uses):
             outside.append(cell.source)
@@ -640,11 +660,8 @@ def test_the_visualisation_notebook_shows_every_annotator_style_and_flag(build):
 
 
 def _strings(cells: list[nbformat.NotebookNode]) -> set[str]:
-    return {
-        node.value
-        for node in _code_nodes(cells)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    }
+    """The string literals and enum members of the code cells, as strings."""
+    return {_value(node) for node in _code_nodes(cells)} - {None}
 
 
 def _function(call: ast.Call) -> str | None:
@@ -691,3 +708,115 @@ def test_the_visualisation_notebook_draws_pitch_lines_only_on_the_undistorted_fr
             (annotator,) = [k.value for k in call.keywords if k.arg == "annotator"]
             assert not _draws_pitch_lines(annotator), ast.unparse(call)
     assert drawn_on and set(drawn_on) == {"undistorted"}
+
+
+# ------------------------------------------- enum members in user-facing code
+def _vocabulary_values() -> dict[str, str]:
+    """``{value: "Enum.MEMBER"}`` of every vocabulary user code passes: all of
+    ``tv.enums`` but the run file sections, which are YAML keys (ADR 0001)."""
+    from tactifoot_vision import enums
+
+    vocabularies = [
+        v
+        for v in vars(enums).values()
+        if isinstance(v, type)
+        and issubclass(v, enums.Vocabulary)
+        and v not in (enums.Vocabulary, enums.RunFileSection)
+    ]
+    return {m.value: f"{v.__name__}.{m.name}" for v in vocabularies for m in v}
+
+
+def _user_code() -> dict[str, str]:
+    """``{where: Python source}``: the code cells the builder writes (shared
+    snippets included), ``examples/*.py`` and the README pages' Python blocks."""
+    root = BUILD_DIR.parents[1]
+    code = {
+        f"{name} cell {i}": _without_magics(cell.source)
+        for name in NOTEBOOKS
+        for i, cell in enumerate(_generated(name))
+        if cell.cell_type == "code"
+    }
+    code |= {
+        f"examples/{p.name}": p.read_text()
+        for p in sorted((root / "examples").glob("*.py"))
+    }
+    for page in ("README.md", "notebooks/README.md"):
+        blocks = re.findall(r"```python\n(.*?)```", (root / page).read_text(), re.S)
+        code |= {f"{page} block {i}": block for i, block in enumerate(blocks)}
+    return code
+
+
+# Calls whose string arguments are open names that can equal a vocabulary
+# value: a package extra ("rfdetr").
+_OPEN_NAME_CALLS = {"require_extra"}
+
+
+def _vocabulary_literals(source: str, values: dict[str, str]) -> list[str]:
+    """The string literals of ``source`` that should be enum members."""
+    detection_keys = {
+        v for v, member in values.items() if member.startswith("DetectionKey.")
+    }
+    found = []
+
+    def check(node: ast.AST, data_key: bool = False) -> None:
+        if not (isinstance(node, ast.Constant) and node.value in values):
+            return
+        if node.value in detection_keys and not data_key:
+            return  # a table column of that name stays a string
+        found.append(f"line {node.lineno}: {node.value!r} -> {values[node.value]}")
+
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            func = node.func
+            called = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", "")
+            )
+            if called in _OPEN_NAME_CALLS:
+                continue
+            for arg in node.args:
+                check(arg)
+            for keyword in node.keywords:
+                if keyword.arg != "name":  # a free run name
+                    check(keyword.value)
+        elif isinstance(node, ast.Subscript):
+            on_data = (
+                isinstance(node.value, ast.Attribute) and node.value.attr == "data"
+            )
+            check(node.slice, data_key=on_data)
+        elif isinstance(node, ast.Dict):
+            for key in node.keys:
+                if key is not None:
+                    check(key)
+        elif isinstance(node, ast.Compare):
+            for operand in (node.left, *node.comparators):
+                check(operand)
+        elif isinstance(node, ast.For | ast.comprehension):
+            if isinstance(node.iter, ast.Tuple | ast.List):
+                for element in node.iter.elts:
+                    check(element)
+    return found
+
+
+def test_user_code_passes_enum_members_not_vocabulary_strings(build):
+    """A value of a closed set is written as its enum member in user code.
+
+    The rule (ADR 0004, backlog 08): in notebook code cells, examples and the
+    READMEs' Python blocks, no string literal that equals a value of a
+    ``tv.enums`` vocabulary is a call argument (positional or keyword), a
+    subscript, a dict key, an operand of a comparison or an element of the
+    tuple or list a ``for`` loops over. Open sets stay strings, so these are
+    not checked: run file sections (YAML keys), a ``name=`` keyword (a free
+    run name), the argument of ``require_extra`` (an extra), and a
+    ``DetectionKey`` value anywhere but a ``.data[...]`` subscript (table
+    columns share those names). A string inside a longer one, a query or a
+    print label, never matches.
+    """
+    values = _vocabulary_values()
+    found = {
+        where: literals
+        for where, source in _user_code().items()
+        if (literals := _vocabulary_literals(source, values))
+    }
+    assert not found, found

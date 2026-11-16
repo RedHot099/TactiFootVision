@@ -60,6 +60,8 @@ splits, modes, built-in registry names, run file sections) is a `StrEnum` in
 `tv.enums`, taken as a member or its plain string and written as the string
 ([ADR 0004](adr/0004-fixed-vocabularies-are-str-enums.md)); a built-in
 backend needs a member of its name enum, which a test keeps equal to the registry.
+User code imports the members from there, as the notebooks, examples and
+README do: `from tactifoot_vision.enums import ModelType, Split, TrackerType`.
 
 ## Layout
 

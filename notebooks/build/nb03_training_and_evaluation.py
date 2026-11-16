@@ -64,6 +64,7 @@ from pathlib import Path
 import pandas as pd
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import ModelType, Split, Task
 """
     )
 
@@ -80,7 +81,7 @@ detection classes, and `goalkeeper`, `referee` and `ball` stay empty.
 demo = tv.data.download_demo(DATA / "demo")
 dataset = tv.load_dataset(demo.detect_yaml)
 print(dataset)
-tv.viz.show_samples(dataset, "train", n=2, cols=1)
+tv.viz.show_samples(dataset, Split.TRAIN, n=2, cols=1)
 """)
 
     nb.md("""
@@ -197,8 +198,8 @@ if has_rfdetr:
     # about a meshgrid argument inside RF-DETR; both are benign here.
     logging.getLogger("rfdetr.detr").addFilter(lambda record: "not optimized for inference" not in record.getMessage())
     warnings.filterwarnings("ignore", message="torch.meshgrid")
-    rfdetr = tv.load_model("rfdetr", size="base")
-    rfdetr_run = rfdetr.train(dataset.subset({"train": 100, "valid": 20}, seed=0), config,
+    rfdetr = tv.load_model(ModelType.RFDETR, size="base")
+    rfdetr_run = rfdetr.train(dataset.subset({Split.TRAIN: 100, Split.VALID: 20}, seed=0), config,
                               epochs=1, batch_size=4, grad_accum_steps=4, name="rfdetr")
 """)
     nb.code("""
@@ -228,7 +229,7 @@ replace.
     nb.code(f"""
 {PITCH_TRAINING_DATASET.strip()}
 print(pitch_data)
-tv.viz.show_samples(pitch_data, "train", n=3)
+tv.viz.show_samples(pitch_data, Split.TRAIN, n=3)
 """)
     nb.md("""
 It trains with the same call and the shared config; the dataset's `flip_idx`
@@ -239,7 +240,7 @@ quarters. Forty epochs from the COCO pose weights take a few minutes on a T4.
 """)
     nb.code(
         """
-pose_run = tv.train("yolo_pose", pitch_data, config, weights="yolov8n-pose.pt", epochs=40, mosaic=0.0, name="pitch_pose")
+pose_run = tv.train(ModelType.YOLO_POSE, pitch_data, config, weights="yolov8n-pose.pt", epochs=40, mosaic=0.0, name="pitch_pose")
 """,
         live_log=True,
     )
@@ -286,7 +287,7 @@ here a stricter `pck_threshold`.
     nb.code("""
 pitch_model = pose_run.load(conf=0.05)
 pitch_metrics = {
-    f"PCK at {threshold:.0%}": tv.evaluate(pitch_model, pitch_data, "test", pck_threshold=threshold)
+    f"PCK at {threshold:.0%}": tv.evaluate(pitch_model, pitch_data, Split.TEST, pck_threshold=threshold)
     for threshold in (0.05, 0.02)
 }
 pd.DataFrame({name: m.as_dict() for name, m in pitch_metrics.items()}).T.round(3)

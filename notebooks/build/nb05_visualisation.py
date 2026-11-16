@@ -49,6 +49,7 @@ produces something to draw.
 """)
     nb.setup(
         imports="""
+import logging
 import os
 import shutil
 import subprocess
@@ -59,6 +60,7 @@ import numpy as np
 from matplotlib.figure import Figure
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import AnnotatorStyle, EmbedderType, ModelType, ObjectKind, OverlayPosition, TrackerType
 """
     )
 
@@ -86,8 +88,8 @@ pipeline = tv.Pipeline(
     detector=detector,
     fixed_homography=demo.calibration,
     undistortion=demo.calibration,
-    tracker="bytetrack",
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    tracker=TrackerType.BYTETRACK,
+    team_classifier=tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP),
 )
 result = pipeline.run(clip.video_path, end=250, progress=False)  # 10 seconds
 FRAME = 200  # the frame most cells draw
@@ -123,7 +125,7 @@ undistorted frame further down.
     nb.code("""
 styles = {
     style: tv.viz.FrameAnnotator(style=style, draw_pitch_lines=False).annotate(frame, frame_result)
-    for style in ("standard", "video_game")
+    for style in (AnnotatorStyle.STANDARD, AnnotatorStyle.VIDEO_GAME)
 }
 tv.show(list(styles.values()), titles=list(styles), cols=1, width=16)
 """)
@@ -165,7 +167,7 @@ Colours and thresholds are arguments too: `team_colors`, `default_color`,
 """)
     nb.code("""
 custom = tv.viz.FrameAnnotator(
-    style="video_game", team_colors=["#E63946", "#F1FAEE"], default_color="#222222",
+    style=AnnotatorStyle.VIDEO_GAME, team_colors=["#E63946", "#F1FAEE"], default_color="#222222",
     ball_color="#FFD400", pitch_line_color="#A8DADC", keypoint_threshold=0.8, draw_pitch_lines=False,
 )
 tv.show(custom.annotate(frame, frame_result)[window], width=12)
@@ -182,7 +184,7 @@ other.
 """)
     nb.code("""
 TRAIL = 1.0
-trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL, draw_pitch_lines=False).annotate(
+trail = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, trail_seconds=TRAIL, draw_pitch_lines=False).annotate(
     frame, frame_result, history=result.window(frame_result.index, TRAIL))
 tv.show(trail[window], titles=f"trail_seconds={TRAIL}", width=12)
 """)
@@ -200,7 +202,7 @@ if carried is None:
     print("no frame of the demo clip has a ball carrier")
 else:
     carrier_result, carrier = carried
-    ring = tv.viz.FrameAnnotator(style="video_game", draw_pitch_lines=False).annotate(
+    ring = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, draw_pitch_lines=False).annotate(
         video.read(carrier_result.index), carrier_result, ball_carrier=carrier)
     display(tv.show(ring, titles=f"ball_carrier={carrier} at frame {carrier_result.index}", width=16))
 """)
@@ -299,11 +301,11 @@ tv.show(arrows, titles="velocity_seconds=1.0", width=7)
 `width_fraction` the size and `alpha` the opacity.
 """)
     nb.code("""
-annotated = styles["video_game"]
+annotated = styles[AnnotatorStyle.VIDEO_GAME]
 image = radar.draw(frame_result)
 tv.show([
     tv.viz.overlay(annotated, image),
-    tv.viz.overlay(annotated, image, position="top-right", width_fraction=0.35, alpha=1.0),
+    tv.viz.overlay(annotated, image, position=OverlayPosition.TOP_RIGHT, width_fraction=0.35, alpha=1.0),
 ], titles=["default: bottom-center, 25%, alpha 0.8", "top-right, 35%, opaque"], cols=1, width=16)
 """)
 
@@ -325,9 +327,9 @@ video stays in `OUT`, outside the notebook: three of its frames show here.
     nb.code("""
 video_path = tv.viz.render_video(
     result, clip.video_path, OUT / "annotated.mp4",
-    annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL, draw_pitch_lines=False),
+    annotator=tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, trail_seconds=TRAIL, draw_pitch_lines=False),
     radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0),
-    overlay_position="bottom-right", overlay_width_fraction=0.3,
+    overlay_position=OverlayPosition.BOTTOM_RIGHT, overlay_width_fraction=0.3,
     ball_carriers=carriers, progress=False,
 )
 rendered = tv.VideoReader(video_path)
@@ -382,7 +384,7 @@ distances, so they overestimate what the players really ran.
 """)
     nb.code("""
 tracks = result.to_dataframe()
-people = tracks[(tracks["object"] == "person") & tracks["pitch_x"].notna()].sort_values("frame")
+people = tracks[(tracks["object"] == ObjectKind.PERSON) & tracks["pitch_x"].notna()].sort_values("frame")
 steps = people.groupby("track_id")[["pitch_x", "pitch_y"]].diff()
 covered = np.hypot(steps["pitch_x"], steps["pitch_y"]).groupby(people["track_id"]).sum()
 tv.viz.plot_distance_histogram(covered[covered > 0], bins=15, title="Distance covered per track in 10 s",

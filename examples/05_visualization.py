@@ -6,6 +6,7 @@ Run from the repository root: ``uv run python examples/05_visualization.py``
 from pathlib import Path
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition
 
 OUT = Path("outputs/examples/05_visualization")
 VIDEO = Path("data/videos/broadcast_60s.mp4")
@@ -16,16 +17,16 @@ frame_result = result[120]
 frame = tv.VideoReader(VIDEO).read(frame_result.index)
 
 standard = tv.viz.FrameAnnotator().annotate(frame, frame_result)
-game = tv.viz.FrameAnnotator(style="video_game", draw_keypoints=False).annotate(
-    frame, frame_result
-)
+game = tv.viz.FrameAnnotator(
+    style=AnnotatorStyle.VIDEO_GAME, draw_keypoints=False
+).annotate(frame, frame_result)
 # The ball's last second, from the frames before this one (ADR 0003).
-trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=1.0).annotate(
-    frame, frame_result, history=result.window(frame_result.index, 1.0)
-)
+trail = tv.viz.FrameAnnotator(
+    style=AnnotatorStyle.VIDEO_GAME, trail_seconds=1.0
+).annotate(frame, frame_result, history=result.window(frame_result.index, 1.0))
 # A ring at the feet of the ball carrier, one tracker id or None per frame.
 carriers = tv.analysis.ball_carriers(result)
-ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+ring = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME).annotate(
     frame, frame_result, ball_carrier=carriers[120]
 )
 radar = tv.viz.PitchRadar(draw_ids=True).draw(frame_result)
@@ -56,7 +57,7 @@ tv.show(
     ],
     cols=1,
 ).savefig(OUT / "frame_views.png")
-tv.show(tv.viz.overlay(game, radar, position="bottom-right")).savefig(
+tv.show(tv.viz.overlay(game, radar, position=OverlayPosition.BOTTOM_RIGHT)).savefig(
     OUT / "overlay.png"
 )
 

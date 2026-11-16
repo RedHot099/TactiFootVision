@@ -31,11 +31,12 @@ pip install tactifoot-vision
 
 ```python
 import tactifoot_vision as tv
+from tactifoot_vision.enums import EmbedderType, ModelType
 
 pipeline = tv.Pipeline(
-    detector=tv.load_model("yolo", "models/detector_yolo11l.pt"),
-    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt"),
-    team_classifier=tv.teams.TeamClassifier("siglip"),
+    detector=tv.load_model(ModelType.YOLO, "models/detector_yolo11l.pt"),
+    keypoint_model=tv.load_model(ModelType.YOLO_POSE, "models/pitch_yolo11m_pose.pt"),
+    team_classifier=tv.teams.TeamClassifier(EmbedderType.SIGLIP),
 )
 result = pipeline.run("match.mp4")
 tv.viz.render_video(result, "match.mp4", "annotated.mp4")

@@ -37,6 +37,7 @@ Part of the [TactiFoot Vision notebooks]({REPO_URL}/notebooks/README.md); the
 """)
     nb.setup(
         imports="""
+import logging
 import os
 from pathlib import Path
 
@@ -44,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import Split, Task
 """
     )
 
@@ -75,7 +77,7 @@ that the boxes line up with the pixels. The demo camera sees the whole pitch
 through a fisheye lens, 4096x1080 pixels, so a player is about 25x60 pixels.
 """)
     nb.code("""
-tv.viz.show_samples(detection, "train", n=2, seed=1, cols=1)
+tv.viz.show_samples(detection, Split.TRAIN, n=2, seed=1, cols=1)
 """)
     nb.md("""
 Each split is a list of `Sample`s: the image path, its size and the
@@ -83,8 +85,8 @@ Each split is a list of `Sample`s: the image path, its size and the
 together with a copy of its labels.
 """)
     nb.code("""
-sample = detection["train"][0]
-image, annotations = detection.read("train", 0)
+sample = detection[Split.TRAIN][0]
+image, annotations = detection.read(Split.TRAIN, 0)
 print("image:", image.shape, image.dtype, f"({sample.width}x{sample.height})")
 print("objects:", len(annotations))
 pd.DataFrame(annotations.boxes, columns=["x1", "y1", "x2", "y2"]).assign(
@@ -104,15 +106,15 @@ are given, so the sources should not overlap. Here the second source is a
 `Dataset` built from detection images that `small` left out.
 """)
     nb.code("""
-small = detection.subset({"train": 200, "valid": 40}, seed=0)   # counts per split
+small = detection.subset({Split.TRAIN: 200, Split.VALID: 40}, seed=0)   # counts per split
 tenth = detection.subset(0.1, seed=0)                           # a fraction of every split
 resplit = small.resplit(train=0.7, valid=0.2, test=0.1, seed=0)  # pool and split again
 
 in_small = {s.image_path for s in small}
-unused = {split: [s for s in detection[split] if s.image_path not in in_small] for split in ("train", "valid")}
-extra = tv.data.Dataset(detection.task, detection.class_names, {"train": unused["train"][:100]})
+unused = {split: [s for s in detection[split] if s.image_path not in in_small] for split in (Split.TRAIN, Split.VALID)}
+extra = tv.data.Dataset(detection.task, detection.class_names, {Split.TRAIN: unused[Split.TRAIN][:100]})
 merged = small.merge(extra)                                     # same classes required
-held_out = small.with_split("test", unused["valid"][:30])       # a test split small has not seen
+held_out = small.with_split(Split.TEST, unused[Split.VALID][:30])       # a test split small has not seen
 
 print("distinct images in merged:", len({s.image_path for s in merged}), "of", len(merged))
 pd.concat(
@@ -210,7 +212,7 @@ print("the pitch's:", list(pitch_data.flip_idx) == list(tv.SoccerPitch().flip_id
 pitch_data.summary()
 """)
     nb.code("""
-tv.viz.show_samples(pitch_data, "train", n=3)
+tv.viz.show_samples(pitch_data, Split.TRAIN, n=3)
 """)
     nb.md("""
 Visibility follows YOLO and COCO: 0 not labelled, 1 occluded, 2 visible. A
@@ -220,7 +222,7 @@ only 0 and 2; hand-labelled frames also mark landmarks hidden behind players
 as occluded.
 """)
     nb.code("""
-keypoints = np.concatenate([s.annotations.keypoints for s in pitch_data["train"]])
+keypoints = np.concatenate([s.annotations.keypoints for s in pitch_data[Split.TRAIN]])
 visibility = pd.Series(keypoints[..., 2].ravel()).map(
     {tv.data.NOT_LABELLED: "not labelled", tv.data.OCCLUDED: "occluded", tv.data.VISIBLE: "visible"}
 )

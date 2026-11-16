@@ -1,9 +1,11 @@
 """Model backends: registry, class-name mapping, output conversion and (with -m model) real weights."""
 
+import inspect
 import json
 import logging
 import subprocess
 import sys
+import typing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,7 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import ModelType
 from tactifoot_vision.models import (
     MODELS,
     RFDETRDetector,
@@ -540,6 +543,27 @@ def test_bad_backend_options_fail_before_the_run_folder_exists(
     with pytest.raises(ValueError, match=match):
         model.train(_tiny_dataset(tmp_path), output_dir=tmp_path / "runs", **options)
     assert not (tmp_path / "runs").exists()
+
+
+def test_train_and_load_model_take_a_model_type_member(tmp_path, monkeypatch):
+    # Typed with the enum, so an editor offers the backends (backlog 08).
+    for function, parameter in ((tv.load_model, "name"), (tv.train, "model")):
+        annotation = inspect.signature(function).parameters[parameter].annotation
+        assert ModelType in typing.get_args(annotation), function.__name__
+
+    def train(self, dataset, config, run_dir):
+        return TrainResult(self.name, "best.pt", run_dir, pd.DataFrame(), {})
+
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: None)
+    monkeypatch.setattr(YOLODetector, "_train", train)
+    assert isinstance(tv.load_model(ModelType.YOLO, device="cpu"), YOLODetector)
+    run = tv.train(
+        ModelType.YOLO,
+        _tiny_dataset(tmp_path),
+        output_dir=tmp_path / "runs",
+        device="cpu",
+    )
+    assert run.model_type == "yolo" and run.run_dir.parent == tmp_path / "runs"
 
 
 # ---------------------------------------------------- per-class confidence

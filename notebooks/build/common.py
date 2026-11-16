@@ -8,6 +8,7 @@ import nbformat
 NOTEBOOK_DIR = Path(__file__).resolve().parents[1]
 
 BASE_IMPORTS = """
+import logging
 import os
 from pathlib import Path
 
@@ -38,7 +39,8 @@ REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
 
 # The small pitch keypoint dataset the notebooks share, rendered in seconds on
 # a CPU: four clips of eight random broadcast views of the synthetic pitch,
-# split per clip. Defines `size` (the frame size) and `pitch_data`.
+# split per clip. Defines `size` (the frame size) and `pitch_data`; needs
+# `Task` from `tactifoot_vision.enums`.
 SYNTHETIC_PITCH_DATASET = """
 size = (640, 360)
 clips = [
@@ -52,7 +54,7 @@ clips = [
     )
     for seed in range(4)
 ]
-pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pose")
+pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task=Task.POSE)
 """
 
 # The pitch keypoint set a short `yolo_pose` run learns from within minutes on
@@ -62,7 +64,7 @@ pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pos
 # 0.80 at 5%) where six clips of views zoomed in further reached 0.06. The
 # model test
 # `test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views` trains
-# on the same recipe. Defines `size` and `pitch_data`.
+# on the same recipe. Defines `size` and `pitch_data`; needs `Task`.
 PITCH_TRAINING_DATASET = """
 size = (640, 360)
 clips = [
@@ -77,7 +79,7 @@ clips = [
     )
     for seed in range(15)
 ]
-pitch_data = tv.data.Dataset.from_clips(clips, train=0.66, valid=0.17, test=0.17, task="pose")
+pitch_data = tv.data.Dataset.from_clips(clips, train=0.66, valid=0.17, test=0.17, task=Task.POSE)
 """
 
 # The demo detector, trained the same way wherever a notebook needs one. Of
@@ -87,9 +89,9 @@ pitch_data = tv.data.Dataset.from_clips(clips, train=0.66, valid=0.17, test=0.17
 # minute of training on an RTX 4070 Ti SUPER, about five on a Colab T4.
 DETECTOR_WEIGHTS, DETECTOR_IMGSZ, DETECTOR_EPOCHS = "yolo11s.pt", 1920, 10
 # The training cell (a live-log cell): trains on `dataset`, the demo detection
-# set, and leaves the `TrainResult` in `training`.
+# set, and leaves the `TrainResult` in `training`. Needs `ModelType`.
 DEMO_DETECTOR = f"""
-training = tv.train("yolo", dataset, weights="{DETECTOR_WEIGHTS}", epochs={DETECTOR_EPOCHS}, batch_size=16,
+training = tv.train(ModelType.YOLO, dataset, weights="{DETECTOR_WEIGHTS}", epochs={DETECTOR_EPOCHS}, batch_size=16,
                     imgsz={DETECTOR_IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
 """
 
@@ -147,7 +149,7 @@ if INSTALL_SAM2:
 # The SAM2 guard, after SAM2_INSTALL: SAM2 cells run only where the clone, its
 # checkpoint and the `sam2` extra are present, on a GPU (the real-time
 # predictor moves frames to CUDA). Defines `has_sam2` and, with it,
-# `sam2_tracker`.
+# `sam2_tracker`; needs `TrackerType`.
 SAM2_GUARD = """
 import importlib.util
 import warnings
@@ -165,7 +167,7 @@ if has_sam2:
     # The clone's optional compiled extension is not built: SAM2 warns and
     # uses its Python fallback, which is fine here.
     warnings.filterwarnings("ignore", message="Falling back to the Python connected-components")
-    sam2_tracker = tv.tracking.create_tracker("sam2", checkpoint=SAM2_CHECKPOINT, config=SAM2_CONFIG)
+    sam2_tracker = tv.tracking.create_tracker(TrackerType.SAM2, checkpoint=SAM2_CHECKPOINT, config=SAM2_CONFIG)
     print("SAM2 tracker ready:", type(sam2_tracker).__name__)
 else:
     print(f"Skipping the SAM2 cells: {sam2_missing}")
@@ -211,8 +213,8 @@ class Notebook:
     def setup(self, imports: str = BASE_IMPORTS, body: str = "") -> None:
         """The first code cell: imports, repository paths, logging and figure format.
 
-        ``imports`` replaces the default import block (keep ``os``, ``Path`` and
-        ``tv`` in it); ``body`` adds notebook-specific lines at the end. The
+        ``imports`` replaces the default import block (keep ``logging``, ``os``,
+        ``Path`` and ``tv`` in it, and import the enums the cells use); ``body`` adds notebook-specific lines at the end. The
         cell installs the package when it is missing (a fresh Colab runtime),
         and no path points at local data or weights.
         """
@@ -239,7 +241,7 @@ OUT = ROOT / "outputs" / "notebooks" / "{name}"
 """
 
 _DISPLAY = """
-tv.setup_logging("WARNING")
+tv.setup_logging(logging.WARNING)
 # Most figures are video frames: JPEG keeps the saved notebook small.
 %config InlineBackend.figure_formats = ["jpeg"]
 %config InlineBackend.print_figure_kwargs = {"bbox_inches": "tight", "pil_kwargs": {"quality": 85}}
