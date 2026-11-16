@@ -7,10 +7,10 @@ own.
 | Notebook | Shows |
 |---|---|
 | [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells on the demo data: download, augmentation, a short training run, the pipeline, a tactical map. Links to the others. |
-| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `load_statsbomb`, `show_samples`. |
+| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `show_samples`. |
 | [`02_augmentation`](02_augmentation.ipynb) | `tv.augment`: every geometric and photometric transform before and after, `Compose` and `OneOf`, boxes and keypoints under flips and affine transforms, `augment_dataset`, `show_augmentations`. |
 | [`03_training_and_evaluation`](03_training_and_evaluation.ipynb) | `tv.models` and `tv.evaluation`: one `train` call for `yolo`, `rfdetr` and `yolo_pose` (short demo runs), `TrainConfig` and backend options, `TrainResult`, `plot_training`, `evaluate` for boxes and keypoints, `plot_metrics`. |
-| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch` and `HomographyEstimator`, team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load, `compare_with_statsbomb`. |
+| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch` and `HomographyEstimator`, team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load. |
 | [`05_visualisation`](05_visualisation.ipynb) | `tv.viz`: `FrameAnnotator` styles and draw flags, `PitchRadar`, `overlay`, `render_video`, `plot_heatmap`, `plot_tracks`, `plot_distance_histogram`, `draw_pitch`, `show`. |
 
 ## Opening them
@@ -76,8 +76,6 @@ Nothing is read from local data or weights, and nothing is tracked by git
 `/content` on Colab).
 
 - The demo match from SoccerTrack v2 (above, needs the token): every notebook.
-- StatsBomb open data (`tv.data.download_statsbomb`): `01_data` and
-  `05_visualisation`, which show its StatsBomb logo as their terms ask.
 - Synthetic pitch frames, rendered locally in seconds: the keypoint training
   and homography parts of `01`, `03` and `04`.
 - Starting weights for the demo training runs (`yolo11n.pt`, `yolov8n-pose.pt`)

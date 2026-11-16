@@ -1,11 +1,8 @@
-"""01_data.ipynb: `tv.data`, datasets, format conversion, video and StatsBomb events."""
+"""01_data.ipynb: `tv.data`, datasets, format conversion, video."""
 
-from common import REPO_URL, STATSBOMB_LOGO, SYNTHETIC_PITCH_DATASET, Notebook
+from common import REPO_URL, SYNTHETIC_PITCH_DATASET, Notebook
 
 from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
-from tactifoot_vision.data.statsbomb_open_data import (
-    ATTRIBUTION as STATSBOMB_ATTRIBUTION,
-)
 
 
 def notebook() -> Notebook:
@@ -16,8 +13,7 @@ def notebook() -> Notebook:
 {nb.badge}
 
 Everything that comes before training: loading annotated datasets, deriving
-new ones, converting between YOLO and COCO, reading match video, and loading
-StatsBomb 360 event data.
+new ones, converting between YOLO and COCO, and reading match video.
 
 It runs on open data, the same from a checkout and on Google Colab, and
 needs no GPU:
@@ -25,8 +21,7 @@ needs no GPU:
 * the SoccerTrack v2 demo match from `tv.data.download_demo`: frames with
   player boxes and a 30-second clip (about 300 MB, CC BY 4.0);
 * a small pitch keypoint dataset, rendered here from the package's synthetic
-  pitch;
-* one StatsBomb open-data match: events and 360 freeze frames (about 13 MB).
+  pitch.
 
 The demo data needs your own free Hugging Face token, as a Colab secret
 named `HF_TOKEN` (or the environment variable of that name, or a saved
@@ -287,54 +282,9 @@ print([path.name for path in paths])
 """)
 
     nb.md(f"""
-## StatsBomb 360 events
-
-<img src="{STATSBOMB_LOGO}" alt="StatsBomb" width="220">
-
-StatsBomb publishes the events and 360 freeze frames of selected matches as
-[open data](https://github.com/statsbomb/open-data). Their terms ask that any
-analysis made from it credits StatsBomb as the source and shows their logo,
-and that the data is not passed on, so this notebook fetches it and never
-ships it. `download_statsbomb` fetches one match from their repository (here
-the Euro 2020 final, about 13 MB) into the layout `load_statsbomb` reads, and
-prints that credit; a second call does nothing.
-
-`load_statsbomb` reads a match's `*_events.json` and `*_360.json` (or a CSV
-saved from the same table) into one row per player visible in an event's
-freeze frame. Locations are in StatsBomb's 120 × 80 pitch units. This is the
-reference that pipeline positions can be compared against when footage and
-360 data cover the same match, see
-[04_inference]({REPO_URL}/notebooks/04_inference.ipynb).
-""")
-    nb.code("""
-euro_final = tv.data.download_statsbomb(3795506, DATA / "statsbomb")
-statsbomb = tv.data.load_statsbomb(euro_final.folder)
-print(f"{len(statsbomb):,} objects in {statsbomb['event_uuid'].nunique():,} freeze frames")
-statsbomb[["period", "minute", "second", "type_name", "team_name", "pitch_location", "teammate", "type"]].head()
-""")
-    nb.md("""
-`tv.viz.draw_pitch` takes any pitch size, so a freeze frame can be checked at a
-glance: the actor's team in blue, opponents in pink.
-""")
-    nb.code("""
-event = statsbomb[statsbomb["event_uuid"] == statsbomb["event_uuid"].iloc[0]]
-first = event.iloc[0]
-xy = np.array(event["pitch_location"].tolist())
-
-fig = tv.viz.draw_pitch(pitch=tv.SoccerPitch(120, 80), size=7)
-ax = fig.axes[0]
-ax.scatter(xy[:, 0], xy[:, 1], s=50, zorder=3, edgecolor="white",
-           c=np.where(event["teammate"], "#00BFFF", "#FF1493"))
-ax.set_title(f"{first.type_name} by {first.team_name}, {first.minute}:{first.second:02d} (data: StatsBomb)")
-fig
-""")
-
-    nb.md(f"""
 ## Sources
 
 {DEMO_ATTRIBUTION}
-
-{STATSBOMB_ATTRIBUTION}
 
 The pitch keypoint frames are rendered by `tactifoot_vision`.
 """)

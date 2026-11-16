@@ -526,36 +526,6 @@ homography_metrics = tv.evaluation.evaluate_homography(moving_run, held_out)
 pd.Series(homography_metrics.as_dict()).drop("truth").astype(float).round(3).to_frame("held-out views")
 """)
 
-    nb.md("""
-## Comparing with StatsBomb 360
-
-`compare_with_statsbomb(freeze_frames, statsbomb, period)` matches every
-StatsBomb object to the nearest detected player or goalkeeper (the ball and
-referees never match) and reports the distance. With sub-second times on
-both sides (`timestamp_seconds`) the candidates come from the processed frame
-closest to the event; otherwise from every frame of that second. Both sides
-must use the same pitch units, so the pipeline is built with
-`pitch=tv.SoccerPitch(120, 80)`, and the video must show the match the
-events describe, with `period_start` set to the match clock at its first
-frame.
-
-No open source pairs match footage with the 360 data of the same match, so
-this notebook shows the call and does not run it. StatsBomb's open data has
-the 360 side: `tv.data.download_statsbomb` fetches one match into the layout
-`load_statsbomb` reads (see [01_data]({REPO_URL}/notebooks/01_data.ipynb));
-the footage of that match is yours to bring:
-
-```python
-match = tv.data.download_statsbomb(match_id, DATA / "statsbomb")
-statsbomb = tv.data.load_statsbomb(match.folder)
-pipeline = tv.Pipeline(..., pitch=tv.SoccerPitch(120, 80))
-result = pipeline.run(match_video)
-comparison = tv.evaluation.compare_with_statsbomb(
-    result.to_freeze_frames(period=1, period_start=kickoff_offset_seconds), statsbomb, period=1)
-tv.viz.plot_distance_histogram(comparison["euclidean_distance"].dropna(), bins=30)
-```
-""")
-
     nb.md(f"""
 ## Sources
 

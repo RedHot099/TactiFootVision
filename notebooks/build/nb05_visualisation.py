@@ -5,14 +5,10 @@ from common import (
     REPO_URL,
     SAM2_GUARD,
     SAM2_INSTALL,
-    STATSBOMB_LOGO,
     Notebook,
 )
 
 from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
-from tactifoot_vision.data.statsbomb_open_data import (
-    ATTRIBUTION as STATSBOMB_ATTRIBUTION,
-)
 
 
 def notebook() -> Notebook:
@@ -36,8 +32,7 @@ video.
 It runs on open data, the same from a checkout and on Google Colab: the
 SoccerTrack v2 demo match from `tv.data.download_demo` (about 300 MB,
 CC BY 4.0), on which a player detector trains for a few minutes as in the
-[overview]({REPO_URL}/notebooks/00_overview.ipynb), and one StatsBomb
-open-data match (about 13 MB). **On Colab**, pick a GPU first (Runtime,
+[overview]({REPO_URL}/notebooks/00_overview.ipynb). **On Colab**, pick a GPU first (Runtime,
 Change runtime type, T4 GPU); the notebook then takes about ten minutes. The
 SAM2 masks need SAM2, which has an install cell that is off by default (see
 Annotated frames).
@@ -176,6 +171,17 @@ custom = tv.viz.FrameAnnotator(
 tv.show(custom.annotate(frame, frame_result)[window], width=12)
 """)
     nb.md("""
+`draw_points` puts arbitrary pitch positions on the radar, for example
+positions from another source. Here: the pitch positions of everyone in the
+frame, all in one colour.
+""")
+    nb.code("""
+tracks = result.to_dataframe()
+in_frame = tracks[(tracks["frame"] == frame_result.index) & tracks["pitch_x"].notna()]
+tv.show(radar.draw_points(in_frame[["pitch_x", "pitch_y"]].to_numpy(), "#FFD400"),
+        titles="draw_points: positions of everyone in the frame", width=7)
+""")
+    nb.md("""
 `trail_seconds` draws the ball's recent path. Drawing keeps no memory between
 frames, so `annotate` takes the earlier frames as `history`, oldest first, and
 `result.window(index, seconds)` gives them (ADR 0003). Each earlier ball
@@ -248,25 +254,6 @@ radar = tv.viz.PitchRadar()
 radar_ids = tv.viz.PitchRadar(draw_ids=True, width_px=900, pitch_color="#1D3557", line_color="#A8DADC")
 tv.show([radar.draw(frame_result), radar_ids.draw(frame_result)], titles=["PitchRadar()", "draw_ids, custom colours"],
         cols=2, width=13)
-""")
-    nb.md(f"""
-<img src="{STATSBOMB_LOGO}" alt="StatsBomb" width="220">
-
-`draw_points` puts arbitrary pitch positions on the radar. With
-`SoccerPitch(120, 80)` it draws a StatsBomb freeze frame in StatsBomb units:
-here the first one of StatsBomb's open data of the Euro 2020 final, the
-actor's team in blue and the opponents in pink. `download_statsbomb` fetches
-the match (about 13 MB) and prints StatsBomb's credit; a second call does
-nothing (see [01_data]({REPO_URL}/notebooks/01_data.ipynb)).
-""")
-    nb.code("""
-euro_final = tv.data.download_statsbomb(3795506, DATA / "statsbomb")
-statsbomb = tv.data.load_statsbomb(euro_final.folder)
-event = statsbomb[statsbomb["event_uuid"] == statsbomb["event_uuid"].iloc[0]]
-statsbomb_radar = tv.viz.PitchRadar(pitch=tv.SoccerPitch(120, 80))
-colors = np.where(event["teammate"], "#00BFFF", "#FF1493").tolist()
-tv.show(statsbomb_radar.draw_points(np.array(event["pitch_location"].tolist()), colors),
-        titles="a StatsBomb 360 freeze frame (data: StatsBomb)", width=7)
 """)
     nb.md("""
 `trail_seconds` draws a tail behind each person, so the teams' movement shows.
@@ -387,10 +374,9 @@ tv.viz.plot_tracks(result, max_tracks=8)
     nb.code("""
 tv.viz.plot_tracks(result, track_ids=result.track_ids[:3])
 """)
-    nb.md(f"""
+    nb.md("""
 `plot_distance_histogram` plots any set of distances with the median marked.
-It is made for `compare_with_statsbomb` errors (see
-[04_inference]({REPO_URL}/notebooks/04_inference.ipynb)); here it shows how
+Here it shows how
 far each track moved during the ten seconds. Detection jitter adds to these
 distances, so they overestimate what the players really ran.
 """)
@@ -427,7 +413,5 @@ tv.show(small + gray, titles=["0 s", "10 s", "20 s"] * 2, cols=3, width=14)
 ## Sources
 
 {DEMO_ATTRIBUTION}
-
-{STATSBOMB_ATTRIBUTION}
 """)
     return nb

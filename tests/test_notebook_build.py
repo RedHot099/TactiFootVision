@@ -234,20 +234,6 @@ def test_a_notebook_tells_where_the_token_steps_are(build, name):
         assert f"]({overview.colab_url})" in title or "00_overview.ipynb)" in title
 
 
-@pytest.mark.parametrize("name", NOTEBOOKS)
-def test_statsbomb_data_is_shown_with_the_statsbomb_logo(build, name):
-    # The StatsBomb Public Data User Agreement, 1.4: any publication of analysis
-    # based on the data carries the StatsBomb logo.
-    import common
-
-    cells = _generated(name)
-    if "download_statsbomb" not in _called(cells):
-        pytest.skip(f"{name} shows no StatsBomb data")
-    markdown = "\n".join(c.source for c in cells if c.cell_type == "markdown")
-    assert f'<img src="{common.STATSBOMB_LOGO}"' in markdown
-    assert "load_statsbomb" in _called(cells)
-
-
 def test_the_colab_links_open_each_notebook_at_one_release():
     # `master` may use API newer than the package the first cell installs, so
     # the badge opens the notebook as it was at a release (never an rc).
@@ -586,16 +572,6 @@ def test_the_inference_notebook_shows_every_stage_on_the_demo(build):
     assert {"to_freeze_frames", "export", "save", "load", "track_ball"} <= called
     assert {"fixed_homography", "undistortion", "keypoint_model"} <= _keywords(cells)
     assert {"keep_masks"} <= _keywords(cells)
-
-
-def test_the_statsbomb_comparison_is_shown_not_run(build):
-    # No open source pairs footage with 360 data of the same match.
-    cells = _generated("04_inference")
-    assert "compare_with_statsbomb" not in _called(cells)
-    assert "load_statsbomb" not in _called(cells)
-    fenced = re.findall(r"```python\n(.*?)```", _markdown(cells), re.S)
-    assert any("compare_with_statsbomb" in block for block in fenced)
-    assert any("download_statsbomb" in block for block in fenced)
 
 
 def test_the_visualisation_notebook_shows_every_annotator_style_and_flag(build):

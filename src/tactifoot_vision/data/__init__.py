@@ -17,7 +17,6 @@ from tactifoot_vision.data.labelled_clip import (
     load_labelled_clip,
 )
 from tactifoot_vision.data.statsbomb import load_statsbomb
-from tactifoot_vision.data.statsbomb_open_data import StatsBombMatch, download_statsbomb
 from tactifoot_vision.data.synthetic import broadcast_homographies, synthetic_pitch_clip
 from tactifoot_vision.data.video import VideoReader, extract_frames
 
@@ -32,13 +31,11 @@ __all__ = [
     "LabelledClip",
     "LabelledFrame",
     "Sample",
-    "StatsBombMatch",
     "Task",
     "Truth",
     "VideoReader",
     "broadcast_homographies",
     "download_demo",
-    "download_statsbomb",
     "extract_frames",
     "load_dataset",
     "load_labelled_clip",
