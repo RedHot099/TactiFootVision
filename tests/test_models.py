@@ -923,8 +923,8 @@ def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
     )
     assert {s: len(dataset[s]) for s in dataset.split_names} == {
         "train": 400,
-        "valid": 120,
-        "test": 80,
+        "valid": 80,
+        "test": 120,
     }
 
     result = tv.train(
@@ -942,7 +942,7 @@ def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
     # The test clip took no part in training or in picking the best epoch.
     metrics = tv.evaluate(result.load(conf=0.05), dataset, "test")
 
-    assert metrics.num_images == 80
+    assert metrics.num_images == 120
     assert metrics.detection_rate > 0
     assert metrics.pck > 0.5  # 0.80 in the lab run that chose the recipe
 

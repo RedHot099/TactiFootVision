@@ -57,7 +57,7 @@ pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pos
 
 # The pitch keypoint set a short `yolo_pose` run learns from within minutes on
 # a T4: fifteen clips of 40 broadcast views with noise and occluding boxes,
-# split per clip into 400 training, 120 validation and 80 test frames. Of the
+# split per clip into 400 training, 80 validation and 120 test frames. Of the
 # recipes tried in the lab (1116-154213), this one learns the landmarks (PCK
 # 0.80 at 5%) where six clips of views zoomed in further reached 0.06. The
 # model test
