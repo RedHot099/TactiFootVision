@@ -303,3 +303,94 @@ def test_the_augmentation_notebook_shows_every_transform(build):
     called = _called(_generated("02_augmentation"))
     assert {"HorizontalFlip", "RandomAffine", "Compose", "OneOf"} <= transforms
     assert transforms | {"augment_dataset", "show_augmentations"} <= called
+
+
+def _string_arguments(cells: list[nbformat.NotebookNode], function: str) -> set[str]:
+    """First arguments of the calls to ``function`` that are string literals."""
+    return {
+        node.args[0].value
+        for node in _code_nodes(cells)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute | ast.Name)
+        and (node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id)
+        == function
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    }
+
+
+@pytest.mark.parametrize("name", _colab_ready_names_at_import())
+def test_a_colab_ready_notebook_trains_the_demo_detector_with_the_shared_recipe(
+    build, name
+):
+    # One recipe for the overview's detector, so the notebooks cannot drift apart.
+    import common
+
+    cells = _generated(name)
+    if "yolo" not in _string_arguments(cells, "train"):
+        pytest.skip(f"{name} trains no detector")
+    recipe = textwrap.dedent(common.DEMO_DETECTOR).strip()
+    trains = [c for c in cells if c.cell_type == "code" and '"yolo"' in c.source]
+    assert [c.source for c in trains] == [recipe]
+    assert trains[0].metadata["tags"] == [common.LIVE_LOG]
+
+
+def test_the_training_notebook_trains_and_scores_every_backend(build):
+    cells = _generated("03_training_and_evaluation")
+    assert {"yolo", "yolo_pose"} <= _string_arguments(cells, "train")
+    assert "rfdetr" in _string_arguments(cells, "load_model")
+    called = _called(cells)
+    assert {"evaluate", "plot_metrics", "plot_training", "from_clips"} <= called
+    assert "broadcast_homographies" in called and "synthetic_pitch_clip" in called
+
+
+def _rfdetr_guard(cells: list[nbformat.NotebookNode]) -> nbformat.NotebookNode:
+    (guard,) = [c for c in cells if 'require_extra("rfdetr")' in c.source]
+    return guard
+
+
+def test_the_rfdetr_cells_run_only_where_the_extra_imports(build):
+    # Colab's runtime has no rfdetr extra: every cell that uses RF-DETR sits
+    # under the guard's flag, so the notebook still runs top to bottom there.
+    cells = [
+        c for c in _generated("03_training_and_evaluation") if c.cell_type == "code"
+    ]
+    guard = _rfdetr_guard(cells)
+    flag = "has_rfdetr"
+    assert f"{flag} = True" in guard.source
+    for cell in cells[cells.index(guard) + 1 :]:
+        tree = ast.parse(_without_magics(cell.source))
+        guarded = {
+            id(node)
+            for statement in ast.walk(tree)
+            if isinstance(statement, ast.If)
+            and flag
+            in {n.id for n in ast.walk(statement.test) if isinstance(n, ast.Name)}
+            for part in statement.body  # not the else branch
+            for node in ast.walk(part)
+        }
+        uses = [
+            node
+            for node in ast.walk(tree)
+            if (isinstance(node, ast.Name) and "rfdetr" in node.id and node.id != flag)
+            or (isinstance(node, ast.Constant) and node.value == "rfdetr")
+        ]
+        assert all(id(node) in guarded for node in uses), cell.source
+
+
+def test_without_the_rfdetr_extra_one_line_says_how_to_run_its_cells(
+    build, monkeypatch, capsys
+):
+    import sys
+
+    import tactifoot_vision as tv
+
+    monkeypatch.setitem(sys.modules, "rfdetr", None)  # import fails: not installed
+    guard = _rfdetr_guard(_generated("03_training_and_evaluation"))
+    namespace = {"tv": tv}
+    exec(guard.source, namespace)
+
+    assert namespace["has_rfdetr"] is False
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert 'pip install "tactifoot-vision[rfdetr]"' in lines[0]

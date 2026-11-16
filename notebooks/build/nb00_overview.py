@@ -1,14 +1,14 @@
 """00_overview.ipynb: the whole workflow in a few cells, with links to the module notebooks."""
 
-from common import REPO_URL, Notebook
+from common import (
+    DEMO_DETECTOR,
+    DETECTOR_EPOCHS,
+    DETECTOR_IMGSZ,
+    REPO_URL,
+    Notebook,
+)
 
 from tactifoot_vision.data.demo import ATTRIBUTION
-
-# The demo training run. Of three tried on the demo set for 10 epochs (YOLO11n
-# at 640 and at 1280, YOLO11s at 1920), only this one finds all 22 players of
-# the 4096-pixel panorama: MOTA 0.63 on the demo clip against 0.49 and 0.28,
-# for under a minute of training on an RTX 4070 Ti SUPER.
-WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
 
 
 def notebook() -> Notebook:
@@ -102,7 +102,7 @@ augmented.summary()
 
 `tv.train` works the same for every backend (`yolo`, `rfdetr`, `yolo_pose`).
 This run starts from the COCO weights Ultralytics publishes and trains for
-{EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
+{DETECTOR_EPOCHS} epochs on the demo frames, at {DETECTOR_IMGSZ} pixels on the long side
 because the players are small: about a minute on a desktop GPU, several on
 a Colab T4. While it runs, one bar shows the epoch, the training loss and
 the validation mAP50, and the loss and metric curves under it are redrawn
@@ -110,13 +110,7 @@ after every epoch (`progress=False` gives the backend's own log instead;
 `tv.viz.plot_training(training)` draws the curves of a finished run). The
 score comes from `evaluate`, the same code for every backend.
 """)
-    nb.code(
-        f"""
-training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=16,
-                    imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
-""",
-        live_log=True,
-    )
+    nb.code(DEMO_DETECTOR, live_log=True)
     nb.code("""
 import pandas as pd
 

@@ -31,7 +31,9 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 # moves it to its own tag (never an rc).
 RELEASE_TAG = "v0.3.0"
 # Notebooks that run on Colab, by name.
-COLAB_READY = frozenset({"00_overview", "01_data", "02_augmentation"})
+COLAB_READY = frozenset(
+    {"00_overview", "01_data", "02_augmentation", "03_training_and_evaluation"}
+)
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
 _COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
 
@@ -63,6 +65,41 @@ clips = [
     for seed in range(4)
 ]
 pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pose")
+"""
+
+# The pitch keypoint set a short `yolo_pose` run learns from within minutes on
+# a T4: six clips of 40 broadcast views with noise and occluding boxes, split
+# per clip into 160 training, 40 validation and 40 test frames. The model test
+# `test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views` trains
+# on the same recipe. Defines `size` and `pitch_data`.
+PITCH_TRAINING_DATASET = """
+size = (640, 360)
+clips = [
+    tv.data.synthetic_pitch_clip(
+        OUT / "pitch_views" / f"clip{seed}" / f"clip{seed}_%06d.jpg",
+        tv.data.broadcast_homographies(40, size, seed=seed),
+        size,
+        line_width=0.25,  # metres: the real 12 cm would be under a pixel here
+        noise=4,
+        occluders=3,  # player-sized boxes over the markings
+        seed=seed,
+    )
+    for seed in range(6)
+]
+pitch_data = tv.data.Dataset.from_clips(clips, train=0.66, valid=0.17, test=0.17, task="pose")
+"""
+
+# The demo detector, trained the same way wherever a notebook needs one. Of
+# three tried on the demo set for 10 epochs (YOLO11n at 640 and at 1280,
+# YOLO11s at 1920), only this one finds all 22 players of the 4096-pixel
+# panorama: MOTA 0.63 on the demo clip against 0.49 and 0.28, for under a
+# minute of training on an RTX 4070 Ti SUPER, about five on a Colab T4.
+DETECTOR_WEIGHTS, DETECTOR_IMGSZ, DETECTOR_EPOCHS = "yolo11s.pt", 1920, 10
+# The training cell (a live-log cell): trains on `dataset`, the demo detection
+# set, and leaves the `TrainResult` in `training`.
+DEMO_DETECTOR = f"""
+training = tv.train("yolo", dataset, weights="{DETECTOR_WEIGHTS}", epochs={DETECTOR_EPOCHS}, batch_size=16,
+                    imgsz={DETECTOR_IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
 """
 
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
