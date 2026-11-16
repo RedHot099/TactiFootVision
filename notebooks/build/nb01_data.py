@@ -1,6 +1,6 @@
 """01_data.ipynb: `tv.data`, datasets, format conversion, video and StatsBomb events."""
 
-from common import REPO_URL, STATSBOMB_LOGO, Notebook
+from common import REPO_URL, STATSBOMB_LOGO, SYNTHETIC_PITCH_DATASET, Notebook
 
 from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
 from tactifoot_vision.data.statsbomb_open_data import (
@@ -207,20 +207,8 @@ landmarks into every frame. Any clip with calibration truth gives a dataset
 the same way. The split counts clips, so all frames of a clip land in one
 split. Four clips of eight small frames take seconds on a CPU.
 """)
-    nb.code("""
-size = (640, 360)
-clips = [
-    tv.data.synthetic_pitch_clip(
-        # File names differ between clips, so an export keeps them.
-        OUT / "pitch_views" / f"clip{seed}" / f"clip{seed}_%06d.jpg",
-        tv.data.broadcast_homographies(8, size, seed=seed),
-        size,
-        line_width=0.25,  # metres: the real 12 cm would be under a pixel here
-        seed=seed,
-    )
-    for seed in range(4)
-]
-pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pose")
+    nb.code(f"""
+{SYNTHETIC_PITCH_DATASET.strip()}
 print(pitch_data)
 print("flip_idx:", pitch_data.flip_idx)
 print("the pitch's:", list(pitch_data.flip_idx) == list(tv.SoccerPitch().flip_idx))

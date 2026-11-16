@@ -286,3 +286,20 @@ def test_a_colab_ready_notebook_reads_no_local_data_or_weights():
     for name in _colab_ready_names():
         source = (BUILD_DIR / f"nb{name}.py").read_text()
         assert not [f for f in forbidden if f in source], name
+
+
+def test_the_augmentation_notebook_shows_every_transform(build):
+    import inspect
+
+    from tactifoot_vision import augment
+
+    transforms = {
+        name
+        for name in augment.__all__
+        if inspect.isclass(cls := getattr(augment, name))
+        and issubclass(cls, augment.Transform)
+        and not inspect.isabstract(cls)
+    }
+    called = _called(_generated("02_augmentation"))
+    assert {"HorizontalFlip", "RandomAffine", "Compose", "OneOf"} <= transforms
+    assert transforms | {"augment_dataset", "show_augmentations"} <= called

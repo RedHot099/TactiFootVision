@@ -31,7 +31,7 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 # moves it to its own tag (never an rc).
 RELEASE_TAG = "v0.3.0"
 # Notebooks that run on Colab, by name.
-COLAB_READY = frozenset({"00_overview", "01_data"})
+COLAB_READY = frozenset({"00_overview", "01_data", "02_augmentation"})
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
 _COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
 
@@ -45,6 +45,25 @@ STATSBOMB_LOGO = (
     "3bfc16d8b40965104692c45e378d8f014888e90b/img/"
     "SB%20-%20Icon%20Lockup%20-%20Colour%20positive.png"
 )
+
+# The small pitch keypoint dataset the notebooks share, rendered in seconds on
+# a CPU: four clips of eight random broadcast views of the synthetic pitch,
+# split per clip. Defines `size` (the frame size) and `pitch_data`.
+SYNTHETIC_PITCH_DATASET = """
+size = (640, 360)
+clips = [
+    tv.data.synthetic_pitch_clip(
+        # File names differ between clips, so an export keeps them.
+        OUT / "pitch_views" / f"clip{seed}" / f"clip{seed}_%06d.jpg",
+        tv.data.broadcast_homographies(8, size, seed=seed),
+        size,
+        line_width=0.25,  # metres: the real 12 cm would be under a pixel here
+        seed=seed,
+    )
+    for seed in range(4)
+]
+pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pose")
+"""
 
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
