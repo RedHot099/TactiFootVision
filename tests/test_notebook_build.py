@@ -13,6 +13,14 @@ import pytest
 BUILD_DIR = Path(__file__).resolve().parents[1] / "notebooks" / "build"
 
 
+def _colab_ready_names_at_import() -> list[str]:
+    """The Colab-ready notebooks, read when the tests are collected."""
+    spec = importlib.util.spec_from_file_location("_common", BUILD_DIR / "common.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return sorted(module.COLAB_READY)
+
+
 @pytest.fixture
 def build(monkeypatch):
     monkeypatch.syspath_prepend(str(BUILD_DIR))
@@ -164,21 +172,76 @@ def test_the_overview_notebook_installs_the_package_only_when_it_is_missing(
         assert calls == [("pip", "install -q tactifoot-vision")]
 
 
-def test_the_overview_notebook_needs_no_local_data_or_weights(build):
-    names = {
-        node.id
-        for source in _overview_code()
-        for node in ast.walk(ast.parse(_without_magics(source)))
-        if isinstance(node, ast.Name)
-    }
-    assert "demo" in names  # it runs on what download_demo fetched
-    assert not {"MODELS", "VIDEO"} & names
-
-
 def _colab_ready_names() -> list[str]:
     import common
 
     return sorted(common.COLAB_READY)
+
+
+def _generated(name: str) -> list[nbformat.NotebookNode]:
+    """The cells the builder writes for notebook ``name``."""
+    module = importlib.import_module(f"nb{name}")
+    return module.notebook().cells
+
+
+def _code_nodes(cells: list[nbformat.NotebookNode]) -> list[ast.AST]:
+    return [
+        node
+        for cell in cells
+        if cell.cell_type == "code"
+        for node in ast.walk(ast.parse(_without_magics(cell.source)))
+    ]
+
+
+def _called(cells: list[nbformat.NotebookNode]) -> set[str]:
+    """Names of the functions the code cells call (``tv.data.f(...)`` gives ``f``)."""
+    return {
+        node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+        for node in _code_nodes(cells)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute | ast.Name)
+    }
+
+
+@pytest.mark.parametrize("name", _colab_ready_names_at_import())
+def test_a_colab_ready_notebook_runs_on_what_it_downloads(build, name):
+    # The standalone first cell defines no MODELS or VIDEO, and the maintainer's
+    # datasets, weights and checkouts are not on Colab under any path.
+    nodes = _code_nodes(_generated(name))
+    names = {node.id for node in nodes if isinstance(node, ast.Name)}
+    strings = {
+        node.value
+        for node in nodes
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert "download_demo" in _called(_generated(name))
+    assert not {"MODELS", "VIDEO"} & names
+    assert not {"datasets", "keypoints", "models", "external"} & strings
+
+
+@pytest.mark.parametrize("name", _colab_ready_names_at_import())
+def test_a_colab_ready_notebook_tells_where_the_token_steps_are(build, name):
+    import common
+
+    title = _generated(name)[0].source
+    assert "HF_TOKEN" in title
+    if name != "00_overview":  # the overview lists the steps itself
+        overview = common.Notebook("00_overview")
+        assert f"]({overview.colab_url})" in title or "00_overview.ipynb)" in title
+
+
+@pytest.mark.parametrize("name", _colab_ready_names_at_import())
+def test_statsbomb_data_is_shown_with_the_statsbomb_logo(build, name):
+    # The StatsBomb Public Data User Agreement, 1.4: any publication of analysis
+    # based on the data carries the StatsBomb logo.
+    import common
+
+    cells = _generated(name)
+    if "download_statsbomb" not in _called(cells):
+        pytest.skip(f"{name} shows no StatsBomb data")
+    markdown = "\n".join(c.source for c in cells if c.cell_type == "markdown")
+    assert f'<img src="{common.STATSBOMB_LOGO}"' in markdown
+    assert "load_statsbomb" in _called(cells)
 
 
 def test_the_colab_links_open_each_ready_notebook_at_one_release():
@@ -209,7 +272,7 @@ def test_the_colab_links_open_each_ready_notebook_at_one_release():
 def test_only_ready_notebooks_have_a_badge_and_a_standalone_first_cell():
     import common
 
-    for name in ("00_overview", "01_data"):
+    for name in ("00_overview", "05_visualisation"):
         nb = common.Notebook(name)
         nb.setup()
         ready = name in common.COLAB_READY
@@ -218,7 +281,7 @@ def test_only_ready_notebooks_have_a_badge_and_a_standalone_first_cell():
 
 
 def test_a_colab_ready_notebook_reads_no_local_data_or_weights():
-    # 01 to 05 still read local data until they are made Colab-ready.
+    # The other notebooks still read local data until they are made Colab-ready.
     forbidden = ("models/", "data/datasets", "data/keypoints", "external/")
     for name in _colab_ready_names():
         source = (BUILD_DIR / f"nb{name}.py").read_text()

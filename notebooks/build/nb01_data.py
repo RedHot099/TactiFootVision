@@ -1,23 +1,44 @@
 """01_data.ipynb: `tv.data`, datasets, format conversion, video and StatsBomb events."""
 
-from common import Notebook
+from common import REPO_URL, STATSBOMB_LOGO, Notebook
+
+from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
+from tactifoot_vision.data.statsbomb_open_data import (
+    ATTRIBUTION as STATSBOMB_ATTRIBUTION,
+)
 
 
 def notebook() -> Notebook:
     nb = Notebook("01_data")
-    nb.md("""
+    nb.md(f"""
 # Data preparation with `tv.data`
+
+{nb.badge}
 
 Everything that comes before training: loading annotated datasets, deriving
 new ones, converting between YOLO and COCO, reading match video, and loading
 StatsBomb 360 event data.
 
+It runs on open data, the same from a checkout and on Google Colab, and
+needs no GPU:
+
+* the SoccerTrack v2 demo match from `tv.data.download_demo`: frames with
+  player boxes and a 30-second clip (about 300 MB, CC BY 4.0);
+* a small pitch keypoint dataset, rendered here from the package's synthetic
+  pitch;
+* one StatsBomb open-data match: events and 360 freeze frames (about 13 MB).
+
+The demo data needs your own free Hugging Face token, as a Colab secret
+named `HF_TOKEN` (or the environment variable of that name, or a saved
+`hf auth login`). The [overview]({REPO_URL}/notebooks/00_overview.ipynb)
+lists the three steps to get one.
+
 A `Dataset` is a lightweight index. Images stay on disk, labels live in memory,
 and every operation returns a new dataset, so nothing here changes the source
 folders.
 
-Part of the [TactiFoot Vision notebooks](README.md); the
-[overview](00_overview.ipynb) shows how the stages connect.
+Part of the [TactiFoot Vision notebooks]({REPO_URL}/notebooks/README.md); the
+[overview]({REPO_URL}/notebooks/00_overview.ipynb) shows how the stages connect.
 """)
     nb.setup(
         imports="""
@@ -34,22 +55,32 @@ import tactifoot_vision as tv
     nb.md("""
 ## Loading a YOLO dataset
 
+`tv.data.download_demo` fetches one match of
+[SoccerTrack v2](https://huggingface.co/datasets/atomscott/soccertrack-v2)
+and lays it out for the package, among others as a YOLO detection dataset of
+frames from its first minutes. A second call does nothing.
+
 `tv.load_dataset` takes a YOLO `data.yaml` (or its folder) or a COCO folder and
 picks the task from the files: detection here, pose further down. `summary()`
 counts images and objects per split and class, which is the first thing to
-check for class imbalance.
+check for class imbalance. The demo labels only the 22 players: the dataset
+declares the package's four detection classes, and `goalkeeper`, `referee`
+and `ball` stay empty. Every call below works the same on a dataset that has
+all four.
 """)
     nb.code("""
-detection = tv.load_dataset(DATA / "datasets" / "football_yolo")
+demo = tv.data.download_demo(DATA / "demo")
+detection = tv.load_dataset(demo.detect_yaml)
 print(detection)
 detection.summary()
 """)
     nb.md("""
 `show_samples` draws random images of a split with their labels, a quick check
-that the boxes line up with the pixels.
+that the boxes line up with the pixels. The demo camera sees the whole pitch
+through a fisheye lens, 4096x1080 pixels, so a player is about 25x60 pixels.
 """)
     nb.code("""
-tv.viz.show_samples(detection, "train", n=6, seed=1)
+tv.viz.show_samples(detection, "train", n=2, seed=1, cols=1)
 """)
     nb.md("""
 Each split is a list of `Sample`s: the image path, its size and the
@@ -106,9 +137,9 @@ trainers call these for you; here we call them directly and check that a
 round trip YOLO → COCO → YOLO keeps every box and class.
 """)
     nb.code("""
-coco_root = small.to_coco(OUT / "football_coco")
+coco_root = small.to_coco(OUT / "demo_coco")
 from_coco = tv.load_dataset(coco_root)
-yolo_yaml = from_coco.to_yolo(OUT / "football_yolo_again")
+yolo_yaml = from_coco.to_yolo(OUT / "demo_yolo_again")
 from_yolo = tv.load_dataset(yolo_yaml)
 
 print("COCO:", from_coco)
@@ -158,19 +189,41 @@ print("YOLO -> COCO identical:        ", same_labels(original, labels_by_image(f
 print("YOLO -> COCO -> YOLO identical:", same_labels(original, labels_by_image(from_yolo)))
 """)
 
-    nb.md("""
+    nb.md(f"""
 ## Pose datasets and `flip_idx`
 
-The pitch dataset is a pose task: each image has one `pitch` object with 32
-landmark keypoints `(x, y, visibility)`. `flip_idx` says which landmark takes
-the place of which when the image is mirrored (left corner ↔ right corner).
-Augmentation needs it to flip keypoints correctly, see
-[02_augmentation](02_augmentation.ipynb).
+A pitch keypoint dataset is a pose task: each image has one `pitch` object
+with 32 landmark keypoints `(x, y, visibility)`, the vertices of
+`tv.SoccerPitch`. `flip_idx` says which landmark takes the place of which when
+the image is mirrored (left corner ↔ right corner). Augmentation needs it to
+flip keypoints correctly, see
+[02_augmentation]({REPO_URL}/notebooks/02_augmentation.ipynb).
+
+This one is made here, from the package's synthetic pitch:
+`broadcast_homographies` draws random views of a main broadcast camera,
+`synthetic_pitch_clip` renders the pitch markings through them into an image
+sequence, and `Dataset.from_clips(..., task="pose")` projects the pitch
+landmarks into every frame. Any clip with calibration truth gives a dataset
+the same way. The split counts clips, so all frames of a clip land in one
+split. Four clips of eight small frames take seconds on a CPU.
 """)
     nb.code("""
-pitch_data = tv.load_dataset(DATA / "keypoints")
+size = (640, 360)
+clips = [
+    tv.data.synthetic_pitch_clip(
+        # File names differ between clips, so an export keeps them.
+        OUT / "pitch_views" / f"clip{seed}" / f"clip{seed}_%06d.jpg",
+        tv.data.broadcast_homographies(8, size, seed=seed),
+        size,
+        line_width=0.25,  # metres: the real 12 cm would be under a pixel here
+        seed=seed,
+    )
+    for seed in range(4)
+]
+pitch_data = tv.data.Dataset.from_clips(clips, train=0.75, valid=0.25, task="pose")
 print(pitch_data)
 print("flip_idx:", pitch_data.flip_idx)
+print("the pitch's:", list(pitch_data.flip_idx) == list(tv.SoccerPitch().flip_idx))
 pitch_data.summary()
 """)
     nb.code("""
@@ -179,7 +232,9 @@ tv.viz.show_samples(pitch_data, "train", n=3)
     nb.md("""
 Visibility follows YOLO and COCO: 0 not labelled, 1 occluded, 2 visible. A
 broadcast frame shows only part of the pitch, so most landmarks of an image
-are unlabelled.
+are not labelled. A rendered frame knows every landmark exactly, so it uses
+only 0 and 2; hand-labelled frames also mark landmarks hidden behind players
+as occluded.
 """)
     nb.code("""
 keypoints = np.concatenate([s.annotations.keypoints for s in pitch_data["train"]])
@@ -195,8 +250,7 @@ round trip keeps it. Labelled keypoints come back unchanged; unlabelled ones
 are written as `0 0 0`, so only their visibility is compared.
 """)
     nb.code("""
-pitch_subset = pitch_data.subset(20, seed=0)
-pitch_coco = tv.load_dataset(pitch_subset.to_coco(OUT / "pitch_coco"))
+pitch_coco = tv.load_dataset(pitch_data.to_coco(OUT / "pitch_coco"))
 print(pitch_coco)
 print("flip_idx kept:", pitch_coco.flip_idx == pitch_data.flip_idx)
 
@@ -205,7 +259,7 @@ def keypoints_by_image(dataset):
     return {(split, s.image_path.stem): s.annotations.keypoints for split in dataset.split_names for s in dataset[split]}
 
 
-before, after = keypoints_by_image(pitch_subset), keypoints_by_image(pitch_coco)
+before, after = keypoints_by_image(pitch_data), keypoints_by_image(pitch_coco)
 same = before.keys() == after.keys()
 for key, kp in before.items():
     labelled = kp[..., 2] > tv.data.NOT_LABELLED
@@ -219,38 +273,54 @@ print("keypoints kept:", bool(same))
 
 `VideoReader` gives the video's properties and reads frames in order
 (`frames(start, end, stride)` yields `(index, frame)` pairs) or one at a time
-by index. Frames are BGR arrays, like dataset images.
+by index. Frames are BGR arrays, like dataset images. It reads a video file
+or an image sequence, a pattern such as `img1/%06d.jpg` whose first image is
+frame 0; the demo clip is such a sequence, laid out as SoccerNet clips are.
 """)
     nb.code("""
-video = tv.VideoReader(VIDEO)
+clip = tv.data.load_labelled_clip(demo.clip_dir)
+video = tv.VideoReader(clip.video_path)
 print(video)
 print(f"{video.width}x{video.height}, {video.fps:.0f} fps, {video.frame_count} frames, {video.duration:.0f} s")
 
 every_ten_seconds = list(video.frames(start=0, end=video.frame_count, stride=250))
 print("frames read:", [index for index, _ in every_ten_seconds])
-tv.show([video.read(i) for i in (0, 750, 1400)], titles=["0 s", "30 s", "56 s"])
+tv.show([video.read(i) for i in (0, 375, 725)], titles=["0 s", "15 s", "29 s"], cols=1)
 """)
     nb.md("""
 `extract_frames` saves every `stride`-th frame of `start <= index < end` as an
 image (the same frame range as `VideoReader.frames`), the usual first step when
-annotating new footage.
+annotating new footage. Files are named after the video, or after the folder
+of an image sequence.
 """)
     nb.code("""
-paths = tv.data.extract_frames(VIDEO, OUT / "frames", end=1500, stride=375)
+paths = tv.data.extract_frames(clip.video_path, OUT / "frames", end=750, stride=250)
 print([path.name for path in paths])
 """)
 
-    nb.md("""
+    nb.md(f"""
 ## StatsBomb 360 events
+
+<img src="{STATSBOMB_LOGO}" alt="StatsBomb" width="220">
+
+StatsBomb publishes the events and 360 freeze frames of selected matches as
+[open data](https://github.com/statsbomb/open-data). Their terms ask that any
+analysis made from it credits StatsBomb as the source and shows their logo,
+and that the data is not passed on, so this notebook fetches it and never
+ships it. `download_statsbomb` fetches one match from their repository (here
+the Euro 2020 final, about 13 MB) into the layout `load_statsbomb` reads, and
+prints that credit; a second call does nothing.
 
 `load_statsbomb` reads a match's `*_events.json` and `*_360.json` (or a CSV
 saved from the same table) into one row per player visible in an event's
 freeze frame. Locations are in StatsBomb's 120 × 80 pitch units. This is the
-reference that pipeline positions can be compared against, see
-[04_inference](04_inference.ipynb).
+reference that pipeline positions can be compared against when footage and
+360 data cover the same match, see
+[04_inference]({REPO_URL}/notebooks/04_inference.ipynb).
 """)
     nb.code("""
-statsbomb = tv.data.load_statsbomb(DATA / "statsbomb")
+euro_final = tv.data.download_statsbomb(3795506, DATA / "statsbomb")
+statsbomb = tv.data.load_statsbomb(euro_final.folder)
 print(f"{len(statsbomb):,} objects in {statsbomb['event_uuid'].nunique():,} freeze frames")
 statsbomb[["period", "minute", "second", "type_name", "team_name", "pitch_location", "teammate", "type"]].head()
 """)
@@ -267,7 +337,17 @@ fig = tv.viz.draw_pitch(pitch=tv.SoccerPitch(120, 80), size=7)
 ax = fig.axes[0]
 ax.scatter(xy[:, 0], xy[:, 1], s=50, zorder=3, edgecolor="white",
            c=np.where(event["teammate"], "#00BFFF", "#FF1493"))
-ax.set_title(f"{first.type_name} by {first.team_name}, {first.minute}:{first.second:02d}")
+ax.set_title(f"{first.type_name} by {first.team_name}, {first.minute}:{first.second:02d} (data: StatsBomb)")
 fig
+""")
+
+    nb.md(f"""
+## Sources
+
+{DEMO_ATTRIBUTION}
+
+{STATSBOMB_ATTRIBUTION}
+
+The pitch keypoint frames are rendered by `tactifoot_vision`.
 """)
     return nb

@@ -227,7 +227,7 @@ examples/             one script per functional area
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
   `stride >= 1`); `read` refuses negative indices.
-* `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths.
+* `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths, named `<video stem>_<index>` (an image sequence: after its folder).
   Frame ranges use `start`, `end` (exclusive, `None` = to the end) and
   `stride` everywhere: `VideoReader.frames`, `extract_frames`, `Pipeline.run`.
 * `Dataset.resplit(train, valid, test)` rounds the split boundaries

@@ -30,9 +30,21 @@ if importlib.util.find_spec("tactifoot_vision") is None:  # e.g. a fresh Colab r
 # package their first cell installs; `master` may be ahead of it. A release
 # moves it to its own tag (never an rc).
 RELEASE_TAG = "v0.3.0"
-COLAB_READY = frozenset({"00_overview"})  # notebooks that run on Colab, by name
+# Notebooks that run on Colab, by name.
+COLAB_READY = frozenset({"00_overview", "01_data"})
 _COLAB_BASE = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob"
 _COLAB_BADGE = "https://colab.research.google.com/assets/colab-badge.svg"
+
+# Links from one notebook to another, or to the docs, open them on GitHub.
+REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
+
+# StatsBomb's terms ask for their logo wherever an analysis of their data is
+# shown: the one in their open-data repository, pinned to a commit.
+STATSBOMB_LOGO = (
+    "https://raw.githubusercontent.com/statsbomb/open-data/"
+    "3bfc16d8b40965104692c45e378d8f014888e90b/img/"
+    "SB%20-%20Icon%20Lockup%20-%20Colour%20positive.png"
+)
 
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 

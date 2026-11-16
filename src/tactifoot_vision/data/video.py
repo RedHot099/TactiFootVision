@@ -150,16 +150,18 @@ def extract_frames(
 ) -> list[Path]:
     """Save the frames ``start <= index < end`` every ``stride`` frames; return the paths.
 
-    Files are named ``<video stem>_<index>.<format>``; ``end=None`` runs to the
-    end of the video. Handy for building a new dataset to annotate from match
-    footage.
+    Files are named ``<video stem>_<index>.<format>``, or after the folder
+    of an image sequence (``img1/%06d.jpg`` gives ``img1_000000.jpg``);
+    ``end=None`` runs to the end of the video. Handy for building a new
+    dataset to annotate from match footage.
     """
     reader = VideoReader(video)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    name = reader.path.stem if reader.path.is_file() else reader.path.parent.name
     paths: list[Path] = []
     for index, frame in reader.frames(start=start, end=end, stride=stride):
-        path = out / f"{reader.path.stem}_{index:06d}.{image_format}"
+        path = out / f"{name}_{index:06d}.{image_format}"
         if not cv2.imwrite(str(path), frame):
             raise RuntimeError(f"Could not write {path}")
         paths.append(path)

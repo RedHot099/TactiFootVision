@@ -1,6 +1,6 @@
 """00_overview.ipynb: the whole workflow in a few cells, with links to the module notebooks."""
 
-from common import Notebook
+from common import REPO_URL, Notebook
 
 from tactifoot_vision.data.demo import ATTRIBUTION
 
@@ -9,9 +9,6 @@ from tactifoot_vision.data.demo import ATTRIBUTION
 # the 4096-pixel panorama: MOTA 0.63 on the demo clip against 0.49 and 0.28,
 # for under a minute of training on an RTX 4070 Ti SUPER.
 WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
-
-
-REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
 
 
 def notebook() -> Notebook:
