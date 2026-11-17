@@ -31,6 +31,12 @@ def pitch_weights() -> Path:
 
 
 @pytest.fixture(scope="session")
+def line_weights() -> Path:
+    """The pitch line model r18s2w640 trained through tv.train (``_tvtrain``; its manifest, with the sha256, beside it)."""
+    return MODELS_DIR / "pitch_lines_r18s2w640_tvtrain.pt"
+
+
+@pytest.fixture(scope="session")
 def rfdetr_coco_weights() -> Path:
     """RF-DETR base with the COCO classes."""
     return MODELS_DIR / "rfdetr_base.pth"
