@@ -49,7 +49,9 @@ A second way to get the homography is a line network and one joint fit
 A `lines` model finds points along the 20 painted markings, and
 `tv.pitch.LineHomographyEstimator` fits one homography to all of them,
 steadied by a Kalman filter. It is opt-in: the keypoint model above stays the
-default. No line weights ship with the package; they train on SoccerNet's
+default. The names `LineHomographyEstimator` and `smooth_line_homographies` are
+temporary: when the line method becomes the default, they become
+`HomographyEstimator` and `smooth_homographies`. No line weights ship with the package; they train on SoccerNet's
 line labels (the Camera Calibration and Game State Reconstruction downloads):
 
 ```python

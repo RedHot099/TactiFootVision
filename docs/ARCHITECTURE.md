@@ -715,7 +715,9 @@ the default: a `lines` model finds points along the 20 painted markings and
 `LineHomographyEstimator` fits one homography to all of them, steadied by a
 Kalman filter. It is opt-in everywhere: `Pipeline(line_model=...)`, a
 `lines:` run-file section, and the post-process `smooth_line_homographies`
-for the `final` track.
+for the `final` track. `LineHomographyEstimator` and `smooth_line_homographies`
+are temporary names: the change that makes the line method the default renames
+them to `HomographyEstimator` and `smooth_homographies` (ADR 0005).
 
 ```python
 lines = tv.load_pitch_lines("data/SoccerNetCalibration", "data/SoccerNetGS")

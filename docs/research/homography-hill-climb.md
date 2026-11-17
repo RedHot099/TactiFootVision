@@ -209,18 +209,19 @@ The tested code is the branch `feature/pitch-line-homography` at `e8b0326` (its 
 
 **Byte-identical to the tested code** (`git diff e8b0326 -- <path>` is empty):
 - `src/tactifoot_vision/pitch/fit.py`, `pitch/markings.py`, `pitch/temporal.py`: the joint fit, the markings, the Kalman filter and its RTS pass;
-- `src/tactifoot_vision/models/_line_net.py`, `models/lines.py`: the line network and the `lines` backend;
+- `src/tactifoot_vision/models/_line_net.py`: the line network;
 - `src/tactifoot_vision/data/pitch_lines.py`, `data/pitch_lines_v2.csv`: the line labels and the label rule;
 - `src/tactifoot_vision/cli.py` and `src/tactifoot_vision/__init__.py`;
 - `tests/line_points.py`, `tests/test_pitch_fit.py`, `tests/test_enums.py`.
 
 **The tested code under this change's names.** These differ from the tested files only in the names `HomographyEstimator` -> `LineHomographyEstimator` and `smooth_homographies` -> `smooth_line_homographies`, and in the lines ruff wraps after the longer names:
 - `src/tactifoot_vision/evaluation/lines.py`;
+- `src/tactifoot_vision/models/lines.py`, the `lines` backend (one docstring reference);
 - `tests/test_temporal.py`, `tests/test_pitch_lines.py` (one line, in a `model` test).
 
 **The tested code in new glue.** Under those renames, the code is the tested code; around it, the glue is new:
 - `pitch/line_homography.py` holds `HomographyFit` and `LineHomographyEstimator`. From `HomographyFit` to the end of the module it equals the tested `pitch/homography.py`. `frame_to_pitch`, `pitch_to_frame` and `visible_area` stay in `pitch/homography.py` beside the keypoint estimator.
-- `pipeline/homographies.py` holds `frame_homography`, identical, and `smooth_line_homographies`, the tested `smooth_homographies` with one docstring sentence changed, beside the Savitzky-Golay `smooth_homographies`.
+- `pipeline/homographies.py` holds `frame_homography`, identical, and `smooth_line_homographies`, the tested `smooth_homographies` with one docstring sentence changed, beside the Savitzky-Golay `smooth_homographies`, which warns when it is given a line-model result.
 - `Pipeline`, `FrameResult`, `PipelineResult`, the run file, the annotator, `Annotations`, `Dataset`, the enums and the registries take the tested additions beside what they had. `Pipeline` picks the line path only with a `line_model`, so a keypoint run takes the code it took before.
 - The tests of the new behaviour are the tested ones, renamed, in new files (`tests/test_line_*.py`, `tests/test_smooth_line_homographies.py`), with tests of what only this change has (both models refused, a keypoint run unchanged). The tests of the keypoint path are unchanged; `tests/conftest.py` gains the `line_weights` fixture and `tests/test_enums.py` the count and the name rule of the new vocabularies.
 

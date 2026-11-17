@@ -103,6 +103,9 @@ def smooth_homographies(
     read pitch positions (``join_tracks``, ``assign_roles``) after this one.
     A warning is logged when one of them already ran. ``FrameResult.line_fit``
     still describes the pass's fit.
+
+    A warning is logged, too, on the result of a pipeline with a line model:
+    its whole-video step is :func:`smooth_line_homographies`.
     """
     if not (math.isfinite(window) and window > 0):
         raise ValueError(f"window must be a positive number of seconds, got {window}")
@@ -125,6 +128,12 @@ def smooth_homographies(
             "smooth_homographies runs after %s, which read pitch positions; "
             "run it before them",
             ", ".join(applied),
+        )
+    if any(f.homography_fit is not None for f in result.frames):
+        logger.warning(
+            "smooth_homographies runs on a line-model result, whose homographies "
+            "the temporal filter already steadied; smooth_line_homographies is "
+            "its whole-video step"
         )
     centre = np.array([result.frame_size[0] / 2, result.frame_size[1] / 2, 1.0])
     scaled = _without_outliers(

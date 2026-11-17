@@ -4,7 +4,7 @@ For every :class:`~tactifoot_vision.enums.PitchMarking` (17 straight lines,
 3 circle arcs) the network predicts a heatmap of the marking's visible part;
 :meth:`PitchLineModel.predict` decodes it into points along each marking
 (:class:`~tactifoot_vision.pitch.fit.LinePoints`), which
-:class:`~tactifoot_vision.pitch.HomographyEstimator` fits the camera to.
+:class:`~tactifoot_vision.pitch.LineHomographyEstimator` fits the camera to.
 The architecture and decoder are in ``_line_net`` (torch, loaded only when
 a model is created).
 

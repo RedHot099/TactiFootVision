@@ -135,6 +135,12 @@ def test_smooth_line_homographies_runs_on_the_line_result(result):
         )
 
 
+def test_smooth_homographies_warns_on_a_line_result(result, caplog):
+    with caplog.at_level(logging.WARNING):
+        smooth_homographies(result)
+    assert "smooth_line_homographies is its whole-video step" in caplog.text
+
+
 def test_the_line_model_comes_with_the_line_estimator():
     detector, lines = ColorDetector(device="cpu"), KnownHomographyLines(device="cpu")
     assert isinstance(
