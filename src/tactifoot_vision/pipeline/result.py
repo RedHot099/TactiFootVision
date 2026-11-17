@@ -14,9 +14,12 @@ import pandas as pd
 import supervision as sv
 
 from tactifoot_vision.enums import DetectionKey, ObjectKind, Role
+from tactifoot_vision.pitch.fit import LinePoints
 from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
+from tactifoot_vision.pitch.line_homography import HomographyFit
 from tactifoot_vision.pitch.lines import LineFit
 from tactifoot_vision.pitch.pitch import SoccerPitch
+from tactifoot_vision.pitch.temporal import FilterConfig
 from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
 
 NO_TEAM = -1
@@ -127,6 +130,10 @@ class FrameResult:
     # How the homography fits the painted lines (HomographyEstimator's
     # refine_with_lines); None when it was not refined on them.
     line_fit: LineFit | None = None
+    line_points: LinePoints | None = None  # the line network's points, frame pixels
+    # How the pass's LineHomographyEstimator came to this frame's matrix (fresh
+    # or held, its uncertainty); None without a line model.
+    homography_fit: HomographyFit | None = None
 
     @property
     def pitch_xy(self) -> np.ndarray:
@@ -192,6 +199,11 @@ class PipelineResult:
     (``original_tracker_id`` once tracks are renamed), and
     ``track_embedding_samples`` how many embeddings each mean is over, so a
     post-process can compare kits without the video.
+    ``temporal_filter`` holds the settings of the temporal filter the
+    per-frame pass ran (``None``: it ran without one), when
+    ``temporal_filter_recorded`` says the pass recorded them (a pipeline
+    with a line model does); ``smooth_line_homographies`` works from them
+    (ADR 0002, ADR 0005).
     """
 
     frames: list[FrameResult]
@@ -203,6 +215,8 @@ class PipelineResult:
     postprocesses: list[AppliedPostProcess] = field(default_factory=list)
     track_embeddings: dict[int, np.ndarray] = field(default_factory=dict)
     track_embedding_samples: dict[int, int] = field(default_factory=dict)
+    temporal_filter: FilterConfig | None = None
+    temporal_filter_recorded: bool = False
 
     def __len__(self) -> int:
         return len(self.frames)
