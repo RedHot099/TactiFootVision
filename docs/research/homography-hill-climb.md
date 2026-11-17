@@ -121,6 +121,14 @@ ADR 0005, "Numbers"; records in `experiments/homography_bench/results/<row>/{val
 
 ![SNGS-123, 8 s, before and after](../media/homography/stability_heldout.webp)
 
+**The default pipeline on the example video** (`examples/06_cli.sh`'s clip, 1,499 frames; no truth, so no numbers). Before is the code of `master` at `9c9deee` with the keypoint weights, the settings that example used there and its whole-video smoothing; after is the line estimator with the P-final weights and the RTS pass. Detector, tracker and render settings are the same. Each run is drawn by its own renderer, so the line style differs.
+
+![The default pipeline at 15, 30 and 45 s, before above after](../media/homography/default_pipeline_demo.jpg)
+
+*The moments at 25 %, 50 % and 75 % of the clip. At 15 s the keypoint estimator's matrix is grossly wrong and the radar is unusable.*
+
+![The default pipeline, 8 s from the middle, before and after](../media/homography/default_pipeline_demo.webp)
+
 ## 6. Cost
 
 Protocols `gpu-v2` and `cpu-v2`. Records: `experiments/homography_bench/results/P-final/cost_{gpu,cpu}{,_images}.json`, window r4d, and B0's records.
@@ -204,6 +212,10 @@ REPORT sections 13 to 19; `GUARD_RULE.md`.
 - **The filter was tuned at 25 fps on every frame.** It steps in physical time; only strides 2 and 5 were measured.
 - **The held-out run spent GSR test and SN-Calib test** for this line of work.
 
+![Three cases where the line estimator fails or loses](../media/homography/known_limits.jpg)
+
+*(a) The first opposite-side image of SN-Calib valid that the line estimator fits as a main view (00209; B0 returns no matrix). (b) The first SN-Calib test image along the pitch that gets no matrix (00032; B0 returns none either). (c) The GSR test frame at the 1st percentile of the per-frame difference (SNGS-135 frame 437: 0.30 m before, 0.61 m after).*
+
 ## 11. Where the records are
 
 - **Code and records:** the local branch `research/homography-final` at `1492a5af7641`, not pushed.
@@ -226,9 +238,9 @@ The tested tree is the local branch `feature/pitch-line-homography` at `e8b0326`
 git diff e8b0326 -- src examples notebooks uv.lock
 ```
 
-is empty on it. Beyond the tested tree it differs in four places, none of them in the package's code: a test fake in `tests/test_models.py` lost a dead `keypoints` argument, one comment in `pyproject.toml` no longer names pitch keypoints, one sentence of ADR 0005 was corrected, and this paragraph.
+is empty on it. Beyond the tested tree it differs in five places, none of them in the package's code: a test fake in `tests/test_models.py` lost a dead `keypoints` argument, one comment in `pyproject.toml` no longer names pitch keypoints, one sentence of ADR 0005 was corrected, this document gained its figures (`docs/media/homography/`), and this paragraph.
 - **The package, the examples, the notebooks and the locked dependencies** are therefore the ones the research branch tested; its tests differ by that one test fake.
 - **The notebooks** are the files rebuilt on the research branch at `79a2940` with `--execute` and the SAM2 checkout. The later changes to `src` do not change any notebook's output: no notebook or example calls `evaluate_lines` or `smooth_homographies`, and none prints a whole result.
-- **Outside `experiments/`,** the two trees differ only in `README.md` and ADR 0005, which cite this document instead of research paths, and in this document.
+- **Outside `experiments/`,** the two trees differ only in `README.md` and ADR 0005, which cite this document instead of research paths, in this document and in its figures.
 - **The frozen rows** were last rerun on valid and calib-valid at `a57c7ad`, with the final `src` (`experiments/homography_joint/results/compare_runs_*_f6_a57c7ad.json` on the research branch). They equal their frozen records on both tracks, on every frame.
 - **Every gate of AGENTS.md** ran on both branches at their final commits.
