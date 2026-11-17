@@ -13,11 +13,9 @@ from tactifoot_vision.data import Annotations, Dataset, Sample, Task
 from tactifoot_vision.enums import Split
 from tactifoot_vision.evaluation import (
     DetectionMetrics,
-    KeypointMetrics,
     compare_with_statsbomb,
     evaluate,
     evaluate_detector,
-    evaluate_keypoints,
 )
 from tactifoot_vision.models import Model
 from tactifoot_vision.pipeline import FrameResult, PipelineResult
@@ -178,70 +176,9 @@ def test_detector_evaluation_rejects_bad_input(tmp_path):
     with pytest.raises(ValueError, match="class_name"):
         evaluate_detector(FakeModel(Task.DETECT, {0: unnamed}, CLASSES), dataset)
     with pytest.raises(ValueError, match="detection model"):
-        evaluate_detector(FakeModel(Task.POSE, {}, ["pitch"]), dataset)
+        evaluate_detector(FakeModel(Task.LINES, {}, ["pitch"]), dataset)
     with pytest.raises(ValueError, match="no images"):
         evaluate_detector(FakeModel(Task.DETECT, {}, CLASSES), dataset, split="test")
-
-
-# ------------------------------------------------------------- keypoints
-def _keypoint_dataset(tmp_path: Path) -> Dataset:
-    truth = np.array([[10, 10, 2], [20, 20, 1], [30, 30, 0]], np.float32)
-    samples = [
-        Sample(
-            _write_image(tmp_path / f"{i}.png", i, 300, 400),
-            300,
-            400,
-            Annotations([[0, 0, 300, 400]], [0], keypoints=truth[None]),
-        )
-        for i in range(2)
-    ]
-    samples.append(  # no labelled instance: not scored
-        Sample(
-            _write_image(tmp_path / "2.png", 2, 300, 400),
-            300,
-            400,
-            Annotations.empty(num_keypoints=3),
-        )
-    )
-    return Dataset(Task.POSE, ["pitch"], {"valid": samples}, num_keypoints=3)
-
-
-def _pose(*instances) -> sv.KeyPoints:
-    if not instances:
-        return sv.KeyPoints.empty()
-    xy = np.asarray(instances, np.float32)
-    return sv.KeyPoints(xy=xy, confidence=np.ones(xy.shape[:2], np.float32))
-
-
-def test_keypoint_error_pck_and_detection_rate(tmp_path):
-    dataset = _keypoint_dataset(tmp_path)
-    outputs = {
-        # best instance: errors 3 px, 40 px, (unlabelled point ignored); the
-        # second instance would be perfect but only the best one counts
-        0: _pose([[13, 10], [20, 60], [500, 500]], [[10, 10], [20, 20], [30, 30]]),
-        1: _pose(),  # nothing found
-        2: _pose([[0, 0], [0, 0], [0, 0]]),
-    }
-    model = FakeModel(Task.POSE, outputs, ["pitch"])
-    # diagonal 500 px: 0.05 -> 25 px
-    metrics = evaluate_keypoints(model, dataset, pck_threshold=0.05)
-    assert isinstance(metrics, KeypointMetrics)
-    assert metrics.num_images == 2
-    assert metrics.detection_rate == 0.5
-    assert metrics.mean_error_px == pytest.approx(21.5)
-    assert metrics.pck == pytest.approx(0.5)
-    table = metrics.per_keypoint
-    assert list(table["count"]) == [1, 1, 0]
-    assert table.loc[0, "mean_error_px"] == pytest.approx(3.0)
-    assert table.loc[1, "pck"] == 0.0
-    assert np.isnan(table.loc[2, "mean_error_px"])
-
-
-def test_keypoint_count_mismatch_is_an_error(tmp_path):
-    dataset = _keypoint_dataset(tmp_path)
-    model = FakeModel(Task.POSE, {0: _pose([[0, 0], [1, 1]])}, ["pitch"])
-    with pytest.raises(ValueError, match="predicts 2 keypoints"):
-        evaluate_keypoints(model, dataset)
 
 
 def test_evaluate_dispatches_on_task(tmp_path):
@@ -249,24 +186,15 @@ def test_evaluate_dispatches_on_task(tmp_path):
     assert isinstance(
         evaluate(FakeModel(Task.DETECT, PERFECT, CLASSES), detection), DetectionMetrics
     )
-    pose_dir = tmp_path / "pose"
-    pose_dir.mkdir()
-    keypoints = _keypoint_dataset(pose_dir)
-    model = FakeModel(Task.POSE, {0: _pose([[10, 10]] * 3), 1: _pose()}, ["pitch"])
-    result = model.evaluate(keypoints, pck_threshold=0.1)
-    assert isinstance(result, KeypointMetrics) and result.pck_threshold == 0.1
+    with pytest.raises(ValueError, match="No evaluation for lines models"):
+        evaluate(FakeModel(Task.LINES, {}, ["pitch"]), detection)
 
 
 def test_every_evaluator_takes_the_split_as_a_member_or_a_string(tmp_path):
     detection = _detection_dataset(tmp_path, LABELS)
     detector = FakeModel(Task.DETECT, PERFECT, CLASSES)
-    pose_dir = tmp_path / "pose"
-    pose_dir.mkdir()
-    keypoints = _keypoint_dataset(pose_dir)
-    poser = FakeModel(Task.POSE, {0: _pose([[10, 10]] * 3), 1: _pose()}, ["pitch"])
     runs = [
         (evaluate_detector, detector, detection),
-        (evaluate_keypoints, poser, keypoints),
         (evaluate, detector, detection),
         (type(detector).evaluate, detector, detection),
     ]

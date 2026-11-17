@@ -27,27 +27,20 @@ print(transform)
 detection = tv.load_dataset("data/datasets/football_yolo").subset(
     {"train": 40, "valid": 10}
 )
-keypoints = tv.load_dataset("data/keypoints").subset({"train": 40})
 
-# The same transform handles boxes and pitch keypoints (flip_idx swaps landmarks).
+# Boxes move with the pixels; the line model augments its own data while it trains.
 OUT.mkdir(parents=True, exist_ok=True)
 tv.viz.show_augmentations(detection, transform, n=3).savefig(
     OUT / "detection_augmentations.png"
 )
-tv.viz.show_augmentations(keypoints, transform, n=3).savefig(
-    OUT / "keypoint_augmentations.png"
-)
 
 # augment_dataset never overwrites earlier output (an older dataset or export may
 # still read it), so a re-run of this script starts from empty folders.
-for folder in ("detection", "keypoints"):
-    shutil.rmtree(OUT / folder, ignore_errors=True)
+shutil.rmtree(OUT / "detection", ignore_errors=True)
 augmented = A.augment_dataset(detection, transform, OUT / "detection", copies=2, seed=0)
 print(augmented)
 print(augmented.summary())
 assert len(augmented["train"]) == 3 * len(detection["train"])
 assert augmented["valid"] == detection["valid"]  # validation data stays real
 
-pose_augmented = A.augment_dataset(keypoints, transform, OUT / "keypoints", copies=1)
-print(pose_augmented)
 print("figures in", OUT)

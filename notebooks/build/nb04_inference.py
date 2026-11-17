@@ -10,7 +10,7 @@ def notebook() -> Notebook:
 
 The inference modules turn match video into data:
 
-1. **Models** (`tv.models`) detect people and the ball, and find pitch landmarks.
+1. **Models** (`tv.models`) detect people and the ball, and find the painted pitch markings.
 2. **Trackers** (`tv.tracking`) give each person an id that lasts across frames.
 3. **Pitch geometry** (`tv.pitch`) maps frame pixels to pitch metres.
 4. **Teams** (`tv.teams`) split players into teams by kit, without labels.
@@ -62,9 +62,7 @@ detectors = {
     "yolo": tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3),
     "rfdetr": tv.load_model("rfdetr", MODELS / "rfdetr_smoketest_sample.pth", conf=0.5),
 }
-# This pitch model learnt on frames padded to a square, so it gets them that
-# way (resize="square"), and its pitches score low: conf=0.1 keeps them.
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square")
+line_model = tv.load_model("lines", MODELS / "pitch_lines_r18s2w640_tvtrain.pt")
 
 views = []
 for name, model in detectors.items():
@@ -75,26 +73,28 @@ for name, model in detectors.items():
 tv.show(views, titles=list(detectors), cols=2, width=14)
 """)
     nb.md("""
-The pose model returns `sv.KeyPoints`: for each detected pitch, 32 landmark
-positions with a confidence each, in the order of `tv.SoccerPitch`'s vertices.
+The line model returns `LinePoints`: points along each painted marking it
+sees (17 straight lines and 3 circle arcs, named as SoccerNet names them,
+`tv.enums.PitchMarking`), in frame pixels, each with its probability.
 """)
     nb.code("""
-keypoints = pitch_model(frame)
-print("xy:", keypoints.xy.shape, " confidence:", keypoints.confidence.shape)
-confident = keypoints.confidence[0] > 0.3
-print("confident landmarks:", np.flatnonzero(confident).tolist())
-labelled = sv.VertexLabelAnnotator(text_scale=0.5, border_radius=4).annotate(
-    frame.copy(), sv.KeyPoints(xy=keypoints.xy[:, confident]), labels=[str(i) for i in np.flatnonzero(confident)]
-)
-tv.show(labelled, width=10)
+points = line_model(frame)
+names = [tv.pitch.MARKINGS[k].value for k in points.marking]
+print(len(points), "points;", dict(Counter(names)))
+palette = sv.ColorPalette.DEFAULT
+view = frame.copy()
+for (x, y), k in zip(points.xy, points.marking, strict=True):
+    cv2.circle(view, (round(float(x)), round(float(y))), 4, palette.by_idx(int(k)).as_bgr(), -1)
+tv.show(view, width=10)
 """)
 
     nb.md("""
 ## Pitch geometry
 
 `SoccerPitch` describes the pitch: 32 landmarks in pitch units, with the origin
-in a corner, `x` along the length and `y` across. The default is 105 × 68 m;
-`SoccerPitch(120, 80)` gives StatsBomb units with the same proportions.
+in a corner, `x` along the length and `y` across; the markings run between
+them. The default is 105 × 68 m; `SoccerPitch(120, 80)` gives StatsBomb units
+with the same proportions.
 """)
     nb.code("""
 pitch = tv.SoccerPitch()
@@ -107,45 +107,36 @@ for label, (x, y) in zip(pitch.labels, pitch.vertices, strict=True):
 fig
 """)
     nb.md("""
-`HomographyEstimator.update(keypoints)` fits a frame → pitch homography from
-the confident landmarks (RANSAC) and averages the last few fits to steady it
-over time. `estimator.used_indices` lists the landmarks given to RANSAC, those
-with confidence of at least `min_confidence`; RANSAC may still treat some of
-them as outliers, so they are not all inliers. The settings below are the
-ones this pitch model was tuned with: landmarks from confidence 0.3, a RANSAC
-limit of 2 m, and `refine_with_lines`, which then fits the matrix to the
-painted lines of the frame, leaving out the people's boxes (so `update` takes
-the frame and the boxes too). `frame_to_pitch` then maps pixels to metres;
+`HomographyEstimator.update(points, frame_size)` fits a frame → pitch
+homography to the points in one robust fit: each point should lie on its
+marking's image line or circle. It starts from the points themselves, from
+the previous frame's matrix and, without one, from a bank of camera
+templates; it refuses a fit the points leave undetermined. `estimator.fit`
+says how the frame's fit went. `frame_to_pitch` then maps pixels to metres;
 here the players' feet, the bottom centre of their boxes.
 """)
     nb.code("""
-estimator = tv.pitch.HomographyEstimator(pitch, min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)
+estimator = tv.pitch.HomographyEstimator(pitch)
+homography = estimator.update(points, video.size)
+print(estimator.fit)
 detections = detectors["yolo"](frame)
-homography = estimator.update(keypoints, frame, detections.xyxy)
 feet = detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 on_pitch = tv.pitch.frame_to_pitch(feet, homography)
-print("confident landmarks given to RANSAC:", estimator.used_indices.tolist())
 pd.DataFrame(on_pitch, columns=["x (m)", "y (m)"]).assign(
     class_name=detections.data["class_name"]).head().round(1)
 """)
     nb.md("""
-`pitch_to_frame` goes the other way. Projecting all 32 landmarks back into the
-frame shows how well the homography fits: the projected points (white) should
-sit on the detected ones (orange), and landmarks outside the view land outside
-the image.
+`pitch_to_frame` goes the other way. Drawing the pitch markings through the
+homography shows how well it fits: the projected lines (white) should run
+along the painted ones, and the line points (orange where the homography puts
+them on their marking, red where it does not) should sit on them.
 """)
     nb.code("""
-projected = tv.pitch.pitch_to_frame(pitch.vertices, homography)
-used = estimator.used_indices
-error = np.linalg.norm(projected[used] - keypoints.xy[0][used], axis=1)
-print(f"reprojection error on the confident landmarks: median {np.median(error):.1f} px")
-
-check = frame.copy()
-for x, y in keypoints.xy[0][used]:
-    cv2.circle(check, (int(x), int(y)), 9, (0, 165, 255), -1)
-for x, y in projected:
-    if 0 <= x < video.width and 0 <= y < video.height:
-        cv2.circle(check, (int(x), int(y)), 5, (255, 255, 255), -1)
+check = tv.viz.FrameAnnotator(draw_boxes=False, draw_labels=False).annotate(
+    frame, tv.pipeline.FrameResult(0, 0.0, sv.Detections.empty(), sv.Detections.empty(),
+                                   ball_candidates=sv.Detections.empty(), line_points=points,
+                                   homography=homography)
+)
 tv.show(check, width=10)
 """)
 
@@ -243,14 +234,12 @@ during the pass, goalkeepers join the team whose players are nearest, and ball
 positions that jump implausibly far are dropped. Every run fits the team
 classifier on its own crops, so one pipeline can process several matches;
 `refit_teams=False` keeps a classifier that is already fitted. Every part is
-an object you pass in; a tracker can also be given by name. The estimator is
-the one from above, with the pitch model's settings.
+an object you pass in; a tracker can also be given by name.
 """)
     nb.code("""
 pipeline = tv.Pipeline(
     detector=detectors["yolo"],
-    keypoint_model=pitch_model,
-    homography=estimator,
+    line_model=line_model,
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
@@ -260,8 +249,11 @@ print(len(result), "frames,", len(result.track_ids), "tracks,", f"{result.fps:.0
     nb.md("""
 A `PipelineResult` is a list of `FrameResult`s. Each holds the tracked people
 as `sv.Detections` with `pitch_xy` and `team_id` attached, the ball as
-`sv.Detections` with `pitch_xy` (the ball has no team), the pitch keypoints
-and the homography.
+`sv.Detections` with `pitch_xy` (the ball has no team), the line model's
+points, the homography and `homography_fit`, which says whether this frame's
+matrix was fitted on it or held from an earlier frame. The homographies are
+each frame's own fit; `tv.pipeline.smooth_homographies` smooths them over the
+whole video afterwards (a post-process, ADR 0002).
 """)
     nb.code("""
 frame_result = result[100]
@@ -269,6 +261,7 @@ print("frame", frame_result.index, f"at {frame_result.timestamp:.2f} s")
 print("people:", len(frame_result.detections), "ball:", len(frame_result.ball))
 print("teams:", Counter(frame_result.team_ids.tolist()), "(-1 = no team: referees)")
 print("homography:", None if frame_result.homography is None else frame_result.homography.shape)
+print(frame_result.homography_fit)
 """)
     nb.md("""
 Because teams are voted per track, every frame of a track carries the same
@@ -326,7 +319,7 @@ Components are plain objects, so changing one is a change of argument. Here
 RF-DETR replaces YOLO and there is no team classifier.
 """)
     nb.code("""
-rfdetr_result = tv.Pipeline(detector=detectors["rfdetr"], keypoint_model=pitch_model, homography=estimator).run(
+rfdetr_result = tv.Pipeline(detector=detectors["rfdetr"], line_model=line_model).run(
     VIDEO, end=125, progress=False)
 print(len(rfdetr_result), "frames,", len(rfdetr_result.track_ids), "tracks")
 """)
@@ -340,13 +333,12 @@ if sam2_tracker is None:
     print("Skipped: SAM2 is not available (see the Trackers section).")
 else:
     masked = tv.Pipeline(
-        detector=detectors["rfdetr"], keypoint_model=pitch_model, homography=estimator,
-        tracker=sam2_tracker, keep_masks=True,
+        detector=detectors["rfdetr"], line_model=line_model, tracker=sam2_tracker, keep_masks=True,
     ).run(VIDEO, end=60, progress=False)
     masks = masked[-1].masks
     print(len(masked), "frames,", len(masked.track_ids), "tracks;",
           f"{len(masks)} masks in the last frame, {sum(c.size for c in masks.crops) / 1e3:.0f} kB")
-    annotator = tv.viz.FrameAnnotator(draw_masks=True, draw_pitch_lines=False, draw_keypoints=False)
+    annotator = tv.viz.FrameAnnotator(draw_masks=True, draw_pitch_lines=False, draw_line_points=False)
     display(tv.show(annotator.annotate(video.read(masked[-1].index), masked[-1]), width=10))
 """)
 

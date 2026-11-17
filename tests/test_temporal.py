@@ -1,10 +1,10 @@
-"""The temporal filter (``pitch/temporal.py``) and its causal use in LineHomographyEstimator: noise, a pan, a cut, rejects, causality."""
+"""The temporal filter (``pitch/temporal.py``) and its causal use in HomographyEstimator: noise, a pan, a cut, rejects, causality."""
 
 import numpy as np
 import pytest
 
 from line_points import line_points
-from tactifoot_vision.pitch import LineHomographyEstimator, frame_to_pitch
+from tactifoot_vision.pitch import HomographyEstimator, frame_to_pitch
 from tactifoot_vision.pitch import fit as S
 from tactifoot_vision.pitch.temporal import FilterConfig, HomographyFilter
 
@@ -96,10 +96,7 @@ def test_a_matrix_beyond_the_horizon_is_no_measurement():
 def test_the_estimator_filters_causally_and_keeps_each_frame_s_own_fit():
     rng = np.random.default_rng(1)
     truth = _pan(40)
-    filtered, raw = (
-        LineHomographyEstimator(),
-        LineHomographyEstimator(temporal_filter=None),
-    )
+    filtered, raw = HomographyEstimator(), HomographyEstimator(temporal_filter=None)
     out_f, out_r, own = [], [], []
     for m in truth:
         points = line_points(m, SIZE, noise_px=2.0, rng=rng)
@@ -115,9 +112,7 @@ def test_the_estimator_filters_causally_and_keeps_each_frame_s_own_fit():
     assert jitter(out_f[10:]) < jitter(out_r[10:])
     assert filtered.temporal_filter == FilterConfig() and raw.temporal_filter is None
     assert (
-        LineHomographyEstimator(
-            temporal_filter={"accel_m": 0.15}
-        ).temporal_filter.accel_m
+        HomographyEstimator(temporal_filter={"accel_m": 0.15}).temporal_filter.accel_m
         == 0.15
     )
 

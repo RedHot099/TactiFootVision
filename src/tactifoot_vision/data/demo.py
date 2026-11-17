@@ -34,7 +34,6 @@ ATTRIBUTION = (
 _SOURCE_FILES = (
     "mot/clips/{m}.mp4",
     "mot/{m}.txt",
-    "raw/{m}/{m}_keypoints.json",
     "raw/{m}/{m}_homography.npy",
     "raw/{m}/{m}_camera_intrinsics.npz",
     "raw/{m}/{m}_mapx.npy",

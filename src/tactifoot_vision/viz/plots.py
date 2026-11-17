@@ -10,7 +10,7 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -18,7 +18,7 @@ import pandas as pd
 
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.enums import ObjectKind, Role, Split
-from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
+from tactifoot_vision.evaluation.metrics import DetectionMetrics
 from tactifoot_vision.pipeline.result import NO_TEAM, PipelineResult
 from tactifoot_vision.pitch.pitch import SoccerPitch, pitch_markings
 from tactifoot_vision.viz.annotate import CLASS_COLORS, draw_annotations
@@ -211,7 +211,7 @@ def show_samples(
     seed: int = 0,
     cols: int = 3,
 ) -> "Figure":
-    """Random images of a split with their ground truth: boxes, classes and keypoints, or pitch lines."""
+    """Random images of a split with their ground truth: boxes and classes, or pitch lines."""
     samples = _split_samples(dataset, split)
     images, titles = [], []
     for i in _pick(len(samples), n, seed):
@@ -283,7 +283,7 @@ _METRIC_LABELS = {
     "precision": "precision",
     "recall": "recall",
 }
-_METRIC_KINDS = {"B": "box", "P": "pose", "M": "mask"}
+_METRIC_KINDS = {"B": "box", "M": "mask"}
 # Metric hues avoid the train/validation blue and orange of the loss panels.
 _METRIC_COLORS = {
     "mAP50-95": "#4A3AA7",
@@ -756,15 +756,14 @@ _DETECTION_METRICS = {"map50_95": "mAP50-95", "map50": "mAP50", "map75": "mAP75"
 
 
 def plot_metrics(
-    metrics: DetectionMetrics | KeypointMetrics | Mapping[str, Any],
+    metrics: DetectionMetrics | Mapping[str, DetectionMetrics],
     metric: str = "map50_95",
 ) -> "Figure":
-    """Per-class AP bars, per-keypoint error bars, or a model comparison.
+    """Per-class AP bars, or a model comparison.
 
     Args:
-        metrics: a :class:`DetectionMetrics` (per-class AP), a
-            :class:`KeypointMetrics` (mean error per keypoint), or a dict
-            ``{model name: metrics}`` of one of those types for side-by-side bars
+        metrics: a :class:`DetectionMetrics` (per-class AP), or a dict
+            ``{model name: metrics}`` for side-by-side bars
             (e.g. ``{"YOLO": yolo_metrics, "RF-DETR": rfdetr_metrics}``).
         metric: detection metric to plot: ``map50_95``, ``map50`` or ``map75``.
     """
@@ -772,18 +771,16 @@ def plot_metrics(
     if not named:
         raise ValueError("No metrics to plot")
     kinds = {type(m) for m in named.values()}
-    if kinds == {DetectionMetrics}:
-        if metric not in _DETECTION_METRICS:
-            raise ValueError(
-                f"Unknown metric {metric!r}; use one of {list(_DETECTION_METRICS)}"
-            )
-        return _plot_detection_metrics(named, metric)
-    if kinds == {KeypointMetrics}:
-        return _plot_keypoint_metrics(named)
-    raise TypeError(
-        "plot_metrics expects DetectionMetrics or KeypointMetrics (or a dict of one type), "
-        f"got {sorted(k.__name__ for k in kinds)}"
-    )
+    if kinds != {DetectionMetrics}:
+        raise TypeError(
+            "plot_metrics expects DetectionMetrics (or a dict of them), "
+            f"got {sorted(k.__name__ for k in kinds)}"
+        )
+    if metric not in _DETECTION_METRICS:
+        raise ValueError(
+            f"Unknown metric {metric!r}; use one of {list(_DETECTION_METRICS)}"
+        )
+    return _plot_detection_metrics(named, metric)
 
 
 def _plot_detection_metrics(
@@ -850,56 +847,6 @@ def _plot_detection_metrics(
             _titles(ax, f"Per-class {label}", subtitle)
         else:
             _titles(ax, f"Per-class {label} by model", "n = ground-truth objects")
-            fig.legend(loc="outside upper right", ncols=n)
-    return fig
-
-
-def _plot_keypoint_metrics(named: dict[str, KeypointMetrics]) -> "Figure":
-    index = sorted({int(i) for m in named.values() for i in m.per_keypoint.index})
-    n = len(named)
-    width = min(0.4, 0.8 / n)
-    with _theme():
-        fig = _new_figure(max(7.0, 0.22 * len(index) * max(1.0, 0.75 * n) + 1.5), 3.8)
-        ax = fig.add_subplot()
-        x = np.arange(len(index))
-        for j, (name, m) in enumerate(named.items()):
-            table = m.per_keypoint.copy()
-            table.index = table.index.map(int)
-            errors = table["mean_error_px"].reindex(index)
-            if "count" in table.columns:
-                errors = errors.where(table["count"].reindex(index).fillna(0) > 0)
-            offset = (j - (n - 1) / 2) * width
-            legend = f"{name} · mean {m.mean_error_px:.1f} px" if name else None
-            ax.bar(
-                x + offset,
-                errors,
-                width=width * 0.85,
-                color=_SERIES[j % len(_SERIES)],
-                label=legend,
-            )
-        ax.set_xticks(x, labels=[str(i) for i in index])
-        ax.tick_params(axis="x", length=0, labelsize=7.5)
-        ax.set_xlim(-0.7, len(index) - 0.3)
-        ax.yaxis.grid(True)
-        ax.set_axisbelow(True)
-        ax.set_xlabel("keypoint")
-        ax.set_ylabel("mean error (px)")
-        if n == 1:
-            m = next(iter(named.values()))
-            ax.axhline(m.mean_error_px, color=_INK_2, lw=1, zorder=3)
-            ax.annotate(
-                f"mean\n{m.mean_error_px:.1f} px", (1, m.mean_error_px),
-                xycoords=("axes fraction", "data"), xytext=(4, 0), textcoords="offset points",
-                ha="left", va="center", fontsize=8,
-            )  # fmt: skip
-            _titles(
-                ax,
-                "Keypoint error per landmark",
-                f"PCK@{m.pck_threshold:g} {m.pck:.1%} · found in {m.detection_rate:.0%} "
-                f"of {m.num_images} images",
-            )
-        else:
-            _titles(ax, "Keypoint error per landmark by model")
             fig.legend(loc="outside upper right", ncols=n)
     return fig
 

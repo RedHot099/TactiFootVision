@@ -16,7 +16,11 @@ EPOCHS = 3
 tv.setup_logging("INFO")
 
 detection = tv.load_dataset("data/datasets/football_yolo")
-pitch = tv.load_dataset("data/keypoints")
+# The pitch line model learns SoccerNet's line labels (Calibration and/or GSR folders);
+# the shipped rule keeps the 8,316 Calibration train images the network trained on.
+lines = tv.load_pitch_lines("data/SoccerNetCalibration").subset(
+    {"train": 200, "valid": 50}, seed=0
+)
 train_subset = detection.subset({"train": 150, "valid": 40}, seed=0)
 
 transform = A.Compose(
@@ -28,13 +32,14 @@ augmented = A.augment_dataset(train_subset, transform, OUT / "augmented", copies
 # Same call for every backend; backend-specific options pass straight through.
 yolo_run = tv.train("yolo", augmented, weights="yolo11n.pt", epochs=EPOCHS, batch_size=16,
                     output_dir=OUT / "runs", name="yolo11n")  # fmt: skip
-pose_run = tv.train("yolo_pose", pitch, weights="yolov8n-pose.pt", epochs=EPOCHS,
-                    batch_size=16, output_dir=OUT / "runs", name="pitch_pose")  # fmt: skip
+# The declared recipe is epochs=20, batch_size=12 on the full set (docs/adr/0005).
+lines_run = tv.train("lines", lines, epochs=1, batch_size=12, output_dir=OUT / "runs",
+                     name="pitch_lines")  # fmt: skip
 rfdetr_run = tv.train("rfdetr", train_subset, weights=None, epochs=1,
                       batch_size=4, output_dir=OUT / "runs", name="rfdetr",
                       grad_accum_steps=2)  # fmt: skip
 
-for run in (yolo_run, pose_run, rfdetr_run):
+for run in (yolo_run, lines_run, rfdetr_run):
     print(run.model_type, run.weights, run.metrics)
     tv.viz.plot_training(run).savefig(OUT / f"training_{run.model_type}.png")
 
@@ -53,13 +58,4 @@ for name, m in metrics.items():
     print(f"{name:26s} mAP50-95={m.map50_95:.3f} mAP50={m.map50:.3f}")
 tv.viz.plot_metrics(metrics).savefig(OUT / "detector_comparison.png")
 
-pitch_metrics = {
-    "YOLOv8n-pose (demo run)": pose_run.load().evaluate(pitch),
-    "YOLO11m-pose (football)": tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square").evaluate(pitch),
-}  # fmt: skip
-for name, m in pitch_metrics.items():
-    print(
-        f"{name:26s} error={m.mean_error_px:.1f}px PCK={m.pck:.3f} found={m.detection_rate:.2f}"
-    )
-tv.viz.plot_metrics(pitch_metrics).savefig(OUT / "keypoint_comparison.png")
 print("figures in", OUT)

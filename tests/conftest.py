@@ -25,8 +25,8 @@ def detector_weights() -> Path:
 
 
 @pytest.fixture(scope="session")
-def pitch_weights() -> Path:
-    """The pitch keypoint model: YOLO11m pose at 960, 32 keypoints."""
+def pose_checkpoint() -> Path:
+    """A YOLO pose checkpoint (the former pitch keypoint model): a task the detector refuses."""
     return MODELS_DIR / "pitch_yolo11m_pose.pt"
 
 

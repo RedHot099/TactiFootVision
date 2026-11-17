@@ -1,4 +1,4 @@
-"""Pitch model: the 32 landmark vertices the keypoint models predict, the line layout and the painted markings."""
+"""Pitch model: 32 landmark vertices, the line layout and the painted markings."""
 
 from dataclasses import dataclass
 from functools import cached_property
@@ -32,8 +32,8 @@ EDGES: tuple[tuple[int, int], ...] = (
 class SoccerPitch:
     """A pitch of ``length`` x ``width`` units with the origin in a corner.
 
-    ``x`` runs along the length (goal to goal), ``y`` across the width. The
-    vertex order matches the pitch-keypoint dataset (index ``i`` = keypoint ``i``).
+    ``x`` runs along the length (goal to goal), ``y`` across the width.
+    ``vertices`` are 32 landmarks the markings run between.
     """
 
     length: float = _STD_LENGTH
@@ -91,8 +91,8 @@ class SoccerPitch:
         pl, gl = self.penalty_box_length, self.goal_box_length
         spot = self.penalty_spot_distance
         rx, ry = self.circle_radii
-        # Keypoints 10, 11, 18, 19 are labelled where the penalty arc meets the
-        # penalty-box line (checked against the dataset), not at goal-box width.
+        # Vertices 10, 11, 18, 19 sit where the penalty arc meets the
+        # penalty-box line, not at goal-box width.
         arc = ry * (1 - ((pl - spot) / rx) ** 2) ** 0.5
         points = [
             (0, 0), (0, hw - pb), (0, hw - gb), (0, hw + gb), (0, hw + pb), (0, W),  # 0-5
@@ -111,10 +111,6 @@ class SoccerPitch:
     @property
     def labels(self) -> list[str]:
         return [f"{i:02d}" for i in range(len(self.vertices))]
-
-    @property
-    def num_keypoints(self) -> int:
-        return len(self.vertices)
 
 
 def pitch_markings(

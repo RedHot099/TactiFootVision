@@ -15,15 +15,7 @@ from tactifoot_vision.augment import (
     Transform,
     augment_dataset,
 )
-from tactifoot_vision.data import (
-    NOT_LABELLED,
-    OCCLUDED,
-    VISIBLE,
-    Annotations,
-    Dataset,
-    Sample,
-    load_dataset,
-)
+from tactifoot_vision.data import Annotations, Dataset, Sample, load_dataset
 from tactifoot_vision.enums import Split
 
 W, H = 100, 80
@@ -39,23 +31,9 @@ def box_annotations() -> Annotations:
     return Annotations(boxes=[[10, 20, 30, 50], [60, 5, 90, 25]], class_ids=[0, 1])
 
 
-def pose_annotations(flip_idx: tuple[int, ...] | None = (1, 0, 3, 2)) -> Annotations:
-    keypoints = [
-        [[10, 20, VISIBLE], [80, 30, OCCLUDED], [30, 60, VISIBLE], [0, 0, NOT_LABELLED]]
-    ]
-    return Annotations(
-        boxes=[[5, 10, 90, 70]], class_ids=[0], keypoints=keypoints, flip_idx=flip_idx
-    )
-
-
 def assert_same_annotations(a: Annotations, b: Annotations, atol: float = 1e-4) -> None:
     np.testing.assert_allclose(a.boxes, b.boxes, atol=atol)
     np.testing.assert_array_equal(a.class_ids, b.class_ids)
-    if a.keypoints is None or b.keypoints is None:
-        assert a.keypoints is None and b.keypoints is None
-    else:
-        np.testing.assert_allclose(a.keypoints, b.keypoints, atol=atol)
-    assert a.flip_idx == b.flip_idx
 
 
 # ---------------------------------------------------------------- base
@@ -111,41 +89,25 @@ def test_repr_shows_parameters():
 # ------------------------------------------------------------ geometric
 
 
-def test_flip_moves_boxes_and_permutes_keypoints():
-    image, annotations = make_image(), pose_annotations()
+def test_flip_moves_boxes():
+    image, annotations = make_image(), box_annotations()
     out_image, out = HorizontalFlip(p=1)(image, annotations)
-
     np.testing.assert_array_equal(out_image, image[:, ::-1])
-    np.testing.assert_allclose(out.boxes, [[W - 90, 10, W - 5, 70]])
-    # New keypoint i is the mirrored old keypoint flip_idx[i].
     np.testing.assert_allclose(
-        out.keypoints[0],
-        [[W - 80, 30, OCCLUDED], [W - 10, 20, VISIBLE], [W - 0, 0, 0], [W - 30, 60, 2]],
+        out.boxes, [[W - 30, 20, W - 10, 50], [W - 90, 5, W - 60, 25]]
     )
-    assert_same_annotations(annotations, pose_annotations())  # input untouched
+    assert_same_annotations(annotations, box_annotations())  # input untouched
 
 
 def test_flip_twice_is_identity():
     flip = HorizontalFlip(p=1)
-    image, annotations = flip(*flip(make_image(), pose_annotations()))
+    image, annotations = flip(*flip(make_image(), box_annotations()))
     np.testing.assert_array_equal(image, make_image())
-    assert_same_annotations(annotations, pose_annotations())
+    assert_same_annotations(annotations, box_annotations())
 
 
-def test_flip_without_flip_idx():
-    with pytest.raises(ValueError, match="flip_idx"):
-        HorizontalFlip(p=1)(make_image(), pose_annotations(flip_idx=None))
-    with pytest.raises(ValueError, match="flip_idx"):
-        HorizontalFlip(p=1)(make_image(), pose_annotations(flip_idx=(1, 0)))
-
-    _, out = HorizontalFlip(p=1)(make_image(), box_annotations())
-    np.testing.assert_allclose(
-        out.boxes, [[W - 30, 20, W - 10, 50], [W - 90, 5, W - 60, 25]]
-    )
-
-
-@pytest.mark.parametrize("annotations", [box_annotations(), pose_annotations()])
-def test_identity_affine_keeps_image_and_annotations(annotations):
+def test_identity_affine_keeps_image_and_annotations():
+    annotations = box_annotations()
     identity = RandomAffine(degrees=0, translate=0, scale=(1, 1), p=1)
     image = make_image()
     out_image, out = identity(image, annotations)
@@ -153,44 +115,44 @@ def test_identity_affine_keeps_image_and_annotations(annotations):
     assert_same_annotations(out, annotations)
 
 
-def test_rotation_and_scale_move_keypoints_like_cv2_transform():
+def test_rotation_and_scale_move_box_centres_like_cv2_transform():
     annotations = Annotations(
-        boxes=[[0, 0, W, H]],
-        class_ids=[0],
-        keypoints=[[[50, 40, VISIBLE], [30, 30, VISIBLE], [70, 55, OCCLUDED]]],
+        boxes=[[45, 35, 55, 45], [25, 25, 35, 35]], class_ids=[0, 1]
     )
     affine = RandomAffine(degrees=(20, 20), translate=0, scale=(1.3, 1.3), p=1)
     _, out = affine(make_image(), annotations)
 
     matrix = cv2.getRotationMatrix2D((W / 2, H / 2), 20, 1.3)
-    expected = cv2.transform(annotations.keypoints[:, :, :2], matrix)
-    np.testing.assert_allclose(out.keypoints[..., :2], expected, atol=1e-4)
-    np.testing.assert_array_equal(out.keypoints[..., 2], annotations.keypoints[..., 2])
+    centres = (annotations.boxes[:, :2] + annotations.boxes[:, 2:]) / 2
+    expected = cv2.transform(centres[None], matrix)[0]
+    np.testing.assert_allclose(
+        (out.boxes[:, :2] + out.boxes[:, 2:]) / 2, expected, atol=1e-4
+    )
 
 
 @pytest.mark.parametrize(("degrees", "scale"), [(30, 1.0), (20, 1.3), (-10, 0.8)])
-def test_pixels_move_with_keypoints(degrees, scale):
-    # The centroid of a bright square must land exactly where its keypoint
+def test_pixels_move_with_boxes(degrees, scale):
+    # The centroid of a bright square must land exactly where its box centre
     # lands (a half-pixel convention mismatch would be off by ~0.3 px).
     image = np.zeros((H, W, 3), dtype=np.uint8)
-    image[18:23, 28:33] = 255  # centre of pixel (30, 20) = (30.5, 20.5)
-    annotations = Annotations(
-        boxes=[[0, 0, W, H]], class_ids=[0], keypoints=[[[30.5, 20.5, VISIBLE]]]
+    image[18:23, 28:33] = (
+        255  # pixels 28-32 x 18-22: the box [28, 18, 33, 23], centre (30.5, 20.5)
     )
+    annotations = Annotations(boxes=[[28, 18, 33, 23]], class_ids=[0])
     affine = RandomAffine(
         degrees=(degrees, degrees),
         translate=0,
         scale=(scale, scale),
         p=1,
         border_value=(0, 0, 0),
+        min_area_ratio=0.0,
     )
     out_image, out = affine(image, annotations)
     weight = out_image[..., 0].astype(float)
     ys, xs = np.mgrid[0:H, 0:W]
     centroid = [(weight * xs).sum() / weight.sum(), (weight * ys).sum() / weight.sum()]
-    np.testing.assert_allclose(
-        out.keypoints[0, 0, :2], np.add(centroid, 0.5), atol=0.05
-    )
+    centre = (out.boxes[0, :2] + out.boxes[0, 2:]) / 2
+    np.testing.assert_allclose(centre, np.add(centroid, 0.5), atol=0.05)
 
 
 def test_affine_clips_boxes_and_drops_mostly_outside_objects():
@@ -212,22 +174,6 @@ def test_affine_clips_boxes_and_drops_mostly_outside_objects():
     )
 
 
-def test_keypoints_leaving_the_frame_become_not_labelled():
-    annotations = Annotations(
-        boxes=[[10, 10, 90, 70]],
-        class_ids=[0],
-        keypoints=[
-            [[50, 40, VISIBLE], [20, 20, VISIBLE], [40, 50, OCCLUDED], [80, 40, 0]]
-        ],
-    )
-    zoom = RandomAffine(degrees=0, translate=0, scale=(2, 2), p=1, min_area_ratio=0.1)
-    _, out = zoom(make_image(), annotations)
-    np.testing.assert_allclose(
-        out.keypoints[0],
-        [[50, 40, VISIBLE], [-10, 0, 0], [30, 60, OCCLUDED], [110, 40, 0]],
-    )
-
-
 # ----------------------------------------------------------- photometric
 
 PHOTOMETRIC = [
@@ -241,12 +187,12 @@ PHOTOMETRIC = [
 
 @pytest.mark.parametrize("transform", PHOTOMETRIC, ids=lambda t: type(t).__name__)
 def test_photometric_changes_pixels_only(transform):
-    image, annotations = make_image(), pose_annotations()
+    image, annotations = make_image(), box_annotations()
     out_image, out = transform(image, annotations, np.random.default_rng(1))
     assert out_image.shape == image.shape and out_image.dtype == np.uint8
     assert not np.array_equal(out_image, image)
     np.testing.assert_array_equal(image, make_image())  # input untouched
-    assert_same_annotations(out, pose_annotations())
+    assert_same_annotations(out, box_annotations())
 
 
 def test_motion_blur_keeps_a_uniform_image():
@@ -270,14 +216,14 @@ def full_pipeline() -> Compose:
 
 
 def test_same_seed_same_output_and_inputs_untouched():
-    image, annotations = make_image(), pose_annotations()
+    image, annotations = make_image(), box_annotations()
     runs = [
         full_pipeline()(image, annotations, np.random.default_rng(7)) for _ in range(2)
     ]
     np.testing.assert_array_equal(runs[0][0], runs[1][0])
     assert_same_annotations(runs[0][1], runs[1][1], atol=0)
     np.testing.assert_array_equal(image, make_image())
-    assert_same_annotations(annotations, pose_annotations(), atol=0)
+    assert_same_annotations(annotations, box_annotations(), atol=0)
 
     outputs = {
         full_pipeline()(image, annotations, np.random.default_rng(s))[0].tobytes()
@@ -289,22 +235,20 @@ def test_same_seed_same_output_and_inputs_untouched():
 # ------------------------------------------------------ augment_dataset
 
 
-def make_dataset(tmp_path, pose: bool = False) -> Dataset:
+def make_dataset(tmp_path) -> Dataset:
     def sample(name: str, seed: int) -> Sample:
         path = tmp_path / "src" / f"{name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(path), make_image(seed))
-        return Sample(path, W, H, pose_annotations() if pose else box_annotations())
+        return Sample(path, W, H, box_annotations())
 
     return Dataset(
-        task="pose" if pose else "detect",
+        task="detect",
         class_names=["a", "b"],
         splits={
             "train": [sample("img0", 0), sample("img1", 1)],
             "valid": [sample("val0", 2)],
         },
-        num_keypoints=4 if pose else None,
-        flip_idx=(1, 0, 3, 2) if pose else None,
         name="toy",
     )
 
@@ -334,7 +278,7 @@ def test_augment_dataset_writes_images_and_keeps_valid(tmp_path):
 
 
 def test_augment_dataset_is_deterministic(tmp_path):
-    dataset = make_dataset(tmp_path, pose=True)
+    dataset = make_dataset(tmp_path)
     first = augment_dataset(dataset, full_pipeline(), tmp_path / "a", seed=3)
     second = augment_dataset(dataset, full_pipeline(), tmp_path / "b", seed=3)
     for x, y in zip(first["train"], second["train"], strict=True):
@@ -342,16 +286,9 @@ def test_augment_dataset_is_deterministic(tmp_path):
         assert_same_annotations(x.annotations, y.annotations, atol=0)
 
 
-def test_augment_dataset_fills_flip_idx_and_rejects_bad_arguments(tmp_path):
-    dataset = make_dataset(tmp_path, pose=True)
-    bare = [
-        Sample(s.image_path, s.width, s.height, pose_annotations(flip_idx=None))
-        for s in dataset["train"]
-    ]
-    out = augment_dataset(
-        dataset.with_split("train", bare), HorizontalFlip(p=1), tmp_path / "aug"
-    )
-    np.testing.assert_allclose(out["train"][2].annotations.keypoints[0, 0], [20, 30, 1])
+def test_augment_dataset_rejects_bad_arguments(tmp_path):
+    dataset = make_dataset(tmp_path)
+    out = augment_dataset(dataset, HorizontalFlip(p=1), tmp_path / "aug")
 
     with pytest.raises(ValueError, match="test"):
         augment_dataset(dataset, HorizontalFlip(), tmp_path / "x", splits=("test",))

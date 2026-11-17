@@ -15,9 +15,11 @@ import supervision as sv
 
 from tactifoot_vision.enums import DetectionKey, ObjectKind, Role
 from tactifoot_vision.pitch.fit import LinePoints
-from tactifoot_vision.pitch.homography import frame_to_pitch, visible_area
-from tactifoot_vision.pitch.line_homography import HomographyFit
-from tactifoot_vision.pitch.lines import LineFit
+from tactifoot_vision.pitch.homography import (
+    HomographyFit,
+    frame_to_pitch,
+    visible_area,
+)
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.pitch.temporal import FilterConfig
 from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
@@ -124,14 +126,10 @@ class FrameResult:
     detections: sv.Detections
     ball: sv.Detections
     ball_candidates: sv.Detections = field(kw_only=True)
-    keypoints: sv.KeyPoints | None = None  # pitch keypoints in frame pixels
+    line_points: LinePoints | None = None  # the line network's points, frame pixels
     homography: np.ndarray | None = None  # 3x3 frame -> pitch
     masks: ObjectMasks | None = None  # one per person (Pipeline(keep_masks=True))
-    # How the homography fits the painted lines (HomographyEstimator's
-    # refine_with_lines); None when it was not refined on them.
-    line_fit: LineFit | None = None
-    line_points: LinePoints | None = None  # the line network's points, frame pixels
-    # How the pass's LineHomographyEstimator came to this frame's matrix (fresh
+    # How the pass's HomographyEstimator came to this frame's matrix (fresh
     # or held, its uncertainty); None without a line model.
     homography_fit: HomographyFit | None = None
 
@@ -202,7 +200,7 @@ class PipelineResult:
     ``temporal_filter`` holds the settings of the temporal filter the
     per-frame pass ran (``None``: it ran without one), when
     ``temporal_filter_recorded`` says the pass recorded them (a pipeline
-    with a line model does); ``smooth_line_homographies`` works from them
+    with a line model does); ``smooth_homographies`` works from them
     (ADR 0002, ADR 0005).
     """
 

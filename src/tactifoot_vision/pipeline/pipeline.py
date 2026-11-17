@@ -26,7 +26,6 @@ from tactifoot_vision.pipeline.result import (
     project_detections,
 )
 from tactifoot_vision.pitch.homography import HomographyEstimator
-from tactifoot_vision.pitch.line_homography import LineHomographyEstimator
 from tactifoot_vision.pitch.pitch import SoccerPitch
 from tactifoot_vision.pitch.undistortion import FisheyeUndistortion
 from tactifoot_vision.teams.classifier import TeamClassifier
@@ -52,37 +51,27 @@ class Pipeline:
 
     Per frame: detect, split off the ball candidates (the ``ball_class``
     detections) and take the most confident as the ball, track the people,
-    detect pitch keypoints, update the homography (given the frame and the
-    people's boxes, for ``refine_with_lines``), or, with a ``line_model``
-    instead, find the painted pitch markings and fit the homography to them
-    (causally: this frame and the estimator's state), and project everyone
-    onto the pitch (people at the bottom centre of their box, the ball
-    candidates at their centre). The pass ends with the steps that need data only it
+    find the painted pitch markings with the line model, fit the homography
+    to them (causally: this frame and the estimator's state) and project
+    everyone onto the pitch (people at the bottom centre of their box, the ball candidates
+    at their centre). The pass ends with the steps that need data only it
     has (ADR 0002): every track gets one team by majority vote over the crops
     sampled during the pass. To choose the live ball among the candidates,
     run the :func:`~tactifoot_vision.pipeline.track_ball` post-process.
 
     Args:
         detector: a detection :class:`Model` (``data["class_name"]`` filled).
-        keypoint_model: a pose :class:`Model` predicting the pitch landmarks;
-            without it, and without ``fixed_homography``, there is no
-            homography and ``pitch_xy`` is NaN.
         line_model: a ``lines`` :class:`Model` (see
             :class:`~tactifoot_vision.models.PitchLineModel`) finding points
-            on the pitch markings, which ``homography`` (a
-            :class:`~tactifoot_vision.pitch.LineHomographyEstimator`) fits:
-            the opt-in source of the homography of ADR 0005, in place of
-            ``keypoint_model``. Give one of the two, or neither. The result
-            then carries ``line_points`` and ``homography_fit`` per frame and
-            the filter's settings, which
-            :func:`~tactifoot_vision.pipeline.smooth_line_homographies` works
-            from.
+            on the pitch markings, which ``homography`` fits; without it, and
+            without ``fixed_homography``, there is no homography and
+            ``pitch_xy`` is NaN.
         fixed_homography: one 3x3 frame -> pitch homography for the whole
             video, for a camera that does not move (a calibrated static
             camera): an array, the path of a ``.npy`` holding one, or the
             path of an ``.npz`` with it under ``frame_to_pitch``. Every frame
-            then carries this matrix and no keypoint or line model is run, so
-            ``keypoint_model`` and ``line_model`` must be left out.
+            then carries this matrix and no line model is run, so
+            ``line_model`` must be left out.
         undistortion: a :class:`~tactifoot_vision.pitch.FisheyeUndistortion`
             (or the path of an ``.npz`` it loads) of that static camera, when
             its frames are fisheye images and ``fixed_homography`` holds in
@@ -101,10 +90,7 @@ class Pipeline:
             keeps a classifier that is already fitted (by an earlier run or by
             :meth:`TeamClassifier.fit`) and only fits an unfitted one.
         pitch: pitch model; defaults to ``homography.pitch`` or ``SoccerPitch()``.
-        homography: homography estimator; one is created when omitted. With a
-            ``line_model`` it must be a
-            :class:`~tactifoot_vision.pitch.LineHomographyEstimator`, with a
-            ``keypoint_model`` a :class:`~tactifoot_vision.pitch.HomographyEstimator`.
+        homography: homography estimator; one is created when omitted.
         ball_class: detector class name of the ball.
         include_classes: people classes to keep (the ball is always kept); ``None`` keeps all.
         team_classes: classes that belong to a team. ``"goalkeeper"`` joins the
@@ -132,14 +118,14 @@ class Pipeline:
     def __init__(
         self,
         detector: Model,
-        keypoint_model: Model | None = None,
+        line_model: Model | None = None,
         fixed_homography: np.ndarray | str | Path | None = None,
         undistortion: FisheyeUndistortion | str | Path | None = None,
         tracker: Tracker | TrackerType | str | None = TrackerType.BYTETRACK,
         team_classifier: TeamClassifier | None = None,
         refit_teams: bool = True,
         pitch: SoccerPitch | None = None,
-        homography: HomographyEstimator | LineHomographyEstimator | None = None,
+        homography: HomographyEstimator | None = None,
         ball_class: str = ObjectKind.BALL,
         include_classes: Sequence[str] | None = None,
         team_classes: Sequence[str] = (Role.PLAYER, Role.GOALKEEPER),
@@ -148,32 +134,16 @@ class Pipeline:
         crop_scale: float = 0.8,
         crop_center_ratio: float = 0.6,
         keep_masks: bool = False,
-        line_model: Model | None = None,
     ) -> None:
         if detector.task != Task.DETECT:
             raise ValueError(
                 f"detector must be a detection model, got a {detector.task} model"
             )
-        if keypoint_model is not None and keypoint_model.task != Task.POSE:
-            raise ValueError(
-                f"keypoint_model must be a pose model, got a {keypoint_model.task} model"
-            )
         if line_model is not None and line_model.task != Task.LINES:
             raise ValueError(
                 f"line_model must be a lines model, got a {line_model.task} model"
             )
-        if keypoint_model is not None and line_model is not None:
-            raise ValueError(
-                "keypoint_model and line_model are two sources of the "
-                "homography; give one"
-            )
-        _check_estimator(homography, keypoint_model, line_model)
         if fixed_homography is not None:
-            if keypoint_model is not None:
-                raise ValueError(
-                    "fixed_homography and keypoint_model are two sources of the "
-                    "homography; give one"
-                )
             if line_model is not None:
                 raise ValueError(
                     "fixed_homography and line_model are two sources of the "
@@ -201,7 +171,6 @@ class Pipeline:
                 f"pitch {pitch} differs from the homography estimator's {homography.pitch}"
             )
         self.detector = detector
-        self.keypoint_model = keypoint_model
         self.line_model = line_model
         self.fixed_homography = fixed_homography
         self.undistortion = undistortion
@@ -209,11 +178,7 @@ class Pipeline:
         self.team_classifier = team_classifier
         self.refit_teams = refit_teams
         self.pitch = pitch or (homography.pitch if homography else SoccerPitch())
-        self.homography = homography or (
-            LineHomographyEstimator(self.pitch)
-            if line_model is not None
-            else HomographyEstimator(self.pitch)
-        )
+        self.homography = homography or HomographyEstimator(self.pitch)
         self.ball_class = str(ball_class)
         self.include_classes = (
             None if include_classes is None else tuple(include_classes)
@@ -260,11 +225,7 @@ class Pipeline:
         total = len(range(start, last, stride))
         if self.tracker is not None:
             self.tracker.reset(fps=reader.fps / stride)
-        if isinstance(self.homography, LineHomographyEstimator):
-            # its hold, back-off and filter step are in seconds
-            self.homography.reset(frame_rate=reader.fps / stride)
-        else:
-            self.homography.reset()
+        self.homography.reset(frame_rate=reader.fps / stride)
         samples = _TeamSamples(per_key=self.team_samples_per_track)
         frames: list[FrameResult] = []
         keys: list[np.ndarray] = []
@@ -307,7 +268,7 @@ class Pipeline:
             track_embedding_samples=(
                 samples.counts() if self.tracker is not None else {}
             ),
-            # the filter the per-frame homographies ran: smooth_line_homographies works from it
+            # the filter the per-frame homographies ran: smooth_homographies works from it
             temporal_filter=self.homography.temporal_filter
             if self.line_model is not None
             else None,
@@ -339,12 +300,9 @@ class Pipeline:
             masks = ObjectMasks.from_dense(people.mask)
         people.mask = None
 
-        keypoints, line_points, fit = None, None, None
+        line_points, fit = None, None
         matrix = self.fixed_homography
-        if self.keypoint_model is not None:
-            keypoints = self.keypoint_model.predict(frame)
-            matrix = self.homography.update(keypoints, frame, people.xyxy)
-        elif self.line_model is not None:
+        if self.line_model is not None:
             line_points, matrix = frame_homography(
                 self.line_model, self.homography, frame
             )
@@ -362,11 +320,9 @@ class Pipeline:
             detections=people,
             ball=copy.deepcopy(candidates[:1]),  # a slice would share their arrays
             ball_candidates=candidates,
-            keypoints=keypoints,
+            line_points=line_points,
             homography=matrix,
             masks=masks,
-            line_fit=getattr(self.homography, "line_fit", None),
-            line_points=line_points,
             homography_fit=fit,
         )
 
@@ -451,35 +407,11 @@ class Pipeline:
         logger.info("Assigned teams to %d of %d tracks", assigned, len(track_class))
 
     def __repr__(self) -> str:
-        lines = (
-            f"line_model={self.line_model!r}, " if self.line_model is not None else ""
-        )
         return (
-            f"Pipeline(detector={self.detector!r}, keypoint_model={self.keypoint_model!r}, "
-            f"{lines}"
+            f"Pipeline(detector={self.detector!r}, line_model={self.line_model!r}, "
             f"fixed_homography={'given' if self.fixed_homography is not None else None}, "
             f"tracker={type(self.tracker).__name__ if self.tracker else None}, "
             f"team_classifier={self.team_classifier!r})"
-        )
-
-
-def _check_estimator(
-    homography: HomographyEstimator | LineHomographyEstimator | None,
-    keypoint_model: Model | None,
-    line_model: Model | None,
-) -> None:
-    """The estimator fits what the model gives: line points, or keypoints."""
-    if homography is None:
-        return
-    if line_model is not None and not isinstance(homography, LineHomographyEstimator):
-        raise ValueError(
-            "A line_model needs a LineHomographyEstimator as homography, got "
-            f"{type(homography).__name__}"
-        )
-    if keypoint_model is not None and isinstance(homography, LineHomographyEstimator):
-        raise ValueError(
-            "A keypoint_model needs a HomographyEstimator as homography, got "
-            "LineHomographyEstimator; give it a line_model instead"
         )
 
 

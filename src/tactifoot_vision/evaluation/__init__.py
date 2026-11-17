@@ -1,4 +1,4 @@
-"""Backend-independent evaluation: detection mAP, keypoint error, tracking, homography error, team accuracy, role confusion and StatsBomb comparison."""
+"""Backend-independent evaluation: detection mAP, tracking, homography error, team accuracy, role confusion and StatsBomb comparison."""
 
 import inspect
 from typing import Any
@@ -11,12 +11,10 @@ from tactifoot_vision.evaluation.homography import (
     evaluate_homography,
     evaluate_homography_clips,
 )
-from tactifoot_vision.evaluation.keypoints import evaluate_keypoints
 from tactifoot_vision.evaluation.lines import evaluate_lines
 from tactifoot_vision.evaluation.metrics import (
     DetectionMetrics,
     HomographyMetrics,
-    KeypointMetrics,
     TeamMetrics,
     TrackingMetrics,
 )
@@ -31,17 +29,16 @@ from tactifoot_vision.models.base import Model
 
 def evaluate(
     model: Model, dataset: Dataset, split: Split | str = Split.VALID, **kwargs: Any
-) -> DetectionMetrics | KeypointMetrics:
+) -> DetectionMetrics:
     """Score ``model`` on a dataset split with the metrics matching its task.
 
-    Detection models go to :func:`evaluate_detector`, keypoint models to
-    :func:`evaluate_keypoints`; ``kwargs`` are passed through
-    (``max_images=50``, ``conf=0.05``, ``pck_threshold=0.02``, ...) and an
-    option the evaluator does not take is a ``ValueError``. A ``lines`` model
-    has no dataset metric: :func:`evaluate_lines` scores it through the
-    homography it gives on labelled clips.
+    Detection models go to :func:`evaluate_detector`; ``kwargs`` are passed
+    through (``max_images=50``, ``conf=0.05``, ...) and an option the
+    evaluator does not take is a ``ValueError``. A ``lines`` model has no
+    dataset metric: :func:`evaluate_lines` scores it through the homography
+    it gives on labelled clips.
     """
-    evaluators = {Task.DETECT: evaluate_detector, Task.POSE: evaluate_keypoints}
+    evaluators = {Task.DETECT: evaluate_detector}
     evaluator = evaluators.get(model.task)
     if evaluator is None:
         hint = (
@@ -67,7 +64,6 @@ def evaluate(
 __all__ = [
     "DetectionMetrics",
     "HomographyMetrics",
-    "KeypointMetrics",
     "TeamMetrics",
     "TrackingMetrics",
     "compare_with_statsbomb",
@@ -75,7 +71,6 @@ __all__ = [
     "evaluate_detector",
     "evaluate_homography",
     "evaluate_homography_clips",
-    "evaluate_keypoints",
     "evaluate_lines",
     "evaluate_teams",
     "evaluate_teams_clips",

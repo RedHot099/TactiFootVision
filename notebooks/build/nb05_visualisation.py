@@ -41,14 +41,9 @@ import tactifoot_vision as tv
         body="""
 video = tv.VideoReader(VIDEO)
 detector = tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3)
-# The pitch model with its own settings (see 04_inference).
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square")
-estimator = tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)
+line_model = tv.load_model("lines", MODELS / "pitch_lines_r18s2w640_tvtrain.pt")
 pipeline = tv.Pipeline(
-    detector=detector,
-    keypoint_model=pitch_model,
-    homography=estimator,
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    detector=detector, line_model=line_model, team_classifier=tv.teams.TeamClassifier(embedder="siglip")
 )
 result = pipeline.run(VIDEO, end=250, progress=False)
 frame_result = result[200]
@@ -63,7 +58,7 @@ print(len(result), "frames,", len(result.track_ids), "tracks")
 `FrameAnnotator` has two styles. `standard` draws boxes; `video_game` draws
 ellipses at the players' feet and a triangle over the ball. Both label people
 with their track id, colour them by team (referees in the default colour),
-draw the confident pitch keypoints and project the pitch lines with the
+draw the line model's points and project the pitch lines with the
 homography. The demo clip has no goalkeeper or referee track and the ball is
 visible in only a few frames, so their styles are described rather than shown.
 """)
@@ -72,25 +67,25 @@ styles = {style: tv.viz.FrameAnnotator(style=style).annotate(frame, frame_result
 tv.show(list(styles.values()), titles=list(styles), cols=1, width=11)
 """)
     nb.md("""
-Every layer has a flag: `draw_boxes`, `draw_labels`, `draw_keypoints`,
+Every layer has a flag: `draw_boxes`, `draw_labels`, `draw_line_points`,
 `draw_pitch_lines` and `draw_masks`. Turning one off at a time shows what each
-adds. Keypoints are orange where the homography agrees with them and red where
-it does not, a quick check of the pitch fit.
+adds. Line points are orange where the homography puts them on their marking
+and red where it does not, a quick check of the pitch fit.
 """)
     nb.code("""
-flags = ["draw_boxes", "draw_labels", "draw_keypoints", "draw_pitch_lines"]
+flags = ["draw_boxes", "draw_labels", "draw_line_points", "draw_pitch_lines"]
 views = [tv.viz.FrameAnnotator(**{flag: False}).annotate(frame, frame_result) for flag in flags]
 only_pitch = tv.viz.FrameAnnotator(draw_boxes=False, draw_labels=False).annotate(frame, frame_result)
 tv.show([*views, only_pitch], titles=[f"{flag}=False" for flag in flags] + ["pitch layers only"], cols=2, width=13)
 """)
     nb.md("""
 Colours and thresholds are arguments too: `team_colors`, `default_color`,
-`ball_color`, `pitch_line_color` and `keypoint_threshold`.
+`ball_color`, `pitch_line_color` and `line_point_threshold`.
 """)
     nb.code("""
 custom = tv.viz.FrameAnnotator(
     style="video_game", team_colors=["#E63946", "#F1FAEE"], default_color="#222222",
-    ball_color="#FFD400", pitch_line_color="#A8DADC", keypoint_threshold=0.8,
+    ball_color="#FFD400", pitch_line_color="#A8DADC", line_point_threshold=0.8,
 )
 tv.show(custom.annotate(frame, frame_result), width=11)
 """)
@@ -145,11 +140,9 @@ if SAM2_CHECKPOINT.is_file() and importlib.util.find_spec("hydra") is not None:
         checkpoint=SAM2_CHECKPOINT,
         config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
     )
-    masked = tv.Pipeline(
-        detector=detector, keypoint_model=pitch_model, homography=estimator, tracker=sam2, keep_masks=True
-    ).run(
+    masked = tv.Pipeline(detector=detector, line_model=line_model, tracker=sam2, keep_masks=True).run(
         VIDEO, start=frame_result.index - 30, end=frame_result.index + 1, progress=False)
-    masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_keypoints=False).annotate(frame, masked[-1])
+    masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_line_points=False).annotate(frame, masked[-1])
     display(tv.show(masks_view, titles="SAM2 masks", width=11))
 else:
     print("SAM2 is not available (see 04_inference); without masks draw_masks only warns:")

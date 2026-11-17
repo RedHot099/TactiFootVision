@@ -121,6 +121,14 @@ ADR 0005, "Numbers"; records in `experiments/homography_bench/results/<row>/{val
 
 ![SNGS-123, 8 s, before and after](../media/homography/stability_heldout.webp)
 
+**The default pipeline on the example video** (`examples/06_cli.sh`'s clip, 1,499 frames; no truth, so no numbers). Before is the code of `master` at `9c9deee` with the keypoint weights, the settings that example used there and its whole-video smoothing; after is the line estimator with the P-final weights and the RTS pass. Detector, tracker and render settings are the same. Each run is drawn by its own renderer, so the line style differs.
+
+![The default pipeline at 15, 30 and 45 s, before above after](../media/homography/default_pipeline_demo.jpg)
+
+*The moments at 25 %, 50 % and 75 % of the clip. At 15 s the keypoint estimator's matrix is grossly wrong and the radar is unusable.*
+
+![The default pipeline, 8 s from the middle, before and after](../media/homography/default_pipeline_demo.webp)
+
 ## 6. Cost
 
 Protocols `gpu-v2` and `cpu-v2`. Records: `experiments/homography_bench/results/P-final/cost_{gpu,cpu}{,_images}.json`, window r4d, and B0's records.
@@ -204,6 +212,10 @@ REPORT sections 13 to 19; `GUARD_RULE.md`.
 - **The filter was tuned at 25 fps on every frame.** It steps in physical time; only strides 2 and 5 were measured.
 - **The held-out run spent GSR test and SN-Calib test** for this line of work.
 
+![Three cases where the line estimator fails or loses](../media/homography/known_limits.jpg)
+
+*(a) The first opposite-side image of SN-Calib valid that the line estimator fits as a main view (00209; B0 returns no matrix). (b) The first SN-Calib test image along the pitch that gets no matrix (00032; B0 returns none either). (c) The GSR test frame at the 1st percentile of the per-frame difference (SNGS-135 frame 437: 0.30 m before, 0.61 m after).*
+
 ## 11. Where the records are
 
 - **Code and records:** the local branch `research/homography-final` at `1492a5af7641`, not pushed.
@@ -218,28 +230,17 @@ REPORT sections 13 to 19; `GUARD_RULE.md`.
   - **runs:** `runs/<row>/<split>/` (`run.json` gives commit and weights hash); TS-WorldCup runs in `joint/ts_worldcup/runs/`;
   - **TS-WorldCup data:** `external/ts_worldcup/`.
 
-## 12. This change and the tested code
+## 12. This branch is the tested code
 
-The tested code is the branch `feature/pitch-line-homography` at `e8b0326` (its code equals `research/homography-final` at `1492a5af7641`). It replaced the keypoint estimator in one change. Here the line estimator arrives in two:
-- **this change** adds it beside the keypoint estimator, opt-in, under its own names;
-- **the next change** makes it the default and deletes the keypoint estimator, `pitch/lines.py`, Savitzky-Golay and the pose backend. Its tree is made equal to the tested tree: `git diff e8b0326 -- src tests examples notebooks pyproject.toml uv.lock` is empty on its last commit.
+The tested tree is the local branch `feature/pitch-line-homography` at `e8b0326`, whose code paths equal those of `research/homography-final` at its final commit `1492a5af76414ba1d3f4184b57eb5c765d8727e3`. The change that makes the line method the default was made by taking that tree whole, so
 
-**Byte-identical to the tested code** (`git diff e8b0326 -- <path>` is empty):
-- `src/tactifoot_vision/pitch/fit.py`, `pitch/markings.py`, `pitch/temporal.py`: the joint fit, the markings, the Kalman filter and its RTS pass;
-- `src/tactifoot_vision/models/_line_net.py`: the line network;
-- `src/tactifoot_vision/data/pitch_lines.py`, `data/pitch_lines_v2.csv`: the line labels and the label rule;
-- `src/tactifoot_vision/cli.py` and `src/tactifoot_vision/__init__.py`;
-- `tests/line_points.py`, `tests/test_pitch_fit.py`, `tests/test_enums.py`.
+```
+git diff e8b0326 -- src examples notebooks uv.lock
+```
 
-**The tested code under this change's names.** These differ from the tested files only in the names `HomographyEstimator` -> `LineHomographyEstimator` and `smooth_homographies` -> `smooth_line_homographies`, and in the lines ruff wraps after the longer names:
-- `src/tactifoot_vision/evaluation/lines.py`;
-- `src/tactifoot_vision/models/lines.py`, the `lines` backend (one docstring reference);
-- `tests/test_temporal.py`, `tests/test_pitch_lines.py` (one line, in a `model` test).
-
-**The tested code in new glue.** Under those renames, the code is the tested code; around it, the glue is new:
-- `pitch/line_homography.py` holds `HomographyFit` and `LineHomographyEstimator`. From `HomographyFit` to the end of the module it equals the tested `pitch/homography.py`. `frame_to_pitch`, `pitch_to_frame` and `visible_area` stay in `pitch/homography.py` beside the keypoint estimator.
-- `pipeline/homographies.py` holds `frame_homography`, identical, and `smooth_line_homographies`, the tested `smooth_homographies` with one docstring sentence changed, beside the Savitzky-Golay `smooth_homographies`, which warns when it is given a line-model result.
-- `Pipeline`, `FrameResult`, `PipelineResult`, the run file, the annotator, `Annotations`, `Dataset`, the enums and the registries take the tested additions beside what they had. `Pipeline` picks the line path only with a `line_model`, so a keypoint run takes the code it took before.
-- The tests of the new behaviour are the tested ones, renamed, in new files (`tests/test_line_*.py`, `tests/test_smooth_line_homographies.py`), with tests of what only this change has (both models refused, a keypoint run unchanged). The tests of the keypoint path are unchanged; `tests/conftest.py` gains the `line_weights` fixture and `tests/test_enums.py` the count and the name rule of the new vocabularies.
-
-**What was run here.** The fast suite and the linters, on a machine without a GPU, weights or data. The `model` tests, the CLI end to end, the notebooks and the frozen rows were not rerun for this change. The numbers above are those of the tested code, which the line path here runs unchanged.
+is empty on it. Beyond the tested tree it differs in five places, none of them in the package's code: a test fake in `tests/test_models.py` lost a dead `keypoints` argument, one comment in `pyproject.toml` no longer names pitch keypoints, one sentence of ADR 0005 was corrected, this document gained its figures (`docs/media/homography/`), and this paragraph.
+- **The package, the examples, the notebooks and the locked dependencies** are therefore the ones the research branch tested; its tests differ by that one test fake.
+- **The notebooks** are the files rebuilt on the research branch at `79a2940` with `--execute` and the SAM2 checkout. The later changes to `src` do not change any notebook's output: no notebook or example calls `evaluate_lines` or `smooth_homographies`, and none prints a whole result.
+- **Outside `experiments/`,** this branch differs from the research branch at `1492a5af7641` in `README.md` and ADR 0005, which cite this document instead of research paths, in this document and its figures, and in the two files named above (`tests/test_models.py`, `pyproject.toml`).
+- **The frozen rows** were last rerun on valid and calib-valid at `a57c7ad`, with the final `src` (`experiments/homography_joint/results/compare_runs_*_f6_a57c7ad.json` on the research branch). They equal their frozen records on both tracks, on every frame.
+- **Every gate of AGENTS.md** ran on both branches at their final commits.

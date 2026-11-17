@@ -175,7 +175,7 @@ def test_the_overview_notebook_needs_no_local_data_or_weights(build):
     assert not {"MODELS", "VIDEO"} & names
 
 
-def test_the_colab_links_open_the_overview_notebook_of_one_release():
+def test_the_colab_links_open_the_overview_notebook_of_one_release(build):
     # `master` may use API newer than the package the first cell installs, so
     # the badge opens the notebook as it was at a release (never an rc).
     from nb00_overview import COLAB_URL  # the notebook's own badge

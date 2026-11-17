@@ -1,4 +1,4 @@
-"""In-memory index of an annotated image dataset (detection, pose, or pitch lines)."""
+"""In-memory index of an annotated image dataset (detection, or pitch lines)."""
 
 import logging
 import numbers
@@ -26,24 +26,6 @@ _CLIP_CLASSES = tuple(
 )
 # OpenCV's image-sequence reader only finds a first image numbered 0 to 4.
 _LAST_FIRST_IMAGE = 4
-
-
-def check_flip_idx(
-    flip_idx: tuple[int, ...] | None, num_keypoints: int | None, source: str = ""
-) -> None:
-    """Refuse a ``flip_idx`` that does not have one entry per keypoint.
-
-    Checked when a dataset is loaded, so a bad ``data.yaml`` fails there and
-    not in :class:`~tactifoot_vision.augment.HorizontalFlip` after an
-    augmentation run has written some images.
-    """
-    if flip_idx is None or num_keypoints is None or len(flip_idx) == num_keypoints:
-        return
-    where = f"{source}: " if source else ""
-    raise ValueError(
-        f"{where}flip_idx has {len(flip_idx)} entries but there are "
-        f"{num_keypoints} keypoints; it needs one entry per keypoint"
-    )
 
 
 @dataclass(frozen=True)
@@ -77,16 +59,11 @@ class Dataset:
     task: Task
     class_names: list[str]
     splits: dict[str, list[Sample]] = field(default_factory=dict)
-    num_keypoints: int | None = None
-    flip_idx: tuple[int, ...] | None = None
     name: str = "dataset"
 
     def __post_init__(self) -> None:
         self.task = Task(self.task)
         self.splits = {Split.parse(k): list(v) for k, v in self.splits.items()}
-        if self.task is Task.POSE and self.num_keypoints is None:
-            raise ValueError("Pose datasets need num_keypoints")
-        check_flip_idx(self.flip_idx, self.num_keypoints)
 
     # ------------------------------------------------------------------ loading
     @classmethod
@@ -114,12 +91,10 @@ class Dataset:
         return yolo.read_dataset(Path(data_yaml))
 
     @classmethod
-    def from_coco(
-        cls, root: str | Path, flip_idx: tuple[int, ...] | None = None
-    ) -> "Dataset":
+    def from_coco(cls, root: str | Path) -> "Dataset":
         from tactifoot_vision.data import coco
 
-        return coco.read_dataset(Path(root), flip_idx=flip_idx)
+        return coco.read_dataset(Path(root))
 
     @classmethod
     def from_clips(
@@ -226,10 +201,9 @@ class Dataset:
 
     def __repr__(self) -> str:
         sizes = ", ".join(f"{s}={len(self.splits[s])}" for s in self.split_names)
-        kp = f", keypoints={self.num_keypoints}" if self.num_keypoints else ""
         return (
             f"Dataset(name={self.name!r}, task={self.task.value}, "
-            f"classes={self.class_names}{kp}, {sizes or 'empty'})"
+            f"classes={self.class_names}, {sizes or 'empty'})"
         )
 
     # ------------------------------------------------------ derived datasets
@@ -276,26 +250,10 @@ class Dataset:
         return replace(self, splits=splits)
 
     def merge(self, other: "Dataset") -> "Dataset":
-        """Concatenate the splits of two datasets with identical classes.
-
-        Pose datasets must also share their keypoint layout: the keypoint
-        count and ``flip_idx``. An export writes one ``flip_idx`` for every
-        sample, so a different mapping would change what the other dataset's
-        keypoints mean once reloaded.
-        """
+        """Concatenate the splits of two datasets with identical task and classes."""
         if other.task != self.task or other.class_names != self.class_names:
             raise ValueError(
                 "Can only merge datasets with the same task and class names"
-            )
-        if other.num_keypoints != self.num_keypoints:
-            raise ValueError(
-                "Can only merge datasets with the same keypoint layout, got "
-                f"{self.num_keypoints} and {other.num_keypoints} keypoints"
-            )
-        if other.flip_idx != self.flip_idx:
-            raise ValueError(
-                "Can only merge datasets with the same keypoint layout, got flip_idx "
-                f"{self.flip_idx} and {other.flip_idx}"
             )
         splits = {s: self[s] + other[s] for s in Split if self[s] or other[s]}
         return replace(self, splits=splits)

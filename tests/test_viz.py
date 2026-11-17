@@ -13,13 +13,15 @@ from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.path import Path as MplPath
 
+import tactifoot_vision as tv
 import tactifoot_vision.analysis as tv_analysis
 import tactifoot_vision.viz as viz
+from line_points import line_points
 from tactifoot_vision.analysis import SpaceControl
 from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.enums import AnnotatorStyle, OverlayPosition, Split
-from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
+from tactifoot_vision.evaluation.metrics import DetectionMetrics
 from tactifoot_vision.models.base import TrainResult
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import (
@@ -72,13 +74,9 @@ def _frame_result(index: int) -> FrameResult:
     ball.data["pitch_xy"] = frame_to_pitch(
         ball.get_anchors_coordinates(sv.Position.CENTER), HOMOGRAPHY
     )
-    confidence = np.where(np.arange(32) % 3 == 0, 0.9, 0.1).astype(np.float32)
-    keypoints = sv.KeyPoints(
-        xy=pitch_to_frame(PITCH.vertices, HOMOGRAPHY)[None].astype(np.float32),
-        confidence=confidence[None],
-    )
+    points = line_points(HOMOGRAPHY, (W, H), pitch=PITCH, per_class=6)
     return FrameResult(
-        index, index / FPS, people, ball, keypoints, HOMOGRAPHY, ball_candidates=ball
+        index, index / FPS, people, ball, points, HOMOGRAPHY, ball_candidates=ball
     )
 
 
@@ -135,7 +133,7 @@ def test_annotate_draws_on_a_copy(result: PipelineResult, style: str) -> None:
 
 def test_annotate_uses_team_colours(result: PipelineResult) -> None:
     annotator = viz.FrameAnnotator(
-        team_colors=("#0000FF", "#FF0000"), draw_labels=False, draw_keypoints=False,
+        team_colors=("#0000FF", "#FF0000"), draw_labels=False, draw_line_points=False,
         draw_pitch_lines=False,
     )  # fmt: skip
     image = annotator.annotate(_frame(), result[0])
@@ -148,12 +146,12 @@ def test_annotate_toggles(result: PipelineResult) -> None:
     nothing = viz.FrameAnnotator(
         draw_boxes=False,
         draw_labels=False,
-        draw_keypoints=False,
+        draw_line_points=False,
         draw_pitch_lines=False,
     ).annotate(frame, result[0])
     assert (nothing == frame).all()
     lines_only = viz.FrameAnnotator(
-        draw_boxes=False, draw_labels=False, draw_keypoints=False
+        draw_boxes=False, draw_labels=False, draw_line_points=False
     ).annotate(frame, result[0])
     assert (lines_only != frame).any()
 
@@ -173,7 +171,7 @@ def test_annotate_draws_masks_at_their_frame_position() -> None:
     frame_result = _with_masks(_frame_result(0))
     annotator = viz.FrameAnnotator(
         draw_masks=True, draw_boxes=False, draw_labels=False,
-        draw_keypoints=False, draw_pitch_lines=False,
+        draw_line_points=False, draw_pitch_lines=False,
     )  # fmt: skip
     image = annotator.annotate(_frame(), frame_result)
     x1, y1, x2, y2 = frame_result.detections.xyxy[0].astype(int)
@@ -225,18 +223,15 @@ def test_annotate_rejects_unknown_style() -> None:
     )
 
 
-def test_draw_annotations_hides_unlabelled_keypoints() -> None:
-    keypoints = np.zeros((1, 3, 3), dtype=np.float32)
-    keypoints[0, 0] = (50, 50, 2)
-    keypoints[0, 1] = (200, 200, 0)  # not labelled -> not drawn
+def test_draw_annotations_draws_the_pitch_lines_of_a_lines_sample() -> None:
     annotations = Annotations(
-        boxes=[[20, 20, 100, 100]], class_ids=[0], keypoints=keypoints
+        np.zeros((0, 4)), np.zeros(0), lines={"Middle line": [[50, 20], [50, 220]]}
     )
-    frame = _frame()
-    image = viz.draw_annotations(frame, annotations, ["pitch"])
-    assert image.shape == frame.shape and (image != frame).any()
-    assert (image[200, 200] == frame[200, 200]).all()
-    assert (image[50, 50] != frame[50, 50]).any()
+    frame = np.zeros((H, W, 3), np.uint8)
+    image = viz.draw_annotations(frame, annotations)
+    b, g, r = image[120, 50].tolist()  # orange on the (anti-aliased) line
+    assert b == 0 and r > 200 and 100 < g < 200
+    assert not image[120, 150].any()
 
 
 # ---------------------------------------------------------------- ball trail
@@ -282,7 +277,7 @@ def _trail_annotator(trail_seconds: float | None = 1.0) -> viz.FrameAnnotator:
     """Draws the ball trail only."""
     return viz.FrameAnnotator(
         trail_seconds=trail_seconds, ball_color=RED, draw_boxes=False,
-        draw_labels=False, draw_keypoints=False, draw_pitch_lines=False,
+        draw_labels=False, draw_line_points=False, draw_pitch_lines=False,
     )  # fmt: skip
 
 
@@ -387,7 +382,7 @@ def test_the_ball_trail_length_must_be_positive(seconds: float) -> None:
 def _ring_annotator(**options) -> viz.FrameAnnotator:
     """Draws the ball-carrier ring only."""
     return viz.FrameAnnotator(
-        ball_color=RED, draw_boxes=False, draw_labels=False, draw_keypoints=False,
+        ball_color=RED, draw_boxes=False, draw_labels=False, draw_line_points=False,
         draw_pitch_lines=False, **options,
     )  # fmt: skip
 
@@ -425,7 +420,7 @@ def test_the_ball_carrier_ring_lies_under_the_boxes(result: PipelineResult) -> N
     ring = _ring_annotator().annotate(_frame(), now, ball_carrier=2)
     boxed = viz.FrameAnnotator(
         ball_color=RED, team_colors=("#0000FF", "#00FF00"), draw_labels=False,
-        draw_keypoints=False, draw_pitch_lines=False,
+        draw_line_points=False, draw_pitch_lines=False,
     )  # fmt: skip
     image = boxed.annotate(_frame(), now, ball_carrier=2)
     # The ring crosses the box's left edge; there the edge (team 1, green) is on top.
@@ -1460,13 +1455,6 @@ def _detection_metrics(scale: float = 1.0) -> DetectionMetrics:
     return DetectionMetrics(0.45 * scale, 0.7, 0.5, per_class, 20)
 
 
-def _keypoint_metrics() -> KeypointMetrics:
-    per_keypoint = pd.DataFrame(
-        {"mean_error_px": np.linspace(2, 9, 32), "pck": 0.9, "count": [0] + [5] * 31}
-    )
-    return KeypointMetrics(5.5, 0.9, 0.05, 1.0, per_keypoint, 10)
-
-
 def test_show_single_and_grid() -> None:
     assert isinstance(viz.show(_frame()), Figure)
     fig = viz.show(
@@ -1561,14 +1549,10 @@ def test_plot_metrics_variants() -> None:
     assert isinstance(viz.plot_metrics(_detection_metrics()), Figure)
     compare = {"YOLO": _detection_metrics(), "RF-DETR": _detection_metrics(1.1)}
     assert isinstance(viz.plot_metrics(compare, metric="map50"), Figure)
-    assert isinstance(viz.plot_metrics(_keypoint_metrics()), Figure)
-    assert isinstance(
-        viz.plot_metrics({"a": _keypoint_metrics(), "b": _keypoint_metrics()}), Figure
-    )
     with pytest.raises(ValueError, match="metric"):
         viz.plot_metrics(_detection_metrics(), metric="f1")
     with pytest.raises(TypeError):
-        viz.plot_metrics({"a": _detection_metrics(), "b": _keypoint_metrics()})
+        viz.plot_metrics({"a": _detection_metrics(), "b": "not metrics"})
 
 
 def test_plot_distance_histogram() -> None:
@@ -1709,16 +1693,29 @@ def test_colours_given_as_lists(result: PipelineResult) -> None:
     assert annotator.annotate(_frame(), result[0]).shape == (H, W, 3)
 
 
-def test_annotate_skips_non_finite_keypoints(result: PipelineResult) -> None:
+def test_line_points_on_their_marking_are_orange_and_others_red(
+    result: PipelineResult,
+) -> None:
     frame_result = result[0]
-    xy = frame_result.keypoints.xy.copy()
-    xy[0, 0] = np.nan
-    xy[0, 3] = np.inf
-    frame_result.keypoints = sv.KeyPoints(
-        xy=xy, confidence=np.ones((1, 32), np.float32)
+    points = frame_result.line_points
+    xy = points.xy.copy()
+    xy[0] = (160, 120)  # moved off its marking
+    xy[1] = (np.nan, np.inf)  # not drawable: skipped
+    frame_result.line_points = tv.pitch.LinePoints(points.marking, xy, points.prob)
+    annotator = viz.FrameAnnotator(
+        draw_boxes=False, draw_labels=False, draw_pitch_lines=False
     )
-    image = viz.FrameAnnotator().annotate(_frame(), frame_result)
-    assert image.shape == (H, W, 3)
+    image = annotator.annotate(np.zeros((H, W, 3), np.uint8), frame_result)
+    assert tuple(image[120, 160]) == (0, 0, 255)  # BGR red
+    x, y = np.round(xy[2]).astype(int)
+    assert tuple(image[y, x]) == (0, 165, 255)  # orange
+    faint = viz.FrameAnnotator(
+        draw_boxes=False,
+        draw_labels=False,
+        draw_pitch_lines=False,
+        line_point_threshold=0.95,
+    )
+    assert not faint.annotate(np.zeros((H, W, 3), np.uint8), frame_result).any()
 
 
 def test_plot_training_rejects_a_non_numeric_epoch_column() -> None:
@@ -1854,7 +1851,7 @@ def test_annotator_draws_masks_whose_origin_lies_outside_the_frame():
     )
     annotator = viz.FrameAnnotator(
         draw_masks=True, draw_boxes=False, draw_labels=False,
-        draw_keypoints=False, draw_pitch_lines=False,
+        draw_line_points=False, draw_pitch_lines=False,
     )  # fmt: skip
     out = annotator.annotate(np.zeros((60, 80, 3), np.uint8), frame_result)
     tinted = np.argwhere(out.any(axis=2))

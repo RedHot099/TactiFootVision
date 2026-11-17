@@ -16,7 +16,7 @@ frame_result = result[120]
 frame = tv.VideoReader(VIDEO).read(frame_result.index)
 
 standard = tv.viz.FrameAnnotator().annotate(frame, frame_result)
-game = tv.viz.FrameAnnotator(style="video_game", draw_keypoints=False).annotate(
+game = tv.viz.FrameAnnotator(style="video_game", draw_line_points=False).annotate(
     frame, frame_result
 )
 # The ball's last second, from the frames before this one (ADR 0003).

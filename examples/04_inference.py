@@ -29,20 +29,13 @@ for name, model in detectors.items():
         dict(Counter(detections.data["class_name"])),
     )
 
-# Pitch keypoints -> homography -> pitch coordinates of the players' feet.
-# This pitch model learnt on frames padded to a square, so it sees them that
-# way here; the estimator's settings are the ones it was tuned with (the line
-# refinement leaves out the people's boxes).
-pitch_model = tv.load_model(
-    "yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square"
-)
-keypoints = pitch_model(frame)
-people = detectors["yolo"](frame)
-estimator = tv.pitch.HomographyEstimator(
-    min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True
-)
-homography = estimator.update(keypoints, frame, people.xyxy)
-feet = people.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+# Points on the painted markings -> homography -> pitch coordinates of the players' feet.
+line_model = tv.load_model("lines", "models/pitch_lines_r18s2w640_tvtrain.pt")
+points = line_model(frame)
+estimator = tv.pitch.HomographyEstimator()
+homography = estimator.update(points, video.size)
+print(f"{len(points)} line points; fit uncertainty {estimator.fit.uncertainty_m:.2f} m")
+feet = detectors["yolo"](frame).get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
 print(
     "first players on the pitch (m):",
     tv.pitch.frame_to_pitch(feet, homography)[:3].round(1),
@@ -51,8 +44,7 @@ print(
 # The full pipeline: detection -> tracking -> homography -> teams.
 pipeline = tv.Pipeline(
     detector=detectors["yolo"],
-    keypoint_model=pitch_model,
-    homography=estimator,
+    line_model=line_model,
     tracker="bytetrack",
     team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 )
@@ -60,14 +52,15 @@ result = pipeline.run(VIDEO, end=250)
 print(result.to_dataframe().head())
 print("tracks:", len(result.track_ids))
 
+# Whole-video smoothing of the homographies is a post-process (ADR 0002).
+result = tv.pipeline.smooth_homographies(result)
 # result.pkl, tracks.csv, freeze_frames.csv, carriers.csv, passes.csv
 result.export(OUT, period=1)
 
 # Swapping a component is plain Python: here RF-DETR replaces YOLO.
 rfdetr_pipeline = tv.Pipeline(
     detector=detectors["rfdetr"],
-    keypoint_model=pitch_model,
-    homography=estimator,
+    line_model=line_model,
     tracker="bytetrack",
 )
 rfdetr_result = rfdetr_pipeline.run(VIDEO, end=50)

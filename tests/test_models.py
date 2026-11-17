@@ -19,7 +19,6 @@ from tactifoot_vision.models import (
     RFDETRDetector,
     TrainResult,
     YOLODetector,
-    YOLOPoseModel,
     available_models,
 )
 from tactifoot_vision.models import ultralytics as ultralytics_backend
@@ -30,27 +29,21 @@ from tactifoot_vision.models.rfdetr import (
     _read_log,
     _rfdetr_device,
 )
-from tactifoot_vision.models.ultralytics import (
-    _keypoints_from_arrays,
-    _read_results_csv,
-    _standard_metrics,
-)
+from tactifoot_vision.models.ultralytics import _read_results_csv, _standard_metrics
 from tactifoot_vision.utils import next_run_dir
 
 ROOT = Path(__file__).resolve().parents[1]
 FOOTBALL = ROOT / "data" / "datasets" / "football_yolo"
-KEYPOINTS = ROOT / "data" / "keypoints"
 FOOTBALL_CLASSES = ["ball", "goalkeeper", "player", "referee"]
 
 
 # ------------------------------------------------------------------ registry
 def test_backends_are_registered():
-    assert {"yolo", "yolo_pose", "rfdetr"} <= set(available_models())
+    assert {"yolo", "rfdetr", "lines"} <= set(available_models())
+    assert "yolo_pose" not in available_models()
     assert MODELS.get("yolo") is YOLODetector
-    assert MODELS.get("yolo_pose") is YOLOPoseModel
     assert MODELS.get("rfdetr") is RFDETRDetector
     assert YOLODetector.task is tv.data.Task.DETECT
-    assert YOLOPoseModel.task is tv.data.Task.POSE
     assert RFDETRDetector.task is tv.data.Task.DETECT
 
 
@@ -122,14 +115,14 @@ def test_ultralytics_metrics_use_the_shared_keys():
     raw = {
         "metrics/precision(B)": 0.5,
         "metrics/mAP50-95(B)": 0.25,
-        "metrics/mAP50(P)": 0.75,
+        "metrics/mAP50(M)": 0.75,
         "val/box_loss": 1.0,
         "fitness": 0.3,
     }
     assert _standard_metrics(raw) == {
         "precision": 0.5,
         "map50_95": 0.25,
-        "pose_map50": 0.75,
+        "mask_map50": 0.75,
     }
 
 
@@ -173,45 +166,6 @@ def test_rfdetr_best_metrics_prefer_regular_model_on_ties(tmp_path):
 
 
 # ------------------------------------------------------- Ultralytics helpers
-def test_pose_instances_are_sorted_by_confidence():
-    keypoints = np.zeros((3, 4, 3), np.float32)
-    keypoints[..., 0] = np.array([0, 1, 2])[:, None]  # x marks the instance
-    keypoints[..., 2] = 0.5
-    boxes = np.arange(12, dtype=np.float32).reshape(3, 4)
-    result = _keypoints_from_arrays(
-        keypoints, boxes, np.array([0.2, 0.9, 0.5]), np.zeros(3, int), ["pitch"]
-    )
-    assert isinstance(result, sv.KeyPoints)
-    assert result.xy.shape == (3, 4, 2) and result.confidence.shape == (3, 4)
-    assert list(result.xy[:, 0, 0]) == [1, 2, 0]
-    assert list(result.data["box_confidence"]) == pytest.approx([0.9, 0.5, 0.2])
-    np.testing.assert_array_equal(result.data["xyxy"][0], boxes[1])
-    assert list(result.data["class_name"]) == ["pitch"] * 3
-
-
-def test_pose_keypoints_without_visibility_use_instance_confidence():
-    result = _keypoints_from_arrays(
-        np.zeros((1, 5, 2), np.float32),
-        np.zeros((1, 4)),
-        np.array([0.7]),
-        np.zeros(1, int),
-        ["pitch"],
-    )
-    np.testing.assert_allclose(result.confidence, np.full((1, 5), 0.7))
-
-
-def test_empty_pose_output_is_a_valid_keypoints_object():
-    result = _keypoints_from_arrays(
-        np.zeros((0, 32, 3), np.float32),
-        np.zeros((0, 4)),
-        np.zeros(0),
-        np.zeros(0, int),
-        ["pitch"],
-    )
-    assert len(result) == 0 and result.xy.shape == (0, 0, 2)
-    assert result.confidence.shape == (0, 0) and len(result.data["xyxy"]) == 0
-
-
 def test_ultralytics_results_csv_columns_are_stripped(tmp_path):
     csv = tmp_path / "results.csv"
     csv.write_text("   epoch,  metrics/mAP50(B)\n1,0.5\n")
@@ -295,7 +249,10 @@ class _FakeYOLO:
                     csv.write_text("epoch,train/box_loss,metrics/mAP50(B)\n")
                 with csv.open("a") as fh:
                     fh.write(f"{epoch + 1},2.0,0.7\n")
-            trainer.metrics = {"metrics/mAP50(B)": 0.7, "metrics/mAP50(P)": 0.4}
+            trainer.metrics = {
+                "metrics/mAP50(B)": 0.7,
+                "metrics/mAP50(M)": 0.4,
+            }  # a mask metric after it is not shown
             self._run("on_fit_epoch_end", trainer)
         trainer.epoch += 1  # the final validation of best.pt, past the last epoch
         self._run("on_fit_epoch_end", trainer)
@@ -395,7 +352,7 @@ def test_ultralytics_training_shows_one_bar_in_place_of_its_log(
     fake_yolo.train(dataset, output_dir=tmp_path / "runs", exist_ok=True)
     [bar] = bars
     assert (bar.total, bar.n, bar.closed) == (2, 2, True)
-    assert bar.postfix == "epoch 1/1, loss 2.500, val mAP50 0.400"  # keypoints
+    assert bar.postfix == "epoch 1/1, loss 2.500, val mAP50 0.700"  # the box metric
     assert fake_yolo._yolo.log_level == logging.WARNING  # Ultralytics' log is quiet
     assert logging.getLogger("ultralytics").level == level  # restored
     assert all(not callbacks for callbacks in fake_yolo._yolo.callbacks.values())
@@ -663,15 +620,14 @@ def test_repr_shows_class_conf_only_when_set(thresholding_detector):
     assert "class_conf={'ball': 0.05}" in repr(model)
 
 
-# ------------------------------------------------- resized input (pitch models)
+# ------------------------------------------------- resized input
 class _FakeResizePredictor:
     """Ultralytics-like: records the image it gets and answers in that image's pixels."""
 
-    names = {0: "pitch"}
+    names = {0: "player"}
     overrides = {"imgsz": 32}  # the size the checkpoint was trained at
 
-    def __init__(self, keypoints=None):
-        self.keypoints = keypoints
+    def __init__(self):
         self.images, self.calls = [], []
 
     def predict(self, image, **options):
@@ -681,12 +637,7 @@ class _FakeResizePredictor:
         self.images.append(image)
         self.calls.append(options)
         boxes = torch.tensor([[4.0, 8.0, 12.0, 16.0, 0.9, 0.0]])
-        keypoints = None if self.keypoints is None else torch.tensor(self.keypoints)
-        return [
-            Results(
-                image, path="frame", names=self.names, boxes=boxes, keypoints=keypoints
-            )
-        ]
+        return [Results(image, path="frame", names=self.names, boxes=boxes)]
 
 
 def _ultralytics_with(monkeypatch, cls, predictor, **options):
@@ -696,57 +647,57 @@ def _ultralytics_with(monkeypatch, cls, predictor, **options):
     return cls(device="cpu", **options)
 
 
+def _detector_with(monkeypatch, predictor, **options):
+    predictor.names = dict(enumerate(FOOTBALL_CLASSES))
+    return _ultralytics_with(monkeypatch, YOLODetector, predictor, **options)
+
+
 def test_the_letterbox_gives_ultralytics_the_frame_unchanged(monkeypatch):
-    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
-    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor)
+    predictor = _FakeResizePredictor()
+    model = _detector_with(monkeypatch, predictor)
     frame = np.zeros((48, 64, 3), np.uint8)
-    keypoints = model(frame)
+    detections = model(frame)
     assert predictor.images[-1] is frame and "imgsz" not in predictor.calls[-1]
-    np.testing.assert_allclose(keypoints.xy[0], [[4, 8], [12, 16]])
+    np.testing.assert_allclose(detections.xyxy, [[4, 8, 12, 16]])
 
 
 @pytest.mark.parametrize("recorded", [None, [640, 384]])
 def test_square_needs_a_square_training_size(monkeypatch, recorded):
-    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
+    predictor = _FakeResizePredictor()
+    model = _detector_with(monkeypatch, predictor, resize="square")
     predictor.overrides = {} if recorded is None else {"imgsz": recorded}
-    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="square")
     with pytest.raises(
         ValueError, match="resize='square' needs a square training size"
     ):
         model(np.zeros((48, 64, 3), np.uint8))
     predictor.overrides = {"imgsz": [32, 32]}
-    assert model(np.zeros((48, 64, 3), np.uint8)).xy.shape == (1, 2, 2)
+    assert len(model(np.zeros((48, 64, 3), np.uint8))) == 1
 
 
-def test_square_pads_to_a_centred_grey_square_and_moves_pose_outputs_back(monkeypatch):
+def test_square_pads_to_a_centred_grey_square(monkeypatch):
     # Ultralytics trains on images letterboxed onto a square canvas; a 64 x 48
     # frame becomes a 64 x 64 canvas with 8 grey rows above and below it.
-    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
-    model = _ultralytics_with(monkeypatch, YOLOPoseModel, predictor, resize="square")
+    predictor = _FakeResizePredictor()
+    model = _detector_with(monkeypatch, predictor, resize="square")
     frame = np.random.default_rng(0).integers(0, 255, (48, 64, 3), np.uint8)
-    keypoints = model(frame)
+    model(frame)
     canvas = predictor.images[-1]
     assert canvas.shape == (64, 64, 3) and canvas.dtype == np.uint8
     np.testing.assert_array_equal(canvas[8:56], frame)
     assert (canvas[:8] == 114).all() and (canvas[56:] == 114).all()
     assert predictor.calls[-1]["imgsz"] == 32  # the training size
-    np.testing.assert_allclose(keypoints.xy[0], [[4, 0], [12, 8]])
-    np.testing.assert_allclose(keypoints.confidence[0], [0.9, 0.8])
-    np.testing.assert_allclose(keypoints.data["xyxy"], [[4, 0, 12, 8]])
 
 
 def test_square_pads_a_portrait_frame_left_and_right(monkeypatch):
-    predictor = _FakeResizePredictor([[[4.0, 8.0, 0.9], [12.0, 16.0, 0.8]]])
-    model = _ultralytics_with(
-        monkeypatch, YOLOPoseModel, predictor, resize="square", imgsz=16
-    )
+    predictor = _FakeResizePredictor()
+    model = _detector_with(monkeypatch, predictor, resize="square", imgsz=16)
     frame = np.full((65, 50, 3), 7, np.uint8)  # odd padding: 7 columns left, 8 right
-    keypoints = model(frame)
+    detections = model(frame)
     canvas = predictor.images[-1]
     assert canvas.shape == (65, 65, 3) and predictor.calls[-1]["imgsz"] == 16
     assert (canvas[:, :7] == 114).all() and (canvas[:, 57:] == 114).all()
     assert (canvas[:, 7:57] == 7).all()
-    np.testing.assert_allclose(keypoints.xy[0], [[-3, 8], [5, 16]])
+    np.testing.assert_allclose(detections.xyxy, [[-3, 8, 5, 16]])
 
 
 def test_square_moves_detection_boxes_back(monkeypatch):
@@ -762,7 +713,7 @@ def test_resize_is_checked(monkeypatch):
         ValueError, match="Unknown resize 'stretch'. Available: letterbox, square"
     ):
         _ultralytics_with(
-            monkeypatch, YOLOPoseModel, _FakeResizePredictor(), resize="stretch"
+            monkeypatch, YOLODetector, _FakeResizePredictor(), resize="stretch"
         )
 
 
@@ -771,11 +722,6 @@ def test_resize_is_checked(monkeypatch):
 def football() -> tv.Dataset:
     """A fixed sample of the football dataset: 100 training, 20 validation images."""
     return tv.load_dataset(FOOTBALL).subset({"train": 100, "valid": 20})
-
-
-@pytest.fixture(scope="module")
-def pitch() -> tv.Dataset:
-    return tv.load_dataset(KEYPOINTS)
 
 
 def _check_detections(detections: sv.Detections, class_names: list[str]) -> None:
@@ -791,17 +737,6 @@ def test_yolo_predicts_named_detections(football, detector_weights):
     assert model.class_names == FOOTBALL_CLASSES
     image, _ = football.read("valid", 0)
     _check_detections(model(image), FOOTBALL_CLASSES)
-
-
-@pytest.mark.model
-def test_yolo_pose_predicts_sorted_pitch_keypoints(pitch, pitch_weights):
-    model = tv.load_model("yolo_pose", pitch_weights)
-    keypoints = model(pitch.read("valid", 0)[0])
-    assert isinstance(keypoints, sv.KeyPoints) and len(keypoints) >= 1
-    assert keypoints.xy.shape[1:] == (32, 2)
-    assert keypoints.confidence.shape == keypoints.xy.shape[:2]
-    box_confidence = keypoints.data["box_confidence"]
-    assert list(box_confidence) == sorted(box_confidence, reverse=True)
 
 
 @pytest.mark.model
@@ -831,12 +766,10 @@ def test_rfdetr_coco_weights_use_coco_names(football, rfdetr_coco_weights):
 
 @pytest.mark.model
 def test_checkpoints_of_the_wrong_kind_are_rejected(
-    detector_weights, pitch_weights, rfdetr_sample_weights
+    detector_weights, pose_checkpoint, rfdetr_sample_weights
 ):
     with pytest.raises(ValueError, match="'pose' checkpoint"):
-        tv.load_model("yolo", pitch_weights)
-    with pytest.raises(ValueError, match="'detect' checkpoint"):
-        tv.load_model("yolo_pose", detector_weights)
+        tv.load_model("yolo", pose_checkpoint)
     with pytest.raises(ValueError, match="pass size='base'"):
         tv.load_model("rfdetr", rfdetr_sample_weights, size="nano")
     with pytest.raises(FileNotFoundError):
@@ -875,27 +808,6 @@ def test_train_yolo_for_one_epoch(football, detector_weights, tmp_path, monkeypa
     model = result.load(conf=0.05)
     assert model.class_names == FOOTBALL_CLASSES
     assert isinstance(model(football.read("valid", 0)[0]), sv.Detections)
-
-
-@pytest.mark.model
-def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    tiny = pitch.subset({"train": 16, "valid": 8, "test": 0})
-    model = tv.load_model("yolo_pose", pitch_weights)
-    result = model.train(
-        tiny,
-        epochs=1,
-        batch_size=4,
-        imgsz=960,  # the checkpoint's size: one epoch at 320 leaves it finding nothing
-        workers=2,
-        output_dir=tmp_path / "runs",
-        amp=False,
-        plots=False,
-    )
-    _check_train_result(result, "yolo_pose", tmp_path, "best.pt")
-    assert model.weights == result.weights  # the instance now holds the new weights
-    keypoints = result.load(conf=0.05)(pitch.read("valid", 0)[0])
-    assert isinstance(keypoints, sv.KeyPoints) and keypoints.xy.shape[1] == 32
 
 
 @pytest.mark.model

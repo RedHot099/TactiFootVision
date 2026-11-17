@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import supervision as sv
 
-from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
+from tactifoot_vision.data.annotations import Annotations
 from tactifoot_vision.enums import AnnotatorStyle, DetectionKey
 from tactifoot_vision.pipeline.result import FrameResult, ObjectMasks
 from tactifoot_vision.pitch.fit import LinePoints
@@ -30,8 +30,6 @@ from tactifoot_vision.viz.trail import draw_trail, trail_frames
 # Ground-truth class colours: bright hues that stand out on grass, checked for
 # colour-blind separation (labels always accompany them).
 CLASS_COLORS = ("#FFD400", "#FF6B00", "#00BFFF", "#FF1493", "#A259FF", "#FF4040")
-KEYPOINT_COLOR = "#FFA500"  # confident keypoint that agrees with the homography
-KEYPOINT_OUTLIER_COLOR = "#FF0000"  # confident keypoint the homography disagrees with
 LINE_POINT_COLOR = "#FFA500"  # a line point on its marking under the homography
 LINE_POINT_OUTLIER_COLOR = "#FF0000"  # a line point the homography puts off its marking
 # A line point within this distance of its marking (standard-pitch metres) agrees.
@@ -52,19 +50,6 @@ def _scaled_sizes(image: np.ndarray) -> tuple[int, float]:
     """Line thickness and font scale for an image: 2 px and 0.5 at 1080p."""
     short_side = min(image.shape[:2])
     return max(1, round(short_side / 540)), max(0.35, short_side / 2160)
-
-
-def _put_text(
-    image: np.ndarray,
-    text: str,
-    org: tuple[int, int],
-    scale: float,
-    color: sv.Color,
-    thickness: int = 1,
-) -> None:
-    """Text with a dark outline so it stays legible on any background."""
-    cv2.putText(image, text, org, _FONT, scale, (0, 0, 0), thickness + 2, cv2.LINE_AA)
-    cv2.putText(image, text, org, _FONT, scale, color.as_bgr(), thickness, cv2.LINE_AA)
 
 
 def _draw_dot(
@@ -108,10 +93,9 @@ class FrameAnnotator:
     ``default_color`` otherwise, e.g. referees), labelled with their track id,
     and drawn as boxes (``style="standard"``) or as ellipses at their feet
     (``style="video_game"``, with a triangle over the ball). With a homography,
-    the pitch model is projected into the frame; confident pitch keypoints are
-    orange when the homography agrees with them and red when it does not, and
-    so are the line model's points (``FrameResult.line_points``), by whether
-    the homography puts them on their marking (within 1 m).
+    the pitch model is projected into the frame; the line model's points
+    (``FrameResult.line_points``) are orange when the homography puts them on
+    their marking (within 1 m) and red when it does not.
     With ``trail_seconds``, the ball's path over that many seconds is drawn
     from the ``history`` passed to :meth:`annotate` (ADR 0003). A
     ``ball_carrier`` passed to :meth:`annotate` gets a ring at their feet.
@@ -131,14 +115,12 @@ class FrameAnnotator:
         draw_boxes: bool = True,
         draw_labels: bool = True,
         draw_masks: bool = False,
-        draw_keypoints: bool = True,
+        draw_line_points: bool = True,
         draw_pitch_lines: bool = True,
-        keypoint_threshold: float = 0.5,
+        line_point_threshold: float = 0.3,
         pitch: SoccerPitch | None = None,
         pitch_line_color: ColorLike = PITCH_LINE_COLOR,
         trail_seconds: float | None = None,
-        draw_line_points: bool = True,
-        line_point_threshold: float = 0.3,
     ) -> None:
         """
         Args:
@@ -149,14 +131,13 @@ class FrameAnnotator:
             draw_labels: ``#<track id>`` tags.
             draw_masks: segmentation masks, kept by ``Pipeline(keep_masks=True)``
                 with a mask tracker (SAM2); warns once if a result has none.
-            draw_keypoints: pitch keypoints with confidence ``>= keypoint_threshold``.
+            draw_line_points: the line model's points with probability
+                ``>= line_point_threshold`` (the estimator's ``min_prob``).
             draw_pitch_lines: pitch markings projected with the inverse homography.
             pitch: pitch model the homography maps to (default ``SoccerPitch()``).
             ball_color: the ball marker, the ball trail and the ball-carrier ring.
             trail_seconds: draw the ball's path over the last this many seconds,
                 in ``ball_color`` fading to nothing at that age; ``None``: no trail.
-            draw_line_points: the line model's points with probability
-                ``>= line_point_threshold`` (the line estimator's ``min_prob``).
         """
         if trail_seconds is not None and not trail_seconds > 0:
             raise ValueError(f"trail_seconds must be > 0 or None, got {trail_seconds}")
@@ -167,14 +148,12 @@ class FrameAnnotator:
         self.draw_boxes = draw_boxes
         self.draw_labels = draw_labels
         self.draw_masks = draw_masks
-        self.draw_keypoints = draw_keypoints
+        self.draw_line_points = draw_line_points
         self.draw_pitch_lines = draw_pitch_lines
-        self.keypoint_threshold = keypoint_threshold
+        self.line_point_threshold = line_point_threshold
         self.pitch = pitch or SoccerPitch()
         self.pitch_line_color = as_color(pitch_line_color)
         self.trail_seconds = trail_seconds
-        self.draw_line_points = draw_line_points
-        self.line_point_threshold = line_point_threshold
         colors = [*self.team_colors, self.default_color]
         self._palette = sv.ColorPalette(colors)
         self._text_palette = sv.ColorPalette([text_color_for(c) for c in colors])
@@ -204,8 +183,6 @@ class FrameAnnotator:
         homography = frame_result.homography
         if self.draw_pitch_lines and homography is not None:
             self._draw_pitch(image, homography, thickness)
-        if self.draw_keypoints and frame_result.keypoints is not None:
-            self._draw_keypoints(image, frame_result.keypoints, homography, text_scale)
         if self.draw_line_points and frame_result.line_points is not None:
             self._draw_line_points(
                 image, frame_result.line_points, homography, thickness
@@ -353,36 +330,6 @@ class FrameAnnotator:
         for point in xy[valid]:
             _draw_dot(image, point, thickness + 1, self.pitch_line_color)
 
-    def _draw_keypoints(
-        self,
-        image: np.ndarray,
-        keypoints: sv.KeyPoints,
-        homography: np.ndarray | None,
-        text_scale: float,
-    ) -> None:
-        if len(keypoints) == 0:
-            return
-        xy = keypoints.xy[0]
-        confidence = (
-            keypoints.confidence[0]
-            if keypoints.confidence is not None
-            else np.ones(len(xy))
-        )
-        agrees = np.ones(len(xy), dtype=bool)
-        if homography is not None and len(xy) == self.pitch.num_keypoints:
-            size = (image.shape[1], image.shape[0])
-            expected, valid = project_to_frame(self.pitch.vertices, homography, size)
-            tolerance = 0.01 * float(np.hypot(*size))
-            agrees = valid & (np.linalg.norm(xy - expected, axis=1) <= tolerance)
-        radius = max(3, round(8 * text_scale))
-        used, outlier = as_color(KEYPOINT_COLOR), as_color(KEYPOINT_OUTLIER_COLOR)
-        drawable = (confidence >= self.keypoint_threshold) & np.isfinite(xy).all(axis=1)
-        for i in np.flatnonzero(drawable):
-            color = used if agrees[i] else outlier
-            _draw_dot(image, xy[i], radius, color)
-            org = (round(float(xy[i, 0])) + radius + 2, round(float(xy[i, 1])) - radius)
-            _put_text(image, str(i), org, text_scale * 0.8, sv.Color.WHITE)
-
     def _draw_line_points(
         self,
         image: np.ndarray,
@@ -444,9 +391,8 @@ def draw_annotations(
     """Draw dataset ground truth on a copy of ``image``.
 
     Boxes are coloured by class and tagged with the class name (or id);
-    labelled keypoints (visibility > 0) are drawn with their index, unlabelled
-    ones are hidden; the pitch lines of a ``lines`` sample are drawn as
-    polylines in ``LINE_POINT_COLOR``.
+    the pitch lines of a ``lines`` sample are drawn as polylines in
+    ``LINE_POINT_COLOR``.
     """
     out = image.copy()
     thickness, text_scale = _scaled_sizes(out)
@@ -470,16 +416,6 @@ def draw_annotations(
             text_thickness=max(1, thickness // 2),
             text_padding=max(2, round(6 * text_scale)),
         ).annotate(out, detections, labels=names)
-    if annotations.keypoints is not None:
-        radius = max(3, round(8 * text_scale))
-        color = as_color(KEYPOINT_COLOR)
-        for instance in annotations.keypoints:
-            for k, (x, y, visibility) in enumerate(instance):
-                if visibility <= NOT_LABELLED or not np.isfinite([x, y]).all():
-                    continue
-                _draw_dot(out, np.array([x, y]), radius, color)
-                org = (round(float(x)) + radius + 2, round(float(y)) - radius)
-                _put_text(out, str(k), org, text_scale * 0.8, sv.Color.WHITE)
     color = as_color(LINE_POINT_COLOR).as_bgr()
     for points in (annotations.lines or {}).values():
         if len(points) >= 2 and np.isfinite(points).all():
