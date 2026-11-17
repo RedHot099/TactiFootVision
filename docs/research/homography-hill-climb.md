@@ -105,6 +105,22 @@ ADR 0005, "Numbers"; records in `experiments/homography_bench/results/<row>/{val
   - jitter (D1b p95 on all frames, `metrics.json`) 0.033 → 0.0381 m, optimistic by about 15 % (the comparison's 0.0385 is on the triples shared with B0);
   - GSR line accuracy 0.867 → 0.815, while B0's rose 1 point.
 
+**The same run in pictures.** Before is B0, after is P-final. The figures are drawn from this session's saved runs and scores; nothing was rescored. Every frame and clip is picked by a rule fixed before any picture was opened (`experiments/homography_joint/figures/pr/FIGURES.md`, section 11).
+
+![Five GSR test frames, before and after](../media/homography/frames_heldout.jpg)
+
+*GSR test frames at the 5th, 25th, 50th, 75th and 95th percentile of the per-frame difference in position error (B0 − P-final, over the 31,656 frames where neither row failed). On a typical frame both estimators lie on the lines; the difference is in the tails.*
+
+![AUC5 and jitter per GSR test clip, before against after](../media/homography/per_clip_heldout.png)
+
+*One point per GSR test clip, `final` track. AUC5 is higher on 46 of the 49 clips and lower on 3 (SNGS-124, SNGS-188, SNGS-194); jitter D1b p95 is lower on all 49.*
+
+![Per-frame jitter on SNGS-123, before and after](../media/homography/stability_heldout.png)
+
+*SNGS-123, the clip whose jitter difference is the median of the 49 (D1b p95 0.100 m against 0.038 m): the per-frame quantity behind D1b. The shaded 8 s are the animation below.*
+
+![SNGS-123, 8 s, before and after](../media/homography/stability_heldout.webp)
+
 ## 6. Cost
 
 Protocols `gpu-v2` and `cpu-v2`. Records: `experiments/homography_bench/results/P-final/cost_{gpu,cpu}{,_images}.json`, window r4d, and B0's records.
@@ -193,6 +209,7 @@ REPORT sections 13 to 19; `GUARD_RULE.md`.
 - **Code and records:** the local branch `research/homography-final` at `1492a5af7641`, not pushed.
   - Protocol and harness: `experiments/homography_bench/` (`METRICS.md`, `run.py`, `score.py`, `compare.py`; the scored records and comparisons in `experiments/homography_bench/results/`).
   - Hill climb: `experiments/homography_joint/` (`REPORT.md`, `FREEZE.md`, `HELDOUT.md`, the rules, the scripts, `experiments/homography_joint/results/`).
+  - Figures: `experiments/homography_joint/pr_figures.py` and `figures/pr/FIGURES.md` (the rules, the picks and the numbers), added at `4578cd4`; the files are copied to `docs/media/homography/`.
 - **Weights and data** on this machine's storage, `/mnt/storage/tactifoot_research/homography_bench/`:
   - **primary weights:** `joint/package_runs/lines-r18s2w640/weights/final.pt`, sha256 `12f1ccccd1453154e4635cdc816a9587bacbdc8b15cbff39c122d76ce399ba43`, with `manifest.json` and the reconstructed `samples.jsonl` beside it. A copy is `models/pitch_lines_r18s2w640_tvtrain.{pt,json}` in the main checkout;
   - **seeds 1 to 4:** `joint/package_runs/lines-r18s2w640-seed{1,2,3,4}/`;
