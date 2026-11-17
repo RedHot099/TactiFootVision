@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Multimedia :: Video",
 ]
-# The core runs the default preset: YOLO detection and pitch keypoints,
+# The core runs the default preset: YOLO detection, the pitch line network,
 # ByteTrack, SigLIP teams (transformers, umap-learn), the roles post-process
 # (scikit-learn).
 # Lower bounds are the lowest versions a run has verified (the lock, or the

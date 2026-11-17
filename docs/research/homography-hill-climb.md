@@ -203,14 +203,14 @@ REPORT sections 13 to 19; `GUARD_RULE.md`.
 
 ## 12. This branch is the tested code
 
-The code paths of this branch equal those of `research/homography-final` at its final commit `1492a5af76414ba1d3f4184b57eb5c765d8727e3`:
+The tested tree is the local branch `feature/pitch-line-homography` at `e8b0326`, whose code paths equal those of `research/homography-final` at its final commit `1492a5af76414ba1d3f4184b57eb5c765d8727e3`. The change that makes the line method the default was made by taking that tree whole, so
 
 ```
-git diff 462f0977ea06 1492a5af7641 -- src tests examples notebooks pyproject.toml uv.lock
+git diff e8b0326 -- src examples notebooks uv.lock
 ```
 
-is empty, where `462f0977ea06` is the commit that brought this branch's code. Every later commit on this branch touches only this document.
-- **The package, its tests, the examples, the notebooks and the locked dependencies** are therefore the ones the research branch tested.
+is empty on it. Beyond the tested tree it differs in four places, none of them in the package's code: a test fake in `tests/test_models.py` lost a dead `keypoints` argument, one comment in `pyproject.toml` no longer names pitch keypoints, one sentence of ADR 0005 was corrected, and this paragraph.
+- **The package, the examples, the notebooks and the locked dependencies** are therefore the ones the research branch tested; its tests differ by that one test fake.
 - **The notebooks** are the files rebuilt on the research branch at `79a2940` with `--execute` and the SAM2 checkout. The later changes to `src` do not change any notebook's output: no notebook or example calls `evaluate_lines` or `smooth_homographies`, and none prints a whole result.
 - **Outside `experiments/`,** the two trees differ only in `README.md` and ADR 0005, which cite this document instead of research paths, and in this document.
 - **The frozen rows** were last rerun on valid and calib-valid at `a57c7ad`, with the final `src` (`experiments/homography_joint/results/compare_runs_*_f6_a57c7ad.json` on the research branch). They equal their frozen records on both tracks, on every frame.
