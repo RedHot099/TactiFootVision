@@ -13,15 +13,18 @@ from tactifoot_vision.models.base import (
     load_model,
     train,
 )
+from tactifoot_vision.models.lines import PitchLineModel, TrainingStopped
 from tactifoot_vision.models.rfdetr import RFDETRDetector
 from tactifoot_vision.models.ultralytics import YOLODetector, YOLOPoseModel
 
 __all__ = [
     "MODELS",
     "Model",
+    "PitchLineModel",
     "RFDETRDetector",
     "TrainConfig",
     "TrainResult",
+    "TrainingStopped",
     "YOLODetector",
     "YOLOPoseModel",
     "available_models",

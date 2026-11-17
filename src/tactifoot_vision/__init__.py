@@ -41,6 +41,7 @@ _SUBMODULES = (
 _EXPORTS: dict[str, tuple[str, str]] = {
     "Dataset": ("data", "Dataset"),
     "load_dataset": ("data", "load_dataset"),
+    "load_pitch_lines": ("data", "load_pitch_lines"),
     "VideoReader": ("data", "VideoReader"),
     "load_model": ("models", "load_model"),
     "train": ("models", "train"),
@@ -70,6 +71,7 @@ __all__ = [
     "viz",
     "Dataset",
     "load_dataset",
+    "load_pitch_lines",
     "VideoReader",
     "load_model",
     "train",

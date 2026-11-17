@@ -2,6 +2,7 @@
 
 import inspect
 import pickle
+import re
 import subprocess
 import sys
 from enum import StrEnum
@@ -22,12 +23,13 @@ VOCABULARIES = [
 
 
 def test_every_vocabulary_is_a_str_enum_whose_members_equal_their_values():
-    assert len(VOCABULARIES) == 19
+    assert len(VOCABULARIES) == 23
     for enum in VOCABULARIES:
         assert issubclass(enum, StrEnum) and enum.__doc__
         for member in enum:
             assert member == member.value and str(member) == member.value
-            assert member.name == member.value.upper().replace("-", "_")
+            # SoccerNet's marking names hold spaces and dots ("Big rect. left top")
+            assert member.name == re.sub(r"[^A-Z0-9]+", "_", member.value.upper())
 
 
 def test_a_member_prints_and_pickles_as_its_plain_string():
