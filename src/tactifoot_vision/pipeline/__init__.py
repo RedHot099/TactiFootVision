@@ -1,7 +1,10 @@
 """Inference pipeline: detection -> tracking -> pitch projection -> teams."""
 
 from tactifoot_vision.pipeline.ball import track_ball
-from tactifoot_vision.pipeline.homographies import smooth_homographies
+from tactifoot_vision.pipeline.homographies import (
+    smooth_homographies,
+    smooth_line_homographies,
+)
 from tactifoot_vision.pipeline.pipeline import Pipeline
 from tactifoot_vision.pipeline.postprocess import (
     POSTPROCESSES,
@@ -31,5 +34,6 @@ __all__ = [
     "remap_track_ids",
     "reproject",
     "smooth_homographies",
+    "smooth_line_homographies",
     "track_ball",
 ]

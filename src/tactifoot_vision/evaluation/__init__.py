@@ -12,6 +12,7 @@ from tactifoot_vision.evaluation.homography import (
     evaluate_homography_clips,
 )
 from tactifoot_vision.evaluation.keypoints import evaluate_keypoints
+from tactifoot_vision.evaluation.lines import evaluate_lines
 from tactifoot_vision.evaluation.metrics import (
     DetectionMetrics,
     HomographyMetrics,
@@ -36,12 +37,19 @@ def evaluate(
     Detection models go to :func:`evaluate_detector`, keypoint models to
     :func:`evaluate_keypoints`; ``kwargs`` are passed through
     (``max_images=50``, ``conf=0.05``, ``pck_threshold=0.02``, ...) and an
-    option the evaluator does not take is a ``ValueError``.
+    option the evaluator does not take is a ``ValueError``. A ``lines`` model
+    has no dataset metric: :func:`evaluate_lines` scores it through the
+    homography it gives on labelled clips.
     """
     evaluators = {Task.DETECT: evaluate_detector, Task.POSE: evaluate_keypoints}
     evaluator = evaluators.get(model.task)
     if evaluator is None:
-        raise ValueError(f"No evaluation for {model.task.value} models")
+        hint = (
+            "; score it through its homography with evaluate_lines(model, clips)"
+            if model.task == Task.LINES
+            else ""
+        )
+        raise ValueError(f"No evaluation for {model.task.value} models{hint}")
     parameters = inspect.signature(evaluator).parameters.values()
     options = [
         p.name for p in parameters if p.name not in ("model", "dataset", "split")
@@ -68,6 +76,7 @@ __all__ = [
     "evaluate_homography",
     "evaluate_homography_clips",
     "evaluate_keypoints",
+    "evaluate_lines",
     "evaluate_teams",
     "evaluate_teams_clips",
     "evaluate_tracking",

@@ -43,6 +43,7 @@ class Task(Vocabulary):
 
     DETECT = "detect"  # bounding boxes with classes (players, ball, ...)
     POSE = "pose"  # boxes plus a fixed set of keypoints per object (pitch landmarks)
+    LINES = "lines"  # points along the painted pitch markings, per marking (SoccerNet line classes)
 
 
 class Truth(Vocabulary):
@@ -173,6 +174,58 @@ class ModelType(Vocabulary):
     YOLO = "yolo"
     YOLO_POSE = "yolo_pose"
     RFDETR = "rfdetr"
+    LINES = "lines"  # the pitch line network (per-marking heatmaps)
+
+
+class LineRule(Vocabulary):
+    """Which SoccerNet Calibration train images ``load_pitch_lines`` keeps (the **Label rule**)."""
+
+    SOCCERNET_V2 = "soccernet-v2"  # the line network's training set: main-side and along-the-pitch views
+    NONE = "none"  # every image
+
+
+class PitchView(Vocabulary):
+    """Which way a line training image looks (the **View**): which names a horizontal mirror swaps."""
+
+    MAIN = "main"  # from the main camera's side: left and right swap
+    ALONG = "along"  # along the pitch, behind or above a goal: top and bottom swap
+
+
+class LineBackbone(Vocabulary):
+    """The encoder of a new ``lines`` network."""
+
+    RESNET18 = "resnet18"
+    RESNET34 = "resnet34"
+
+
+class PitchMarking(Vocabulary):
+    """A painted pitch marking, named as SoccerNet's calibration labels name it (its **Line class**).
+
+    Seventeen straight lines and three circles (the centre circle and the two
+    penalty arcs). Left and right are along the pitch's length (``x``), top and
+    bottom across it (``y``), seen from the main camera.
+    """
+
+    SIDE_LINE_TOP = "Side line top"
+    SIDE_LINE_BOTTOM = "Side line bottom"
+    SIDE_LINE_LEFT = "Side line left"
+    SIDE_LINE_RIGHT = "Side line right"
+    MIDDLE_LINE = "Middle line"
+    BIG_RECT_LEFT_TOP = "Big rect. left top"
+    BIG_RECT_LEFT_MAIN = "Big rect. left main"
+    BIG_RECT_LEFT_BOTTOM = "Big rect. left bottom"
+    BIG_RECT_RIGHT_TOP = "Big rect. right top"
+    BIG_RECT_RIGHT_MAIN = "Big rect. right main"
+    BIG_RECT_RIGHT_BOTTOM = "Big rect. right bottom"
+    SMALL_RECT_LEFT_TOP = "Small rect. left top"
+    SMALL_RECT_LEFT_MAIN = "Small rect. left main"
+    SMALL_RECT_LEFT_BOTTOM = "Small rect. left bottom"
+    SMALL_RECT_RIGHT_TOP = "Small rect. right top"
+    SMALL_RECT_RIGHT_MAIN = "Small rect. right main"
+    SMALL_RECT_RIGHT_BOTTOM = "Small rect. right bottom"
+    CIRCLE_CENTRAL = "Circle central"
+    CIRCLE_LEFT = "Circle left"
+    CIRCLE_RIGHT = "Circle right"
 
 
 class TrackerType(Vocabulary):
@@ -193,6 +246,7 @@ class PostProcessName(Vocabulary):
     """A built-in post-process of ``POSTPROCESSES``."""
 
     SMOOTH_HOMOGRAPHIES = "smooth_homographies"
+    SMOOTH_LINE_HOMOGRAPHIES = "smooth_line_homographies"
     JOIN_TRACKS = "join_tracks"
     TRACK_BALL = "track_ball"
     ASSIGN_ROLES = "assign_roles"
@@ -203,6 +257,7 @@ class RunFileSection(Vocabulary):
 
     DETECTOR = "detector"
     KEYPOINTS = "keypoints"
+    LINES = "lines"
     TRACKER = "tracker"
     TEAMS = "teams"
     PITCH = "pitch"

@@ -3,6 +3,7 @@
 tactifoot init pipeline.yaml
 tactifoot run pipeline.yaml --video match.mp4 --output-dir outputs/match
 tactifoot train yolo --data data/datasets/football_yolo --weights yolo11n.pt --epochs 50
+tactifoot train lines --calibration data/SoccerNetCalibration --gamestate data/SoccerNetGS
 tactifoot evaluate yolo --weights detector_yolo11l.pt --data data/datasets/football_yolo
 tactifoot info
 
@@ -11,7 +12,9 @@ defaults: an option left out keeps the package default. Training flags come
 from ``TrainConfig`` and run flags from ``Pipeline.run`` and
 ``PipelineResult.export``, so new settings appear here without editing this file.
 ``init`` writes a shipped run file (``tv.run_file.preset``) to edit;
-``run`` is ``RunFile.run``; ``evaluate`` sends ``--set model.KEY=VALUE`` to
+``run`` is ``RunFile.run``; ``train`` reads ``--data`` with ``load_dataset``,
+or SoccerNet's pitch lines with ``load_pitch_lines`` (its flags, for the
+``lines`` model); ``evaluate`` sends ``--set model.KEY=VALUE`` to
 ``load_model`` and the other ``--set`` keys to ``Model.evaluate``.
 """
 
@@ -82,8 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     train.add_argument("model", choices=models)
     train.add_argument(
-        "--data", type=Path, required=True, help="YOLO data.yaml or COCO folder"
+        "--data",
+        type=Path,
+        help="YOLO data.yaml or COCO folder (or the pitch line flags below)",
     )
+    line_data = _add_flags(train, _parameters(tv.data.load_pitch_lines, ()))
     train.add_argument(
         "--weights", help="starting checkpoint (default: the backend's pretrained one)"
     )
@@ -93,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         [(name, f.annotation, f.default, f.description) for name, f in fields.items()],
     )
     _add_overrides(train, "TrainConfig field or backend option, e.g. mosaic=0.0")
-    train.set_defaults(handler=functools.partial(_train, train, settings))
+    train.set_defaults(handler=functools.partial(_train, train, settings, line_data))
 
     evaluate = commands.add_parser(
         "evaluate", help="score a model on a dataset split", argument_default=_SUPPRESS
@@ -156,8 +162,17 @@ def _run(run_inputs: list[str], args: argparse.Namespace) -> int:
 
 
 def _train(
-    parser: argparse.ArgumentParser, settings: list[str], args: argparse.Namespace
+    parser: argparse.ArgumentParser,
+    settings: list[str],
+    line_data: list[str],
+    args: argparse.Namespace,
 ) -> int:
+    lines = _given(args, line_data)
+    if ("data" in args) == bool(lines):
+        parser.error(
+            "give the dataset as --data, or as pitch lines with --calibration "
+            "and/or --gamestate"
+        )
     options = _given(args, settings)
     for key, value in map(tv.run_file.parse_override, _overrides(args)):
         if key in options:
@@ -165,7 +180,7 @@ def _train(
         options[key] = value
     result = tv.train(
         args.model,
-        tv.load_dataset(args.data),
+        tv.load_pitch_lines(**lines) if lines else tv.load_dataset(args.data),
         **_given(args, ["weights"]),
         **options,
     )

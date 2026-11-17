@@ -1,8 +1,9 @@
-"""In-memory index of an annotated image dataset (detection or pose)."""
+"""In-memory index of an annotated image dataset (detection, pose, or pitch lines)."""
 
 import logging
 import numbers
 import random
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -206,6 +207,13 @@ class Dataset:
         rows = []
         for split in self.split_names:
             samples = self.splits[split]
+            if self.task == Task.LINES:  # images showing each marking
+                shown = Counter(n for s in samples for n in s.annotations.lines or {})
+                rows.append(
+                    {"split": split, "images": len(samples)}
+                    | {name: shown[name] for name in self.class_names}
+                )
+                continue
             class_ids = np.concatenate(
                 [s.annotations.class_ids for s in samples] or [np.zeros(0, np.int64)]
             )
@@ -299,6 +307,7 @@ class Dataset:
         """Write the dataset in Ultralytics YOLO layout and return its ``data.yaml``."""
         from tactifoot_vision.data import yolo
 
+        self._check_exportable("YOLO")
         return yolo.write_dataset(self, Path(out_dir), link=link)
 
     def to_coco(
@@ -310,7 +319,15 @@ class Dataset:
         """
         from tactifoot_vision.data import coco
 
+        self._check_exportable("COCO")
         return coco.write_dataset(self, Path(out_dir), link=link)
+
+    def _check_exportable(self, layout: str) -> None:
+        if self.task == Task.LINES:
+            raise ValueError(
+                f"A {Task.LINES.value} dataset has no {layout} layout; the lines "
+                "backend trains on it as it is (tv.train('lines', dataset))"
+            )
 
 
 def _clip_samples(clip: LabelledClip) -> list[Sample]:

@@ -5,6 +5,8 @@ that callable's keyword arguments::
 
     detector: {type: yolo, weights: detector_yolo11l.pt, conf: 0.3}
     keypoints: {type: yolo_pose, weights: pitch_yolo11m_pose.pt}
+    # or, the opt-in line network (ADR 0005), in place of keypoints:
+    # lines: {type: lines, weights: pitch_lines.pt}
     tracker: {type: bytetrack, lost_track_buffer: 30}
     teams: {embedder: siglip}
     render: {annotator: {style: video_game}}
@@ -13,10 +15,13 @@ that callable's keyword arguments::
 ==============  ==========================================================
 ``detector``    ``tv.models.load_model(type, **rest)`` (required)
 ``keypoints``   same; absent or ``null``: no keypoint model
+``lines``       same, for ``Pipeline(line_model=...)``; absent or ``null``:
+                no line model. Give ``keypoints`` or ``lines``, not both
 ``tracker``     ``tv.tracking.create_tracker(type, **rest)``; ``null``: no tracking
 ``teams``       ``TeamClassifier(**section)``; absent or ``null``: no teams
 ``pitch``       ``SoccerPitch(**section)``
-``homography``  ``HomographyEstimator(pitch, **section)``
+``homography``  ``HomographyEstimator(pitch, **section)``; with ``lines``,
+                ``LineHomographyEstimator(pitch, **section)``
 ``pipeline``    the remaining ``Pipeline`` keyword arguments
 ``render``      ``annotator`` (``FrameAnnotator``), ``radar`` (``PitchRadar``;
                 ``null``: none) and ``render_video`` keyword arguments
@@ -54,6 +59,7 @@ if TYPE_CHECKING:
 _PIPELINE_PARTS = (
     "detector",
     "keypoint_model",
+    "line_model",
     "tracker",
     "team_classifier",
     "pitch",
@@ -71,6 +77,7 @@ _RENDER_ARGUMENTS = (
 )
 _NULLABLE = {
     RunFileSection.KEYPOINTS,
+    RunFileSection.LINES,
     RunFileSection.TRACKER,
     RunFileSection.TEAMS,
     RunFileSection.POSTPROCESS,
@@ -157,7 +164,7 @@ class RunFile:
         """Create the models, tracker, team classifier and :class:`Pipeline`."""
         from tactifoot_vision.models import load_model
         from tactifoot_vision.pipeline import Pipeline
-        from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
+        from tactifoot_vision.pitch import SoccerPitch
         from tactifoot_vision.teams import TeamClassifier
         from tactifoot_vision.tracking import create_tracker
 
@@ -168,6 +175,8 @@ class RunFile:
             kwargs["keypoint_model"] = _create(
                 load_model, sections[RunFileSection.KEYPOINTS]
             )
+        if sections.get(RunFileSection.LINES) is not None:
+            kwargs["line_model"] = _create(load_model, sections[RunFileSection.LINES])
         if RunFileSection.TRACKER in sections:
             tracker = sections[RunFileSection.TRACKER]
             kwargs["tracker"] = (
@@ -179,7 +188,7 @@ class RunFile:
             kwargs["pitch"] = SoccerPitch(**sections[RunFileSection.PITCH])
         if RunFileSection.HOMOGRAPHY in sections:
             pitch = [kwargs["pitch"]] if "pitch" in kwargs else []
-            kwargs["homography"] = HomographyEstimator(
+            kwargs["homography"] = _estimator(sections)(
                 *pitch, **sections[RunFileSection.HOMOGRAPHY]
             )
         return Pipeline(**kwargs)
@@ -301,6 +310,15 @@ class RunFile:
         return f"RunFile({str(self.path)!r}, sections={list(self._sections)})"
 
 
+def _estimator(sections: Mapping[str, Any]) -> type:
+    """The class the ``homography`` section builds: the line estimator with a ``lines`` model."""
+    from tactifoot_vision.pitch import HomographyEstimator, LineHomographyEstimator
+
+    if sections.get(RunFileSection.LINES) is not None:
+        return LineHomographyEstimator
+    return HomographyEstimator
+
+
 def _create(factory: Callable[..., Any], section: dict[str, Any]) -> Any:
     """``load_model`` / ``create_tracker`` called with a ``{type: name, **options}`` section."""
     options = dict(section)
@@ -311,7 +329,7 @@ def _create(factory: Callable[..., Any], section: dict[str, Any]) -> Any:
 def _check(data: dict[str, Any]) -> None:
     from tactifoot_vision.models import MODELS
     from tactifoot_vision.pipeline import POSTPROCESSES, Pipeline
-    from tactifoot_vision.pitch import HomographyEstimator, SoccerPitch
+    from tactifoot_vision.pitch import SoccerPitch
     from tactifoot_vision.tracking import TRACKERS
 
     unknown = [name for name in data if name not in RunFileSection]
@@ -322,6 +340,14 @@ def _check(data: dict[str, Any]) -> None:
         )
     if RunFileSection.DETECTOR not in data:
         raise ValueError("The run file needs a 'detector' section")
+    if all(
+        data.get(s) is not None
+        for s in (RunFileSection.KEYPOINTS, RunFileSection.LINES)
+    ):
+        raise ValueError(
+            "Sections 'keypoints' and 'lines' are two sources of the homography; "
+            "give one (or set the other to null)"
+        )
     for name, section in data.items():
         kind = RunFileSection(name)
         if section is None and kind in _NULLABLE:
@@ -330,7 +356,11 @@ def _check(data: dict[str, Any]) -> None:
             _check_postprocess(section, POSTPROCESSES)
             continue
         section = _mapping(name, section)
-        if kind in (RunFileSection.DETECTOR, RunFileSection.KEYPOINTS):
+        if kind in (
+            RunFileSection.DETECTOR,
+            RunFileSection.KEYPOINTS,
+            RunFileSection.LINES,
+        ):
             _check_typed(name, section, MODELS)
         elif kind is RunFileSection.TRACKER:
             _check_typed(name, section, TRACKERS)
@@ -339,7 +369,7 @@ def _check(data: dict[str, Any]) -> None:
         elif kind is RunFileSection.PITCH:
             _check_keys(name, section, SoccerPitch)
         elif kind is RunFileSection.HOMOGRAPHY:
-            _check_keys(name, section, HomographyEstimator, exclude=("pitch",))
+            _check_keys(name, section, _estimator(data), exclude=("pitch",))
         elif kind is RunFileSection.PIPELINE:
             _check_keys(name, section, Pipeline, exclude=_PIPELINE_PARTS)
         else:

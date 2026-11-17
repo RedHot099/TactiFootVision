@@ -17,7 +17,7 @@ from tactifoot_vision.data._files import (
     unique_stems,
 )
 from tactifoot_vision.data.dataset import Dataset, Sample
-from tactifoot_vision.enums import Split
+from tactifoot_vision.enums import Split, Task
 from tactifoot_vision.utils import ensure_dir
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,11 @@ def augment_dataset(
     """
     if copies < 1:
         raise ValueError(f"copies must be >= 1, got {copies}")
+    if dataset.task == Task.LINES:
+        raise ValueError(
+            "The transforms move boxes, not pitch lines; the lines "
+            "backend augments its training images itself"
+        )
     split_names = list(dict.fromkeys(Split.parse(s) for s in splits))
     missing = [s for s in split_names if not dataset[s]]
     if missing:

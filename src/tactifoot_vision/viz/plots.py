@@ -211,7 +211,7 @@ def show_samples(
     seed: int = 0,
     cols: int = 3,
 ) -> "Figure":
-    """Random images of a split with their ground-truth boxes, classes and keypoints."""
+    """Random images of a split with their ground truth: boxes, classes and keypoints, or pitch lines."""
     samples = _split_samples(dataset, split)
     images, titles = [], []
     for i in _pick(len(samples), n, seed):

@@ -21,6 +21,7 @@ from tactifoot_vision.utils import next_run_dir, resolve_device
 
 if TYPE_CHECKING:
     from tactifoot_vision.evaluation.metrics import DetectionMetrics, KeypointMetrics
+    from tactifoot_vision.pitch.fit import LinePoints
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,9 @@ class TrainResult:
     weights: Path  # best checkpoint
     run_dir: Path
     history: pd.DataFrame  # one row per epoch (column names follow the backend)
-    # Validation metrics of the best checkpoint, same keys for every backend:
-    # map50_95, map50 (+ map75, precision, recall when reported; pose_* for keypoints).
+    # Validation metrics of the best checkpoint, same keys for every detection and
+    # pose backend: map50_95, map50 (+ map75, precision, recall when reported;
+    # pose_* for keypoints). The lines backend reports loss and valid_loss.
     metrics: dict[str, float]
 
     def load(self, **options: Any) -> "Model":
@@ -91,7 +93,8 @@ class Model(ABC):
 
     Detection models return ``sv.Detections`` whose ``data["class_name"]`` holds
     the class names; keypoint models return ``sv.KeyPoints`` with one instance
-    per detected object, sorted by confidence (best first).
+    per detected object, sorted by confidence (best first); the ``lines`` model
+    returns :class:`~tactifoot_vision.pitch.LinePoints`.
 
     Subclasses implement ``_load``, ``_train``, ``class_names`` and ``predict``,
     may extend ``_check_options``, and register themselves in ``MODELS`` under
@@ -166,7 +169,7 @@ class Model(ABC):
     def class_names(self) -> list[str]: ...
 
     @abstractmethod
-    def predict(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
+    def predict(self, image: np.ndarray) -> "sv.Detections | sv.KeyPoints | LinePoints":
         """Run on one BGR image."""
 
     def _load_checked(self, weights: str | Path | None) -> None:
@@ -202,7 +205,9 @@ class Model(ABC):
         return detections[detections.confidence >= thresholds]
 
     # ------------------------------------------------------------ public API
-    def __call__(self, image: np.ndarray) -> sv.Detections | sv.KeyPoints:
+    def __call__(
+        self, image: np.ndarray
+    ) -> "sv.Detections | sv.KeyPoints | LinePoints":
         return self.predict(image)
 
     def train(
