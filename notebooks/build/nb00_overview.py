@@ -85,7 +85,7 @@ tv.viz.show_samples(dataset, "train", n=2, cols=1)
     nb.md("""
 ## 2. Augmentation
 
-Transforms move boxes and keypoints with the pixels. `augment_dataset` adds
+Transforms move boxes with the pixels. `augment_dataset` adds
 augmented copies of the training images; validation images stay real. It
 never overwrites earlier output, so a re-run starts from an empty folder.
 """)
@@ -106,7 +106,7 @@ augmented.summary()
     nb.md(f"""
 ## 3. Training and evaluation
 
-`tv.train` works the same for every backend (`yolo`, `rfdetr`, `yolo_pose`).
+`tv.train` works the same for every backend (`yolo`, `rfdetr`, `lines`).
 This run starts from the COCO weights Ultralytics publishes and trains for
 {EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
 because the players are small: about a minute on a desktop GPU, several on
@@ -137,8 +137,8 @@ The pipeline detects the players, tracks them, maps them onto the pitch and
 splits them into teams by kit. The camera does not move, so one homography
 serves the whole clip: `fixed_homography` and `undistortion` take the
 calibration that came with the data. (Broadcast footage has no such file;
-there a pitch-landmark model passed as `keypoint_model` finds the homography
-frame by frame, as in [04_inference]({REPO_URL}/notebooks/04_inference.ipynb).)
+there a pitch line model passed as `line_model` finds the painted markings and
+the homography is fitted to them frame by frame, as in [04_inference]({REPO_URL}/notebooks/04_inference.ipynb).)
 """)
     nb.code("""
 clip = tv.data.load_labelled_clip(demo.clip_dir)

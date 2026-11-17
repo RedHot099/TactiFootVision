@@ -28,10 +28,10 @@ def evaluate_lines(
     """The pitch position error of ``model``'s homographies on labelled clips.
 
     Each clip's video runs frame by frame through ``model`` and a
-    :class:`~tactifoot_vision.pitch.LineHomographyEstimator` (``estimator``: its
+    :class:`~tactifoot_vision.pitch.HomographyEstimator` (``estimator``: its
     keyword arguments), through the pipeline's own
     :func:`~tactifoot_vision.pipeline.homographies.frame_homography`. With ``smooth``, the
-    whole-video pass :func:`~tactifoot_vision.pipeline.smooth_line_homographies`
+    whole-video pass :func:`~tactifoot_vision.pipeline.smooth_homographies`
     follows (the ``final`` homographies), with the estimator's own filter
     settings (its ``temporal_filter``). An estimator without a filter
     (``temporal_filter=None``) has no pass to run: its per-frame matrices are
@@ -44,10 +44,10 @@ def evaluate_lines(
     from tactifoot_vision.pipeline import (
         FrameResult,
         PipelineResult,
-        smooth_line_homographies,
+        smooth_homographies,
     )
     from tactifoot_vision.pipeline.homographies import frame_homography
-    from tactifoot_vision.pitch import LineHomographyEstimator
+    from tactifoot_vision.pitch import HomographyEstimator
 
     if model.task != Task.LINES:
         raise ValueError(
@@ -59,7 +59,7 @@ def evaluate_lines(
     pairs = []
     for clip in clips:
         reader = VideoReader(clip.video_path)
-        homography = LineHomographyEstimator(**dict(estimator or {}))
+        homography = HomographyEstimator(**dict(estimator or {}))
         homography.reset(frame_rate=reader.fps)
         empty = sv.Detections.empty()
         frames = []
@@ -72,9 +72,7 @@ def evaluate_lines(
         if (
             smooth and homography.temporal_filter is not None
         ):  # no filter: no pass to run
-            result = smooth_line_homographies(
-                result
-            )  # with the settings the result records
+            result = smooth_homographies(result)  # with the settings the result records
         pairs.append((result, clip))
     if len(pairs) == 1:
         return evaluate_homography(*pairs[0])

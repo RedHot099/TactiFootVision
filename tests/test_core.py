@@ -4,7 +4,6 @@ import json
 import subprocess
 import sys
 
-import cv2
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,11 +15,8 @@ from tactifoot_vision.enums import TrackerType
 from tactifoot_vision.models import Model
 from tactifoot_vision.pipeline import NO_TEAM, FrameResult, ObjectMasks, PipelineResult
 from tactifoot_vision.pitch import (
-    HomographyEstimator,
     SoccerPitch,
-    frame_to_pitch,
     pitch_markings,
-    pitch_to_frame,
     visible_area,
 )
 from tactifoot_vision.registry import Registry
@@ -123,49 +119,6 @@ def test_arc_landmarks_lie_on_the_drawn_arcs(size):
     np.testing.assert_allclose(right_arc[[0, -1]], vertices[[18, 19]], atol=1e-4)
     np.testing.assert_allclose(circle[0], vertices[31], atol=1e-4)
     assert left_arc[0, 0] == pytest.approx(pitch.penalty_box_length)
-
-
-def _homography():
-    # A pitch seen by a camera: pitch units -> frame pixels.
-    src = np.float32([[0, 0], [105, 0], [105, 68], [0, 68]])
-    dst = np.float32([[100, 600], [1800, 620], [1500, 200], [350, 190]])
-    return cv2.getPerspectiveTransform(src, dst)
-
-
-def _keypoints(pitch, to_frame, confidence=0.9, drop=()):
-    xy = cv2.perspectiveTransform(pitch.vertices.reshape(-1, 1, 2), to_frame).reshape(
-        1, -1, 2
-    )
-    conf = np.full((1, len(pitch.vertices)), confidence, np.float32)
-    conf[0, list(drop)] = 0.0
-    return sv.KeyPoints(xy=xy.astype(np.float32), confidence=conf)
-
-
-def test_homography_recovers_pitch_coordinates():
-    pitch = SoccerPitch()
-    to_frame = _homography()
-    estimator = HomographyEstimator(pitch)
-    matrix = estimator.update(_keypoints(pitch, to_frame, drop=range(10)))
-    assert matrix is not None and len(estimator.used_indices) == 22
-    frame_points = cv2.perspectiveTransform(
-        np.float32([[[52.5, 34]]]), to_frame
-    ).reshape(1, 2)
-    np.testing.assert_allclose(
-        frame_to_pitch(frame_points, matrix), [[52.5, 34]], atol=1e-2
-    )
-    np.testing.assert_allclose(
-        pitch_to_frame([[52.5, 34]], matrix), frame_points, atol=1e-2
-    )
-
-
-def test_homography_keeps_last_matrix_until_max_age():
-    pitch = SoccerPitch()
-    estimator = HomographyEstimator(pitch, max_age=2)
-    good = estimator.update(_keypoints(pitch, _homography()))
-    too_few = _keypoints(pitch, _homography(), drop=range(29))
-    assert estimator.update(too_few) is good
-    assert estimator.update(None) is good
-    assert estimator.update(None) is None
 
 
 def _result():
@@ -365,52 +318,11 @@ def test_tables_keep_one_row_for_the_chosen_ball_whatever_the_candidates():
     assert [json.loads(b) for b in balls["frame_bbox"]] == [[5, 5, 8, 8]]
 
 
-def test_homography_restarts_its_average_after_a_gap():
-    pitch = SoccerPitch()
-    estimator = HomographyEstimator(pitch, smoothing_window=3, max_age=10)
-    before = _keypoints(pitch, _homography())
-    for _ in range(3):
-        estimator.update(before)
-    estimator.update(None)  # a frame without keypoints
-    panned = _homography() @ np.array([[1, 0, 20], [0, 1, 0], [0, 0, 1]], dtype=float)
-    matrix = estimator.update(_keypoints(pitch, panned))
-    expected = np.linalg.inv(panned)
-    np.testing.assert_allclose(matrix, expected / expected[2, 2], atol=1e-6)
-
-
-def test_homography_rejects_a_model_with_the_wrong_number_of_keypoints():
-    keypoints = sv.KeyPoints(
-        xy=np.zeros((1, 5, 2), np.float32), confidence=np.ones((1, 5), np.float32)
-    )
-    with pytest.raises(ValueError, match="5 keypoints"):
-        HomographyEstimator().update(keypoints)
-
-
 def test_freeze_frame_clock_rounds_to_milliseconds():
     from tactifoot_vision.pipeline.result import _format_clock
 
     assert _format_clock(2.3) == "00:00:02.300"
     assert _format_clock(3599.9996) == "01:00:00.000"
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "match"),
-    [
-        ({"min_confidence": -0.1}, "min_confidence must be in"),
-        ({"min_confidence": 1.5}, "min_confidence must be in"),
-        ({"ransac_threshold": 0}, "ransac_threshold must be > 0"),
-        ({"max_age": -1}, "max_age must be None or >= 0"),
-        ({"smoothing_window": 0}, "smoothing_window must be >= 1"),
-    ],
-)
-def test_homography_rejects_out_of_range_settings(kwargs, match):
-    with pytest.raises(ValueError, match=match):
-        HomographyEstimator(**kwargs)
-
-
-def test_homography_accepts_the_edges_of_its_ranges():
-    HomographyEstimator(min_confidence=0, max_age=None)
-    HomographyEstimator(min_confidence=1, max_age=0, smoothing_window=1)
 
 
 @pytest.mark.parametrize("size", [(0, 68), (105, -1)])
@@ -569,16 +481,6 @@ def test_object_masks_clip_origins_outside_the_frame():
     assert regions[2][1].size == 0  # entirely outside: an empty crop, not an error
 
 
-def test_homography_used_indices_clear_when_a_fit_fails():
-    pitch = SoccerPitch()
-    estimator = HomographyEstimator(pitch, max_age=5)
-    good = estimator.update(_keypoints(pitch, _homography()))
-    assert estimator.used_indices is not None
-    too_few = _keypoints(pitch, _homography(), drop=range(29))
-    assert estimator.update(too_few) is good  # the matrix is aged ...
-    assert estimator.used_indices is None  # ... but no landmarks were used
-
-
 def test_visible_area_is_none_when_a_corner_lies_beyond_the_horizon():
     result = _result()
     # frame -> pitch with the horizon at y = 33: the bottom corners (y = 50) lie behind it.
@@ -600,19 +502,3 @@ def test_visible_area_is_the_frame_outline_on_the_pitch():
     assert visible_area(beyond, (100, 50)) is None
     assert visible_area(None, (100, 50)) is None
     assert tv.pitch.visible_area is visible_area
-
-
-# ------------------------------------------------------- review round 3 (Fable)
-def test_homography_averages_the_last_smoothing_window_fits():
-    pitch = SoccerPitch()
-    estimator = HomographyEstimator(pitch, smoothing_window=3)
-    fits = []
-    for shift in (0, 10, 20, 30):  # a camera panning 10 px per frame
-        to_frame = _homography() @ np.array(
-            [[1, 0, shift], [0, 1, 0], [0, 0, 1]], dtype=float
-        )
-        fit = np.linalg.inv(to_frame)
-        fits.append(fit / fit[2, 2])
-        matrix = estimator.update(_keypoints(pitch, to_frame))
-    np.testing.assert_allclose(matrix, np.mean(fits[-3:], axis=0), atol=1e-6)
-    assert not np.allclose(matrix, fits[-1], atol=1e-3)

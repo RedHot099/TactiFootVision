@@ -36,7 +36,6 @@ def _source(match: str, into, token=None):
     (into / "mot" / f"{match}.txt").write_text("\n".join(rows) + "\n")
     raw = into / "raw" / match
     raw.mkdir(parents=True)
-    (raw / f"{match}_keypoints.json").write_text("{}")
     np.savez(raw / f"{match}_camera_intrinsics.npz", K=K, D=D, Knew=KNEW)
     np.save(raw / f"{match}_homography.npy", PITCH_TO_FRAME)
     bas = into / "bas" / match

@@ -39,8 +39,8 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 | Data preparation | `tv.data` | `load_dataset`, `load_pitch_lines`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb`, `download_demo` → `DemoData` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
-| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator` (or, opt-in, `LineHomographyEstimator`), `Pipeline.run` → `PipelineResult` |
-| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_keypoints`, `evaluate_lines`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
+| Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
+| Evaluation | `tv.evaluation` (+ `Model.evaluate`) | `evaluate`, `evaluate_detector`, `evaluate_lines`, `evaluate_tracking`, `evaluate_tracking_clips` → `TrackingMetrics`, `evaluate_homography` / `evaluate_homography_clips` → `HomographyMetrics`, `evaluate_teams` / `evaluate_teams_clips` → `TeamMetrics`, `compare_with_statsbomb` |
 | Match analysis | `tv.analysis` | `attack_direction`, `ball_carriers`, `possession`, `passes`, `pass_counts`, `carrier_table`, `velocities`, `space_control` → `SpaceControl` |
 | Results visualisation | `tv.viz` | `FrameAnnotator`, `PitchRadar`, `warp_to_pitch`, `pitch_to_birds_eye`, `render_video`, `draw_annotations`, `show`, plotting helpers |
 | CLI mode | `tv.run_file`, `tactifoot` | `run_file.load` → `RunFile` (`sections`, `run`, `build_pipeline`, `render_video`); `tactifoot run/train/evaluate/info` |
@@ -50,7 +50,7 @@ name registry (`tactifoot_vision/registry.py`):
 
 | Family | Base class | Registry | Backends |
 |---|---|---|---|
-| Models | `models.base.Model` | `MODELS` | `yolo` (detection), `yolo_pose` (pitch keypoints), `rfdetr` (detection), `lines` (pitch line points, opt-in) |
+| Models | `models.base.Model` | `MODELS` | `yolo` (detection), `rfdetr` (detection), `lines` (pitch line points) |
 | Trackers | `tracking.base.Tracker` | `TRACKERS` | `bytetrack`, `sam2` |
 | Team embedders | `teams.embedders.Embedder` | `EMBEDDERS` | `resnet`, `siglip` |
 
@@ -75,33 +75,29 @@ src/tactifoot_vision/
   cli.py              `tactifoot` command (init / run / train / evaluate / info)
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
-                      load_labelled_clip), soccernet.py, synthetic.py
-                      (synthetic_pitch_clip), video.py, statsbomb.py, demo.py
-                      (download_demo: one SoccerTrack v2 match, laid out for the readers),
+                      load_labelled_clip), soccernet.py, synthetic.py,
                       pitch_lines.py (load_pitch_lines, render_line_targets; the label
                       rule pitch_lines_v2.csv)
+                      (synthetic_pitch_clip), video.py, statsbomb.py, demo.py
+                      (download_demo: one SoccerTrack v2 match, laid out for the readers)
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
   models/             base.py (Model, TrainConfig, TrainResult, MODELS, load_model, train),
-                      ultralytics.py (YOLODetector, YOLOPoseModel), rfdetr.py (RFDETRDetector),
+                      ultralytics.py (YOLODetector), rfdetr.py (RFDETRDetector),
                       lines.py (PitchLineModel) with _line_net.py (its torch code)
-  evaluation/         detection.py, keypoints.py, tracking.py, hota.py (TrackEval),
-                      homography.py, lines.py (evaluate_lines), statsbomb.py,
-                      __init__ (evaluate dispatcher)
-  pitch/              pitch.py (SoccerPitch, pitch_markings), homography.py (HomographyEstimator),
-                      undistortion.py (FisheyeUndistortion),
-                      lines.py (line refinement, LineFit, LineRefinerConfig), projection.py (project_points);
-                      the opt-in line method (ADR 0005): markings.py (the 20 markings'
+  evaluation/         detection.py, tracking.py, hota.py (TrackEval),
+                      homography.py, statsbomb.py, __init__ (evaluate dispatcher)
+  pitch/              pitch.py (SoccerPitch, pitch_markings), markings.py (the 20 markings'
                       geometry), fit.py (the homography fit: LinePoints, FitConfig, solve),
-                      temporal.py (FilterConfig, HomographyFilter: the Kalman filter and its
-                      RTS pass), line_homography.py (LineHomographyEstimator, HomographyFit)
+                      homography.py (HomographyEstimator, HomographyFit), temporal.py (FilterConfig,
+                      HomographyFilter: the Kalman filter and its RTS pass),
+                      undistortion.py (FisheyeUndistortion), projection.py (project_points)
   tracking/           base.py (Tracker, TRACKERS), bytetrack.py, sam2.py
   teams/              crops.py, embedders.py, classifier.py
   pipeline/           pipeline.py (Pipeline), result.py (FrameResult, PipelineResult),
                       postprocess.py (POSTPROCESSES, reproject, remap_track_ids),
                       ball.py (track_ball), tracks.py (join_tracks), roles.py (assign_roles),
-                      homographies.py (smooth_homographies; frame_homography and
-                      smooth_line_homographies for the line method)
+                      homographies.py (smooth_homographies)
   analysis/           direction.py (attack_direction), carriers.py (ball_carriers,
                       possession, passes, pass_counts, carrier_table),
                       velocity.py (velocities), space.py (space_control)
@@ -121,9 +117,9 @@ examples/             one script per functional area
   Convert to RGB only at the matplotlib boundary (`viz.show`).
 * **Boxes** are `xyxy` float pixels. **Detections** are `sv.Detections`;
   every producer fills `data["class_name"]` so consumers never rely on class-id maps.
-* **Keypoints** from models are `sv.KeyPoints` (`xy (M,K,2)`, `confidence (M,K)`),
-  instances sorted by confidence. Dataset keypoints are `(N,K,3)` arrays in
-  `Annotations` with YOLO/COCO visibility (0/1/2).
+* **Line points** from the `lines` model are `LinePoints` (`marking (N,)`,
+  `xy (N,2)` frame pixels, `prob (N,)`); dataset line labels are
+  `Annotations.lines` (marking name -> `(P,2)` pixel points).
 * **Pitch coordinates** start in a corner, with `x` along the length and `y`
   across. The default pitch is 105×68 m; `SoccerPitch(120, 80)` gives StatsBomb units.
 * **Heavy imports** (`torch`, `ultralytics`, `rfdetr`, `transformers`, `umap`,
@@ -144,13 +140,12 @@ examples/             one script per functional area
 
 ## Contracts (read the code, it is the spec)
 
-* `data/annotations.py`: `Task`, `Annotations` (pixel boxes, class ids, keypoints, flip_idx; `lines`, `weight`, `view` for `Task.LINES`)
+* `data/annotations.py`: `Task`, `Annotations` (pixel boxes, class ids; `lines`, `weight`, `view` for `Task.LINES`)
 * `data/dataset.py`: `Sample`, `Dataset` (splits `train`/`valid`/`test`)
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `FisheyeUndistortion`, `LineFit`, `LineRefinerConfig`;
-  for the line method `MARKINGS`, `LinePoints`, `FitConfig`, `FilterConfig`, `HomographyFilter`, `LineHomographyEstimator`, `HomographyFit`;
+* `pitch/`: `SoccerPitch` (32 landmark vertices), `pitch_markings`, `MARKINGS`, `LinePoints`, `FitConfig`, `FilterConfig`, `HomographyFilter`, `HomographyEstimator`, `HomographyFit`, `FisheyeUndistortion`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -168,28 +163,12 @@ examples/             one script per functional area
 
 ### Data preparation (`tv.data`)
 
-* `load_dataset(path)` / `Dataset.load`: YOLO `data.yaml` (detection or pose,
-  picked by `kpt_shape`) or a Roboflow/RF-DETR COCO folder.
-* `load_pitch_lines(calibration=None, gamestate=None, *, splits=("train", "valid"), rule="soccernet-v2", interpolated_weight=0.5)`
-  → a `Task.LINES` dataset (no objects), for the `lines` model: each
-  sample's `Annotations.lines` maps a `PitchMarking` name to `(P, 2)` pixel
-  points along its visible part (goal posts, crossbars and "Line unknown"
-  left out), with `weight` and `view`. SoccerNet Camera Calibration
-  (`<split>/<n>.jpg` + `.json`) and Game State Reconstruction
-  (`<split>/SNGS-*/Labels-GameState.json`, the frames on disk; GSR
-  interpolates its lines between key frames, so the others weigh
-  `interpolated_weight`). The rule `soccernet-v2` keeps the 8,316
-  Calibration train images of the line network's training set
-  (`pitch_lines_v2.csv`: 7,585 main-side, 731 along the pitch, in their
-  order); `none` keeps all. `render_line_targets(lines, out_size, stride)`
-  draws the training heatmaps. A lines dataset has no YOLO or COCO layout
-  and no `augment` transforms (the backend augments itself); `summary()`
-  counts the images showing each marking.
+* `load_dataset(path)` / `Dataset.load`: YOLO `data.yaml` or a Roboflow/RF-DETR
+  COCO folder, detection only (a pose dataset, `kpt_shape` or COCO keypoints,
+  is refused).
 * YOLO IO follows Ultralytics path rules (`path:` root, `../` prefixes of
   Roboflow exports, `images/` ↔ `labels/`); detection labels given as polygons
-  become their bounding boxes. Writing clips boxes to the image and writes
-  `0 0 0` for unlabelled or out-of-frame keypoints (Ultralytics rejects
-  out-of-range values).
+  become their bounding boxes. Writing clips boxes to the image.
 * COCO IO writes category ids `0..C-1` in class order with a non-`"none"`
   supercategory (RF-DETR drops `"none"` categories from its class names);
   image and annotation ids start at 1 (pycocotools treats id 0 as "no match").
@@ -232,8 +211,7 @@ examples/             one script per functional area
   the same clip given twice (paths resolved) are refused. Only `to_yolo` /
   `to_coco` with `link="copy"` copy frames.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
-  `merge` needs the same task, classes and keypoint layout (keypoint count
-  and `flip_idx`, which an export writes once for every sample).
+  `merge` needs the same task and classes.
 * `VideoReader(path)` (a video file, or an OpenCV image-sequence pattern
   such as `img1/%06d.jpg` whose first image is frame 0; `FileNotFoundError`
   when no file or image matches): `fps`, `width`, `height`, `frame_count`, `duration`,
@@ -250,8 +228,7 @@ examples/             one script per functional area
 * The YOLO and COCO readers refuse class ids outside the dataset's classes,
   naming the label or annotation file (and the label line). A YOLO label row
   that is neither a box nor a polygon (an odd number of values) fails with
-  its file and line, and a `flip_idx` without one entry per keypoint fails
-  when the dataset is loaded or constructed.
+  its file and line.
 * `load_labelled_clip(path)` → `LabelledClip`: a continuous clip with
   per-frame truth, read from a folder whose layout it detects. A `Dataset`
   holds independent images; a labelled clip keeps its frames in order.
@@ -307,17 +284,29 @@ examples/             one script per functional area
   levels) and `occluders` (player-sized boxes per frame) are drawn from
   `seed`, so the same arguments give the same video. Frame sizes must be even.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
+* `load_pitch_lines(calibration=None, gamestate=None, *, splits=("train", "valid"), rule="soccernet-v2", interpolated_weight=0.5)`
+  → a `Task.LINES` dataset (no objects): each sample's `Annotations.lines`
+  maps a `PitchMarking` name to `(P, 2)` pixel points along its visible
+  part (goal posts, crossbars and "Line unknown" left out), with `weight`
+  and `view`. SoccerNet Camera Calibration (`<split>/<n>.jpg` + `.json`)
+  and Game State Reconstruction (`<split>/SNGS-*/Labels-GameState.json`,
+  the frames on disk; GSR interpolates its lines between key frames, so the
+  others weigh `interpolated_weight`). The rule `soccernet-v2` keeps the
+  8,316 Calibration train images of the line network's training set
+  (`pitch_lines_v2.csv`: 7,585 main-side, 731 along the pitch, in their
+  order); `none` keeps all. `render_line_targets(lines, out_size, stride)`
+  draws the training heatmaps. A lines dataset has no YOLO or COCO layout
+  and no `augment` transforms (the backend augments itself); `summary()`
+  counts the images showing each marking.
 
 ### Data augmentation (`tv.augment`)
 
 * `Transform(p=1.0)`: `__call__(image, annotations, rng=None) -> (image, annotations)`;
   applies itself with probability `p`. Subclasses implement `apply`.
 * `Compose(transforms)`, `OneOf(transforms)`.
-* Geometric (move boxes and keypoints consistently): `HorizontalFlip`
-  (uses `annotations.flip_idx`, errors if keypoints lack it), `RandomAffine`
+* Geometric (move boxes with the pixels): `HorizontalFlip`, `RandomAffine`
   (rotation, scale, translation; boxes from transformed corners, clipped;
-  objects with too little area left are dropped; keypoints leaving the frame
-  become visibility 0).
+  objects with too little area left are dropped).
 * Photometric (pixels only): `ColorJitter`, `GaussianBlur`, `MotionBlur`,
   `GaussianNoise`, `JpegCompression`.
 * `augment_dataset(dataset, transform, out_dir, copies=1, splits=("train",), seed=0)`
@@ -339,15 +328,14 @@ examples/             one script per functional area
   outside `[0, 1]` and names the model does not have are a `ValueError`.
 * `Model.predict(image)` / `model(image)`; `Model.train(dataset, config=None, **overrides) -> TrainResult`;
   `Model.evaluate(dataset, split="valid")`; `train(name_or_model, dataset, weights=..., **overrides)`.
-* `yolo` / `yolo_pose`: Ultralytics; training exports the dataset with `to_yolo`.
-  `yolo_pose.predict` returns `sv.KeyPoints` of all instances sorted by confidence.
-  Both take `resize`, how the image becomes the model's input, to match how
-  the checkpoint saw its training images: `"letterbox"` (the default,
+* `yolo`: Ultralytics; training exports the dataset with `to_yolo`. It takes
+  `resize`, how the image becomes the model's input, to match how the
+  checkpoint saw its training images: `"letterbox"` (the default,
   Ultralytics' inference letterbox, padded only to a multiple of the stride)
   or `"square"` (padded to a centred grey square, as Ultralytics letterboxes
   training images, and resized to the checkpoint's training size unless
   `imgsz` is given). Outputs are in image pixels either way.
-* `lines` (`PitchLineModel`, ADR 0005, opt-in): a ResNet encoder and an FPN decoder
+* `lines` (`PitchLineModel`, ADR 0005): a ResNet encoder and an FPN decoder
   to stride 2 or 4 (`backbone`, `stride`, `width` shape a new network; a
   checkpoint carries its own), 20 heatmaps, one per `PitchMarking`.
   `predict` returns `LinePoints` (marking index, frame pixel, probability):
@@ -385,8 +373,8 @@ examples/             one script per functional area
 * `TrainConfig.backend_options` holds the keyword arguments that are not
   `TrainConfig` fields; they go verbatim to the backend. A `TrainConfig` is
   immutable; `config.model_copy(update={...})` derives another one.
-* `TrainResult.metrics` uses the same keys for every detection and pose backend (`map50_95`, `map50`,
-  plus `map75`, `precision`, `recall`, `pose_*` when reported; `lines`: `loss`, `valid_loss`);
+* `TrainResult.metrics` uses the same keys for every detector (`map50_95`, `map50`,
+  plus `map75`, `precision`, `recall` when reported; `lines`: `loss`, `valid_loss`);
   `TrainResult.history` is a per-epoch DataFrame (1-based `epoch`, backend
   column names); `TrainResult.load()` rebuilds the model.
 * Backend options are checked before the run folder is created
@@ -404,14 +392,12 @@ examples/             one script per functional area
 
 * `evaluate(model, dataset, split="valid")` dispatches on `model.task`:
   `evaluate_detector` → `DetectionMetrics` (mAP50-95, mAP50, mAP75 and the
-  per-class table `per_class`, via `supervision.metrics`), `evaluate_keypoints` → `KeypointMetrics`
-  (mean pixel error, PCK at a fraction of the image diagonal).
-  Same numbers for every backend, so YOLO and RF-DETR compare fairly. A
-  `lines` model has no dataset metric (`evaluate` says so):
-  `evaluate_lines(model, clips, smooth=True, estimator=None)` runs it and a
-  `LineHomographyEstimator` over labelled clips (then
-  `smooth_line_homographies`) and returns `evaluate_homography` /
-  `evaluate_homography_clips` metrics.
+  per-class table `per_class`, via `supervision.metrics`). Same numbers for
+  every backend, so YOLO and RF-DETR compare fairly. A `lines` model has
+  no dataset metric (`evaluate` says so): `evaluate_lines(model, clips,
+  smooth=True, estimator=None)` runs it and a `HomographyEstimator` over
+  labelled clips (then `smooth_homographies`) and returns
+  `evaluate_homography` / `evaluate_homography_clips` metrics.
 * `compare_with_statsbomb(freeze_frames, statsbomb, period=1)` → merged table
   with the nearest detected player or goalkeeper per StatsBomb object and its
   distance (`euclidean_distance`); the ball, referees, other classes and rows
@@ -515,9 +501,8 @@ examples/             one script per functional area
   SigLIP alone barely tells a referee's or goalkeeper's kit from a team's,
   and histograms of the full box measure the grass. Both are what
   `assign_roles` needs to tell the kits apart.
-* `Pipeline(detector, keypoint_model=None, fixed_homography=None, undistortion=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`.
-  `line_model=` (a `lines` model) is the opt-in second source of the homography, exclusive with `keypoint_model` and `fixed_homography` (see "The opt-in line homography" below).
-  A static calibrated camera gives `fixed_homography` (a 3x3 array, a `.npy`, or an `.npz` with `frame_to_pitch`) instead of a keypoint model; a fisheye camera adds `undistortion` (`FisheyeUndistortion` or its `.npz` with `K`, `D`, `Knew`), which moves the anchors into the undistorted image before the projection while the frames stay as recorded.
+* `Pipeline(detector, line_model=None, fixed_homography=None, undistortion=None, tracker="bytetrack", team_classifier=None, pitch=SoccerPitch(), ...)`.
+  Per frame the `lines` model's points go to `homography.update(points, frame_size)`; `FrameResult` keeps `line_points` and `homography_fit`. A static calibrated camera gives `fixed_homography` (a 3x3 array, a `.npy`, or an `.npz` with `frame_to_pitch`) instead of a line model; a fisheye camera adds `undistortion` (`FisheyeUndistortion` or its `.npz` with `K`, `D`, `Knew`), which moves the anchors into the undistorted image before the projection while the frames stay as recorded.
   `.run(video, start=0, end=None, stride=1) -> PipelineResult`. The range is
   checked before any model runs; an empty range is an error.
   `PipelineResult.export(out_dir, *, period=1, period_start=None, team_names=None,
@@ -608,25 +593,27 @@ examples/             one script per functional area
   pitch units are scaled to a 105 x 68 m pitch, so 120 x 80 works the same.
   Frames with no ball chosen get an empty `ball`. Positions are on the pitch
   plane; an airborne ball's is displaced (no ball height).
-* `smooth_homographies(result, window=0.36, order=2)`
-  (`pipeline/homographies.py`, registered as `smooth_homographies`) smooths
-  the homographies over time with a centred Savitzky-Golay filter (a
-  polynomial of degree `order` below the frames of `window` seconds, 9 at
-  25 fps) on the matrices scaled to map the frame centre with a homogeneous
-  coordinate of 1, so a steady pan moves the entries in a straight line and
-  is not lagged, then re-projects `pitch_xy` with `reproject`. A frame
-  without a homography keeps none and splits the stretches smoothed. A frame
-  whose centre lands more than a pitch length beyond the pitch, or whose
-  scaled matrix has over 10 times its stretch's median norm, keeps its
-  matrix and splits them too. A camera cut is split only where frames carry
-  no homography (`HomographyEstimator` reuses its last matrix for up to
-  `max_age` frames). A stretch shorter than the window is smoothed over
-  itself. Frames must be in time order. Use it with
-  `HomographyEstimator(smoothing_window=1)`: the causal average lags a pan
-  and this filter cannot remove that lag. Run it before `track_ball`,
+* `smooth_homographies(result, accel_m=None, meas_m=None, gate_chi2=None, reset_after=None, max_gap=None, rate_hz=None)`
+  (`pipeline/homographies.py`, registered as `smooth_homographies`; ADR 0005)
+  is the temporal filter's whole-video pass. Its settings default to the
+  ones the result records (`PipelineResult.temporal_filter`, the
+  estimator's, set by `Pipeline.run`; the package's `FilterConfig()` when a
+  result records none), and an argument overrides one. A result made
+  without a filter keeps its per-frame homographies, with a warning,
+  unless settings are given. It runs the constant-velocity
+  Kalman filter of `pitch/temporal.py` forward over the frames' fresh fits
+  (`FrameResult.homography_fit`, saved by the pass), then the
+  Rauch-Tung-Striebel smoother backward, per segment, and re-projects
+  `pitch_xy` with `reproject`. A cut (`reset_after` rejected fits in a row)
+  or a gap of more than `max_gap` frames without a fit starts a new
+  segment, so nothing is smoothed across it. A frame outside every segment
+  gets the estimator's matrix before the filter (`homography_fit.matrix`). A result without fits (fixed homography) comes back
+  unchanged with a warning. Frames must be in time order; each filter step
+  is the time between two frames (index gap at `result.fps`, in steps of
+  `1 / rate_hz` s), so a strided run is filtered in physical time. Run it before `track_ball`,
   `join_tracks` and `assign_roles`, which read pitch positions; it logs a
-  warning when one of them already ran. `line_fit` still describes the
-  pass's fit.
+  warning when one of them already ran. `homography_fit` still describes
+  the pass's fit.
 * `join_tracks(result, max_gap, max_speed, slack, same_team)`
   (`pipeline/tracks.py`, registered as `join_tracks`) joins tracks into
   player tracks: it links each track end to a later track start at most
@@ -670,112 +657,7 @@ examples/             one script per functional area
   The other tracks of those kits become `referee` with `NO_TEAM`. Detector
   `goalkeeper` and `referee` tracks keep their class and team; a role class
   missing from `class_names` keeps the player's `class_id` (logged).
-* `HomographyEstimator` averages the last `smoothing_window` fits (3 by default:
-  half the position jitter of no smoothing, ~2 px more line lag on pans) and
-  restarts the average after a gap. `used_indices` lists the confident
-  landmarks given to RANSAC in the current frame's fit (not only its
-  inliers), `None` when the frame gave no fit.
-  `refine_with_lines` (off by default) then fits each frame's matrix to its
-  painted lines (`pitch/lines.py`, a chamfer fit): model points along
-  `pitch_markings` are projected and pulled onto a white-line mask (a top-hat
-  on the HSV value inside the largest grass region) by a robust least squares
-  over the pixel offsets of four control points, coarse to fine. Points the
-  fit pushes beyond the horizon cost the stage's distance cap, and points it
-  pushes off the frame cost more the further out they go, so a fit cannot
-  score by moving the markings out of view. The people boxes the pipeline
-  passes to `update(keypoints, frame, boxes)` are cut from the mask and from
-  where markings are looked for, so white kits do not pull the fit. The fit
-  starts from the previous returned matrix and from the keypoint one and
-  keeps the one with more inliers (then more points), so it holds a pan
-  through poor keypoints; the returned matrix is that fit, and
-  `smoothing_window` only averages the keypoint start. The keypoint matrix is
-  kept when the best fit has under `min_line_inlier_share` inliers (0.5),
-  fewer than `min_line_points` model points are in view (close-ups), the
-  start puts the frame from 35 % of its height down partly beyond the
-  horizon, or the fit folds the control quadrilateral or turns a control
-  point beyond the horizon. `line_fit` (`LineFit`: visible points, inlier
-  share within `line_inlier_px`, median distance) tells how the frame's fit
-  went and `FrameResult.line_fit` keeps it; `None` when not refined. The
-  image thresholds sit in `line_options` (`LineRefinerConfig`, a mapping in
-  run files), with defaults tuned on 1080p broadcast footage; the line
-  settings are read-only. The gain in metres is so far shown on synthetic
-  clips only. Pitch
-  vertices 10/11/18/19 sit where the penalty arc meets the box line, matching
-  how the keypoint dataset labels them. Circles and arcs use
-  `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
-  ellipse the radar draws, so on any `length × width` those vertices lie
-  exactly on the drawn arcs. `pitch_markings(pitch)` gives the painted lines,
-  circle, arcs and spots in pitch units; `viz` draws them, and `pitch` does
-  not import `viz`.
-
-### The opt-in line homography (`tv.pitch`, `tv.pipeline`; ADR 0005)
-
-A second source of the homography, beside the keypoint model, which stays
-the default: a `lines` model finds points along the 20 painted markings and
-`LineHomographyEstimator` fits one homography to all of them, steadied by a
-Kalman filter. It is opt-in everywhere: `Pipeline(line_model=...)`, a
-`lines:` run-file section, and the post-process `smooth_line_homographies`
-for the `final` track.
-
-```python
-lines = tv.load_pitch_lines("data/SoccerNetCalibration", "data/SoccerNetGS")
-run = tv.train("lines", lines, epochs=20, batch_size=12, seed=0)  # no weights ship
-pipeline = tv.Pipeline(detector, line_model=tv.load_model("lines", run.weights))
-causal = pipeline.run("match.mp4")
-final = tv.pipeline.smooth_line_homographies(causal)  # the whole-video RTS pass
-```
-
-```yaml
-lines: {type: lines, weights: ../models/pitch_lines.pt}  # instead of keypoints
-homography: {temporal_filter: {accel_m: 0.15}}           # builds a LineHomographyEstimator
-postprocess: [{type: smooth_line_homographies}]
-```
-
-On SoccerNet's held-out GSR test clips, the `final` track's 90th-percentile
-pitch error is 1.1 m per clip on average, against 2.9 m for the keypoint
-estimator, at 6 ms per 1080p frame on a GPU against 85 ms
-(`docs/research/homography-hill-climb.md`, sections 5 and 6; ADR 0005 has
-the tables).
-
-Limits (ADR 0005, "Knowingly unsolved"): a view from the opposite side gets
-a wrong matrix that is not flagged; a single image along the pitch with
-symmetric markings gets none (fewer single images get a matrix than with
-keypoints, 77.1 % against 83.9 % on SN-Calib test); the causal track jitters
-on a few clips, by an amount that depends on the training run, so use
-`final` where jitter matters; the filter was tuned at 25 fps on every
-frame (it steps in physical time; strides 2 and 5 were measured).
-
-* `frame_homography(line_model, estimator, frame)`
-  (`pipeline/homographies.py`) is the one per-frame step: the line model's
-  points, then `estimator.update(points, frame_size)`. `Pipeline` and
-  `evaluate_lines` both use it. With a `line_model`, `Pipeline` needs a
-  `LineHomographyEstimator` (the default one when none is given), passes
-  `fps / stride` to its `reset`, keeps `FrameResult.line_points` and
-  `FrameResult.homography_fit`, and records the filter's settings in
-  `PipelineResult.temporal_filter` (`temporal_filter_recorded`). A keypoint
-  run sets none of these.
-* `smooth_line_homographies(result, accel_m=None, meas_m=None, gate_chi2=None, reset_after=None, max_gap=None, rate_hz=None)`
-  (`pipeline/homographies.py`, registered as `smooth_line_homographies`; ADR 0005)
-  is the temporal filter's whole-video pass. Its settings default to the
-  ones the result records (`PipelineResult.temporal_filter`, the
-  estimator's, set by `Pipeline.run`; the package's `FilterConfig()` when a
-  result records none), and an argument overrides one. A result made
-  without a filter keeps its per-frame homographies, with a warning,
-  unless settings are given. It runs the constant-velocity
-  Kalman filter of `pitch/temporal.py` forward over the frames' fresh fits
-  (`FrameResult.homography_fit`, saved by the pass), then the
-  Rauch-Tung-Striebel smoother backward, per segment, and re-projects
-  `pitch_xy` with `reproject`. A cut (`reset_after` rejected fits in a row)
-  or a gap of more than `max_gap` frames without a fit starts a new
-  segment, so nothing is smoothed across it. A frame outside every segment
-  gets the estimator's matrix before the filter (`homography_fit.matrix`). A result without fits (a fixed homography, a keypoint run) comes back
-  with its homographies unchanged, with a warning. Frames must be in time order; each filter step
-  is the time between two frames (index gap at `result.fps`, in steps of
-  `1 / rate_hz` s), so a strided run is filtered in physical time. Run it before `track_ball`,
-  `join_tracks` and `assign_roles`, which read pitch positions; it logs a
-  warning when one of them already ran. `homography_fit` still describes
-  the pass's fit.
-* `LineHomographyEstimator(pitch, *, min_prob=0.3, per_class=24, max_age_s=2.0, backoff_max_s=1.28, fit=None, temporal_filter=FilterConfig())`, `reset(frame_rate=None)`
+* `HomographyEstimator(pitch, *, min_prob=0.3, per_class=24, max_age_s=2.0, backoff_max_s=1.28, fit=None, temporal_filter=FilterConfig())`, `reset(frame_rate=None)`
   (ADR 0005) is causal: `update(points, frame_size)` fits one frame on its
   `LinePoints` and the estimator's state. The points of at least `min_prob`,
   at most `per_class` per marking spread along it, weigh their probability
@@ -814,7 +696,14 @@ frame (it steps in physical time; strides 2 and 5 were measured).
   are filtered in physical time; 25 fps without stride is one step per
   frame. The causal filter keeps no history (`keep_history=False`), so the
   estimator's memory does not grow with the video. The returned matrix is
-  the filtered one; the whole-video pass is `smooth_line_homographies`. Matrices map frame pixels to `pitch` units.
+  the filtered one; the whole-video pass is `smooth_homographies`. Matrices map frame pixels to `pitch`
+  units. Pitch
+  vertices 10/11/18/19 sit where the penalty arc meets the box line. Circles and arcs use
+  `SoccerPitch.circle_radii` (9.15 m scaled along each axis), the same
+  ellipse the radar draws, so on any `length × width` those vertices lie
+  exactly on the drawn arcs. `pitch_markings(pitch)` gives the painted lines,
+  circle, arcs and spots in pitch units; `viz` draws them, and `pitch` does
+  not import `viz`.
 
 ### Match analysis (`tv.analysis`)
 
@@ -911,6 +800,9 @@ nothing (`PipelineResult.export` writes their tables).
 
 * `FrameAnnotator(style="standard" | "video_game", ...)`: `annotate(frame, frame_result, history=None,
   ball_carrier=None)`.
+  `draw_line_points` draws `FrameResult.line_points` of probability at
+  least `line_point_threshold` (0.3), orange when the homography puts them
+  within 1 m of their marking, red otherwise.
   `draw_masks=True` draws `FrameResult.masks` and warns once when a result has none.
   `trail_seconds` (off by default) draws the ball trail from `history`, the
   results before the frame, oldest first (ADR 0003): each earlier ball
@@ -921,10 +813,6 @@ nothing (`PipelineResult.export` writes their tables).
   `ball_carrier` (a `tracker_id`) rings that person at their feet in
   `ball_color`, over any mask and under the boxes; `None` or an id nobody in the frame has
   draws nothing. No label and no panel.
-  `draw_line_points` draws `FrameResult.line_points` (the line method's) of
-  probability at least `line_point_threshold` (0.3), orange when the
-  homography puts them within 1 m of their marking, red otherwise;
-  `draw_annotations` draws a lines sample's labels as polylines.
 * `PitchRadar(pitch, ...)`: `draw(frame_result, space_control=None, frame=None, history=None,
   frame_size=None, velocities=None)`
   → top-down pitch image; a `SpaceControl` on the radar's pitch tints the
@@ -1018,12 +906,11 @@ Each section maps onto exactly one package call:
 | Section | Call | Notes |
 |---|---|---|
 | `detector` (required) | `tv.models.load_model(type, weights, **rest)` | keys checked against `MODELS[type]` |
-| `keypoints` | same as `detector` | absent or `null`: no keypoint model |
-| `lines` | same as `detector` | `Pipeline(line_model=...)`, the opt-in line method; absent or `null`: no line model; `keypoints` and `lines` together are refused |
+| `lines` | same as `detector` | absent or `null`: no line model, no homography |
 | `tracker` | `tv.tracking.create_tracker(type, **rest)` | absent: `Pipeline`'s default; `null`: no tracking |
 | `teams` | `TeamClassifier(**section)` | absent or `null`: no teams; `{}`: defaults; keys checked against `TeamClassifier` plus the chosen embedder's constructor |
 | `pitch` | `SoccerPitch(**section)` | |
-| `homography` | `HomographyEstimator(pitch, **section)`; with `lines`, `LineHomographyEstimator(pitch, **section)` | gets the pitch built from `pitch`; keys checked against the estimator it builds |
+| `homography` | `HomographyEstimator(pitch, **section)` | gets the pitch built from `pitch` |
 | `pipeline` | `Pipeline(**section)` | the scalar arguments (`include_classes`, `keep_masks`, ...) |
 | `render.annotator` | `FrameAnnotator(pitch=result.pitch, **section)` | |
 | `render.radar` | `PitchRadar(pitch=result.pitch, **section)` | `null`: no radar |

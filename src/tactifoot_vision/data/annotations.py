@@ -9,9 +9,6 @@ import supervision as sv
 from tactifoot_vision.enums import DetectionKey, PitchView
 from tactifoot_vision.enums import Task as Task  # re-exported from its old home
 
-# Keypoint visibility flags, identical in YOLO-pose and COCO.
-NOT_LABELLED, OCCLUDED, VISIBLE = 0, 1, 2
-
 
 @dataclass
 class Annotations:
@@ -20,11 +17,6 @@ class Annotations:
     Attributes:
         boxes: ``(N, 4)`` float32 ``xyxy`` boxes.
         class_ids: ``(N,)`` int64 indices into the dataset's ``class_names``.
-        keypoints: ``(N, K, 3)`` float32 ``(x, y, visibility)`` or ``None`` for
-            detection data. Visibility follows YOLO/COCO: 0 = not labelled,
-            1 = labelled but occluded, 2 = visible.
-        flip_idx: keypoint permutation to apply on a horizontal flip (left/right
-            landmarks swap). Comes from the dataset; required to flip keypoints.
         lines: pitch line data (:data:`Task.LINES`, no objects): marking
             name -> ``(P, 2)`` float32 pixel points along its visible part;
             ``None`` for the other tasks.
@@ -37,8 +29,6 @@ class Annotations:
 
     boxes: np.ndarray
     class_ids: np.ndarray
-    keypoints: np.ndarray | None = None
-    flip_idx: tuple[int, ...] | None = None
     lines: dict[str, np.ndarray] | None = None
     weight: float = 1.0
     view: PitchView | str = PitchView.MAIN
@@ -50,15 +40,6 @@ class Annotations:
             raise ValueError(
                 f"{len(self.boxes)} boxes but {len(self.class_ids)} class ids"
             )
-        if self.keypoints is not None:
-            kp = np.asarray(self.keypoints, dtype=np.float32)
-            if kp.ndim != 3 or kp.shape[2] != 3 or kp.shape[0] != len(self.boxes):
-                raise ValueError(
-                    f"keypoints must have shape (N={len(self.boxes)}, K, 3), got {kp.shape}"
-                )
-            self.keypoints = kp
-        if self.flip_idx is not None:
-            self.flip_idx = tuple(int(i) for i in self.flip_idx)
         if self.lines is not None:
             self.lines = {
                 str(k): np.asarray(v, dtype=np.float32).reshape(-1, 2)
@@ -69,24 +50,11 @@ class Annotations:
     def __len__(self) -> int:
         return len(self.boxes)
 
-    @property
-    def num_keypoints(self) -> int | None:
-        return None if self.keypoints is None else self.keypoints.shape[1]
-
     @classmethod
-    def empty(
-        cls, num_keypoints: int | None = None, flip_idx: Sequence[int] | None = None
-    ) -> "Annotations":
-        keypoints = (
-            None
-            if num_keypoints is None
-            else np.zeros((0, num_keypoints, 3), dtype=np.float32)
-        )
+    def empty(cls) -> "Annotations":
         return cls(
             boxes=np.zeros((0, 4), dtype=np.float32),
             class_ids=np.zeros((0,), dtype=np.int64),
-            keypoints=keypoints,
-            flip_idx=tuple(flip_idx) if flip_idx is not None else None,
         )
 
     def select(self, index: np.ndarray | Sequence[int] | slice) -> "Annotations":
@@ -95,7 +63,6 @@ class Annotations:
             self,
             boxes=self.boxes[index],
             class_ids=self.class_ids[index],
-            keypoints=None if self.keypoints is None else self.keypoints[index],
         )
 
     def copy(self) -> "Annotations":
@@ -103,7 +70,6 @@ class Annotations:
             self,
             boxes=self.boxes.copy(),
             class_ids=self.class_ids.copy(),
-            keypoints=None if self.keypoints is None else self.keypoints.copy(),
             lines=None
             if self.lines is None
             else {k: v.copy() for k, v in self.lines.items()},
@@ -121,13 +87,3 @@ class Annotations:
                 [class_names[i] for i in self.class_ids], dtype=str
             )
         return detections
-
-    def to_keypoints(self) -> sv.KeyPoints:
-        """Convert keypoints to ``sv.KeyPoints``; confidence is 1 for labelled points, else 0."""
-        if self.keypoints is None:
-            raise ValueError("These annotations have no keypoints")
-        return sv.KeyPoints(
-            xy=self.keypoints[..., :2].copy(),
-            confidence=(self.keypoints[..., 2] > NOT_LABELLED).astype(np.float32),
-            class_id=self.class_ids.astype(int),
-        )

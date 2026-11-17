@@ -6,7 +6,7 @@
 #   Notebook: no run file, the same objects in plain Python:
 #               pipeline = tv.Pipeline(
 #                   detector=tv.load_model("yolo", "detector_yolo11l.pt", conf=0.3, iou=0.5),
-#                   keypoint_model=tv.load_model("yolo_pose", "pitch_yolo11m_pose.pt"),
+#                   line_model=tv.load_model("lines", "pitch_lines.pt"),
 #                   tracker=tv.tracking.create_tracker("bytetrack", lost_track_buffer=30),
 #                   team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
 #               )
@@ -19,7 +19,8 @@
 # Weights are a path to a checkpoint (bare names resolve in the current
 # directory; ./ and ../ are relative to this file) or a name Ultralytics
 # publishes, such as yolo11n.pt, downloaded once. No football weights ship
-# with the package: train your own (tactifoot train) or point at yours.
+# with the package: train your own (tactifoot train; the line model with
+# tactifoot train lines --calibration ... --gamestate ...) or point at yours.
 
 detector:                   # tv.load_model(type, weights, **rest)
   type: yolo                # yolo | rfdetr  (tactifoot info)
@@ -27,11 +28,9 @@ detector:                   # tv.load_model(type, weights, **rest)
   conf: 0.3
   iou: 0.5
 
-keypoints:                  # null: no homography, no pitch positions
-  type: yolo_pose
-  weights: pitch_yolo11m_pose.pt
-  # A checkpoint has its own settings: conf, and resize: square when it learnt
-  # on frames padded to a square (see also the homography section below).
+lines:                      # tv.load_model(type, weights, **rest); null: no homography,
+  type: lines               # no pitch positions
+  weights: pitch_lines.pt
 
 tracker:                    # tv.tracking.create_tracker(type, **rest); null: no tracking
   type: bytetrack           # bytetrack | sam2
@@ -41,15 +40,14 @@ teams:                      # tv.teams.TeamClassifier(**teams); null: no teams
   embedder: siglip          # siglip | resnet
 
 # pitch: {length: 120, width: 80}      # tv.SoccerPitch(...): StatsBomb units
-# homography:                          # tv.pitch.HomographyEstimator(pitch, ...); e.g.
-#   smoothing_window: 5                # frames averaged
-#   min_confidence: 0.3                # weakest keypoint used: depends on the pitch model
-#   ransac_threshold: 2.0              # metres; the default 10 favours smooth positions
-#   refine_with_lines: true            # fit each frame to its painted lines
+# homography: {max_age_s: 1.0}         # tv.pitch.HomographyEstimator(pitch, ...); its
+#                                      # temporal_filter settings also steer
+#                                      # smooth_homographies below (null: no filter, and
+#                                      # smooth_homographies keeps the per-frame homographies)
 # pipeline:                            # remaining tv.Pipeline(...) arguments
 #   include_classes: [player, goalkeeper]
 # postprocess:                         # tv.pipeline.POSTPROCESSES, applied in order
-#   - {type: smooth_homographies}      # first: lag-free homographies (homography smoothing_window: 1)
+#   - {type: smooth_homographies}      # first: homographies smoothed over the whole video
 #   - {type: join_tracks, max_gap: 1.6}  # join tracks into player tracks
 #   - {type: track_ball, max_gap: 0.5}  # choose the ball among the candidates
 #   - {type: assign_roles}             # goalkeepers, referees, people off the pitch

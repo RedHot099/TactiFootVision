@@ -21,7 +21,7 @@ from tactifoot_vision.cli import main
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.models import MODELS, Model, TrainConfig, TrainResult
 from tactifoot_vision.pipeline import Pipeline, PipelineResult, remap_track_ids
-from tactifoot_vision.pitch import HomographyEstimator, LineRefinerConfig, SoccerPitch
+from tactifoot_vision.pitch import FitConfig, HomographyEstimator, SoccerPitch
 from tactifoot_vision.teams import EMBEDDERS, Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker
 
@@ -141,7 +141,7 @@ def test_a_fixed_homography_is_a_pipeline_key_with_a_path_relative_to_the_file(
         },
     ).build_pipeline()
 
-    assert pipeline.keypoint_model is None
+    assert pipeline.line_model is None
     np.testing.assert_allclose(pipeline.fixed_homography, np.diag([0.5, 0.25, 1.0]))
     assert isinstance(pipeline.undistortion, tv.pitch.FisheyeUndistortion)
 
@@ -154,7 +154,7 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
             "tracker": {"type": "bytetrack", "lost_track_buffer": 5},
             "teams": {"n_teams": 3, "reducer": None},
             "pitch": {"length": 120, "width": 80},
-            "homography": {"smoothing_window": 5},
+            "homography": {"max_age_s": 0.2},
             "pipeline": {"team_sample_stride": 5, "include_classes": ["player"]},
         },
     ).build_pipeline()
@@ -164,36 +164,31 @@ def test_run_file_builds_each_section_with_its_constructor(tmp_path, fake_siglip
     assert pipeline.team_classifier.n_teams == 3
     assert pipeline.team_classifier.reducer is None
     assert pipeline.pitch == SoccerPitch(120, 80) == pipeline.homography.pitch
-    assert pipeline.homography._history.maxlen == 5
+    assert pipeline.homography.max_age_s == 0.2
     assert pipeline.team_sample_stride == 5
     assert pipeline.include_classes == ("player",)
-    assert pipeline.keypoint_model is None
+    assert pipeline.line_model is None
 
 
-def test_the_run_file_switches_line_refinement_on(tmp_path):
+def test_the_run_file_tunes_the_homography_fit(tmp_path):
     pipeline = _load(
         tmp_path,
         {
             "detector": DETECTOR,
-            "homography": {
-                "refine_with_lines": True,
-                "min_line_points": 120,
-                "line_options": {"tophat_px": 11, "stages": [[30, 6], [8, 2]]},
-            },
+            "homography": {"min_prob": 0.4, "fit": {"gate_px": 6.0, "template_top": 2}},
         },
     ).build_pipeline()
-    assert pipeline.homography.refine_with_lines is True
-    assert pipeline.homography.min_line_points == 120
-    assert pipeline.homography.line_options == LineRefinerConfig(
-        tophat_px=11, stages=((30, 6), (8, 2))
-    )
+    assert pipeline.homography.min_prob == 0.4
+    assert pipeline.homography.fit_config == FitConfig(gate_px=6.0, template_top=2)
+    with pytest.raises(TypeError, match="bogus"):
+        HomographyEstimator(fit={"bogus": 1})
 
 
 def test_null_sections_turn_components_off(tmp_path):
     pipeline = _load(
-        tmp_path, {"detector": DETECTOR, "keypoints": None, "tracker": None}
+        tmp_path, {"detector": DETECTOR, "lines": None, "tracker": None}
     ).build_pipeline()
-    assert pipeline.tracker is None and pipeline.keypoint_model is None
+    assert pipeline.tracker is None and pipeline.line_model is None
 
 
 def test_sections_are_a_copy(tmp_path):
@@ -205,15 +200,11 @@ def test_sections_are_a_copy(tmp_path):
 def _homography_settings(estimator):
     return (
         estimator.pitch,
-        estimator.min_confidence,
-        estimator.ransac_threshold,
-        estimator.max_age,
-        estimator._history.maxlen,
-        estimator.refine_with_lines,
-        estimator.min_line_points,
-        estimator.line_inlier_px,
-        estimator.min_line_inlier_share,
-        estimator.line_options,
+        estimator.min_prob,
+        estimator.per_class,
+        estimator.max_age_s,
+        estimator.backoff_max_s,
+        estimator.fit_config,
     )
 
 
@@ -251,12 +242,12 @@ def test_empty_sections_build_what_the_bare_constructors_build(tmp_path, fake_si
 
 
 def test_run_file_picks_up_changed_constructor_defaults(tmp_path, monkeypatch):
-    defaults = HomographyEstimator.__init__.__kwdefaults__ | {"min_confidence": 0.9}
+    defaults = HomographyEstimator.__init__.__kwdefaults__ | {"min_prob": 0.9}
     monkeypatch.setattr(HomographyEstimator.__init__, "__kwdefaults__", defaults)
     built = _load(
         tmp_path, {"detector": DETECTOR, "homography": {}, "pitch": {}}
     ).build_pipeline()
-    assert built.homography.min_confidence == 0.9
+    assert built.homography.min_prob == 0.9
 
 
 def _section(path: str, value: dict) -> dict:
@@ -274,12 +265,12 @@ def _section(path: str, value: dict) -> dict:
     ("section", "value", "bad", "valid"),
     [
         ("detector", {"bogus": 1}, "bogus", "iou"),
-        ("keypoints", DETECTOR | {"bogus": 1}, "bogus", "conf"),
+        ("lines", DETECTOR | {"bogus": 1}, "bogus", "conf"),
         ("tracker", {"type": "bytetrack", "bogus": 1}, "bogus", "lost_track_buffer"),
         ("tracker", {"type": "sam2", "bogus": 1}, "bogus", "checkpoint"),
         ("pitch", {"bogus": 1}, "bogus", "length"),
-        ("homography", {"bogus": 1}, "bogus", "max_age"),
-        ("homography", {"pitch": {}}, "pitch", "max_age"),
+        ("homography", {"bogus": 1}, "bogus", "max_age_s"),
+        ("homography", {"pitch": {}}, "pitch", "max_age_s"),
         ("pipeline", {"bogus": 1}, "bogus", "ball_class"),
         ("pipeline", {"tracker": None}, "tracker", "keep_masks"),
         ("render", {"bogus": 1}, "bogus", "overlay_alpha"),
@@ -338,7 +329,7 @@ def test_teams_keys_are_checked_against_the_classifier_and_its_embedder(tmp_path
     ("data", "match"),
     [
         ({"detector": DETECTOR, "detectr": {}}, "Unknown run file section 'detectr'"),
-        ({"keypoints": None}, "needs a 'detector' section"),
+        ({"lines": None}, "needs a 'detector' section"),
         ({"detector": {"type": "nope"}}, "Unknown model 'nope'.*yolo"),
         ({"detector": {"weights": "x.pt"}}, "needs a 'type' key.*yolo"),
         ({"detector": DETECTOR, "tracker": {"type": "nope"}}, "Unknown tracker.*bytetrack"),
@@ -353,8 +344,8 @@ def test_invalid_structure_fails_at_load(tmp_path, data, match):
 
 
 def test_values_are_checked_by_the_constructors(tmp_path):
-    loaded = _load(tmp_path, {"detector": DETECTOR, "homography": {"max_age": -1}})
-    with pytest.raises(ValueError, match="max_age"):
+    loaded = _load(tmp_path, {"detector": DETECTOR, "homography": {"max_age_s": -1}})
+    with pytest.raises(ValueError, match="max_age_s"):
         loaded.build_pipeline()
 
 
@@ -367,7 +358,7 @@ def test_overrides_parse_yaml_values_and_create_missing_keys(tmp_path):
             "detector.conf=0.4",
             "detector.device=cpu",
             "tracker=null",
-            "homography.max_age=5",
+            "homography.max_age_s=0.2",
             "pipeline.include_classes=[player, goalkeeper]",
             "pipeline.keep_masks=true",
             "render.annotator.style=video_game",
@@ -376,7 +367,7 @@ def test_overrides_parse_yaml_values_and_create_missing_keys(tmp_path):
     assert loaded.sections == {
         "detector": DETECTOR | {"conf": 0.4, "device": "cpu"},
         "tracker": None,
-        "homography": {"max_age": 5},
+        "homography": {"max_age_s": 0.2},
         "pipeline": {"include_classes": ["player", "goalkeeper"], "keep_masks": True},
         "render": {"annotator": {"style": "video_game"}},
     }
@@ -401,12 +392,12 @@ def test_overrides_are_key_checked(tmp_path):
         ("=1", "empty key"),
         ("detector..conf=1", "empty key"),
         ("detector.type.x=1", "'detector.type' is 'test_box_detector', not a mapping"),
-        ("keypoints.conf=0.3", "Section 'keypoints' needs a 'type' key"),
+        ("lines.conf=0.3", "Section 'lines' needs a 'type' key"),
     ],
 )
 def test_override_errors(tmp_path, override, match):
     with pytest.raises(ValueError, match=match):
-        _load(tmp_path, {"detector": DETECTOR, "keypoints": None}, [override])
+        _load(tmp_path, {"detector": DETECTOR, "lines": None}, [override])
 
 
 # ------------------------------------------------------------------- paths
@@ -415,7 +406,7 @@ def test_relative_paths_resolve_against_the_run_file(tmp_path):
         tmp_path / "configs" / "run.yaml",
         {
             "detector": DETECTOR | {"weights": "../models/w.pt"},
-            "keypoints": DETECTOR | {"weights": "yolov8n-pose.pt"},
+            "lines": DETECTOR | {"weights": "lines.pt"},
             "tracker": {"type": "sam2", "checkpoint": "./ckpt.pt", "config": "/abs/t.yaml"},
             "pipeline": {"include_classes": ["./a", "configs/c"]},
             "render": {"annotator": {"style": "../b"}},
@@ -423,7 +414,7 @@ def test_relative_paths_resolve_against_the_run_file(tmp_path):
     )  # fmt: skip
     sections = run_file.load(path).sections
     assert sections["detector"]["weights"] == str(tmp_path / "models" / "w.pt")
-    assert sections["keypoints"]["weights"] == "yolov8n-pose.pt"
+    assert sections["lines"]["weights"] == "lines.pt"
     assert sections["tracker"]["checkpoint"] == str(tmp_path / "configs" / "ckpt.pt")
     assert sections["tracker"]["config"] == "/abs/t.yaml"
     assert sections["pipeline"]["include_classes"] == [
@@ -445,7 +436,7 @@ for i, model in enumerate(MODELS.names()):
     path = Path({str(tmp_path)!r}) / f"run{{i}}.yaml"
     path.write_text(yaml.safe_dump({{
         "detector": {{"type": model}},
-        "keypoints": {{"type": model}},
+        "lines": {{"type": model}},
         "tracker": {{"type": TRACKERS.names()[i % len(TRACKERS.names())]}},
         "teams": {{"embedder": EMBEDDERS.names()[i % len(EMBEDDERS.names())]}},
         "pitch": {{}}, "homography": {{}}, "pipeline": {{}},
@@ -1283,3 +1274,105 @@ def test_cli_init_rejects_unknown_presets(capsys):
 def test_cli_info_lists_the_presets(capsys):
     assert main(["info"]) == 0
     assert "presets:  default, rfdetr_sam2" in capsys.readouterr().out
+
+
+# ----------------------------------------- the filter's settings reach the post-process
+@MODELS.register("test_pan_lines")
+class PanLines(Model):
+    """The line points a perfect line model finds while the camera pans, with a little noise."""
+
+    task = Task.LINES
+    name = "test_pan_lines"
+
+    def __init__(self, weights=None, *, conf=0.2, device="cpu"):
+        super().__init__(weights, conf=conf, device=device)
+
+    def _load(self, weights):
+        self.seen = 0
+
+    def _train(self, dataset, config, run_dir):
+        raise NotImplementedError
+
+    @property
+    def class_names(self):
+        return [m.value for m in tv.enums.PitchMarking]
+
+    def predict(self, image):
+        from line_points import line_points
+        from tactifoot_vision.pitch import fit
+
+        h, w = image.shape[:2]
+        k, self.seen = self.seen, self.seen + 1
+        camera = fit._camera(
+            target=(30.0 + 0.4 * k, 34.0, 0.0), focal_px=1600
+        )  # 1920 x 1080
+        camera = camera @ np.diag(
+            [1920 / w, 1080 / h, 1.0]
+        )  # the same view in this frame
+        return line_points(camera, (w, h), noise_px=0.6, rng=np.random.default_rng(k))
+
+
+def _pan_video(path, frames=12):
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 25, (320, 180))
+    for _ in range(frames):
+        writer.write(np.zeros((180, 320, 3), np.uint8))
+    writer.release()
+    return path
+
+
+def _homographies(result):
+    return [f.homography for f in result]
+
+
+def test_the_run_file_s_filter_settings_steer_smooth_homographies(tmp_path):
+    from dataclasses import asdict
+
+    from tactifoot_vision.pipeline import smooth_homographies
+    from tactifoot_vision.pitch.temporal import FilterConfig
+
+    settings = {"accel_m": 0.6, "meas_m": 0.3, "gate_chi2": 25.0}
+    sections = {
+        "detector": DETECTOR,
+        "lines": {"type": "test_pan_lines"},
+        "homography": {"temporal_filter": settings},
+    }
+    video = _pan_video(tmp_path / "pan.mp4")
+    raw = _load(tmp_path, sections).run(
+        video, tmp_path / "raw", render=False, progress=False
+    )
+    assert (
+        raw.temporal_filter == FilterConfig(**settings) and raw.temporal_filter_recorded
+    )
+    smoothed = _load(
+        tmp_path, sections | {"postprocess": [{"type": "smooth_homographies"}]}
+    ).run(video, tmp_path / "smoothed", render=False, progress=False)
+    explicit = smooth_homographies(raw, **settings)
+    for got, want in zip(_homographies(smoothed), _homographies(explicit), strict=True):
+        np.testing.assert_array_equal(got, want)
+    default = smooth_homographies(
+        raw, **asdict(FilterConfig())
+    )  # the package defaults instead
+    assert any(
+        not np.array_equal(a, b)
+        for a, b in zip(_homographies(smoothed), _homographies(default), strict=True)
+    )
+
+
+def test_a_run_without_a_filter_keeps_its_per_frame_homographies(tmp_path, caplog):
+    sections = {
+        "detector": DETECTOR,
+        "lines": {"type": "test_pan_lines"},
+        "homography": {"temporal_filter": None},
+    }
+    video = _pan_video(tmp_path / "pan.mp4")
+    raw = _load(tmp_path, sections).run(
+        video, tmp_path / "raw", render=False, progress=False
+    )
+    assert raw.temporal_filter is None and raw.temporal_filter_recorded
+    with caplog.at_level(logging.WARNING):
+        smoothed = _load(
+            tmp_path, sections | {"postprocess": [{"type": "smooth_homographies"}]}
+        ).run(video, tmp_path / "smoothed", render=False, progress=False)
+    assert "without a temporal filter" in caplog.text
+    for got, want in zip(_homographies(smoothed), _homographies(raw), strict=True):
+        np.testing.assert_array_equal(got, want)

@@ -371,7 +371,7 @@ def test_real_line_model_fits_a_broadcast_frame(line_weights):
     model = tv.load_model("lines", line_weights)
     assert model.spec == tv.models._line_net.NetSpec("resnet18", 2, 640)
     reader = tv.VideoReader(video)
-    estimator = tv.pitch.LineHomographyEstimator()
+    estimator = tv.pitch.HomographyEstimator()
     fresh = 0
     for _, frame in reader.frames(start=250, end=275):
         points = model.predict(frame)

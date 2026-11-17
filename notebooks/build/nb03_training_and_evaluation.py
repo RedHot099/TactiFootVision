@@ -14,15 +14,16 @@ Three backends sit behind one `Model` interface:
 |---|---|---|
 | `yolo` | Ultralytics YOLO | player, goalkeeper, referee and ball boxes |
 | `rfdetr` | RF-DETR | the same boxes, transformer detector |
-| `yolo_pose` | Ultralytics YOLO-pose | the 32 pitch landmarks |
+| `lines` | the package (torch) | points on the painted pitch markings, for the homography |
 
-All three train with the same `train` call and are scored by the same
+All train with the same `train` call; the detectors are scored by the same
 evaluation code, so their numbers compare directly.
 
 The training runs here are **short demos**: a few epochs on a subset, enough
 to show the interface in a few minutes. The checkpoints in `models/` were
 trained on the full datasets for far longer (200 epochs for the YOLO models,
-about 30 for RF-DETR), and they are the ones the other notebooks use.
+about 30 for RF-DETR, 20 for the line model), and they are the ones the other
+notebooks use.
 
 Part of the [TactiFoot Vision notebooks](README.md).
 """)
@@ -39,7 +40,7 @@ import tactifoot_vision as tv
 """,
         body="""
 detection = tv.load_dataset(DATA / "datasets" / "football_yolo")
-pitch_data = tv.load_dataset(DATA / "keypoints")
+line_data = tv.load_pitch_lines(DATA / "SoccerNetCalibration").subset({"train": 400, "valid": 100}, seed=0)
 train_set = detection.subset({"train": 300, "valid": 60}, seed=0)  # demo-sized
 print(train_set)
 """,
@@ -74,7 +75,7 @@ print(tv.TrainConfig(epochs=50, mosaic=0.0))
 print("backend options:", tv.TrainConfig(epochs=50, mosaic=0.0).backend_options)
 """)
     nb.md("""
-One config serves all three demo runs below: few epochs, everything written
+One config serves the detector demo runs below: few epochs, everything written
 under this notebook's output folder. `exist_ok=True` reuses the run folders
 when the notebook runs again instead of numbering new ones.
 """)
@@ -143,16 +144,22 @@ except ValueError as error:
     print("ValueError:", error)
 """)
     nb.md("""
-The pitch keypoint model is a pose model. It trains on the pose dataset with
-the same call; the dataset's `flip_idx` goes into the exported `data.yaml`, so
-Ultralytics' own flip augmentation renames landmarks correctly.
+The pitch line model learns heatmaps of the 20 SoccerNet markings from
+SoccerNet's line labels: `tv.load_pitch_lines(calibration, gamestate)` reads
+the Camera Calibration and Game State folders into a `lines` dataset (the
+shipped label rule keeps the main-side and along-the-pitch training images).
+It trains with the same call; a run folder that holds a checkpoint resumes
+from it, and `manifest.json` records the recipe, the data and the versions.
+The checkpoint in `models/` is the declared recipe (20 epochs, batch 12) on
+the full set.
 """)
     nb.code("""
-%%capture pose_log
-pose_run = tv.train("yolo_pose", pitch_data, config, weights="yolov8n-pose.pt", epochs=40, name="pitch_pose")
+%%capture lines_log
+lines_run = tv.train("lines", line_data, epochs=2, batch_size=12, output_dir=config.output_dir, name="pitch_lines")
 """)
     nb.code("""
-tv.viz.plot_training(pose_run)
+print(lines_run.metrics)
+tv.viz.plot_training(lines_run)
 """)
 
     nb.md("""
@@ -186,25 +193,5 @@ when given a dict.
 """)
     nb.code("""
 tv.viz.plot_metrics(detection_metrics)
-""")
-    nb.md("""
-Keypoint models get the mean pixel error of labelled landmarks and PCK, the
-share of landmarks closer than a fraction of the image diagonal (5% by
-default). Evaluation options pass through, here a stricter `pck_threshold`.
-The model in `models/` was trained on SoccerNet broadcast frames, not on this
-dataset, and scores poorly on its images.
-""")
-    nb.code("""
-pitch_models = {
-    "YOLOv8n-pose (demo run)": pose_run.load(),
-    "YOLO11m-pose (models/)": tv.load_model(
-        "yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square"
-    ),
-}
-pitch_metrics = {name: model.evaluate(pitch_data, pck_threshold=0.02) for name, model in pitch_models.items()}
-pd.DataFrame({name: m.as_dict() for name, m in pitch_metrics.items()}).T.round(3)
-""")
-    nb.code("""
-tv.viz.plot_metrics(pitch_metrics["YOLO11m-pose (models/)"])
 """)
     return nb

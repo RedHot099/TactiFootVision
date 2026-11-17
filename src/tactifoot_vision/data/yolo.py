@@ -1,4 +1,4 @@
-"""Ultralytics YOLO dataset format (detection and pose)."""
+"""Ultralytics YOLO dataset format (detection)."""
 
 import logging
 import os
@@ -16,8 +16,8 @@ from tactifoot_vision.data._files import (
     prepare_output,
     unique_names,
 )
-from tactifoot_vision.data.annotations import NOT_LABELLED, VISIBLE, Annotations, Task
-from tactifoot_vision.data.dataset import Dataset, Sample, check_flip_idx
+from tactifoot_vision.data.annotations import Annotations, Task
+from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.enums import LinkMode, Split
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,11 @@ def read_dataset(data_yaml: Path) -> Dataset:
         [names[i] for i in sorted(names)] if isinstance(names, dict) else list(names)
     )
 
-    kpt_shape = config.get("kpt_shape")
-    num_keypoints, kpt_dims = (
-        (int(kpt_shape[0]), int(kpt_shape[1])) if kpt_shape else (None, None)
-    )
-    flip_idx = tuple(config["flip_idx"]) if config.get("flip_idx") else None
-    check_flip_idx(flip_idx, num_keypoints, str(data_yaml))  # before reading labels
+    if config.get("kpt_shape"):
+        raise ValueError(
+            f"{data_yaml} is a YOLO-pose dataset (kpt_shape); the package reads "
+            "detection datasets only"
+        )
 
     data_yaml = data_yaml.absolute()
     root = Path(config.get("path") or data_yaml.parent)
@@ -60,17 +59,12 @@ def read_dataset(data_yaml: Path) -> Dataset:
             logger.info("Split %r repeats split %r; skipping it", split, loaded[images])
             continue
         loaded[images] = split
-        splits[split] = [
-            _read_sample(image, len(class_names), num_keypoints, kpt_dims, flip_idx)
-            for image in images
-        ]
+        splits[split] = [_read_sample(image, len(class_names)) for image in images]
 
     return Dataset(
-        task=Task.POSE if num_keypoints else Task.DETECT,
+        task=Task.DETECT,
         class_names=class_names,
         splits=splits,
-        num_keypoints=num_keypoints,
-        flip_idx=flip_idx,
         name=data_yaml.parent.name,
     )
 
@@ -103,13 +97,7 @@ def label_path(image: Path) -> Path:
     return Path(sb.join(str(image).rsplit(sa, 1))).with_suffix(".txt")
 
 
-def _read_sample(
-    image: Path,
-    num_classes: int,
-    num_keypoints: int | None,
-    kpt_dims: int | None,
-    flip_idx: tuple[int, ...] | None,
-) -> Sample:
+def _read_sample(image: Path, num_classes: int) -> Sample:
     width, height = image_size(image)
     labels = label_path(image)
     rows = []
@@ -120,7 +108,7 @@ def _read_sample(
             if line.strip()
         ]
 
-    boxes, class_ids, keypoints = [], [], []
+    boxes, class_ids = [], []
     scale = np.array([width, height, width, height], dtype=np.float32)
     for number, row in rows:
         values = np.asarray(row[1:], dtype=np.float32)
@@ -131,24 +119,7 @@ def _read_sample(
                 f"{num_classes} classes in data.yaml"
             )
         class_ids.append(class_id)
-        if num_keypoints is not None:
-            if len(values) != 4 + num_keypoints * kpt_dims:
-                raise ValueError(
-                    f"{labels}, line {number}: expected {4 + num_keypoints * kpt_dims} "
-                    f"values after the class for kpt_shape [{num_keypoints}, {kpt_dims}], "
-                    f"got {len(values)}"
-                )
-            cx, cy, w, h = values[:4]
-            kp = values[4:].reshape(num_keypoints, kpt_dims)
-            xy = kp[:, :2] * [width, height]
-            if kpt_dims == 3:
-                visibility = kp[:, 2]
-            else:
-                visibility = np.where(
-                    (kp[:, :2] > 0).any(axis=1), VISIBLE, NOT_LABELLED
-                )
-            keypoints.append(np.column_stack([xy, visibility]))
-        elif len(values) == 4:
+        if len(values) == 4:
             cx, cy, w, h = values
         else:  # segmentation polygon "x1 y1 x2 y2 ..." -> its bounding box
             if len(values) % 2 or len(values) < 6:
@@ -163,13 +134,10 @@ def _read_sample(
         boxes.append(np.array([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]) * scale)
 
     if not rows:
-        annotations = Annotations.empty(num_keypoints, flip_idx)
+        annotations = Annotations.empty()
     else:
         annotations = Annotations(
-            boxes=np.asarray(boxes),
-            class_ids=np.asarray(class_ids),
-            keypoints=np.asarray(keypoints) if num_keypoints is not None else None,
-            flip_idx=flip_idx,
+            boxes=np.asarray(boxes), class_ids=np.asarray(class_ids)
         )
     return Sample(image_path=image, width=width, height=height, annotations=annotations)
 
@@ -208,10 +176,6 @@ def write_dataset(
         if split in splits:
             config[key] = f"{split}/images"
     config |= {"nc": len(dataset.class_names), "names": list(dataset.class_names)}
-    if dataset.num_keypoints:
-        config["kpt_shape"] = [dataset.num_keypoints, 3]
-        if dataset.flip_idx:
-            config["flip_idx"] = list(dataset.flip_idx)
     data_yaml.write_text(yaml.safe_dump(config, sort_keys=False))
     logger.info("Wrote YOLO dataset (%d images) to %s", len(dataset), out_dir)
     return data_yaml
@@ -229,14 +193,5 @@ def _format_labels(sample: Sample) -> str:
         cx, cy = (x1 + x2) / 2 / width, (y1 + y2) / 2 / height
         w, h = (x2 - x1) / width, (y2 - y1) / height
         fields = [str(int(ann.class_ids[i])), *(f"{v:.6f}" for v in (cx, cy, w, h))]
-        if ann.keypoints is not None:
-            for x, y, v in ann.keypoints[i]:
-                nx, ny = x / width, y / height
-                # Unlabelled and out-of-frame points become "0 0 0": Ultralytics
-                # rejects coordinates outside [0, 1].
-                if v <= NOT_LABELLED or not (0 <= nx <= 1 and 0 <= ny <= 1):
-                    fields += ["0", "0", "0"]
-                else:
-                    fields += [f"{nx:.6f}", f"{ny:.6f}", str(int(v))]
         lines.append(" ".join(fields))
     return "\n".join(lines) + ("\n" if lines else "")

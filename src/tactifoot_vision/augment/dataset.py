@@ -119,9 +119,6 @@ def augment_dataset(
         for index, (sample, paths) in enumerate(bar):
             image = sample.read_image()
             annotations = sample.annotations
-            # Hand-built annotations may lack the dataset's flip_idx; HorizontalFlip needs it.
-            if annotations.flip_idx is None and dataset.flip_idx is not None:
-                annotations = replace(annotations, flip_idx=dataset.flip_idx)
             for k, path in enumerate(paths):
                 seed_seq = np.random.SeedSequence(
                     seed, spawn_key=(list(Split).index(split), index, k)

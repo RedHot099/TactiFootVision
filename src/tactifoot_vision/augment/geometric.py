@@ -1,4 +1,4 @@
-"""Geometric transforms: pixels, boxes and keypoints move together."""
+"""Geometric transforms: pixels and boxes move together."""
 
 from dataclasses import replace
 from numbers import Real
@@ -7,21 +7,14 @@ import cv2
 import numpy as np
 
 from tactifoot_vision.augment.base import Transform, _as_range
-from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations
+from tactifoot_vision.data.annotations import Annotations
 
 # Boxes thinner than this after clipping carry no trainable signal.
 _MIN_BOX_SIZE = 1.0
 
 
 class HorizontalFlip(Transform):
-    """Mirror the image left-right.
-
-    Keypoints are reordered with ``annotations.flip_idx`` so left/right
-    landmarks swap names (new keypoint ``i`` is the mirrored old keypoint
-    ``flip_idx[i]``, as in Ultralytics). Keypoint annotations without a
-    ``flip_idx`` raise ``ValueError``: flipping them would silently mislabel
-    the pitch landmarks.
-    """
+    """Mirror the image and its boxes left-right."""
 
     def __init__(self, p: float = 0.5) -> None:
         super().__init__(p)
@@ -32,28 +25,7 @@ class HorizontalFlip(Transform):
         width = image.shape[1]
         boxes = annotations.boxes.copy()
         boxes[:, [0, 2]] = width - annotations.boxes[:, [2, 0]]
-        keypoints = annotations.keypoints
-        if keypoints is not None:
-            keypoints = keypoints[:, _checked_flip_idx(annotations)]  # a copy
-            keypoints[..., 0] = width - keypoints[..., 0]
-        return cv2.flip(image, 1), replace(
-            annotations, boxes=boxes, keypoints=keypoints
-        )
-
-
-def _checked_flip_idx(annotations: Annotations) -> list[int]:
-    flip_idx = annotations.flip_idx
-    if flip_idx is None:
-        raise ValueError(
-            "HorizontalFlip needs annotations.flip_idx to flip keypoints; set "
-            "flip_idx in the dataset (e.g. data.yaml) or leave HorizontalFlip out"
-        )
-    if len(flip_idx) != annotations.num_keypoints:
-        raise ValueError(
-            f"flip_idx has {len(flip_idx)} entries but objects have "
-            f"{annotations.num_keypoints} keypoints"
-        )
-    return list(flip_idx)
+        return cv2.flip(image, 1), replace(annotations, boxes=boxes)
 
 
 class RandomAffine(Transform):
@@ -72,8 +44,7 @@ class RandomAffine(Transform):
 
     Boxes become the bounding box of their four transformed corners, clipped
     to the image; objects left with a box under one pixel wide or tall are
-    dropped too. Keypoints that leave the image become not labelled
-    (visibility 0); unlabelled keypoints stay unlabelled.
+    dropped too.
     """
 
     def __init__(
@@ -133,16 +104,7 @@ class RandomAffine(Transform):
             _area(clipped) >= self.min_area_ratio * _area(moved)
         )
 
-        keypoints = annotations.keypoints
-        if keypoints is not None:
-            keypoints = keypoints.copy()
-            keypoints[..., :2] = _affine(keypoints[..., :2], matrix)
-            x, y = keypoints[..., 0], keypoints[..., 1]
-            outside = (x < 0) | (x > width) | (y < 0) | (y > height)
-            keypoints[outside, 2] = NOT_LABELLED
-
-        moved_annotations = replace(annotations, boxes=clipped, keypoints=keypoints)
-        return warped, moved_annotations.select(keep)
+        return warped, replace(annotations, boxes=clipped).select(keep)
 
     def _sample_matrix(
         self, width: int, height: int, rng: np.random.Generator

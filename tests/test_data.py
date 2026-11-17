@@ -17,8 +17,6 @@ from tactifoot_vision.data import (
 )
 from tactifoot_vision.enums import LinkMode, Split
 
-FLIP = (1, 0, 2)
-
 
 def _image(path, width=64, height=48, value=128):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -26,7 +24,7 @@ def _image(path, width=64, height=48, value=128):
     return path
 
 
-def _write_yolo(root, pose=False):
+def _write_yolo(root):
     """Two train images and one valid image in Roboflow's layout."""
     lines = {
         "train/images/a.jpg": ["0 0.5 0.5 0.25 0.5", "1 0.25 0.25 0.1 0.1"],
@@ -35,8 +33,6 @@ def _write_yolo(root, pose=False):
     }
     for rel, rows in lines.items():
         _image(root / rel)
-        if pose:
-            rows = [r + " 0.5 0.5 2 0.6 0.4 1 0 0 0" for r in rows]
         if rows:
             label = root / rel.replace("images", "labels").replace(".jpg", ".txt")
             label.parent.mkdir(parents=True, exist_ok=True)
@@ -48,8 +44,6 @@ def _write_yolo(root, pose=False):
         "nc": 2,
         "names": ["ball", "player"],
     }
-    if pose:
-        config |= {"kpt_shape": [3, 3], "flip_idx": list(FLIP)}
     (root / "data.yaml").write_text(yaml.safe_dump(config))
     return root / "data.yaml"
 
@@ -72,20 +66,15 @@ def _dataset(tmp_path, n=10):
 def test_annotations_validate_shapes():
     with pytest.raises(ValueError):
         Annotations(boxes=np.zeros((2, 4)), class_ids=[0])
-    with pytest.raises(ValueError):
-        Annotations(boxes=np.zeros((1, 4)), class_ids=[0], keypoints=np.zeros((1, 3)))
-    empty = Annotations.empty(num_keypoints=4)
-    assert len(empty) == 0 and empty.keypoints.shape == (0, 4, 3)
+    assert len(Annotations.empty()) == 0
+    with pytest.raises(ValueError, match="view"):
+        Annotations(boxes=np.zeros((0, 4)), class_ids=[], view="sideways")
 
 
 def test_annotations_convert_to_supervision():
-    ann = Annotations(
-        boxes=[[0, 0, 10, 10]], class_ids=[1], keypoints=[[[1, 2, 2], [3, 4, 0]]]
-    )
+    ann = Annotations(boxes=[[0, 0, 10, 10]], class_ids=[1])
     detections = ann.to_detections(["ball", "player"])
     assert detections.data["class_name"].tolist() == ["player"]
-    keypoints = ann.to_keypoints()
-    assert keypoints.confidence.tolist() == [[1.0, 0.0]]
 
 
 def test_read_yolo_detection(tmp_path):
@@ -100,16 +89,19 @@ def test_read_yolo_detection(tmp_path):
     assert ds.summary().loc["train", "player"] == 1
 
 
-def test_read_yolo_pose_and_folder_path(tmp_path):
-    _write_yolo(tmp_path, pose=True)
-    ds = load_dataset(tmp_path)  # folder containing data.yaml
-    assert ds.task is Task.POSE and ds.num_keypoints == 3 and ds.flip_idx == FLIP
-    image, ann = ds.read("train", 0)
-    assert image.shape == (48, 64, 3)
-    np.testing.assert_allclose(
-        ann.keypoints[0], [[32, 24, 2], [38.4, 19.2, 1], [0, 0, 0]]
-    )
-    assert ann.flip_idx == FLIP
+def test_pose_datasets_are_refused(tmp_path):
+    data_yaml = _write_yolo(tmp_path)
+    config = yaml.safe_load(data_yaml.read_text())
+    data_yaml.write_text(yaml.safe_dump(config | {"kpt_shape": [3, 3]}))
+    with pytest.raises(ValueError, match="YOLO-pose dataset"):
+        load_dataset(tmp_path)  # the folder holding data.yaml
+    coco = load_dataset(_write_yolo(tmp_path / "det")).to_coco(tmp_path / "coco")
+    path = coco / "train" / "_annotations.coco.json"
+    record = json.loads(path.read_text())
+    record["annotations"][0]["keypoints"] = [1, 2, 2]
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="pose dataset"):
+        load_dataset(coco)
 
 
 def test_yolo_polygon_labels_become_boxes(tmp_path):
@@ -120,27 +112,18 @@ def test_yolo_polygon_labels_become_boxes(tmp_path):
     np.testing.assert_allclose(ann.boxes[0], [6.4, 9.6, 19.2, 28.8], rtol=1e-5)
 
 
-@pytest.mark.parametrize("pose", [False, True])
 @pytest.mark.parametrize("fmt", ["yolo", "coco"])
-def test_export_round_trip(tmp_path, fmt, pose):
-    ds = load_dataset(_write_yolo(tmp_path / "src", pose=pose))
+def test_export_round_trip(tmp_path, fmt):
+    ds = load_dataset(_write_yolo(tmp_path / "src"))
     exported = getattr(ds, f"to_{fmt}")(tmp_path / fmt)
     again = load_dataset(exported)
     assert again.task == ds.task and again.class_names == ds.class_names
-    assert again.flip_idx == ds.flip_idx
     for split in ds.split_names:
         for a, b in zip(ds[split], again[split], strict=True):
             np.testing.assert_allclose(
                 a.annotations.boxes, b.annotations.boxes, atol=1e-3
             )
             assert a.annotations.class_ids.tolist() == b.annotations.class_ids.tolist()
-            if pose:
-                labelled = a.annotations.keypoints[..., 2] > 0
-                np.testing.assert_allclose(
-                    a.annotations.keypoints[labelled],
-                    b.annotations.keypoints[labelled],
-                    atol=1e-3,
-                )
 
 
 def test_coco_categories_are_zero_based_and_named(tmp_path):
@@ -303,19 +286,6 @@ def test_export_keeps_labels_apart_for_images_sharing_a_stem(tmp_path):
     again = load_dataset(ds.to_yolo(tmp_path / "out"))
     classes = sorted(s.annotations.class_ids.tolist() for s in again["train"])
     assert classes == [[0], [1]]
-
-
-def test_yolo_export_unlabels_keypoints_outside_the_image(tmp_path):
-    keypoints = [[[70, 10, 2], [32, 24, 2], [5, 5, 1]]]  # x=70 is outside a 64 px image
-    sample = Sample(
-        _image(tmp_path / "src" / "a.jpg"),
-        64,
-        48,
-        Annotations([[0, 0, 64, 48]], [0], keypoints, flip_idx=FLIP),
-    )
-    ds = Dataset(Task.POSE, ["pitch"], {"train": [sample], "valid": [sample]}, 3, FLIP)
-    again = load_dataset(ds.to_yolo(tmp_path / "out"))["train"][0].annotations
-    np.testing.assert_allclose(again.keypoints[0, :, 2], [0, 2, 1])
 
 
 def test_coco_ids_start_at_one(tmp_path):
@@ -541,39 +511,6 @@ def test_format_switch_refuses_a_root_file_the_export_did_not_write(tmp_path, ki
     assert Dataset.from_coco(out).split_names == ["train", "valid"]  # still intact
 
 
-def _pose(path, flip_idx, num_keypoints=2):
-    keypoints = [[[2, 5, 2], [30, 5, 2], [20, 10, 2]][:num_keypoints]]
-    flip_idx = flip_idx[:num_keypoints]
-    annotations = Annotations([[0, 0, 40, 20]], [0], keypoints, flip_idx)
-    sample = Sample(_image(path, width=40, height=20), 40, 20, annotations)
-    return Dataset(Task.POSE, ["pitch"], {"train": [sample]}, num_keypoints, flip_idx)
-
-
-def test_merge_rejects_pose_datasets_with_another_keypoint_layout(tmp_path):
-    swap = _pose(tmp_path / "a.jpg", (1, 0))
-    with pytest.raises(ValueError, match=r"flip_idx.*\(1, 0\).*\(0, 1\)"):
-        swap.merge(_pose(tmp_path / "b.jpg", (0, 1)))
-    with pytest.raises(ValueError, match="2 and 3 keypoints"):
-        swap.merge(_pose(tmp_path / "c.jpg", (1, 0, 2), num_keypoints=3))
-
-
-def test_merged_pose_labels_keep_their_meaning_through_an_export(tmp_path):
-    from tactifoot_vision.augment import HorizontalFlip
-
-    first, second = (
-        _pose(tmp_path / "src" / name, (1, 0)) for name in ("a.jpg", "b.jpg")
-    )
-    merged = first.merge(second)
-    reloaded = load_dataset(merged.to_yolo(tmp_path / "out"))
-    assert reloaded.flip_idx == merged.flip_idx == (1, 0)
-    flip = HorizontalFlip(p=1)
-    for before, after in zip(merged["train"], reloaded["train"], strict=True):
-        assert after.annotations.flip_idx == before.annotations.flip_idx == (1, 0)
-        _, expected = flip(before.read_image(), before.annotations)
-        _, flipped = flip(after.read_image(), after.annotations)
-        np.testing.assert_allclose(flipped.keypoints, expected.keypoints, atol=1e-3)
-
-
 def test_read_takes_one_sample_without_copying_the_split(tmp_path, monkeypatch):
     ds = _dataset(tmp_path)
     monkeypatch.setattr(Dataset, "__getitem__", lambda *_: pytest.fail("copied"))
@@ -643,18 +580,6 @@ def test_each_link_mode_places_its_kind_of_file_and_spares_the_source(tmp_path, 
     assert source.read_bytes() == original and source.stat().st_nlink == 2
 
 
-def test_a_flip_idx_without_one_entry_per_keypoint_fails_at_load(tmp_path):
-    data_yaml = _write_yolo(tmp_path, pose=True)
-    config = yaml.safe_load(data_yaml.read_text())
-    data_yaml.write_text(yaml.safe_dump(config | {"flip_idx": [1, 0]}))
-    with pytest.raises(
-        ValueError, match=r"data\.yaml.*flip_idx has 2 entries.*3 keypoints"
-    ):
-        load_dataset(data_yaml)
-    with pytest.raises(ValueError, match="flip_idx has 2 entries"):
-        Dataset(Task.POSE, ["pitch"], {}, num_keypoints=3, flip_idx=(1, 0))
-
-
 def test_an_odd_label_row_names_its_file_and_line(tmp_path):
     data_yaml = _write_yolo(tmp_path)
     (tmp_path / "train/labels/a.txt").write_text(
@@ -662,16 +587,6 @@ def test_an_odd_label_row_names_its_file_and_line(tmp_path):
     )
     with pytest.raises(ValueError, match=r"a\.txt, line 3: .*got 5"):
         load_dataset(data_yaml)
-
-
-def test_two_value_keypoints_are_visible_when_either_coordinate_is_set(tmp_path):
-    data_yaml = _write_yolo(tmp_path)
-    config = yaml.safe_load(data_yaml.read_text()) | {"kpt_shape": [3, 2]}
-    data_yaml.write_text(yaml.safe_dump(config))
-    for label in (tmp_path / "train/labels/a.txt", tmp_path / "valid/labels/c.txt"):
-        label.write_text("1 0.5 0.5 0.2 0.2 0.5 0.5 0.25 0 0 0\n")
-    keypoints = load_dataset(data_yaml)["train"][0].annotations.keypoints
-    np.testing.assert_allclose(keypoints[0], [[32, 24, 2], [16, 0, 2], [0, 0, 0]])
 
 
 def test_coco_reader_keeps_a_real_class_whose_supercategory_is_none(tmp_path):

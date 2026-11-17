@@ -17,7 +17,7 @@ from tactifoot_vision.data._files import (
     prepare_output,
     unique_names,
 )
-from tactifoot_vision.data.annotations import NOT_LABELLED, Annotations, Task
+from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample
 from tactifoot_vision.enums import LinkMode, Split
 
@@ -28,11 +28,10 @@ SUPERCATEGORY = "objects"  # anything but "none": RF-DETR drops "none" categorie
 
 
 # ------------------------------------------------------------------- reading
-def read_dataset(root: Path, flip_idx: tuple[int, ...] | None = None) -> Dataset:
+def read_dataset(root: Path) -> Dataset:
     root = root.absolute()
     splits: dict[str, list[Sample]] = {}
     class_names: list[str] | None = None
-    num_keypoints: int | None = None
     for folder in ("train", "valid", "val", "test"):
         path = root / folder / ANNOTATION_FILE
         split = Split.parse(folder)
@@ -46,17 +45,18 @@ def read_dataset(root: Path, flip_idx: tuple[int, ...] | None = None) -> Dataset
             raise ValueError(
                 f"{path} has classes {names}, other splits have {class_names}"
             )
-        num_keypoints = num_keypoints or _num_keypoints(coco)
-        flip_idx = flip_idx or _flip_idx(coco)
-        splits[split] = _read_split(path, coco, category_index, num_keypoints, flip_idx)
+        if _has_keypoints(coco):
+            raise ValueError(
+                f"{path} holds keypoints (a pose dataset); the package reads "
+                "detection datasets only"
+            )
+        splits[split] = _read_split(path, coco, category_index)
     if class_names is None:
         raise FileNotFoundError(f"No <split>/{ANNOTATION_FILE} under {root}")
     return Dataset(
-        task=Task.POSE if num_keypoints else Task.DETECT,
+        task=Task.DETECT,
         class_names=class_names,
         splits=splits,
-        num_keypoints=num_keypoints,
-        flip_idx=flip_idx,
         name=root.name,
     )
 
@@ -77,30 +77,16 @@ def _categories(coco: dict) -> tuple[list[str], dict[int, int]]:
     return [c["name"] for c in kept], {c["id"]: i for i, c in enumerate(kept)}
 
 
-def _num_keypoints(coco: dict) -> int | None:
-    for category in coco.get("categories", []):
-        if category.get("keypoints"):
-            return len(category["keypoints"])
-    for annotation in coco.get("annotations", []):
-        if annotation.get("keypoints"):
-            return len(annotation["keypoints"]) // 3
-    return None
-
-
-def _flip_idx(coco: dict) -> tuple[int, ...] | None:
-    # Not part of COCO; our writer stores it on the category so pose data round-trips.
-    for category in coco.get("categories", []):
-        if category.get("flip_idx"):
-            return tuple(category["flip_idx"])
-    return None
+def _has_keypoints(coco: dict) -> bool:
+    return any(c.get("keypoints") for c in coco.get("categories", [])) or any(
+        a.get("keypoints") for a in coco.get("annotations", [])
+    )
 
 
 def _read_split(
     path: Path,
     coco: dict,
     category_index: dict[int, int],
-    num_keypoints: int | None,
-    flip_idx: tuple[int, ...] | None,
 ) -> list[Sample]:
     folder = path.parent
     known = {c["id"] for c in coco.get("categories", [])}
@@ -120,20 +106,12 @@ def _read_split(
         if objects:
             boxes = np.array([a["bbox"] for a in objects], dtype=np.float32)
             boxes[:, 2:] += boxes[:, :2]  # xywh -> xyxy
-            keypoints = None
-            if num_keypoints:
-                keypoints = np.array(
-                    [a.get("keypoints") or [0.0] * num_keypoints * 3 for a in objects],
-                    dtype=np.float32,
-                ).reshape(len(objects), num_keypoints, 3)
             annotations = Annotations(
                 boxes=boxes,
                 class_ids=[category_index[a["category_id"]] for a in objects],
-                keypoints=keypoints,
-                flip_idx=flip_idx,
             )
         else:
-            annotations = Annotations.empty(num_keypoints, flip_idx)
+            annotations = Annotations.empty()
         samples.append(
             Sample(
                 image_path=folder / image["file_name"],
@@ -159,15 +137,7 @@ def write_dataset(
     prepare_output(out_dir, managed, files)
     categories = []
     for i, name in enumerate(dataset.class_names):
-        category = {"id": i, "name": name, "supercategory": SUPERCATEGORY}
-        if dataset.num_keypoints:
-            category |= {
-                "keypoints": [str(k) for k in range(dataset.num_keypoints)],
-                "skeleton": [],
-            }
-            if dataset.flip_idx:
-                category["flip_idx"] = list(dataset.flip_idx)
-        categories.append(category)
+        categories.append({"id": i, "name": name, "supercategory": SUPERCATEGORY})
 
     for split in splits:
         samples = dataset[split]
@@ -215,10 +185,5 @@ def _annotations(sample: Sample, image_id: int, first_id: int) -> list[dict]:
             "segmentation": [],
             "iscrowd": 0,
         }
-        if ann.keypoints is not None:
-            keypoints = ann.keypoints[i].copy()
-            keypoints[keypoints[:, 2] <= NOT_LABELLED] = 0.0
-            record["keypoints"] = [float(v) for v in keypoints.reshape(-1)]
-            record["num_keypoints"] = int((keypoints[:, 2] > NOT_LABELLED).sum())
         result.append(record)
     return result

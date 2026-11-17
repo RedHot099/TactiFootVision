@@ -42,7 +42,6 @@ class Task(Vocabulary):
     """What a dataset or model is about."""
 
     DETECT = "detect"  # bounding boxes with classes (players, ball, ...)
-    POSE = "pose"  # boxes plus a fixed set of keypoints per object (pitch landmarks)
     LINES = "lines"  # points along the painted pitch markings, per marking (SoccerNet line classes)
 
 
@@ -172,7 +171,6 @@ class ModelType(Vocabulary):
     """A built-in model backend of ``MODELS``."""
 
     YOLO = "yolo"
-    YOLO_POSE = "yolo_pose"
     RFDETR = "rfdetr"
     LINES = "lines"  # the pitch line network (per-marking heatmaps)
 
@@ -246,7 +244,6 @@ class PostProcessName(Vocabulary):
     """A built-in post-process of ``POSTPROCESSES``."""
 
     SMOOTH_HOMOGRAPHIES = "smooth_homographies"
-    SMOOTH_LINE_HOMOGRAPHIES = "smooth_line_homographies"
     JOIN_TRACKS = "join_tracks"
     TRACK_BALL = "track_ball"
     ASSIGN_ROLES = "assign_roles"
@@ -256,7 +253,6 @@ class RunFileSection(Vocabulary):
     """A top-level section of a **Run file**."""
 
     DETECTOR = "detector"
-    KEYPOINTS = "keypoints"
     LINES = "lines"
     TRACKER = "tracker"
     TEAMS = "teams"

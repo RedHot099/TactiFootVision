@@ -8,13 +8,14 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from line_points import line_points
 from tactifoot_vision.data import LabelledClip, LabelledFrame, Truth
 from tactifoot_vision.data.annotations import Task
-from tactifoot_vision.enums import TrackerType
+from tactifoot_vision.enums import PitchMarking, TrackerType
 from tactifoot_vision.evaluation import evaluate_homography, evaluate_tracking
 from tactifoot_vision.models.base import Model
 from tactifoot_vision.pipeline import NO_TEAM, Pipeline, PipelineResult, track_ball
-from tactifoot_vision.pitch import SoccerPitch, frame_to_pitch, pitch_to_frame
+from tactifoot_vision.pitch import LinePoints, SoccerPitch, frame_to_pitch
 from tactifoot_vision.teams import Embedder, TeamClassifier
 from tactifoot_vision.tracking import ByteTrackTracker, Tracker
 
@@ -109,11 +110,11 @@ class ColorDetector(Model):
         )
 
 
-class KnownHomographyKeypoints(Model):
-    """Returns the 32 pitch landmarks projected with a fixed homography."""
+class KnownHomographyLines(Model):
+    """Finds the points of every marking the fixed homography shows, as a perfect line model would."""
 
-    name = "known_keypoints"
-    task = Task.POSE
+    name = "known_lines"
+    task = Task.LINES
 
     def _load(self, weights):
         pass
@@ -123,13 +124,10 @@ class KnownHomographyKeypoints(Model):
 
     @property
     def class_names(self) -> list[str]:
-        return ["pitch"]
+        return [m.value for m in PitchMarking]
 
-    def predict(self, image: np.ndarray) -> sv.KeyPoints:
-        xy = pitch_to_frame(SoccerPitch().vertices, FRAME_TO_PITCH)
-        return sv.KeyPoints(
-            xy=xy[None].astype(np.float32), confidence=np.ones((1, len(xy)), np.float32)
-        )
+    def predict(self, image: np.ndarray) -> LinePoints:
+        return line_points(FRAME_TO_PITCH, (image.shape[1], image.shape[0]))
 
 
 class MeanColorEmbedder(Embedder):
@@ -147,7 +145,7 @@ class MeanColorEmbedder(Embedder):
 
 def _pipeline(**kwargs) -> Pipeline:
     options = {
-        "keypoint_model": KnownHomographyKeypoints(device="cpu"),
+        "line_model": KnownHomographyLines(device="cpu"),
         "team_classifier": TeamClassifier(MeanColorEmbedder(), reducer=None),
     } | kwargs
     return Pipeline(ColorDetector(device="cpu"), **options)
@@ -197,8 +195,11 @@ def test_people_are_tracked_with_class_names(result):
 def test_pitch_positions_follow_the_homography(result):
     frame = result[2]
     assert frame.homography is not None
+    corners = [[0, 0], [WIDTH, 0], [WIDTH, HEIGHT], [0, HEIGHT]]
     np.testing.assert_allclose(
-        frame.homography, FRAME_TO_PITCH / FRAME_TO_PITCH[2, 2], atol=1e-5
+        frame_to_pitch(corners, frame.homography),
+        frame_to_pitch(corners, FRAME_TO_PITCH),
+        atol=1e-3,
     )
     anchors = frame.detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
     np.testing.assert_allclose(
@@ -210,7 +211,8 @@ def test_pitch_positions_follow_the_homography(result):
     np.testing.assert_allclose(
         frame.ball_xy, frame_to_pitch(ball_centre, FRAME_TO_PITCH), atol=1e-3
     )
-    assert frame.keypoints is not None and frame.keypoints.xy.shape == (1, 32, 2)
+    assert frame.line_points is not None and len(frame.line_points) > 100
+    assert frame.homography_fit.fresh and frame.homography_fit.uncertainty_m < 0.5
 
 
 def test_teams_by_vote_goalkeeper_by_position_referee_none(result):
@@ -263,6 +265,7 @@ def test_frame_range_start_end_stride(video):
     pipeline = _pipeline(team_classifier=TeamClassifier(embedder, reducer=None))
     result = pipeline.run(video, start=1, end=9, stride=2, progress=False)
     assert [f.index for f in result] == [1, 3, 5, 7]
+    assert pipeline.homography._dt == 2.0  # the filter steps in physical time: 2 / 25 s
     assert result[1].timestamp == pytest.approx(3 / FPS)
     assert {tuple(f.team_ids) for f in result} != {(NO_TEAM,) * 8}
     assert [f.index for f in pipeline.run(video, start=8, progress=False)] == [
@@ -270,8 +273,8 @@ def test_frame_range_start_end_stride(video):
     ]  # fmt: skip
 
 
-def test_include_classes_and_no_keypoints(video):
-    pipeline = _pipeline(keypoint_model=None, include_classes=["player"])
+def test_include_classes_and_no_line_model(video):
+    pipeline = _pipeline(line_model=None, include_classes=["player"])
     result = pipeline.run(video, end=3, progress=False)
     for f in result:
         assert set(f.detections.data["class_name"]) == {"player"}
@@ -280,12 +283,12 @@ def test_include_classes_and_no_keypoints(video):
         assert set(f.team_ids) == {0, 1}
 
 
-def test_a_fixed_homography_replaces_the_keypoint_model(video):
-    pipeline = _pipeline(keypoint_model=None, fixed_homography=FRAME_TO_PITCH)
+def test_a_fixed_homography_replaces_the_line_model(video):
+    pipeline = _pipeline(line_model=None, fixed_homography=FRAME_TO_PITCH)
     result = pipeline.run(video, end=3, progress=False)
 
     for f in result:
-        assert f.keypoints is None
+        assert f.line_points is None and f.homography_fit is None
         np.testing.assert_allclose(f.homography, FRAME_TO_PITCH)
         anchors = f.detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
         np.testing.assert_allclose(
@@ -310,11 +313,11 @@ def test_a_fixed_homography_replaces_the_keypoint_model(video):
 
 def test_a_fixed_homography_loads_from_a_file(tmp_path):
     np.save(tmp_path / "H.npy", FRAME_TO_PITCH)
-    pipeline = _pipeline(keypoint_model=None, fixed_homography=tmp_path / "H.npy")
+    pipeline = _pipeline(line_model=None, fixed_homography=tmp_path / "H.npy")
     np.testing.assert_allclose(pipeline.fixed_homography, FRAME_TO_PITCH)
 
     np.savez(tmp_path / "cal.npz", frame_to_pitch=FRAME_TO_PITCH, K=np.eye(3))
-    pipeline = _pipeline(keypoint_model=None, fixed_homography=tmp_path / "cal.npz")
+    pipeline = _pipeline(line_model=None, fixed_homography=tmp_path / "cal.npz")
     np.testing.assert_allclose(pipeline.fixed_homography, FRAME_TO_PITCH)
 
 
@@ -323,7 +326,7 @@ def test_undistortion_moves_the_anchors_before_the_fixed_homography(video, tmp_p
     np.savez(tmp_path / "cal.npz", K=camera, D=np.zeros(4), Knew=camera)
     undistortion = tv.pitch.FisheyeUndistortion.load(tmp_path / "cal.npz")
     pipeline = _pipeline(
-        keypoint_model=None,
+        line_model=None,
         fixed_homography=FRAME_TO_PITCH,
         undistortion=tmp_path / "cal.npz",
     )
@@ -384,18 +387,18 @@ def test_no_team_classifier_leaves_no_team(video):
 
 
 def test_validation():
-    detector, keypoints = (
+    detector, lines = (
         ColorDetector(device="cpu"),
-        KnownHomographyKeypoints(device="cpu"),
+        KnownHomographyLines(device="cpu"),
     )
     with pytest.raises(ValueError, match="detection model"):
-        Pipeline(keypoints)
-    with pytest.raises(ValueError, match="pose model"):
-        Pipeline(detector, keypoint_model=detector)
+        Pipeline(lines)
+    with pytest.raises(ValueError, match="lines model"):
+        Pipeline(detector, line_model=detector)
     with pytest.raises(ValueError, match="Unknown tracker"):
         Pipeline(detector, tracker="nope")
     with pytest.raises(ValueError, match="two sources"):
-        Pipeline(detector, keypoint_model=keypoints, fixed_homography=np.eye(3))
+        Pipeline(detector, line_model=lines, fixed_homography=np.eye(3))
     with pytest.raises(ValueError, match="3x3"):
         Pipeline(detector, fixed_homography=np.eye(2))
     with pytest.raises(ValueError, match="goes with fixed_homography"):
@@ -466,28 +469,18 @@ def test_keep_masks_stores_crops_the_size_of_the_mask(video, tmp_path):
 
 # ----------------------------------------------------------------- real models
 @pytest.mark.model
-def test_real_video_pipeline(tmp_path, detector_weights, pitch_weights):
+def test_real_video_pipeline(tmp_path, detector_weights, line_weights):
     video = ROOT / "data" / "videos" / "broadcast_60s.mp4"
     if not video.is_file():
         pytest.skip("real video not available")
     if "yolo" not in tv.models.available_models():
         pytest.skip("yolo backend not available")
-    # The pitch model with its settings, less the line refinement (eight times
-    # slower, the same positions here). On these frames it finds no pitch at
-    # all without the square input; the clip's opening view, where its
-    # homography is wrong on part of the frames, is left out: this test checks
-    # that the parts work together.
     pipeline = Pipeline(
         tv.load_model("yolo", detector_weights),
-        keypoint_model=tv.load_model(
-            "yolo_pose", pitch_weights, conf=0.1, resize="square"
-        ),
-        homography=tv.pitch.HomographyEstimator(
-            min_confidence=0.3, ransac_threshold=2.0
-        ),
+        line_model=tv.load_model("lines", line_weights),
         team_classifier=TeamClassifier("siglip"),
     )
-    result = pipeline.run(video, start=150, end=200, progress=False)
+    result = pipeline.run(video, end=50, progress=False)
     assert len(result) == 50
     table = result.to_dataframe()
     players = table[(table.object == "person") & (table.class_name == "player")]
@@ -759,7 +752,7 @@ def test_the_most_confident_ball_is_kept(video):
 def test_every_ball_candidate_is_kept_best_first(video):
     result = Pipeline(
         _ThreeBalls(device="cpu"),
-        keypoint_model=KnownHomographyKeypoints(device="cpu"),
+        line_model=KnownHomographyLines(device="cpu"),
         tracker=None,
     ).run(video, end=3, progress=False)
     for t, frame in enumerate(result):

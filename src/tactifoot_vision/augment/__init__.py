@@ -1,4 +1,4 @@
-"""Data augmentation for detection and pitch-keypoint datasets.
+"""Data augmentation for detection datasets.
 
     import numpy as np
     import tactifoot_vision as tv
@@ -12,7 +12,7 @@
     image, annotations = transform(image, annotations, rng=np.random.default_rng(0))
     bigger = tv.augment.augment_dataset(dataset, transform, "outputs/aug", copies=2)
 
-Geometric transforms move boxes and keypoints with the pixels; photometric
+Geometric transforms move boxes with the pixels; photometric
 transforms only change pixel values. There are no vertical flips on purpose:
 broadcast football footage is never upside down.
 """

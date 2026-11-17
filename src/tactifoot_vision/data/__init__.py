@@ -1,12 +1,6 @@
 """Data preparation: annotated datasets, pitch line labels, labelled clips (read or synthetic), format conversion, video frames, StatsBomb events."""
 
-from tactifoot_vision.data.annotations import (
-    NOT_LABELLED,
-    OCCLUDED,
-    VISIBLE,
-    Annotations,
-    Task,
-)
+from tactifoot_vision.data.annotations import Annotations, Task
 from tactifoot_vision.data.dataset import Dataset, Sample, load_dataset
 from tactifoot_vision.data.demo import DemoData, download_demo
 from tactifoot_vision.data.labelled_clip import (
@@ -22,10 +16,7 @@ from tactifoot_vision.data.synthetic import synthetic_pitch_clip
 from tactifoot_vision.data.video import VideoReader, extract_frames
 
 __all__ = [
-    "NOT_LABELLED",
-    "OCCLUDED",
     "UNKNOWN_TEAM",
-    "VISIBLE",
     "Annotations",
     "Dataset",
     "DemoData",

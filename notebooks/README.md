@@ -7,10 +7,10 @@ own.
 | Notebook | Shows |
 |---|---|
 | [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells on the demo data: download, augmentation, a short training run, the pipeline, a tactical map. Needs no local data or weights and also runs in Colab. Links to the others. |
-| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `load_statsbomb`, `show_samples`. |
-| [`02_augmentation`](02_augmentation.ipynb) | `tv.augment`: every geometric and photometric transform before and after, `Compose` and `OneOf`, boxes and keypoints under flips and affine transforms, `augment_dataset`, `show_augmentations`. |
-| [`03_training_and_evaluation`](03_training_and_evaluation.ipynb) | `tv.models` and `tv.evaluation`: one `train` call for `yolo`, `rfdetr` and `yolo_pose` (short demo runs), `TrainConfig` and backend options, `TrainResult`, `plot_training`, `evaluate` for boxes and keypoints, `plot_metrics`. |
-| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch` and `HomographyEstimator`, team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load, `compare_with_statsbomb`. |
+| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, SoccerNet pitch line labels (`load_pitch_lines`, `render_line_targets`), `VideoReader`, `extract_frames`, `load_statsbomb`, `show_samples`. |
+| [`02_augmentation`](02_augmentation.ipynb) | `tv.augment`: every geometric and photometric transform before and after, `Compose` and `OneOf`, boxes under flips and affine transforms, `augment_dataset`, `show_augmentations`. |
+| [`03_training_and_evaluation`](03_training_and_evaluation.ipynb) | `tv.models` and `tv.evaluation`: one `train` call for `yolo`, `rfdetr` and the pitch line model `lines` (short demo runs), `TrainConfig` and backend options, `TrainResult`, `plot_training`, `evaluate` for boxes, `plot_metrics`. |
+| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch`, the line model's points and `HomographyEstimator` (fit, temporal filter, `smooth_homographies`), team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load, `compare_with_statsbomb`. |
 | [`05_visualisation`](05_visualisation.ipynb) | `tv.viz`: `FrameAnnotator` styles and draw flags, `PitchRadar`, `overlay`, `render_video`, `plot_heatmap`, `plot_tracks`, `plot_distance_histogram`, `draw_pitch`, `show`. |
 
 ## Opening them
@@ -35,7 +35,7 @@ helpers. Edit the modules, never the notebooks.
 
 ```bash
 uv run python notebooks/build/build.py                  # write all notebooks, no outputs
-uv run python notebooks/build/build.py --execute        # write and run all (about 5 minutes on a GPU)
+uv run --extra sam2 python notebooks/build/build.py --execute  # write and run all (about 10 minutes on a GPU)
 uv run python notebooks/build/build.py --execute 01 04  # only some (by number or name)
 ```
 
@@ -73,17 +73,17 @@ and the examples expect them under the repository root (symlinks work):
 
 ```
 data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, player, referee)
-data/keypoints/                   YOLO-pose pitch dataset (32 landmarks, flip_idx)
+data/SoccerNetCalibration/        SoccerNet Camera Calibration (train, valid): pitch line labels
 data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
 data/videos/broadcast_60s.mp4     one minute of match footage
 models/detector_yolo11l.pt        trained detector (YOLO11l, 1280)
 models/rfdetr_smoketest_sample.pth  RF-DETR base fine-tuned for one epoch on a sample (football classes, no accuracy)
-models/pitch_yolo11m_pose.pt      trained pitch keypoint model (YOLO11m pose, 960; loaded with conf=0.1, resize="square")
+models/pitch_lines_r18s2w640_tvtrain.pt  pitch line model trained through tv.train (manifest .json beside it)
 external/segment-anything-2-real-time/   optional, for the SAM2 tracker
 ```
 
 Downloads happen on first use. Starting weights for the demo training runs
-(`yolo11n.pt`, `yolov8n-pose.pt`, RF-DETR base) go to
+(`yolo11n.pt`, RF-DETR base; the line model's ImageNet ResNet-18) go to
 `~/.cache/tactifoot_vision/`. The team embedders use their libraries' caches:
 SigLIP the Hugging Face cache (`~/.cache/huggingface/`, moved by `HF_HOME`),
 ResNet the torchvision hub cache (`~/.cache/torch/hub/`, moved by

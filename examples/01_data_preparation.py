@@ -15,18 +15,11 @@ detection = tv.load_dataset("data/datasets/football_yolo")
 print(detection)
 print(detection.summary())
 
-# Pitch-keypoint dataset: pose task with 32 landmarks and their flip permutation.
-keypoints = tv.load_dataset("data/keypoints")
-print(keypoints)
-image, labels = keypoints.read("train", 0)
-print(
-    "image",
-    image.shape,
-    "keypoints",
-    labels.keypoints.shape,
-    "flip_idx",
-    labels.flip_idx[:6],
-)
+# Pitch line labels (SoccerNet Camera Calibration), the line model's training data.
+lines = tv.load_pitch_lines("data/SoccerNetCalibration", splits=("valid",))
+print(lines)
+image, labels = lines.read("valid", 0)
+print("image", image.shape, "markings", sorted(labels.lines)[:4], "view", labels.view)
 
 # A small reproducible subset, exported in both formats the trainers use.
 small = detection.subset({"train": 60, "valid": 20}, seed=0)
@@ -45,5 +38,5 @@ statsbomb = tv.data.load_statsbomb("data/statsbomb")
 print(statsbomb[["period", "minute", "second", "type", "pitch_location"]].head())
 
 tv.viz.show_samples(detection, "train", n=6).savefig(OUT / "detection_samples.png")
-tv.viz.show_samples(keypoints, "train", n=3).savefig(OUT / "keypoint_samples.png")
+tv.viz.show_samples(lines, "valid", n=3).savefig(OUT / "line_samples.png")
 print("figures in", OUT)

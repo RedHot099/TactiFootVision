@@ -1,4 +1,4 @@
-"""Ultralytics YOLO backends: box detection (``yolo``) and keypoints (``yolo_pose``)."""
+"""Ultralytics YOLO backend: box detection (``yolo``)."""
 
 import base64
 import contextlib
@@ -67,8 +67,7 @@ class _UltralyticsModel(Model):
                 * ``"square"``: the aspect ratio kept and the image padded to a
                   centred square with Ultralytics' grey (114), as Ultralytics'
                   training letterboxes every image. For checkpoints that learnt
-                  from those bands and miss without them, such as a pitch
-                  keypoint model trained on broadcast frames. The square is
+                  from those bands and miss without them. The square is
                   resized to ``imgsz``, by default the size the checkpoint
                   was trained at.
             device: ``"cpu"``, ``"cuda"``, ``"cuda:1"``, ...; ``None`` picks CUDA if available.
@@ -259,10 +258,11 @@ class _TrainingBar:
             self._bar.update(1)
 
     def epoch_end(self, trainer: Any) -> None:
-        # Pose runs report boxes (B) first, then keypoints (P): show the last.
-        keys = [k for k in trainer.metrics or {} if k.startswith("metrics/mAP50(")]
-        if keys:
-            self._map50 = f"{trainer.metrics[keys[-1]]:.3f}"
+        # The box metric: a detection run reports mAP50(B); a run of another
+        # Ultralytics task adds its own after it (masks, keypoints), not shown.
+        metrics = trainer.metrics or {}
+        if "metrics/mAP50(B)" in metrics:
+            self._map50 = f"{metrics['metrics/mAP50(B)']:.3f}"
         if self._bar is not None:
             self._show(trainer)
         self._plot(trainer)
@@ -404,50 +404,6 @@ class YOLODetector(_UltralyticsModel):
         return self._apply_class_conf(detections)
 
 
-@MODELS.register(ModelType.YOLO_POSE)
-class YOLOPoseModel(_UltralyticsModel):
-    """Ultralytics YOLO pose model, e.g. pitch landmarks (32 keypoints per pitch).
-
-    ``predict`` returns ``sv.KeyPoints`` holding every detected instance, sorted by
-    box confidence (best first), with per-keypoint confidence. ``data`` carries
-    ``class_name`` and the instance boxes (``xyxy``, ``box_confidence``).
-
-    Example::
-
-        # This pitch model learnt on frames padded to a square at 960.
-        model = tv.load_model(
-            "yolo_pose", "models/pitch_yolo11m_pose.pt", conf=0.1, resize="square"
-        )
-        keypoints = model(frame)
-        best = keypoints.xy[0]  # (32, 2) pixel coordinates of the best pitch
-    """
-
-    name = ModelType.YOLO_POSE.value
-    task = Task.POSE
-    default_weights = "yolov8n-pose.pt"
-
-    def predict(self, image: np.ndarray) -> sv.KeyPoints:
-        """Detect keypoint instances in one BGR image."""
-        result, shift = self._run(image)
-        if result.keypoints is None or len(result.boxes) == 0:
-            return _keypoints_from_arrays(
-                np.zeros((0, 0, 3), np.float32),
-                np.zeros((0, 4), np.float32),
-                np.zeros(0, np.float32),
-                np.zeros(0, int),
-                self.class_names,
-            )
-        keypoints = result.keypoints.data.cpu().numpy()
-        keypoints[..., :2] += shift
-        return _keypoints_from_arrays(
-            keypoints,
-            result.boxes.xyxy.cpu().numpy() + np.tile(shift, 2),
-            result.boxes.conf.cpu().numpy(),
-            result.boxes.cls.cpu().numpy().astype(int),
-            self.class_names,
-        )
-
-
 def _trained_size(yolo: Any) -> int:
     """The square input size a checkpoint was trained at (``imgsz`` of its training arguments)."""
     size = getattr(yolo, "overrides", {}).get("imgsz")
@@ -459,41 +415,6 @@ def _trained_size(yolo: Any) -> int:
             f"records imgsz={size!r}; pass imgsz"
         )
     return size
-
-
-def _keypoints_from_arrays(
-    keypoints: np.ndarray,
-    xyxy: np.ndarray,
-    box_confidence: np.ndarray,
-    class_id: np.ndarray,
-    class_names: list[str],
-) -> sv.KeyPoints:
-    """Build ``sv.KeyPoints`` sorted by instance confidence from raw pose outputs.
-
-    ``keypoints`` is ``(M, K, 3)`` (x, y, confidence) or ``(M, K, 2)``; without a
-    per-keypoint confidence every keypoint gets its instance's confidence.
-    No instances give ``xy`` of shape ``(0, 0, 2)``, the only empty shape
-    ``sv.KeyPoints`` accepts.
-    """
-    if len(keypoints) == 0:
-        keypoints = keypoints.reshape(0, 0, keypoints.shape[-1])
-    order = np.argsort(-box_confidence, kind="stable")
-    keypoints, box_confidence = keypoints[order], box_confidence[order]
-    if keypoints.shape[-1] == 3:
-        confidence = keypoints[..., 2]
-    else:
-        confidence = np.repeat(box_confidence[:, None], keypoints.shape[1], axis=1)
-    class_id = class_id[order].astype(int)
-    return sv.KeyPoints(
-        xy=keypoints[..., :2].astype(np.float32),
-        confidence=confidence.astype(np.float32),
-        class_id=class_id,
-        data={
-            DetectionKey.CLASS_NAME: np.asarray(class_names, dtype=str)[class_id],
-            "xyxy": xyxy[order].astype(np.float32).reshape(-1, 4),
-            "box_confidence": box_confidence.astype(np.float32),
-        },
-    )
 
 
 _AMP_CHECK_WEIGHTS = "yolo11n.pt"
@@ -528,11 +449,11 @@ _METRIC_NAMES = {
     "mAP50": "map50",
     "mAP50-95": "map50_95",
 }
-_METRIC_PREFIXES = {"B": "", "P": "pose_", "M": "mask_"}
+_METRIC_PREFIXES = {"B": "", "M": "mask_"}
 
 
 def _standard_metrics(raw: dict[str, Any]) -> dict[str, float]:
-    """``metrics/mAP50-95(B)`` -> ``map50_95``, ``metrics/mAP50(P)`` -> ``pose_map50``, ..."""
+    """``metrics/mAP50-95(B)`` -> ``map50_95``, ``metrics/mAP50(M)`` -> ``mask_map50``, ..."""
     metrics = {}
     for key, value in raw.items():
         match = re.fullmatch(r"metrics/(.+)\((\w)\)", str(key))

@@ -24,6 +24,7 @@ Part of the [TactiFoot Vision notebooks](README.md); the
 import os
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pandas as pd
 
@@ -35,7 +36,7 @@ import tactifoot_vision as tv
 ## Loading a YOLO dataset
 
 `tv.load_dataset` takes a YOLO `data.yaml` (or its folder) or a COCO folder and
-picks the task from the files: detection here, pose further down. `summary()`
+reads its boxes and classes. `summary()`
 counts images and objects per split and class, which is the first thing to
 check for class imbalance.
 """)
@@ -159,59 +160,36 @@ print("YOLO -> COCO -> YOLO identical:", same_labels(original, labels_by_image(f
 """)
 
     nb.md("""
-## Pose datasets and `flip_idx`
+## Pitch line labels
 
-The pitch dataset is a pose task: each image has one `pitch` object with 32
-landmark keypoints `(x, y, visibility)`. `flip_idx` says which landmark takes
-the place of which when the image is mirrored (left corner ↔ right corner).
-Augmentation needs it to flip keypoints correctly, see
-[02_augmentation](02_augmentation.ipynb).
+The pitch line model learns from SoccerNet's line labels: points along every
+painted marking an image shows, named as SoccerNet names them. `load_pitch_lines`
+reads the Camera Calibration folders (and Game State Reconstruction clips) into
+a `lines` dataset. A sample has no objects; its annotations hold `lines`
+(marking -> pixel points), a training `weight` and a `view`. The shipped label
+rule keeps the training images whose names a horizontal mirror can swap
+(main-side and along-the-pitch views); valid is read as it is.
 """)
     nb.code("""
-pitch_data = tv.load_dataset(DATA / "keypoints")
-print(pitch_data)
-print("flip_idx:", pitch_data.flip_idx)
-pitch_data.summary()
+line_data = tv.load_pitch_lines(DATA / "SoccerNetCalibration", splits=("valid",))
+print(line_data)
+line_data.summary().T.head(8)
 """)
     nb.code("""
-tv.viz.show_samples(pitch_data, "train", n=3)
+tv.viz.show_samples(line_data, "valid", n=3)
 """)
     nb.md("""
-Visibility follows YOLO and COCO: 0 not labelled, 1 occluded, 2 visible. A
-broadcast frame shows only part of the pitch, so most landmarks of an image
-are unlabelled.
+The network learns a heatmap per marking: `render_line_targets` draws them,
+a Gaussian ridge one output cell wide around each marking's polyline.
 """)
     nb.code("""
-keypoints = np.concatenate([s.annotations.keypoints for s in pitch_data["train"]])
-visibility = pd.Series(keypoints[..., 2].ravel()).map(
-    {tv.data.NOT_LABELLED: "not labelled", tv.data.OCCLUDED: "occluded", tv.data.VISIBLE: "visible"}
-)
-print("keypoints per object:", keypoints.shape[1])
-visibility.value_counts(normalize=True).round(3).to_frame("share of keypoints")
-""")
-    nb.md("""
-COCO has no field for `flip_idx`; the writer stores it on the category so the
-round trip keeps it. Labelled keypoints come back unchanged; unlabelled ones
-are written as `0 0 0`, so only their visibility is compared.
-""")
-    nb.code("""
-pitch_subset = pitch_data.subset(20, seed=0)
-pitch_coco = tv.load_dataset(pitch_subset.to_coco(OUT / "pitch_coco"))
-print(pitch_coco)
-print("flip_idx kept:", pitch_coco.flip_idx == pitch_data.flip_idx)
-
-
-def keypoints_by_image(dataset):
-    return {(split, s.image_path.stem): s.annotations.keypoints for split in dataset.split_names for s in dataset[split]}
-
-
-before, after = keypoints_by_image(pitch_subset), keypoints_by_image(pitch_coco)
-same = before.keys() == after.keys()
-for key, kp in before.items():
-    labelled = kp[..., 2] > tv.data.NOT_LABELLED
-    same &= np.array_equal(kp[..., 2], after[key][..., 2])
-    same &= np.allclose(kp[labelled], after[key][labelled], atol=1e-3)
-print("keypoints kept:", bool(same))
+image, labels = line_data.read("valid", 0)
+small = cv2.resize(image, (640, 360), interpolation=cv2.INTER_AREA)
+scale = np.array([640 / image.shape[1], 360 / image.shape[0]])
+targets = tv.data.render_line_targets({k: v * scale for k, v in labels.lines.items()}, (320, 184), stride=2)
+print("markings shown:", sorted(labels.lines))
+heat = cv2.cvtColor((255 * targets.max(axis=0)).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+tv.show([small, heat], titles=["image (640 x 360)", "targets, all markings (stride 2)"], cols=2, width=12)
 """)
 
     nb.md("""
