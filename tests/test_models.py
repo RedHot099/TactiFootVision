@@ -627,8 +627,7 @@ class _FakeResizePredictor:
     names = {0: "player"}
     overrides = {"imgsz": 32}  # the size the checkpoint was trained at
 
-    def __init__(self, keypoints=None):
-        self.keypoints = keypoints
+    def __init__(self):
         self.images, self.calls = [], []
 
     def predict(self, image, **options):
@@ -638,12 +637,7 @@ class _FakeResizePredictor:
         self.images.append(image)
         self.calls.append(options)
         boxes = torch.tensor([[4.0, 8.0, 12.0, 16.0, 0.9, 0.0]])
-        keypoints = None if self.keypoints is None else torch.tensor(self.keypoints)
-        return [
-            Results(
-                image, path="frame", names=self.names, boxes=boxes, keypoints=keypoints
-            )
-        ]
+        return [Results(image, path="frame", names=self.names, boxes=boxes)]
 
 
 def _ultralytics_with(monkeypatch, cls, predictor, **options):
