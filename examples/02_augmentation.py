@@ -3,14 +3,16 @@
 Run from the repository root: ``uv run python examples/02_augmentation.py``
 """
 
+import logging
 import shutil
 from pathlib import Path
 
 import tactifoot_vision as tv
 from tactifoot_vision import augment as A
+from tactifoot_vision.enums import Split
 
 OUT = Path("outputs/examples/02_augment")
-tv.setup_logging("INFO")
+tv.setup_logging(logging.INFO)
 
 # Broadcast-style augmentations: camera zoom/pan, lighting, motion blur, compression.
 transform = A.Compose(
@@ -25,9 +27,9 @@ transform = A.Compose(
 print(transform)
 
 detection = tv.load_dataset("data/datasets/football_yolo").subset(
-    {"train": 40, "valid": 10}
+    {Split.TRAIN: 40, Split.VALID: 10}
 )
-keypoints = tv.load_dataset("data/keypoints").subset({"train": 40})
+keypoints = tv.load_dataset("data/keypoints").subset({Split.TRAIN: 40})
 
 # The same transform handles boxes and pitch keypoints (flip_idx swaps landmarks).
 OUT.mkdir(parents=True, exist_ok=True)
@@ -45,8 +47,8 @@ for folder in ("detection", "keypoints"):
 augmented = A.augment_dataset(detection, transform, OUT / "detection", copies=2, seed=0)
 print(augmented)
 print(augmented.summary())
-assert len(augmented["train"]) == 3 * len(detection["train"])
-assert augmented["valid"] == detection["valid"]  # validation data stays real
+assert len(augmented[Split.TRAIN]) == 3 * len(detection[Split.TRAIN])
+assert augmented[Split.VALID] == detection[Split.VALID]  # validation data stays real
 
 pose_augmented = A.augment_dataset(keypoints, transform, OUT / "keypoints", copies=1)
 print(pose_augmented)

@@ -229,6 +229,19 @@ def test_video_reader_and_frame_extraction(tmp_path):
         video.read(50)
 
 
+def test_frames_extracted_from_an_image_sequence_are_named_after_its_folder(
+    tmp_path,
+):
+    # A sequence's file stem is its pattern ("%06d"), no name for an image.
+    (tmp_path / "img1").mkdir()
+    for number in range(1, 7):
+        image = np.full((24, 32, 3), number * 20, np.uint8)
+        cv2.imwrite(str(tmp_path / "img1" / f"{number:06d}.jpg"), image)
+    paths = extract_frames(tmp_path / "img1" / "%06d.jpg", tmp_path / "out", stride=3)
+    assert [p.name for p in paths] == ["img1_000000.jpg", "img1_000003.jpg"]
+    assert all(p.is_file() for p in paths)
+
+
 def test_load_statsbomb_folder(tmp_path):
     events = [
         {

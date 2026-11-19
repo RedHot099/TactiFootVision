@@ -113,6 +113,21 @@ def test_pitch_vertices_and_scaling():
     assert statsbomb.vertices[15, 1] - 40 == pytest.approx(80 * 9.15 / 68)
 
 
+@pytest.mark.parametrize("size", [(105, 68), (120, 80)])
+def test_pitch_flip_idx_mirrors_the_landmarks_across_the_halfway_line(size):
+    pitch = SoccerPitch(*size)
+    # The pitch keypoint dataset's data.yaml: a horizontal flip of a frame
+    # swaps the two halves of the pitch.
+    assert pitch.flip_idx == (
+        24, 25, 26, 27, 28, 29, 22, 23, 21, 17, 18, 19, 20, 13, 14, 15,
+        16, 9, 10, 11, 12, 8, 6, 7, 0, 1, 2, 3, 4, 5, 31, 30,
+    )  # fmt: skip
+    mirrored = pitch.vertices * [-1, 1] + [pitch.length, 0]
+    np.testing.assert_allclose(
+        pitch.vertices[list(pitch.flip_idx)], mirrored, atol=1e-4
+    )
+
+
 @pytest.mark.parametrize("size", [(105, 68), (120, 80), (100, 64)])
 def test_arc_landmarks_lie_on_the_drawn_arcs(size):
     pitch = SoccerPitch(*size)

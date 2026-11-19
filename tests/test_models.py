@@ -1,9 +1,11 @@
 """Model backends: registry, class-name mapping, output conversion and (with -m model) real weights."""
 
+import inspect
 import json
 import logging
 import subprocess
 import sys
+import typing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,7 @@ import pytest
 import supervision as sv
 
 import tactifoot_vision as tv
+from tactifoot_vision.enums import ModelType
 from tactifoot_vision.models import (
     MODELS,
     RFDETRDetector,
@@ -542,6 +545,27 @@ def test_bad_backend_options_fail_before_the_run_folder_exists(
     assert not (tmp_path / "runs").exists()
 
 
+def test_train_and_load_model_take_a_model_type_member(tmp_path, monkeypatch):
+    # Typed with the enum, so an editor offers the backends (backlog 08).
+    for function, parameter in ((tv.load_model, "name"), (tv.train, "model")):
+        annotation = inspect.signature(function).parameters[parameter].annotation
+        assert ModelType in typing.get_args(annotation), function.__name__
+
+    def train(self, dataset, config, run_dir):
+        return TrainResult(self.name, "best.pt", run_dir, pd.DataFrame(), {})
+
+    monkeypatch.setattr(YOLODetector, "_load", lambda self, weights: None)
+    monkeypatch.setattr(YOLODetector, "_train", train)
+    assert isinstance(tv.load_model(ModelType.YOLO, device="cpu"), YOLODetector)
+    run = tv.train(
+        ModelType.YOLO,
+        _tiny_dataset(tmp_path),
+        output_dir=tmp_path / "runs",
+        device="cpu",
+    )
+    assert run.model_type == "yolo" and run.run_dir.parent == tmp_path / "runs"
+
+
 # ---------------------------------------------------- per-class confidence
 # (class, confidence) of what a detector finds in the image, best first
 FOUND = [("player", 0.6), ("player", 0.1), ("ball", 0.1), ("ball", 0.03)]
@@ -896,6 +920,55 @@ def test_train_yolo_pose_for_one_epoch(pitch, pitch_weights, tmp_path, monkeypat
     assert model.weights == result.weights  # the instance now holds the new weights
     keypoints = result.load(conf=0.05)(pitch.read("valid", 0)[0])
     assert isinstance(keypoints, sv.KeyPoints) and keypoints.xy.shape[1] == 32
+
+
+@pytest.mark.model
+def test_yolo_pose_learns_pitch_keypoints_from_synthetic_broadcast_views(
+    tmp_path, monkeypatch
+):
+    # Open data only: the notebooks train their pitch model this way. About
+    # a minute and a half on a desktop GPU, starting from the default COCO pose weights.
+    monkeypatch.chdir(tmp_path)
+    size = (640, 360)
+    clips = [
+        tv.data.synthetic_pitch_clip(
+            tmp_path / "clips" / f"views-{seed}" / "%06d.jpg",
+            tv.data.broadcast_homographies(40, size, seed=seed),
+            size,
+            line_width=0.25,
+            noise=4,
+            occluders=3,
+            seed=seed,
+        )
+        for seed in range(15)
+    ]
+    dataset = tv.Dataset.from_clips(
+        clips, train=0.66, valid=0.17, test=0.17, task="pose"
+    )
+    assert {s: len(dataset[s]) for s in dataset.split_names} == {
+        "train": 400,
+        "valid": 80,
+        "test": 120,
+    }
+
+    result = tv.train(
+        "yolo_pose",
+        dataset,
+        epochs=40,
+        mosaic=0.0,
+        batch_size=16,
+        imgsz=640,
+        workers=2,
+        output_dir=tmp_path / "runs",
+        amp=False,  # the AMP check would download yolo11n.pt
+        plots=False,
+    )
+    # The test clip took no part in training or in picking the best epoch.
+    metrics = tv.evaluate(result.load(conf=0.05), dataset, "test")
+
+    assert metrics.num_images == 120
+    assert metrics.detection_rate > 0
+    assert metrics.pck > 0.5  # 0.80 in the lab run that chose the recipe
 
 
 @pytest.mark.model

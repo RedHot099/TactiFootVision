@@ -36,7 +36,7 @@ reaches both modes without editing `cli.py` or `run_file.py`.
 
 | Area | Module | Main entry points |
 |---|---|---|
-| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `VideoReader`, `extract_frames`, `load_statsbomb`, `download_demo` → `DemoData` |
+| Data preparation | `tv.data` | `load_dataset`, `Dataset` (`from_clips`, `subset`, `resplit`, `merge`, `with_split`, `summary`, `to_yolo`, `to_coco`), `load_labelled_clip` / `synthetic_pitch_clip` → `LabelledClip` (`UNKNOWN_TEAM`), `broadcast_homographies`, `VideoReader`, `extract_frames`, `load_statsbomb`, `download_demo` → `DemoData` |
 | Data augmentation | `tv.augment` | `Compose`, `OneOf`, geometric and photometric transforms, `augment_dataset` |
 | Model training | `tv.models` (+ `tv.train`) | `load_model`, `train`, `Model.train`, `TrainConfig`, `TrainResult` |
 | Model inference | `tv.models`, `tv.tracking`, `tv.teams`, `tv.pitch`, `tv.pipeline` | `Model.predict`, `create_tracker`, `TeamClassifier`, `HomographyEstimator`, `Pipeline.run` → `PipelineResult` |
@@ -60,6 +60,8 @@ splits, modes, built-in registry names, run file sections) is a `StrEnum` in
 `tv.enums`, taken as a member or its plain string and written as the string
 ([ADR 0004](adr/0004-fixed-vocabularies-are-str-enums.md)); a built-in
 backend needs a member of its name enum, which a test keeps equal to the registry.
+User code imports the members from there, as the notebooks, examples and
+README do: `from tactifoot_vision.enums import ModelType, Split, TrackerType`.
 
 ## Layout
 
@@ -75,7 +77,8 @@ src/tactifoot_vision/
   data/               annotations.py (Task, Annotations), dataset.py (Sample, Dataset),
                       yolo.py, coco.py (format IO), labelled_clip.py (LabelledClip,
                       load_labelled_clip), soccernet.py, synthetic.py
-                      (synthetic_pitch_clip), video.py, statsbomb.py, demo.py
+                      (synthetic_pitch_clip, broadcast_homographies), video.py,
+                      statsbomb.py, demo.py
                       (download_demo: one SoccerTrack v2 match, laid out for the readers)
   augment/            base.py (Transform, Compose, OneOf), geometric.py, photometric.py,
                       dataset.py (augment_dataset)
@@ -139,7 +142,7 @@ examples/             one script per functional area
 * `data/labelled_clip.py`: `Truth`, `LabelledFrame`, `LabelledClip`, `load_labelled_clip`
 * `models/base.py`: `Model`, `TrainConfig`, `TrainResult`, `MODELS`, `load_model`, `train`
 * `tracking/base.py`: `Tracker`, `TRACKERS`, `create_tracker`
-* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order), `pitch_markings`, `HomographyEstimator`, `FisheyeUndistortion`, `LineFit`, `LineRefinerConfig`,
+* `pitch/`: `SoccerPitch` (32 landmark vertices in dataset order, their `flip_idx`), `pitch_markings`, `HomographyEstimator`, `FisheyeUndistortion`, `LineFit`, `LineRefinerConfig`,
   `visible_area(homography, frame_size)` (the frame outline on the pitch, `None`
   without a homography or when part of the frame lies beyond the horizon;
   freeze frames and the radar use it)
@@ -187,8 +190,10 @@ examples/             one script per functional area
   every link mode and loses nothing else. A marker entry that does not
   resolve inside the export folder (an absolute path, `..`, a symlinked
   folder) is refused, so a corrupt marker deletes nothing.
-* `Dataset.from_clips(clips, train, valid, test, seed)` builds a detection
-  dataset from one or more labelled clips with box truth. The fractions
+* `Dataset.from_clips(clips, train, valid, test, seed, task="detect")` builds a
+  detection dataset from one or more labelled clips with box truth, or with
+  `task="pose"` a pitch keypoint dataset from clips with calibration truth
+  (synthetic, SoccerNet GSR). The fractions
   count clips and round as in `resplit`, so every frame of a clip lands in
   the clip's split. Each frame with a box is a sample whose image is that
   frame's file of the clip's image sequence, referenced in place; the
@@ -205,6 +210,16 @@ examples/             one script per functional area
   without box truth or with another class, one read from a video file and
   the same clip given twice (paths resolved) are refused. Only `to_yolo` /
   `to_coco` with `link="copy"` copy frames.
+  A pose sample is a calibrated frame with one `pitch` object: its keypoints
+  are `SoccerPitch().vertices` mapped through the inverse of the frame's
+  homography (the readers' default pitch units), not labelled (`0 0 0`) when
+  outside the frame or beyond the horizon (on the far side from the frame
+  centre); its box bounds the part of the frame that shows the pitch (the
+  pitch rectangle cut at the horizon and at the frame edges); `flip_idx` is
+  `SoccerPitch.flip_idx` (the vertices mirrored across the halfway line, as
+  in the pitch keypoint dataset's `data.yaml`). Uncalibrated frames and
+  frames showing no pitch are left out; a clip without calibration truth is
+  refused, naming it.
 * `Dataset.with_split(split, samples)` returns a copy with one split replaced.
   `merge` needs the same task, classes and keypoint layout (keypoint count
   and `flip_idx`, which an export writes once for every sample).
@@ -214,7 +229,7 @@ examples/             one script per functional area
   `frames(start=0, end=None, stride=1)` → `(index, frame)` pairs, `read(index)`.
   `frames` checks the range when called (`start >= 0`, `end >= start`,
   `stride >= 1`); `read` refuses negative indices.
-* `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths.
+* `extract_frames(video, out_dir, start=0, end=None, stride=25)` → image paths, named `<video stem>_<index>` (an image sequence: after its folder).
   Frame ranges use `start`, `end` (exclusive, `None` = to the end) and
   `stride` everywhere: `VideoReader.frames`, `extract_frames`, `Pipeline.run`.
 * `Dataset.resplit(train, valid, test)` rounds the split boundaries
@@ -280,6 +295,20 @@ examples/             one script per functional area
   is a flat stand colour. `line_width` is in metres; `noise` (Gaussian, grey
   levels) and `occluders` (player-sized boxes per frame) are drawn from
   `seed`, so the same arguments give the same video. Frame sizes must be even.
+  A `path` that is an image-sequence pattern (`views/%06d.png`) writes image
+  `n` for frame `n` instead of a video and names the clip after the folder,
+  so `Dataset.from_clips` can reference its frames; images of the pattern
+  numbered beyond the new frames are refused.
+* `broadcast_homographies(count, frame_size=(1280, 720), *, seed=0)` → frame →
+  pitch homographies of random views of a broadcast camera: 10-35 m behind
+  the touchline `y = 68` (bottom of the frame), 15-30 m up, near the halfway
+  line, panned and tilted to a point of the pitch, 15-60° horizontal field
+  of view, roll within 2°. The frame centre always shows the pitch (the
+  renderer's precondition), and so does the middle column a quarter of the
+  way down, so far-side views zoom in instead of showing stands. Seeded.
+  Rendered with `synthetic_pitch_clip` and turned into a dataset with
+  `from_clips(task="pose")`, they give pitch keypoint training data without
+  private footage.
 * `load_statsbomb(path)` → DataFrame of StatsBomb 360 freeze-frame objects merged with event timing.
 
 ### Data augmentation (`tv.augment`)

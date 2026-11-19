@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -11,9 +12,12 @@ from tactifoot_vision.data import (
     LabelledFrame,
     Task,
     Truth,
+    broadcast_homographies,
     load_dataset,
     load_labelled_clip,
+    synthetic_pitch_clip,
 )
+from tactifoot_vision.pitch import SoccerPitch, pitch_to_frame
 
 CLASSES = ["player", "goalkeeper", "referee", "ball"]
 SEQINFO = """[Sequence]
@@ -408,3 +412,149 @@ def test_a_clip_without_a_boxed_frame_warns_and_keeps_its_split_slot(tmp_path, c
     # The empty clip took the other split's one slot, which stays empty.
     assert len(dataset.split_names) == 1
     assert len(dataset) == 2
+
+
+# ------------------------------------------------- pitch keypoints (Task.POSE)
+FRAME = (320, 180)
+
+
+def _calibrated(root, name, homographies):
+    """A synthetic clip of these frame -> pitch homographies, as an image sequence."""
+    return synthetic_pitch_clip(root / name / "%06d.png", homographies, FRAME)
+
+
+def _wide_view():
+    """Frame -> pitch homography of the centre: the far touchline on row 15, the near one on the bottom row."""
+    src = np.float32([[27.5, 68], [77.5, 68], [87.5, 0], [17.5, 0]])
+    dst = np.float32([[0, 180], [320, 180], [290, 15], [30, 15]])
+    return cv2.getPerspectiveTransform(dst, src)
+
+
+def test_a_calibrated_clip_becomes_pitch_keypoint_samples(tmp_path):
+    homographies = broadcast_homographies(4, FRAME, seed=0)
+    clip = _calibrated(tmp_path, "views", homographies)
+
+    dataset = Dataset.from_clips(clip, train=1, valid=0, task=Task.POSE)
+
+    pitch = SoccerPitch()
+    assert dataset.task is Task.POSE
+    assert dataset.class_names == ["pitch"]
+    assert dataset.num_keypoints == 32
+    assert dataset.flip_idx == pitch.flip_idx
+    samples = dataset["train"]
+    assert [s.image_path for s in samples] == [
+        tmp_path / "views" / f"{n:06d}.png" for n in range(4)
+    ]
+    shown = 0
+    for sample, homography in zip(samples, homographies, strict=True):
+        annotations = sample.annotations
+        assert (sample.width, sample.height) == FRAME
+        assert list(annotations.class_ids) == [0]
+        assert annotations.flip_idx == pitch.flip_idx
+        (keypoints,) = annotations.keypoints
+        expected = pitch_to_frame(pitch.vertices, homography)
+        inside = ((expected >= 0) & (expected <= FRAME)).all(axis=1)
+        np.testing.assert_array_equal(keypoints[:, 2], np.where(inside, 2, 0))
+        np.testing.assert_allclose(keypoints[inside, :2], expected[inside], atol=1)
+        np.testing.assert_array_equal(keypoints[~inside], 0)
+        shown += inside.sum()
+    assert 0 < shown < 4 * 32
+
+
+def test_the_pitch_box_holds_the_part_of_the_frame_that_shows_the_pitch(tmp_path):
+    # Stands above the far touchline (row 15); the pitch fills the rest.
+    clip = _calibrated(tmp_path, "wide", [_wide_view()])
+
+    (sample,) = Dataset.from_clips(clip, train=1, valid=0, task="pose")["train"]
+
+    np.testing.assert_allclose(sample.annotations.boxes, [[0, 15, 320, 180]], atol=1)
+
+
+def test_a_landmark_beyond_the_horizon_is_invisible(tmp_path):
+    # A camera standing at x = 50 on the pitch looks towards x = 105: the
+    # left half lies behind it, and through the homography alone its
+    # landmarks would land in the frame, mirrored.
+    to_frame = np.array([[160, 100, -11400], [40, 0, -1700], [1, 0, -50.0]])
+    clip = _calibrated(tmp_path, "horizon", [np.linalg.inv(to_frame)])
+    vertices = SoccerPitch().vertices
+    projected = pitch_to_frame(vertices, np.linalg.inv(to_frame))
+    behind = vertices[:, 0] < 50
+    mirrored = behind & ((projected >= 0) & (projected <= FRAME)).all(axis=1)
+    assert mirrored.any()
+
+    (sample,) = Dataset.from_clips(clip, train=1, valid=0, task="pose")["train"]
+
+    visibility = sample.annotations.keypoints[0, :, 2]
+    assert (visibility[behind] == 0).all()
+    assert (visibility[~behind] == 2).any()
+
+
+def test_a_frame_without_calibration_is_left_out(tmp_path):
+    clip = _calibrated(tmp_path, "gap", broadcast_homographies(3, FRAME, seed=0))
+    frames = list(clip.frames)
+    frames[1] = replace(frames[1], homography=None)
+    clip = replace(clip, frames=tuple(frames))
+
+    dataset = Dataset.from_clips(clip, train=1, valid=0, task="pose")
+
+    assert [s.image_path.name for s in dataset] == ["000000.png", "000002.png"]
+
+
+def test_every_frame_of_a_calibrated_clip_lands_in_one_split(tmp_path):
+    clips = [
+        _calibrated(tmp_path, f"views-{i}", broadcast_homographies(2, FRAME, seed=i))
+        for i in range(5)
+    ]
+
+    dataset = Dataset.from_clips(clips, train=0.6, valid=0.2, test=0.2, task="pose")
+
+    clips_per_split = {
+        split: {_clip_of(s, clips).name for s in dataset[split]}
+        for split in dataset.split_names
+    }
+    assert {s: len(c) for s, c in clips_per_split.items()} == {
+        "train": 3,
+        "valid": 1,
+        "test": 1,
+    }
+    assert {s: len(dataset[s]) for s in dataset.split_names} == {
+        "train": 6,
+        "valid": 2,
+        "test": 2,
+    }
+
+
+def test_a_clip_without_calibration_truth_is_refused_by_name(tmp_path):
+    clip = _clip(tmp_path, "SNMOT-001")  # boxes, no calibration
+
+    with pytest.raises(ValueError, match="SNMOT-001.*calibration"):
+        Dataset.from_clips(clip, task="pose")
+
+
+@pytest.mark.parametrize("fmt", ["yolo", "coco"])
+def test_the_pitch_keypoint_export_round_trips(tmp_path, fmt):
+    clips = [
+        _calibrated(
+            tmp_path / "clips", f"views-{i}", broadcast_homographies(3, FRAME, seed=i)
+        )
+        for i in range(2)
+    ]
+    dataset = Dataset.from_clips(clips, train=0.5, valid=0.5, task=Task.POSE)
+
+    again = load_dataset(getattr(dataset, f"to_{fmt}")(tmp_path / "out"))
+
+    assert again.task is Task.POSE
+    assert again.class_names == ["pitch"]
+    assert (again.num_keypoints, again.flip_idx) == (32, SoccerPitch().flip_idx)
+    assert again.split_names == dataset.split_names
+    for split in dataset.split_names:
+        before = sorted(dataset[split], key=lambda s: s.image_path.resolve())
+        after = sorted(again[split], key=lambda s: s.image_path.resolve())
+        assert [s.image_path.resolve() for s in after] == [s.image_path for s in before]
+        for a, b in zip(before, after, strict=True):
+            np.testing.assert_allclose(
+                b.annotations.boxes, a.annotations.boxes, atol=1e-2
+            )
+            np.testing.assert_allclose(
+                b.annotations.keypoints, a.annotations.keypoints, atol=1e-2
+            )

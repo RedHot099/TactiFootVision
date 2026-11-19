@@ -1,20 +1,14 @@
 """00_overview.ipynb: the whole workflow in a few cells, with links to the module notebooks."""
 
-from common import Notebook
+from common import (
+    DEMO_DETECTOR,
+    DETECTOR_EPOCHS,
+    DETECTOR_IMGSZ,
+    REPO_URL,
+    Notebook,
+)
 
 from tactifoot_vision.data.demo import ATTRIBUTION
-
-# The demo training run. Of three tried on the demo set for 10 epochs (YOLO11n
-# at 640 and at 1280, YOLO11s at 1920), only this one finds all 22 players of
-# the 4096-pixel panorama: MOTA 0.63 on the demo clip against 0.49 and 0.28,
-# for under a minute of training on an RTX 4070 Ti SUPER.
-WEIGHTS, IMGSZ, EPOCHS = "yolo11s.pt", 1920, 10
-
-
-REPO_URL = "https://github.com/RedHot099/TactiFootVision/blob/master"
-# The badge opens the notebook of the latest release, the package its first
-# cell installs; `master` may be ahead of it. A release moves it to its own tag.
-COLAB_URL = "https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb"
 
 
 def notebook() -> Notebook:
@@ -22,7 +16,7 @@ def notebook() -> Notebook:
     nb.md(f"""
 # TactiFoot Vision: from dataset to tactical map
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]({COLAB_URL})
+{nb.badge}
 
 `tactifoot_vision` turns football video into tactical data: who is where on
 the pitch, in which team, frame by frame. This notebook runs the whole
@@ -41,23 +35,38 @@ demo data needs your own free Hugging Face token (step 1 says why):
 3. In Colab, open Secrets (the key icon on the left), add a secret named
    `HF_TOKEN` with the token as its value and switch on notebook access.
 
-Each stage has its own notebook with the details. Those still read local data
-and run from a checkout only:
+Each stage has its own notebook with the details. Each opens in Colab too,
+with the same steps as this one:
 
-| stage | module | notebook |
-|---|---|---|
-| Data preparation | `tv.data` | [01_data]({REPO_URL}/notebooks/01_data.ipynb) |
-| Data augmentation | `tv.augment` | [02_augmentation]({REPO_URL}/notebooks/02_augmentation.ipynb) |
-| Training and evaluation | `tv.models`, `tv.evaluation` | [03_training_and_evaluation]({REPO_URL}/notebooks/03_training_and_evaluation.ipynb) |
-| Inference | `tv.tracking`, `tv.pitch`, `tv.teams`, `tv.pipeline` | [04_inference]({REPO_URL}/notebooks/04_inference.ipynb) |
-| Visualisation | `tv.viz` | [05_visualisation]({REPO_URL}/notebooks/05_visualisation.ipynb) |
+| stage | module | notebook | Colab |
+|---|---|---|---|
+| Data preparation | `tv.data` | [01_data]({REPO_URL}/notebooks/01_data.ipynb) | {Notebook("01_data").badge} |
+| Data augmentation | `tv.augment` | [02_augmentation]({REPO_URL}/notebooks/02_augmentation.ipynb) | {Notebook("02_augmentation").badge} |
+| Training and evaluation | `tv.models`, `tv.evaluation` | [03_training_and_evaluation]({REPO_URL}/notebooks/03_training_and_evaluation.ipynb) | {Notebook("03_training_and_evaluation").badge} |
+| Inference | `tv.tracking`, `tv.pitch`, `tv.teams`, `tv.pipeline` | [04_inference]({REPO_URL}/notebooks/04_inference.ipynb) | {Notebook("04_inference").badge} |
+| Visualisation | `tv.viz` | [05_visualisation]({REPO_URL}/notebooks/05_visualisation.ipynb) | {Notebook("05_visualisation").badge} |
 
 Everything is plain Python: build the objects you want and call them. The
 same steps exist as a command line (`tactifoot run`, `tactifoot train`,
 `tactifoot evaluate`), described under "Run files and the CLI" in
 [docs/ARCHITECTURE.md]({REPO_URL}/docs/ARCHITECTURE.md).
+
+A value from a fixed set, such as a backend, a split or a tracker, is a
+member of an enum in `tactifoot_vision.enums`, imported in the first cell:
+`from tactifoot_vision.enums import ModelType, Split, TrackerType`. Typing
+`ModelType.` lets the editor list the choices; the plain strings (`"yolo"`,
+`"train"`) work too.
 """)
-    nb.setup(standalone=True)
+    nb.setup(
+        imports="""
+import logging
+import os
+from pathlib import Path
+
+import tactifoot_vision as tv
+from tactifoot_vision.enums import AnnotatorStyle, EmbedderType, ModelType, Split, TrackerType
+"""
+    )
 
     nb.md("""
 ## 1. Data
@@ -79,7 +88,7 @@ the 22 players; this data has no ball, referee or goalkeeper boxes.
 demo = tv.data.download_demo(DATA / "demo")
 dataset = tv.load_dataset(demo.detect_yaml)
 print(dataset)
-tv.viz.show_samples(dataset, "train", n=2, cols=1)
+tv.viz.show_samples(dataset, Split.TRAIN, n=2, cols=1)
 """)
 
     nb.md("""
@@ -97,7 +106,7 @@ recipe = tv.augment.Compose([
     tv.augment.RandomAffine(degrees=3, translate=0.05),
     tv.augment.ColorJitter(),
 ])
-small = dataset.subset({"train": 40, "valid": 10}, seed=0)
+small = dataset.subset({Split.TRAIN: 40, Split.VALID: 10}, seed=0)
 shutil.rmtree(OUT / "augmented", ignore_errors=True)
 augmented = tv.augment.augment_dataset(small, recipe, OUT / "augmented", copies=1, progress=False)
 augmented.summary()
@@ -108,7 +117,7 @@ augmented.summary()
 
 `tv.train` works the same for every backend (`yolo`, `rfdetr`, `yolo_pose`).
 This run starts from the COCO weights Ultralytics publishes and trains for
-{EPOCHS} epochs on the demo frames, at {IMGSZ} pixels on the long side
+{DETECTOR_EPOCHS} epochs on the demo frames, at {DETECTOR_IMGSZ} pixels on the long side
 because the players are small: about a minute on a desktop GPU, several on
 a Colab T4. While it runs, one bar shows the epoch, the training loss and
 the validation mAP50, and the loss and metric curves under it are redrawn
@@ -116,13 +125,7 @@ after every epoch (`progress=False` gives the backend's own log instead;
 `tv.viz.plot_training(training)` draws the curves of a finished run). The
 score comes from `evaluate`, the same code for every backend.
 """)
-    nb.code(
-        f"""
-training = tv.train("yolo", dataset, weights="{WEIGHTS}", epochs={EPOCHS}, batch_size=16,
-                    imgsz={IMGSZ}, rect=True, output_dir=OUT / "runs", name="detector", exist_ok=True)
-""",
-        live_log=True,
-    )
+    nb.code(DEMO_DETECTOR, live_log=True)
     nb.code("""
 import pandas as pd
 
@@ -146,8 +149,8 @@ pipeline = tv.Pipeline(
     detector=detector,
     fixed_homography=demo.calibration,
     undistortion=demo.calibration,
-    tracker="bytetrack",
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    tracker=TrackerType.BYTETRACK,
+    team_classifier=tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP),
 )
 result = pipeline.run(clip.video_path, end=250, progress=False)  # 10 seconds
 print(len(result), "frames,", len(result.track_ids), "tracks")
@@ -182,7 +185,7 @@ then where each team spent the clip.
 frame_result = result[200]
 frame = tv.VideoReader(clip.video_path).read(frame_result.index)
 # The pitch lines are left out: they are straight in the model and curved in a fisheye frame.
-annotator = tv.viz.FrameAnnotator(style="video_game", draw_pitch_lines=False)
+annotator = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, draw_pitch_lines=False)
 tv.show(annotator.annotate(frame, frame_result), width=16)
 """)
     nb.code("""

@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tactifoot_vision.data.annotations import Task
 from tactifoot_vision.data.dataset import Dataset
-from tactifoot_vision.enums import DetectionKey, Split
+from tactifoot_vision.enums import DetectionKey, ModelType, Split
 from tactifoot_vision.registry import Registry
 from tactifoot_vision.utils import next_run_dir, resolve_device
 
@@ -269,8 +269,13 @@ def check_class_conf(class_conf: Mapping[str, float] | None) -> dict[str, float]
     return checked
 
 
-def load_model(name: str, weights: str | Path | None = None, **options: Any) -> Model:
-    """Create a registered model, e.g. ``load_model("yolo", "yolo11n.pt", conf=0.3)``."""
+def load_model(
+    name: ModelType | str, weights: str | Path | None = None, **options: Any
+) -> Model:
+    """Create a registered model, e.g. ``load_model(ModelType.YOLO, "yolo11n.pt", conf=0.3)``.
+
+    ``name`` is a built-in backend's member or any registered name (a plugin's).
+    """
     return MODELS.create(name, weights, **options)
 
 
@@ -279,14 +284,14 @@ def available_models() -> list[str]:
 
 
 def train(
-    model: str | Model,
+    model: ModelType | str | Model,
     dataset: Dataset,
     config: TrainConfig | None = None,
     *,
     weights: str | Path | None = None,
     **overrides: Any,
 ) -> TrainResult:
-    """Train a model given by name (``"yolo"``, ``"rfdetr"``, ...) or instance.
+    """Train a model given by name (``ModelType.YOLO``, ``"rfdetr"``, ...) or instance.
 
     ``weights`` picks the starting checkpoint when ``model`` is a name; the
     model is then loaded on the training ``device`` (from ``overrides`` or

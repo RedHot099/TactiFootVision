@@ -1,5 +1,12 @@
 # TactiFoot Vision
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
+[![PyPI](https://img.shields.io/pypi/v/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
+[![Python](https://img.shields.io/pypi/pyversions/tactifoot-vision)](https://pypi.org/project/tactifoot-vision/)
+[![License](https://img.shields.io/pypi/l/tactifoot-vision)](https://github.com/RedHot099/TactiFootVision/blob/master/LICENSE)
+[![CI](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/RedHot099/TactiFootVision/actions/workflows/ci.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 ![TactiFoot Vision on one attacking move](https://raw.githubusercontent.com/RedHot099/TactiFootVision/master/docs/media/tactifoot_promo.avif)
 
 TactiFoot Vision turns football match video into tactical data. It finds and follows every player and the ball, works out who plays for which team, and maps the action onto the pitch in metres.
@@ -12,10 +19,9 @@ TactiFoot Vision turns football match video into tactical data. It finds and fol
 ## Quick start
 
 To see the whole workflow without installing anything, open the overview
-notebook in Google Colab. It downloads an open demo match, trains a player
-detector for a few minutes, tracks the players and draws the tactical map:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)
+notebook in Google Colab (the badge above). It downloads an open demo match,
+trains a player detector for a few minutes, tracks the players and draws the
+tactical map.
 
 To use the package on your own footage, install it from PyPI (Python 3.13):
 
@@ -25,11 +31,12 @@ pip install tactifoot-vision
 
 ```python
 import tactifoot_vision as tv
+from tactifoot_vision.enums import EmbedderType, ModelType
 
 pipeline = tv.Pipeline(
-    detector=tv.load_model("yolo", "models/detector_yolo11l.pt"),
-    keypoint_model=tv.load_model("yolo_pose", "models/pitch_yolo11m_pose.pt"),
-    team_classifier=tv.teams.TeamClassifier("siglip"),
+    detector=tv.load_model(ModelType.YOLO, "models/detector_yolo11l.pt"),
+    keypoint_model=tv.load_model(ModelType.YOLO_POSE, "models/pitch_yolo11m_pose.pt"),
+    team_classifier=tv.teams.TeamClassifier(EmbedderType.SIGLIP),
 )
 result = pipeline.run("match.mp4")
 tv.viz.render_video(result, "match.mp4", "annotated.mp4")
@@ -50,12 +57,11 @@ uv sync                 # the package, its dev tools and the notebook kernel
 uv run pytest -q        # the fast suite
 ```
 
-The notebooks are generated from `notebooks/build/`. All but the overview
-notebook, and the examples, expect local data and weights; see the
-[notebooks README](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md).
+The notebooks are generated from `notebooks/build/`; the examples expect local
+data and weights. See the [notebooks README](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md).
 
 ## Learn more
 
-- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Start with `00_overview`, which also runs in Colab.
+- **[Notebooks](https://github.com/RedHot099/TactiFootVision/blob/master/notebooks/README.md):** executed walkthroughs of every module, from data to visualisation. Each opens in Colab; start with `00_overview`.
 - **[Architecture](https://github.com/RedHot099/TactiFootVision/blob/master/docs/ARCHITECTURE.md):** modules, interfaces, run files and the CLI.
 - **[Examples](https://github.com/RedHot099/TactiFootVision/tree/master/examples):** runnable scripts for each area and the CLI.

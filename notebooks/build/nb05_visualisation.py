@@ -1,12 +1,22 @@
 """05_visualisation.ipynb: `tv.viz` frame drawing, radar, video and analysis plots."""
 
-from common import Notebook
+from common import (
+    DEMO_DETECTOR,
+    REPO_URL,
+    SAM2_GUARD,
+    SAM2_INSTALL,
+    Notebook,
+)
+
+from tactifoot_vision.data.demo import ATTRIBUTION as DEMO_ATTRIBUTION
 
 
 def notebook() -> Notebook:
     nb = Notebook("05_visualisation")
-    nb.md("""
+    nb.md(f"""
 # Results visualisation with `tv.viz`
+
+{nb.badge}
 
 Two kinds of output:
 
@@ -19,43 +29,80 @@ Two kinds of output:
 Colours follow the team ids from the pipeline everywhere, so figures match the
 video.
 
-Part of the [TactiFoot Vision notebooks](README.md). The pipeline itself is
-explained in [04_inference](04_inference.ipynb); here it only produces
-something to draw.
+It runs on open data, the same from a checkout and on Google Colab: the
+SoccerTrack v2 demo match from `tv.data.download_demo` (about 300 MB,
+CC BY 4.0), on which a player detector trains for a few minutes as in the
+[overview]({REPO_URL}/notebooks/00_overview.ipynb). **On Colab**, pick a GPU first (Runtime,
+Change runtime type, T4 GPU); the notebook then takes about ten minutes. The
+SAM2 masks need SAM2, which has an install cell that is off by default (see
+Annotated frames).
+
+The demo data needs your own free Hugging Face token, as a Colab secret
+named `HF_TOKEN` (or the environment variable of that name, or a saved
+`hf auth login`). The [overview]({REPO_URL}/notebooks/00_overview.ipynb)
+lists the three steps to get one.
+
+Part of the [TactiFoot Vision notebooks]({REPO_URL}/notebooks/README.md). The
+pipeline itself is explained in
+[04_inference]({REPO_URL}/notebooks/04_inference.ipynb); here it only
+produces something to draw.
 """)
     nb.setup(
         imports="""
-import importlib.util
+import logging
 import os
 import shutil
 import subprocess
-import warnings
 from pathlib import Path
 
+import cv2
 import numpy as np
-from IPython.display import Video
 from matplotlib.figure import Figure
 
 import tactifoot_vision as tv
-""",
-        body="""
-video = tv.VideoReader(VIDEO)
-detector = tv.load_model("yolo", MODELS / "detector_yolo11l.pt", conf=0.3)
-# The pitch model with its own settings (see 04_inference).
-pitch_model = tv.load_model("yolo_pose", MODELS / "pitch_yolo11m_pose.pt", conf=0.1, resize="square")
-estimator = tv.pitch.HomographyEstimator(min_confidence=0.3, ransac_threshold=2.0, refine_with_lines=True)
+from tactifoot_vision.enums import AnnotatorStyle, EmbedderType, ModelType, ObjectKind, OverlayPosition, TrackerType
+"""
+    )
+
+    nb.md(f"""
+## Something to draw
+
+The demo match, the overview's detector, and the pipeline of
+[04_inference]({REPO_URL}/notebooks/04_inference.ipynb) on the first ten
+seconds of the demo clip: the camera does not move, so `fixed_homography`
+and `undistortion` take its calibration. The clip is one static fisheye
+camera that sees the whole pitch, 4096x1080 pixels, so the comparisons below
+show a window around the players.
+""")
+    nb.code("""
+demo = tv.data.download_demo(DATA / "demo")
+dataset = tv.load_dataset(demo.detect_yaml)
+clip = tv.data.load_labelled_clip(demo.clip_dir)
+video = tv.VideoReader(clip.video_path)
+print(dataset)
+""")
+    nb.code(DEMO_DETECTOR, live_log=True)
+    nb.code("""
+detector = training.load(conf=0.3)
 pipeline = tv.Pipeline(
     detector=detector,
-    keypoint_model=pitch_model,
-    homography=estimator,
-    team_classifier=tv.teams.TeamClassifier(embedder="siglip"),
+    fixed_homography=demo.calibration,
+    undistortion=demo.calibration,
+    tracker=TrackerType.BYTETRACK,
+    team_classifier=tv.teams.TeamClassifier(embedder=EmbedderType.SIGLIP),
 )
-result = pipeline.run(VIDEO, end=250, progress=False)
-frame_result = result[200]
+result = pipeline.run(clip.video_path, end=250, progress=False)  # 10 seconds
+FRAME = 200  # the frame most cells draw
+frame_result = result[FRAME]
 frame = video.read(frame_result.index)
 print(len(result), "frames,", len(result.track_ids), "tracks")
-""",
-    )
+
+# 1280x540 pixels around the middle of the players
+centre_x, centre_y = np.median((frame_result.detections.xyxy[:, :2] + frame_result.detections.xyxy[:, 2:]) / 2, axis=0)
+left = int(np.clip(centre_x - 640, 0, video.width - 1280))
+top = int(np.clip(centre_y - 270, 0, video.height - 540))
+window = np.s_[top : top + 540, left : left + 1280]
+""")
 
     nb.md("""
 ## Annotated frames
@@ -64,24 +111,55 @@ print(len(result), "frames,", len(result.track_ids), "tracks")
 ellipses at the players' feet and a triangle over the ball. Both label people
 with their track id, colour them by team (referees in the default colour),
 draw the confident pitch keypoints and project the pitch lines with the
-homography. The demo clip has no goalkeeper or referee track and the ball is
-visible in only a few frames, so their styles are described rather than shown.
+homography.
+
+Two things the demo cannot show. It labels the 22 players only, so there
+is no ball, goalkeeper or referee: the ball's triangle, its trail and the
+ball-carrier ring below draw nothing here, and on footage with a ball
+detector the same calls draw them. And the pitch lines are off on the frame
+as recorded (`draw_pitch_lines=False`, as in the overview), because the
+demo's homography holds in the undistorted image, where the lines are
+straight, while this fisheye frame bends them; they are drawn on the
+undistorted frame further down.
 """)
     nb.code("""
-styles = {style: tv.viz.FrameAnnotator(style=style).annotate(frame, frame_result) for style in ("standard", "video_game")}
-tv.show(list(styles.values()), titles=list(styles), cols=1, width=11)
+styles = {
+    style: tv.viz.FrameAnnotator(style=style, draw_pitch_lines=False).annotate(frame, frame_result)
+    for style in (AnnotatorStyle.STANDARD, AnnotatorStyle.VIDEO_GAME)
+}
+tv.show(list(styles.values()), titles=list(styles), cols=1, width=16)
 """)
     nb.md("""
 Every layer has a flag: `draw_boxes`, `draw_labels`, `draw_keypoints`,
 `draw_pitch_lines` and `draw_masks`. Turning one off at a time shows what each
-adds. Keypoints are orange where the homography agrees with them and red where
-it does not, a quick check of the pitch fit.
+adds. `draw_keypoints` draws the pitch landmarks a keypoint model found,
+orange where the homography agrees with them and red where it does not, a
+quick check of the pitch fit; with a fixed homography no keypoint model runs,
+so the demo has none (04_inference trains one on rendered pitch views).
 """)
     nb.code("""
-flags = ["draw_boxes", "draw_labels", "draw_keypoints", "draw_pitch_lines"]
-views = [tv.viz.FrameAnnotator(**{flag: False}).annotate(frame, frame_result) for flag in flags]
-only_pitch = tv.viz.FrameAnnotator(draw_boxes=False, draw_labels=False).annotate(frame, frame_result)
-tv.show([*views, only_pitch], titles=[f"{flag}=False" for flag in flags] + ["pitch layers only"], cols=2, width=13)
+views = {
+    "all layers": tv.viz.FrameAnnotator(draw_pitch_lines=False).annotate(frame, frame_result),
+    "draw_boxes=False": tv.viz.FrameAnnotator(draw_boxes=False, draw_pitch_lines=False).annotate(frame, frame_result),
+    "draw_labels=False": tv.viz.FrameAnnotator(draw_labels=False, draw_pitch_lines=False).annotate(frame, frame_result),
+}
+tv.show([view[window] for view in views.values()], titles=list(views), cols=1, width=12)
+""")
+    nb.md("""
+`draw_pitch_lines` projects the pitch markings into the frame through the
+inverse homography. `cv2.fisheye.undistortImage`, with the camera of the
+demo's `FisheyeUndistortion`, gives the undistorted frame the homography is
+of, and there the projected lines lie on the painted ones. The people's
+boxes are in the frame as recorded, so this view draws the pitch layers
+only.
+""")
+    nb.code("""
+undistortion = tv.pitch.FisheyeUndistortion.load(demo.calibration)
+undistorted = cv2.fisheye.undistortImage(
+    frame, undistortion.camera, undistortion.distortion, Knew=undistortion.new_camera)
+pitch_layers = tv.viz.FrameAnnotator(draw_boxes=False, draw_labels=False)
+tv.show(pitch_layers.annotate(undistorted, frame_result), titles="pitch layers only, on the undistorted frame",
+        width=16)
 """)
     nb.md("""
 Colours and thresholds are arguments too: `team_colors`, `default_color`,
@@ -89,10 +167,10 @@ Colours and thresholds are arguments too: `team_colors`, `default_color`,
 """)
     nb.code("""
 custom = tv.viz.FrameAnnotator(
-    style="video_game", team_colors=["#E63946", "#F1FAEE"], default_color="#222222",
-    ball_color="#FFD400", pitch_line_color="#A8DADC", keypoint_threshold=0.8,
+    style=AnnotatorStyle.VIDEO_GAME, team_colors=["#E63946", "#F1FAEE"], default_color="#222222",
+    ball_color="#FFD400", pitch_line_color="#A8DADC", keypoint_threshold=0.8, draw_pitch_lines=False,
 )
-tv.show(custom.annotate(frame, frame_result), width=11)
+tv.show(custom.annotate(frame, frame_result)[window], width=12)
 """)
     nb.md("""
 `trail_seconds` draws the ball's recent path. Drawing keeps no memory between
@@ -102,22 +180,20 @@ position is projected through the current frame's homography, so the trail
 stays on the grass when the camera pans. It breaks where the ball was not
 seen, fades to nothing at `trail_seconds`, and is not drawn on a frame
 without a homography. Positions that `track_ball` filled in draw like any
-other. Here: the frame with the most ball positions in the second before it.
+other.
 """)
     nb.code("""
 TRAIL = 1.0
-trail_result = max(result, key=lambda f: sum(len(h.ball) > 0 for h in result.window(f.index, TRAIL)))
-trail_frame = video.read(trail_result.index)
-trail = tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL).annotate(
-    trail_frame, trail_result, history=result.window(trail_result.index, TRAIL))
-tv.show(trail, titles=f"trail_seconds={TRAIL} at frame {trail_result.index}", width=11)
+trail = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, trail_seconds=TRAIL, draw_pitch_lines=False).annotate(
+    frame, frame_result, history=result.window(frame_result.index, TRAIL))
+tv.show(trail[window], titles=f"trail_seconds={TRAIL}", width=12)
 """)
     nb.md("""
 `annotate(..., ball_carrier=tracker_id)` rings the ball carrier at their
 feet in `ball_color`. `tv.analysis.ball_carriers(result)` gives one
 `tracker_id`, or `None` for a loose ball, per frame of `result.frames`; `None`
 or an id nobody in the frame has draws no ring. Here: the first frame with a
-carrier.
+carrier, if there is one.
 """)
     nb.code("""
 carriers = tv.analysis.ball_carriers(result)
@@ -126,34 +202,35 @@ if carried is None:
     print("no frame of the demo clip has a ball carrier")
 else:
     carrier_result, carrier = carried
-    ring = tv.viz.FrameAnnotator(style="video_game").annotate(
+    ring = tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, draw_pitch_lines=False).annotate(
         video.read(carrier_result.index), carrier_result, ball_carrier=carrier)
-    display(tv.show(ring, titles=f"ball_carrier={carrier} at frame {carrier_result.index}", width=11))
+    display(tv.show(ring, titles=f"ball_carrier={carrier} at frame {carrier_result.index}", width=16))
 """)
-    nb.md("""
+    nb.md(f"""
 `draw_masks=True` draws segmentation masks, which only a mask tracker (SAM2)
 produces and only `Pipeline(keep_masks=True)` keeps. With a box tracker there
-are no masks; the annotator then warns once and draws the rest.
+are no masks; the annotator then warns once and draws the rest. SAM2 is not
+on PyPI and needs a GPU: as in
+[04_inference]({REPO_URL}/notebooks/04_inference.ipynb), set
+`INSTALL_SAM2 = True` in the next cell to install it here, in about a
+minute on Colab. Without it the SAM2 cell prints one line and shows the
+warning instead. The saved outputs of this notebook come from a run with
+SAM2.
 """)
+    nb.code(SAM2_INSTALL)
+    nb.code(SAM2_GUARD)
     nb.code("""
-SAM2_REPO = ROOT / "external" / "segment-anything-2-real-time"
-SAM2_CHECKPOINT = SAM2_REPO / "checkpoints" / "sam2.1_hiera_tiny.pt"
-if SAM2_CHECKPOINT.is_file() and importlib.util.find_spec("hydra") is not None:
-    warnings.filterwarnings("ignore", message="Falling back to the Python connected-components")
-    sam2 = tv.tracking.create_tracker(
-        "sam2",
-        checkpoint=SAM2_CHECKPOINT,
-        config=SAM2_REPO / "sam2" / "configs" / "sam2.1" / "sam2.1_hiera_t.yaml",
-    )
+if has_sam2:
     masked = tv.Pipeline(
-        detector=detector, keypoint_model=pitch_model, homography=estimator, tracker=sam2, keep_masks=True
-    ).run(
-        VIDEO, start=frame_result.index - 30, end=frame_result.index + 1, progress=False)
-    masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_keypoints=False).annotate(frame, masked[-1])
-    display(tv.show(masks_view, titles="SAM2 masks", width=11))
+        detector=detector, fixed_homography=demo.calibration, undistortion=demo.calibration,
+        tracker=sam2_tracker, keep_masks=True,
+    ).run(clip.video_path, start=frame_result.index - 30, end=frame_result.index + 1, progress=False)
+    masks_view = tv.viz.FrameAnnotator(draw_masks=True, draw_keypoints=False, draw_pitch_lines=False).annotate(
+        frame, masked[-1])
+    display(tv.show(masks_view[window], titles="SAM2 masks", width=12))
 else:
-    print("SAM2 is not available (see 04_inference); without masks draw_masks only warns:")
-    display(tv.show(tv.viz.FrameAnnotator(draw_masks=True).annotate(frame, frame_result), width=11))
+    no_masks = tv.viz.FrameAnnotator(draw_masks=True, draw_pitch_lines=False).annotate(frame, frame_result)
+    display(tv.show(no_masks[window], titles="draw_masks=True without masks", width=12))
 """)
 
     nb.md("""
@@ -170,15 +247,15 @@ tv.show([radar.draw(frame_result), radar_ids.draw(frame_result)], titles=["Pitch
         cols=2, width=13)
 """)
     nb.md("""
-`draw_points` puts arbitrary pitch positions on the radar. With
-`SoccerPitch(120, 80)` it draws a StatsBomb freeze frame in StatsBomb units.
+`draw_points` puts arbitrary pitch positions on the radar, for example
+positions from another source. Here: the pitch positions of everyone in the
+frame, all in one colour.
 """)
     nb.code("""
-statsbomb = tv.data.load_statsbomb(DATA / "statsbomb")
-event = statsbomb[statsbomb["event_uuid"] == statsbomb["event_uuid"].iloc[0]]
-statsbomb_radar = tv.viz.PitchRadar(pitch=tv.SoccerPitch(120, 80))
-colors = np.where(event["teammate"], "#00BFFF", "#FF1493").tolist()
-tv.show(statsbomb_radar.draw_points(np.array(event["pitch_location"].tolist()), colors), width=7)
+tracks = result.to_dataframe()
+in_frame = tracks[(tracks["frame"] == frame_result.index) & tracks["pitch_x"].notna()]
+tv.show(radar.draw_points(in_frame[["pitch_x", "pitch_y"]].to_numpy(), "#FFD400"),
+        titles="draw_points: positions of everyone in the frame", width=7)
 """)
     nb.md("""
 `trail_seconds` draws a tail behind each person, so the teams' movement shows.
@@ -188,17 +265,21 @@ colour (the default colour without a team), breaks where the track was not
 seen, fades to nothing at `trail_seconds` and lies under the dots.
 """)
     nb.code("""
-tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(trail_result, history=result.window(trail_result.index, 2.0))
-tv.show(tails, titles=f"trail_seconds=2.0 at frame {trail_result.index}", width=7)
+tails = tv.viz.PitchRadar(trail_seconds=2.0).draw(frame_result, history=result.window(frame_result.index, 2.0))
+tv.show(tails, titles="trail_seconds=2.0", width=7)
 """)
     nb.md("""
 `draw_visible_area` outlines the frame's visible area, the part of the pitch
-the camera shows, under the players, in `visible_area_color`. It is `tv.pitch.visible_area`, the
-polygon freeze frames export, and needs the frame size: pass
-`frame_size=result.frame_size`, or the `frame`. There is no outline without a
-homography or when part of the frame lies beyond the horizon.
+the camera shows, under the players, in `visible_area_color`. It is
+`tv.pitch.visible_area`, the polygon freeze frames export, and needs the
+frame size: pass `frame_size=result.frame_size`, or the `frame`. There is no
+outline without a homography or when part of the frame lies beyond the
+horizon. On the demo the homography is of the undistorted image, so the
+outline of the fisheye frame is approximate.
 """)
     nb.code("""
+area = tv.pitch.visible_area(frame_result.homography, result.frame_size)
+print("visible area:", "none (part of the frame lies beyond the horizon)" if area is None else area.round(1).tolist())
 visible = tv.viz.PitchRadar(draw_visible_area=True).draw(frame_result, frame_size=result.frame_size)
 tv.show(visible, titles="draw_visible_area=True", width=7)
 """)
@@ -212,60 +293,62 @@ the window, or too fast) gets no arrow.
 """)
     nb.code("""
 velocities = tv.analysis.velocities(result)
-moving_at = next(i for i, f in enumerate(result) if f.index == trail_result.index)
-arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(trail_result, velocities=velocities[moving_at])
-tv.show(arrows, titles=f"velocity_seconds=1.0 at frame {trail_result.index}", width=7)
+arrows = tv.viz.PitchRadar(velocity_seconds=1.0).draw(frame_result, velocities=velocities[FRAME])
+tv.show(arrows, titles="velocity_seconds=1.0", width=7)
 """)
     nb.md("""
 `overlay` pastes the radar onto the frame: `position` picks the corner,
 `width_fraction` the size and `alpha` the opacity.
 """)
     nb.code("""
-annotated = styles["video_game"]
+annotated = styles[AnnotatorStyle.VIDEO_GAME]
 image = radar.draw(frame_result)
 tv.show([
     tv.viz.overlay(annotated, image),
-    tv.viz.overlay(annotated, image, position="top-right", width_fraction=0.35, alpha=1.0),
-], titles=["default: bottom-center, 25%, alpha 0.8", "top-right, 35%, opaque"], cols=2, width=14)
+    tv.viz.overlay(annotated, image, position=OverlayPosition.TOP_RIGHT, width_fraction=0.35, alpha=1.0),
+], titles=["default: bottom-center, 25%, alpha 0.8", "top-right, 35%, opaque"], cols=1, width=16)
 """)
 
     nb.md("""
 ## Rendering a video
 
 `render_video` re-reads the source video and writes every processed frame,
-annotated and with the radar overlay, to an mp4. It refuses a video whose
-frame size differs from the result's and a radar or annotator drawing another
-pitch, and warns when the frame rates differ.
-Pass your own annotator and radar, or `radar=False` for none. With a
-`trail_seconds` annotator or radar, `render_video` passes each frame its
-`history` itself, for the longer of the two, and the radar the frame size
-its visible area needs. A `velocity_seconds` radar gets each frame's
-`tv.analysis.velocities` too. `ball_carriers`, one per frame as
-`tv.analysis.ball_carriers` returns them, rings each frame's carrier.
+annotated and with the radar overlay, to an mp4: here the ten seconds the
+pipeline ran on. It refuses a video whose frame size differs from the
+result's and a radar or annotator drawing another pitch, and warns when the
+frame rates differ. Pass your own annotator and radar, or `radar=False` for
+none. With a `trail_seconds` annotator or radar, `render_video` passes each
+frame its `history` itself, for the longer of the two, and the radar the
+frame size its visible area needs. A `velocity_seconds` radar gets each
+frame's `tv.analysis.velocities` too. `ball_carriers`, one per frame as
+`tv.analysis.ball_carriers` returns them, rings each frame's carrier. The
+video stays in `OUT`, outside the notebook: three of its frames show here.
 """)
     nb.code("""
 video_path = tv.viz.render_video(
-    result, VIDEO, OUT / "annotated.mp4",
-    annotator=tv.viz.FrameAnnotator(style="video_game", trail_seconds=TRAIL),
+    result, clip.video_path, OUT / "annotated.mp4",
+    annotator=tv.viz.FrameAnnotator(style=AnnotatorStyle.VIDEO_GAME, trail_seconds=TRAIL, draw_pitch_lines=False),
     radar=tv.viz.PitchRadar(draw_ids=True, trail_seconds=2.0, draw_visible_area=True, velocity_seconds=1.0),
-    overlay_position="bottom-right", overlay_width_fraction=0.3,
+    overlay_position=OverlayPosition.BOTTOM_RIGHT, overlay_width_fraction=0.3,
     ball_carriers=carriers, progress=False,
 )
 rendered = tv.VideoReader(video_path)
 print(rendered)
-tv.show([rendered.read(i) for i in (0, 120, 240)], titles=["0 s", "4.8 s", "9.6 s"], cols=3, width=14)
+shown = (0, len(rendered) // 2, len(rendered) - 1)
+tv.show([rendered.read(i) for i in shown], titles=[f"{i / rendered.fps:.1f} s" for i in shown], cols=1, width=16)
 """)
     nb.md("""
 OpenCV writes MPEG-4 Part 2, which browsers do not play. With `ffmpeg`
-installed the next cell re-encodes a small H.264 copy and links it below
-(the video file stays in `outputs/`, it is not stored in the notebook).
+installed (Colab has it) the next cell re-encodes a small H.264 copy next to
+it, to download and play anywhere; on Colab it is in the Files panel on the
+left.
 """)
     nb.code("""
 if shutil.which("ffmpeg"):
     web_video = video_path.with_name("annotated_h264.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path), "-vf", "scale=960:-2",
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", str(web_video)], check=True)
-    display(Video(str(web_video), width=960))
+    print(f"{web_video} ({web_video.stat().st_size / 1e6:.1f} MB)")
 else:
     print("ffmpeg not found; open", video_path, "in a video player")
 """)
@@ -295,14 +378,13 @@ tv.viz.plot_tracks(result, track_ids=result.track_ids[:3])
 """)
     nb.md("""
 `plot_distance_histogram` plots any set of distances with the median marked.
-It is made for `compare_with_statsbomb` errors (see
-[04_inference](04_inference.ipynb)); here it shows how far each track moved
-during the clip. Frame-to-frame jitter of the homography adds to these
+Here it shows how
+far each track moved during the ten seconds. Detection jitter adds to these
 distances, so they overestimate what the players really ran.
 """)
     nb.code("""
 tracks = result.to_dataframe()
-people = tracks[(tracks["object"] == "person") & tracks["pitch_x"].notna()].sort_values("frame")
+people = tracks[(tracks["object"] == ObjectKind.PERSON) & tracks["pitch_x"].notna()].sort_values("frame")
 steps = people.groupby("track_id")[["pitch_x", "pitch_y"]].diff()
 covered = np.hypot(steps["pitch_x"], steps["pitch_y"]).groupby(people["track_id"]).sum()
 tv.viz.plot_distance_histogram(covered[covered > 0], bins=15, title="Distance covered per track in 10 s",
@@ -310,7 +392,8 @@ tv.viz.plot_distance_histogram(covered[covered > 0], bins=15, title="Distance co
 """)
     nb.md("""
 `draw_pitch` gives an empty pitch to plot anything on, in pitch units with `y`
-pointing down like the radar. Here: every player position of the clip.
+pointing down like the radar. Here: every player position of the ten
+seconds.
 """)
     nb.code("""
 fig = tv.viz.draw_pitch(pitch=result.pitch, size=8)
@@ -323,8 +406,14 @@ optional titles, `cols` per row and `width` in inches. Images are BGR by
 default (pass `bgr=False` for RGB arrays); 2-D arrays show in grayscale.
 """)
     nb.code("""
-small = [video.read(i)[::4, ::4] for i in (0, 500, 1000)]
+small = [video.read(round(seconds * video.fps))[::4, ::4] for seconds in (0, 10, 20)]
 gray = [img.mean(axis=2).astype(np.uint8) for img in small]
-tv.show(small + gray, titles=["0 s", "20 s", "40 s"] * 2, cols=3, width=10)
+tv.show(small + gray, titles=["0 s", "10 s", "20 s"] * 2, cols=3, width=14)
+""")
+
+    nb.md(f"""
+## Sources
+
+{DEMO_ATTRIBUTION}
 """)
     return nb

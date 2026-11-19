@@ -6,19 +6,21 @@ own.
 
 | Notebook | Shows |
 |---|---|
-| [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells on the demo data: download, augmentation, a short training run, the pipeline, a tactical map. Needs no local data or weights and also runs in Colab. Links to the others. |
-| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `load_statsbomb`, `show_samples`. |
+| [`00_overview`](00_overview.ipynb) | The whole workflow in a few cells on the demo data: download, augmentation, a short training run, the pipeline, a tactical map. Links to the others. |
+| [`01_data`](01_data.ipynb) | `tv.data`: loading YOLO and COCO datasets, `summary`, `subset`, `resplit`, `merge`, `with_split`, `to_yolo` / `to_coco` with a round-trip check, pose datasets and `flip_idx`, `VideoReader`, `extract_frames`, `show_samples`. |
 | [`02_augmentation`](02_augmentation.ipynb) | `tv.augment`: every geometric and photometric transform before and after, `Compose` and `OneOf`, boxes and keypoints under flips and affine transforms, `augment_dataset`, `show_augmentations`. |
 | [`03_training_and_evaluation`](03_training_and_evaluation.ipynb) | `tv.models` and `tv.evaluation`: one `train` call for `yolo`, `rfdetr` and `yolo_pose` (short demo runs), `TrainConfig` and backend options, `TrainResult`, `plot_training`, `evaluate` for boxes and keypoints, `plot_metrics`. |
-| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch` and `HomographyEstimator`, team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load, `compare_with_statsbomb`. |
+| [`04_inference`](04_inference.ipynb) | Single-image `predict`, trackers (ByteTrack; SAM2 when installed), `SoccerPitch` and `HomographyEstimator`, team classification, the full `Pipeline` with `keep_masks`, `PipelineResult` tables, freeze frames, `export`, save/load. |
 | [`05_visualisation`](05_visualisation.ipynb) | `tv.viz`: `FrameAnnotator` styles and draw flags, `PitchRadar`, `overlay`, `render_video`, `plot_heatmap`, `plot_tracks`, `plot_distance_histogram`, `draw_pitch`, `show`. |
 
 ## Opening them
 
-`00_overview` opens in Google Colab, as it is at the latest release, from its
-badge ([link](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)):
-there its first cell installs the package from PyPI. It needs a GPU runtime
-and a Hugging Face token for the demo data (below). From a checkout:
+Every notebook opens in Google Colab, as it is at the latest release, from the
+badge in its first cell (the overview's is
+[here](https://colab.research.google.com/github/RedHot099/TactiFootVision/blob/v0.3.0/notebooks/00_overview.ipynb)):
+there its first cell installs the package from PyPI. Pick a GPU runtime and
+add a Hugging Face token for the demo data (below). None of them needs local
+data or weights. From a checkout:
 
 ```bash
 uv run --with jupyterlab jupyter lab notebooks/
@@ -66,30 +68,33 @@ credit:
 > cut to a short excerpt, frames extracted, annotations converted, and model
 > outputs drawn by tactifoot_vision.
 
-## Local data and weights
+## What the notebooks download
 
-Datasets, weights and videos are not tracked by git. Notebooks `01` to `05`
-and the examples expect them under the repository root (symlinks work):
+Nothing is read from local data or weights, and nothing is tracked by git
+(`data/`, `models/` and `outputs/` stay local; the notebooks write under
+`data/` and `outputs/notebooks/<notebook>/` of the working directory, which is
+`/content` on Colab).
 
-```
-data/datasets/football_yolo/      YOLO detection dataset (ball, goalkeeper, player, referee)
-data/keypoints/                   YOLO-pose pitch dataset (32 landmarks, flip_idx)
-data/statsbomb/                   StatsBomb 360 *_events.json + *_360.json
-data/videos/broadcast_60s.mp4     one minute of match footage
-models/detector_yolo11l.pt        trained detector (YOLO11l, 1280)
-models/rfdetr_smoketest_sample.pth  RF-DETR base fine-tuned for one epoch on a sample (football classes, no accuracy)
-models/pitch_yolo11m_pose.pt      trained pitch keypoint model (YOLO11m pose, 960; loaded with conf=0.1, resize="square")
-external/segment-anything-2-real-time/   optional, for the SAM2 tracker
-```
+- The demo match from SoccerTrack v2 (above, needs the token): every notebook.
+- Synthetic pitch frames, rendered locally in seconds: the keypoint training
+  and homography parts of `01`, `03` and `04`.
+- Starting weights for the demo training runs (`yolo11n.pt`, `yolov8n-pose.pt`)
+  go to `~/.cache/tactifoot_vision/`. The team embedders use their libraries'
+  caches: SigLIP the Hugging Face cache (`~/.cache/huggingface/`, moved by
+  `HF_HOME`), ResNet the torchvision hub cache (`~/.cache/torch/hub/`, moved by
+  `TORCH_HOME`).
 
-Downloads happen on first use. Starting weights for the demo training runs
-(`yolo11n.pt`, `yolov8n-pose.pt`, RF-DETR base) go to
-`~/.cache/tactifoot_vision/`. The team embedders use their libraries' caches:
-SigLIP the Hugging Face cache (`~/.cache/huggingface/`, moved by `HF_HOME`),
-ResNet the torchvision hub cache (`~/.cache/torch/hub/`, moved by
-`TORCH_HOME`). The SAM2 parts need `uv sync --extra sam2`, the SAM2
-repository in `external/` and its `sam2.1_hiera_tiny.pt` checkpoint; without
-any of them those cells say so and skip.
+Two parts are optional, and without them their cells say so and skip:
+
+- RF-DETR (`03`, `04`) needs the `rfdetr` extra (`uv sync --extra rfdetr` in a
+  checkout). It is not installed on Colab, where it would downgrade numpy and
+  transformers.
+- The SAM2 tracker (`04`) needs a GPU and `uv sync --extra sam2` in a checkout,
+  or, on Colab, the optional install cell (set `INSTALL_SAM2 = True`), which fetches the SAM2 repository and
+  its `sam2.1_hiera_tiny.pt` checkpoint.
+
+The examples under `examples/` still expect local data and weights under the
+repository root.
 
 ## Development
 

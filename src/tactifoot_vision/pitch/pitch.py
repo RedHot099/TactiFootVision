@@ -108,6 +108,19 @@ class SoccerPitch:
         ]  # fmt: skip
         return np.asarray(points, dtype=np.float32)
 
+    @cached_property
+    def flip_idx(self) -> tuple[int, ...]:
+        """Keypoint permutation for a horizontally flipped frame, as in Ultralytics' ``flip_idx``.
+
+        Mirroring a frame of a camera beside the pitch swaps the two halves,
+        so keypoint ``i`` of the flipped frame is the vertex mirrored across
+        the halfway line, ``flip_idx[i]`` (left goal-line corners become the
+        right ones, the near touchline stays near).
+        """
+        mirrored = self.vertices * [-1, 1] + [self.length, 0]
+        distances = np.linalg.norm(self.vertices[:, None] - mirrored[None], axis=2)
+        return tuple(int(i) for i in distances.argmin(axis=0))
+
     @property
     def labels(self) -> list[str]:
         return [f"{i:02d}" for i in range(len(self.vertices))]

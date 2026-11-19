@@ -11,7 +11,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # The frame number in an OpenCV image-sequence pattern: %d, %6d, %06d.
-_FRAME_NUMBER = re.compile(r"%0?\d*d")
+FRAME_NUMBER = re.compile(r"%0?\d*d")
 
 
 class VideoReader:
@@ -120,7 +120,7 @@ def sequence_images(pattern: Path) -> list[tuple[int, Path]]:
 
     A path that is a file, or has no single frame number, is a ``ValueError``.
     """
-    parts = _FRAME_NUMBER.split(pattern.name)
+    parts = FRAME_NUMBER.split(pattern.name)
     if len(parts) != 2 or pattern.is_file():
         raise ValueError(f"{pattern} is not an image-sequence pattern such as %06d.jpg")
     if not pattern.parent.is_dir():
@@ -150,16 +150,18 @@ def extract_frames(
 ) -> list[Path]:
     """Save the frames ``start <= index < end`` every ``stride`` frames; return the paths.
 
-    Files are named ``<video stem>_<index>.<format>``; ``end=None`` runs to the
-    end of the video. Handy for building a new dataset to annotate from match
-    footage.
+    Files are named ``<video stem>_<index>.<format>``, or after the folder
+    of an image sequence (``img1/%06d.jpg`` gives ``img1_000000.jpg``);
+    ``end=None`` runs to the end of the video. Handy for building a new
+    dataset to annotate from match footage.
     """
     reader = VideoReader(video)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    name = reader.path.stem if reader.path.is_file() else reader.path.parent.name
     paths: list[Path] = []
     for index, frame in reader.frames(start=start, end=end, stride=stride):
-        path = out / f"{reader.path.stem}_{index:06d}.{image_format}"
+        path = out / f"{name}_{index:06d}.{image_format}"
         if not cv2.imwrite(str(path), frame):
             raise RuntimeError(f"Could not write {path}")
         paths.append(path)
